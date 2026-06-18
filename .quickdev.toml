@@ -1,0 +1,39 @@
+# QuickDev project configuration
+# Edit this file directly or use: quickdev add, quickdev remove
+#
+# [project]
+#   name = Display name for this project
+#
+# [[terminals]]
+#   name    = Label for this terminal tab
+#   path    = Working directory relative to project root (e.g., ".", "./src")
+#   command  = (optional) Startup command to run when the terminal opens
+#   emulator = (optional) Terminal emulator: "ghostty", "terminal", "gnome-terminal", "ptyxis". Omit for auto-detect
+#
+# [[applications]]
+#   name = Application display name
+#   path = Executable path or .app bundle (e.g., "/Applications/Cursor.app")
+#   args = (optional) Arguments list. Placeholders: {root} {config} {name} {cwd}
+#          e.g., ["{root}"] opens project root; ["{config}"] opens this file
+
+applications = []
+
+[project]
+name = "astryn-2"
+
+[[terminals]]
+name = "Claude"
+path = "."
+command = "claude"
+emulator = "ghostty"
+
+[[terminals]]
+name = "Codex"
+path = "."
+command = "codex"
+emulator = "ghostty"
+
+[[terminals]]
+name = "scripts"
+path = "."
+emulator = "ghostty"
