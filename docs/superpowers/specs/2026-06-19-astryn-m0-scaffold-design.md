@@ -28,7 +28,7 @@ Current repo is the default `create-tauri-app` React+TS+Vite scaffold:
 | DB schema in M0 | **`settings` table only.** Genuinely used to cache the Linear viewer identity. Other tables grow per milestone. |
 | Server state | **TanStack Query included now.** "Test connection" uses `useMutation`. |
 | Rust GraphQL client | `reqwest` + hand-written JSON bodies (no codegen for one query). |
-| Secret storage | `keyring` crate behind a `SecretStore` trait. |
+| Secret storage | `keyring` crate behind a `SecretStore` trait; native backend selected per-OS (macOS Keychain / Windows Credential Manager / Linux Secret Service). Cross-platform. |
 | App icon | Regenerate `src-tauri/icons/` from `public/icons/icons8-workspace-liquid-glass-310.png` via `tauri icon`. |
 | Favicon | Wire `public/icons/icons8-workspace-liquid-glass-32.png` / `-96.png` in `index.html`; fix title to "Astryn". |
 | Linear auth header | Raw personal API key in `Authorization`, **no `Bearer`** prefix (confirmed against live Linear docs). |

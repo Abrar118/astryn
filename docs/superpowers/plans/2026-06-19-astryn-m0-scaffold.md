@@ -14,7 +14,7 @@
 - Run Rust commands with `--manifest-path src-tauri/Cargo.toml` (avoids `cd`).
 - Run the app with `npm run tauri dev` (not `npm run dev` — `invoke()` needs the Tauri runtime).
 - TS is strict with `noUnusedLocals`/`noUnusedParameters` — no unused symbols.
-- M0 targets **macOS** (keyring `apple-native`); other platforms come later.
+- **Cross-platform** (macOS, Windows, Linux): the `keyring` backend is selected per-OS in Task 7; the rest of the stack (Tauri, rustls, sqlite, web frontend) is already portable. Each OS needs its own build prerequisites — see Notes.
 - Tests are written alongside each unit and run to green within the same task (not strict red/green TDD).
 
 ---
@@ -333,12 +333,26 @@ git commit -m "feat: wire Astryn icons, favicon, product name, and window size"
 In `src-tauri/Cargo.toml`, under `[dependencies]` (keep existing `tauri`, `tauri-plugin-opener`, `serde`, `serde_json`), add:
 ```toml
 sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite", "migrate"] }
-keyring = { version = "3", features = ["apple-native"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 ```
-(`apple-native` is the macOS keychain backend — M0 targets macOS. Add `windows-native` / `sync-secret-service` features before building for those platforms.)
+`reqwest` uses **rustls** (not OpenSSL), so it builds the same on macOS, Windows, and Linux without system TLS libs.
+
+- [ ] **Step 1b: Add the platform-specific keyring backend**
+
+The `keyring` crate needs a different native backend per OS. Add these target-scoped sections (NOT under `[dependencies]`) to `src-tauri/Cargo.toml`:
+```toml
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
+```
+The `SecretStore` keyring code (`keyring::Entry`) is identical across all three — only the compiled backend differs. On Linux the Secret Service backend requires a running keyring daemon (gnome-keyring or KWallet), which standard Ubuntu desktop has.
 
 - [ ] **Step 2: Add dev dependencies**
 
@@ -1693,7 +1707,10 @@ git commit -m "chore: M0 scaffold complete and verified"
 - **Key-replacement ordering:** `set_linear_key_logic` clears the cached identity *before* writing the new key, so a keyring failure can never leave a stale "connected" name beside a changed key.
 - **Fail loudly at startup:** `init_pool` propagates a directory-creation I/O error (no silent `.ok()`); the `setup` closure `expect`s on it, so DB/migration failures crash with a clear message rather than booting half-initialized.
 - **Keychain prompts:** on macOS the first `set`/`get` may trigger a login-keychain access prompt — allow it. Expected dev behavior, not a bug.
-- **Platform scope:** M0 is macOS-only (`keyring` `apple-native`). Add `windows-native` / `sync-secret-service` features before targeting other platforms.
+- **Platform prerequisites:** the code is cross-platform; the `keyring` backend is target-scoped (Task 7). To build/run per OS:
+  - **macOS:** Xcode Command Line Tools. Secrets → login Keychain.
+  - **Windows:** WebView2 runtime (preinstalled on Win11) + MSVC build tools (Rust MSVC toolchain). Secrets → Windows Credential Manager.
+  - **Ubuntu/Linux:** `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, plus a running Secret Service daemon (`gnome-keyring` — present on GNOME desktops). Headless/WSL without a keyring daemon will fail secret storage. Also `~/Documents` must exist (`xdg-user-dirs`); standard desktops have it.
 - **Build-time facts already resolved:** toast package is `goey-toast@0.5.0`; Linear auth header is the raw key (no `Bearer`); shadcn Tailwind-v4 init confirmed. Re-introspect the live `viewer` field only if it fails at runtime.
 - **DB location tradeoff:** `~/Documents/astryn/astryn.db` is an explicit M0 decision — it's user-visible and may be externally moved or synced (e.g. iCloud). It only caches Linear data (no secrets), so corruption/loss is recoverable by re-sync. `app_data_dir` is the safer location for a production cache; revisit if this becomes a problem.
 
