@@ -18,24 +18,6 @@ export function Settings({ onBack }: { onBack: () => void }) {
 
   const invalidateStatus = () => qc.invalidateQueries({ queryKey: ["connection-status"] });
 
-  // Save WITHOUT TanStack Query so the secret never enters the mutation cache.
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault();
-    const key = keyInput.trim();
-    if (!key) return;
-    setKeyInput(""); // clear the secret from component state immediately
-    setSaving(true);
-    try {
-      await setLinearKey(key);
-      gooeyToast.success("Linear key saved");
-      invalidateStatus();
-    } catch {
-      gooeyToast.error("Could not save the key");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const testMut = useMutation({
     mutationFn: () => testLinearConnection(),
     onSuccess: (status) => {
@@ -53,6 +35,29 @@ export function Settings({ onBack }: { onBack: () => void }) {
     },
     onError: () => gooeyToast.error("Could not clear the key"),
   });
+
+  // One operation at a time: never let Test/Clear run while a key is being saved
+  // (or vice versa), which could cache an identity against the wrong key.
+  const busy = saving || testMut.isPending || clearMut.isPending;
+
+  // Save WITHOUT TanStack Query so the secret never enters the mutation cache.
+  const handleSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const key = keyInput.trim();
+    if (!key) return;
+    setKeyInput(""); // clear the secret from component state immediately
+    setSaving(true);
+    try {
+      await setLinearKey(key);
+      gooeyToast.success("Linear key saved");
+      invalidateStatus();
+    } catch {
+      gooeyToast.error("Could not save the key");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-8 p-10">
@@ -73,15 +78,16 @@ export function Settings({ onBack }: { onBack: () => void }) {
             placeholder="lin_api_…"
             value={keyInput}
             onChange={(e) => setKeyInput(e.currentTarget.value)}
+            disabled={busy}
           />
           <div className="flex gap-2">
-            <Button type="submit" disabled={saving}>
+            <Button type="submit" disabled={busy}>
               Save
             </Button>
             <Button
               type="button"
               variant="secondary"
-              disabled={testMut.isPending}
+              disabled={busy}
               onClick={() => testMut.mutate()}
             >
               Test connection
@@ -89,7 +95,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
             <Button
               type="button"
               variant="ghost"
-              disabled={clearMut.isPending}
+              disabled={busy}
               onClick={() => clearMut.mutate()}
             >
               Clear key
