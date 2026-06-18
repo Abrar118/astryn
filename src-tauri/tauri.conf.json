@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "astryn",
+  "productName": "Astryn",
   "version": "0.1.0",
   "identifier": "com.orion.astryn",
   "build": {
@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "astryn",
-        "width": 800,
-        "height": 600
+        "title": "Astryn",
+        "width": 1280,
+        "height": 800
       }
     ],
     "security": {

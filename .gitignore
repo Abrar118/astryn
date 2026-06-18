@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# Secrets — NEVER commit. The app stores the Linear key in the OS keychain, not here.
+.env
+.env.*
+!.env.example
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
