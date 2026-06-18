@@ -1,6 +1,6 @@
-use std::path::Path;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
+use std::path::Path;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Fail loudly if the data directory cannot be created (no silent .ok()).
@@ -30,11 +30,10 @@ pub async fn save_viewer_name(pool: &SqlitePool, name: &str) -> Result<(), sqlx:
 }
 
 pub async fn load_viewer_name(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
-    let row: Option<(String,)> =
-        sqlx::query_as("SELECT value FROM settings WHERE key = ?1")
-            .bind(VIEWER_NAME_KEY)
-            .fetch_optional(pool)
-            .await?;
+    let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?1")
+        .bind(VIEWER_NAME_KEY)
+        .fetch_optional(pool)
+        .await?;
     Ok(row.map(|r| r.0))
 }
 
@@ -72,9 +71,15 @@ mod tests {
         let (_dir, pool) = temp_pool().await;
         assert_eq!(load_viewer_name(&pool).await.unwrap(), None);
         save_viewer_name(&pool, "Abrar").await.unwrap();
-        assert_eq!(load_viewer_name(&pool).await.unwrap(), Some("Abrar".to_string()));
+        assert_eq!(
+            load_viewer_name(&pool).await.unwrap(),
+            Some("Abrar".to_string())
+        );
         save_viewer_name(&pool, "Abrar 2").await.unwrap(); // upsert
-        assert_eq!(load_viewer_name(&pool).await.unwrap(), Some("Abrar 2".to_string()));
+        assert_eq!(
+            load_viewer_name(&pool).await.unwrap(),
+            Some("Abrar 2".to_string())
+        );
         clear_viewer_name(&pool).await.unwrap();
         assert_eq!(load_viewer_name(&pool).await.unwrap(), None);
     }

@@ -1,6 +1,6 @@
-use std::sync::Arc;
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::sync::Arc;
 use tauri::State;
 
 use crate::db;
@@ -72,7 +72,9 @@ pub async fn set_linear_key_logic(
     // Invalidate any cached identity FIRST. If the keyring write later fails, the
     // old key may persist but the status safely falls back to "unverified" — we
     // never leave a stale "connected" name beside a freshly-changed key.
-    db::clear_viewer_name(pool).await.map_err(|_| CmdError::Internal)?;
+    db::clear_viewer_name(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.set(LINEAR_KEY_ACCOUNT, &key))
         .await
@@ -90,7 +92,9 @@ pub async fn clear_linear_key_logic(
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?;
-    db::clear_viewer_name(pool).await.map_err(|_| CmdError::Internal)?;
+    db::clear_viewer_name(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(())
 }
 
@@ -104,7 +108,9 @@ pub async fn get_status_logic(
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
         .is_some();
-    let cached = db::load_viewer_name(pool).await.map_err(|_| CmdError::Internal)?;
+    let cached = db::load_viewer_name(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(compute_status(has_key, cached))
 }
 
@@ -127,7 +133,9 @@ where
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::NotConfigured)?;
     let viewer = fetch_viewer(auth).await?;
-    db::save_viewer_name(pool, &viewer.name).await.map_err(|_| CmdError::Internal)?;
+    db::save_viewer_name(pool, &viewer.name)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(ConnectionStatus::Connected { name: viewer.name })
 }
 
@@ -142,16 +150,22 @@ pub async fn clear_linear_key(state: State<'_, AppState>) -> Result<(), CmdError
 }
 
 #[tauri::command]
-pub async fn get_connection_status(state: State<'_, AppState>) -> Result<ConnectionStatus, CmdError> {
+pub async fn get_connection_status(
+    state: State<'_, AppState>,
+) -> Result<ConnectionStatus, CmdError> {
     get_status_logic(state.secret_store.clone(), &state.pool).await
 }
 
 #[tauri::command]
-pub async fn test_linear_connection(state: State<'_, AppState>) -> Result<ConnectionStatus, CmdError> {
+pub async fn test_linear_connection(
+    state: State<'_, AppState>,
+) -> Result<ConnectionStatus, CmdError> {
     let client = state.linear.clone();
-    test_connection_logic(state.credentials.clone(), &state.pool, move |auth| async move {
-        client.viewer(&auth).await
-    })
+    test_connection_logic(
+        state.credentials.clone(),
+        &state.pool,
+        move |auth| async move { client.viewer(&auth).await },
+    )
     .await
 }
 
@@ -162,7 +176,10 @@ mod status_tests {
     #[test]
     fn no_key_is_not_configured() {
         assert_eq!(compute_status(false, None), ConnectionStatus::NotConfigured);
-        assert_eq!(compute_status(false, Some("x".into())), ConnectionStatus::NotConfigured);
+        assert_eq!(
+            compute_status(false, Some("x".into())),
+            ConnectionStatus::NotConfigured
+        );
     }
 
     #[test]
@@ -174,13 +191,18 @@ mod status_tests {
     fn key_with_cache_is_connected() {
         assert_eq!(
             compute_status(true, Some("Abrar".into())),
-            ConnectionStatus::Connected { name: "Abrar".into() }
+            ConnectionStatus::Connected {
+                name: "Abrar".into()
+            }
         );
     }
 
     #[test]
     fn connected_serializes_with_state_and_name() {
-        let json = serde_json::to_string(&ConnectionStatus::Connected { name: "Abrar".into() }).unwrap();
+        let json = serde_json::to_string(&ConnectionStatus::Connected {
+            name: "Abrar".into(),
+        })
+        .unwrap();
         assert_eq!(json, r#"{"state":"connected","name":"Abrar"}"#);
     }
 
@@ -199,12 +221,18 @@ mod logic_tests {
 
     async fn temp_pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
-        let pool = db::init_pool(&dir.path().join("astryn/test.db")).await.unwrap();
+        let pool = db::init_pool(&dir.path().join("astryn/test.db"))
+            .await
+            .unwrap();
         (dir, pool)
     }
 
     fn viewer(name: &str) -> Viewer {
-        Viewer { id: "u1".into(), name: name.into(), email: "a@b.c".into() }
+        Viewer {
+            id: "u1".into(),
+            name: name.into(),
+            email: "a@b.c".into(),
+        }
     }
 
     #[tokio::test]
@@ -219,7 +247,9 @@ mod logic_tests {
     async fn saving_key_reports_unverified() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into()).await.unwrap();
+        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
+            .await
+            .unwrap();
         let status = get_status_logic(store, &pool).await.unwrap();
         assert_eq!(status, ConnectionStatus::Unverified);
     }
@@ -228,19 +258,30 @@ mod logic_tests {
     async fn cached_identity_reports_connected() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into()).await.unwrap();
+        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
+            .await
+            .unwrap();
         db::save_viewer_name(&pool, "Abrar").await.unwrap();
         let status = get_status_logic(store, &pool).await.unwrap();
-        assert_eq!(status, ConnectionStatus::Connected { name: "Abrar".into() });
+        assert_eq!(
+            status,
+            ConnectionStatus::Connected {
+                name: "Abrar".into()
+            }
+        );
     }
 
     #[tokio::test]
     async fn replacing_key_invalidates_cached_identity() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "old".into()).await.unwrap();
+        set_linear_key_logic(store.clone(), &pool, "old".into())
+            .await
+            .unwrap();
         db::save_viewer_name(&pool, "Abrar").await.unwrap();
-        set_linear_key_logic(store.clone(), &pool, "new".into()).await.unwrap();
+        set_linear_key_logic(store.clone(), &pool, "new".into())
+            .await
+            .unwrap();
         assert_eq!(db::load_viewer_name(&pool).await.unwrap(), None);
         let status = get_status_logic(store, &pool).await.unwrap();
         assert_eq!(status, ConnectionStatus::Unverified);
@@ -250,7 +291,9 @@ mod logic_tests {
     async fn clearing_key_removes_key_and_identity() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into()).await.unwrap();
+        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
+            .await
+            .unwrap();
         db::save_viewer_name(&pool, "Abrar").await.unwrap();
         clear_linear_key_logic(store.clone(), &pool).await.unwrap();
         assert_eq!(store.get(LINEAR_KEY_ACCOUNT).unwrap(), None);
@@ -269,8 +312,16 @@ mod logic_tests {
         let status = test_connection_logic(creds, &pool, |_auth| async { Ok(viewer("Abrar")) })
             .await
             .unwrap();
-        assert_eq!(status, ConnectionStatus::Connected { name: "Abrar".into() });
-        assert_eq!(db::load_viewer_name(&pool).await.unwrap(), Some("Abrar".to_string()));
+        assert_eq!(
+            status,
+            ConnectionStatus::Connected {
+                name: "Abrar".into()
+            }
+        );
+        assert_eq!(
+            db::load_viewer_name(&pool).await.unwrap(),
+            Some("Abrar".to_string())
+        );
     }
 
     #[tokio::test]
@@ -284,7 +335,10 @@ mod logic_tests {
         let result =
             test_connection_logic(creds, &pool, |_auth| async { Err(LinearError::Auth) }).await;
         assert!(result.is_err());
-        assert_eq!(db::load_viewer_name(&pool).await.unwrap(), Some("Old Name".to_string()));
+        assert_eq!(
+            db::load_viewer_name(&pool).await.unwrap(),
+            Some("Old Name".to_string())
+        );
     }
 
     #[tokio::test]
@@ -293,8 +347,7 @@ mod logic_tests {
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         let creds: Arc<dyn LinearCredentialProvider> =
             Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
-        let result =
-            test_connection_logic(creds, &pool, |_auth| async { Ok(viewer("X")) }).await;
+        let result = test_connection_logic(creds, &pool, |_auth| async { Ok(viewer("X")) }).await;
         assert!(matches!(result, Err(CmdError::NotConfigured)));
         assert_eq!(db::load_viewer_name(&pool).await.unwrap(), None);
     }

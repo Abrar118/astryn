@@ -70,9 +70,9 @@ pub fn interpret_response(status: u16, body: &str) -> Result<Viewer, LinearError
     }
 }
 
+use crate::secrets::{SecretError, SecretStore};
 use std::sync::Arc;
 use std::time::Duration;
-use crate::secrets::{SecretError, SecretStore};
 
 pub trait LinearCredentialProvider: Send + Sync {
     /// Returns the value for the `Authorization` header, or `None` if no key is stored.
@@ -86,7 +86,10 @@ pub struct PersonalKeyProvider {
 
 impl PersonalKeyProvider {
     pub fn new(store: Arc<dyn SecretStore>, account: impl Into<String>) -> Self {
-        Self { store, account: account.into() }
+        Self {
+            store,
+            account: account.into(),
+        }
     }
 }
 
@@ -115,7 +118,10 @@ impl LinearClient {
             .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| LinearError::Network)?;
-        Ok(Self { http, endpoint: endpoint.into() })
+        Ok(Self {
+            http,
+            endpoint: endpoint.into(),
+        })
     }
 
     pub async fn viewer(&self, authorization: &str) -> Result<Viewer, LinearError> {
@@ -143,7 +149,14 @@ mod tests {
     #[test]
     fn parses_valid_viewer() {
         let v = parse_viewer_response(OK_BODY).unwrap();
-        assert_eq!(v, Viewer { id: "u1".into(), name: "Abrar".into(), email: "a@b.c".into() });
+        assert_eq!(
+            v,
+            Viewer {
+                id: "u1".into(),
+                name: "Abrar".into(),
+                email: "a@b.c".into()
+            }
+        );
     }
 
     #[test]
@@ -162,26 +175,41 @@ mod tests {
 
     #[test]
     fn unauthorized_is_auth_error() {
-        assert!(matches!(interpret_response(401, "{}"), Err(LinearError::Auth)));
+        assert!(matches!(
+            interpret_response(401, "{}"),
+            Err(LinearError::Auth)
+        ));
     }
 
     #[test]
     fn too_many_requests_is_rate_limited() {
-        assert!(matches!(interpret_response(429, ""), Err(LinearError::RateLimited)));
+        assert!(matches!(
+            interpret_response(429, ""),
+            Err(LinearError::RateLimited)
+        ));
     }
 
     #[test]
     fn server_error_is_server() {
-        assert!(matches!(interpret_response(500, ""), Err(LinearError::Server)));
+        assert!(matches!(
+            interpret_response(500, ""),
+            Err(LinearError::Server)
+        ));
     }
 
     #[test]
     fn malformed_200_body_is_error() {
-        assert!(matches!(interpret_response(200, "not json"), Err(LinearError::Malformed)));
+        assert!(matches!(
+            interpret_response(200, "not json"),
+            Err(LinearError::Malformed)
+        ));
     }
 
     #[test]
     fn missing_data_without_errors_is_malformed() {
-        assert!(matches!(parse_viewer_response("{}"), Err(LinearError::Malformed)));
+        assert!(matches!(
+            parse_viewer_response("{}"),
+            Err(LinearError::Malformed)
+        ));
     }
 }

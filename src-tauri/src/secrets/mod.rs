@@ -18,7 +18,9 @@ pub struct KeyringSecretStore {
 
 impl KeyringSecretStore {
     pub fn new(service: impl Into<String>) -> Self {
-        Self { service: service.into() }
+        Self {
+            service: service.into(),
+        }
     }
 }
 
@@ -60,7 +62,10 @@ pub mod fake {
             Ok(self.map.lock().unwrap().get(account).cloned())
         }
         fn set(&self, account: &str, secret: &str) -> Result<(), SecretError> {
-            self.map.lock().unwrap().insert(account.to_string(), secret.to_string());
+            self.map
+                .lock()
+                .unwrap()
+                .insert(account.to_string(), secret.to_string());
             Ok(())
         }
         fn delete(&self, account: &str) -> Result<(), SecretError> {

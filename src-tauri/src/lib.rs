@@ -33,7 +33,12 @@ pub fn run() {
                 Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
             let linear = LinearClient::new().expect("failed to build Linear HTTP client");
 
-            app.manage(AppState { pool, secret_store: store, credentials, linear });
+            app.manage(AppState {
+                pool,
+                secret_store: store,
+                credentials,
+                linear,
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
