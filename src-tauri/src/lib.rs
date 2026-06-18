@@ -1,6 +1,7 @@
 mod secrets;
 mod db;
 mod commands;
+mod linear;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
