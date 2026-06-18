@@ -70,6 +70,70 @@ pub fn interpret_response(status: u16, body: &str) -> Result<Viewer, LinearError
     }
 }
 
+use std::sync::Arc;
+use std::time::Duration;
+use crate::secrets::{SecretError, SecretStore};
+
+pub trait LinearCredentialProvider: Send + Sync {
+    /// Returns the value for the `Authorization` header, or `None` if no key is stored.
+    fn authorization(&self) -> Result<Option<String>, SecretError>;
+}
+
+pub struct PersonalKeyProvider {
+    store: Arc<dyn SecretStore>,
+    account: String,
+}
+
+impl PersonalKeyProvider {
+    pub fn new(store: Arc<dyn SecretStore>, account: impl Into<String>) -> Self {
+        Self { store, account: account.into() }
+    }
+}
+
+impl LinearCredentialProvider for PersonalKeyProvider {
+    fn authorization(&self) -> Result<Option<String>, SecretError> {
+        // Linear personal API keys are sent raw, with no "Bearer " prefix.
+        self.store.get(&self.account)
+    }
+}
+
+#[derive(Clone)]
+pub struct LinearClient {
+    http: reqwest::Client,
+    endpoint: String,
+}
+
+impl LinearClient {
+    pub fn new() -> Result<Self, LinearError> {
+        Self::with_endpoint("https://api.linear.app/graphql")
+    }
+
+    /// Injectable endpoint — lets future integration tests point at a mock server.
+    pub fn with_endpoint(endpoint: impl Into<String>) -> Result<Self, LinearError> {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|_| LinearError::Network)?;
+        Ok(Self { http, endpoint: endpoint.into() })
+    }
+
+    pub async fn viewer(&self, authorization: &str) -> Result<Viewer, LinearError> {
+        let body = serde_json::json!({ "query": "query { viewer { id name email } }" });
+        let resp = self
+            .http
+            .post(&self.endpoint)
+            .header("Authorization", authorization)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| LinearError::Network)?;
+        let status = resp.status().as_u16();
+        let text = resp.text().await.map_err(|_| LinearError::Network)?;
+        interpret_response(status, &text)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
