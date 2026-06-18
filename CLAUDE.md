@@ -34,6 +34,7 @@ npm run tauri icon <path/to/source.png>   # regenerate src-tauri/icons/ (use a 1
 # Rust — use --manifest-path to avoid `cd` (cd into src-tauri can trip a permission prompt)
 cargo test  --manifest-path src-tauri/Cargo.toml          # run the unit tests
 cargo build --manifest-path src-tauri/Cargo.toml          # compile
+cargo clippy --manifest-path src-tauri/Cargo.toml         # lint
 cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is kept clean; run without --check to apply
 ```
 
@@ -60,6 +61,8 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is ke
 **Rust module layout** (`requirements.md` §10): existing — `secrets/`, `db/`, `linear/` (client + GraphQL parse + HTTP-status interpreter + credential provider), `commands/` (thin `#[tauri::command]` wrappers over unit-testable async logic fns + `AppState` + `ConnectionStatus`/`CmdError`). Future — `github/`, `activity/`, `generators/`. Commands are registered in `src-tauri/src/lib.rs` via `tauri::generate_handler![...]`; window permissions in `src-tauri/capabilities/default.json`.
 
 **Frontend layout:** `src/features/<feature>/` (currently `home/`, `settings/`), `src/lib/commands.ts` (hand-maintained typed Tauri bindings + shared types like `ConnectionStatus`), `src/components/ui/` (shadcn), `src/styles/index.css` (Tailwind v4 entry + theme).
+
+**Entry points:** `src-tauri/src/lib.rs` (command registry + `setup` that builds `AppState`), `src/main.tsx` (React root + Query/Toaster providers), `src/App.tsx` (Home/Settings view switch), `src/lib/commands.ts` (typed Tauri boundary).
 
 ## Project-specific conventions
 
