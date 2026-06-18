@@ -1,6 +1,8 @@
 import { useState } from "react";
 import reactLogo from "./assets/react.svg";
 import { invoke } from "@tauri-apps/api/core";
+import { GooeyToaster } from "goey-toast";
+import "goey-toast/styles.css";
 import "./App.css";
 
 function App() {
@@ -44,6 +46,7 @@ function App() {
         <button type="submit">Greet</button>
       </form>
       <p>{greetMsg}</p>
+      <GooeyToaster position="bottom-right" />
     </main>
   );
 }
