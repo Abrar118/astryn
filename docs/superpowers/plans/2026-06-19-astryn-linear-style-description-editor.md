@@ -16,10 +16,12 @@
 - Create `src/features/drawer/descriptionAutosave.test.ts`: fake-timer queue tests.
 - Create `src/features/drawer/descriptionExtensions.ts`: one canonical Tiptap extension set and Markdown conversion helpers.
 - Create `src/features/drawer/descriptionExtensions.test.ts`: Markdown round-trip tests.
-- Create `src/features/drawer/descriptionCommands.ts`: typed toolbar/slash command catalog.
-- Create `src/features/drawer/DescriptionEditor.tsx`: editor lifecycle, menus, autosave status, external-content reconciliation.
+- Create `src/features/drawer/descriptionCommands.ts`: typed toolbar/slash command catalog **plus a pure `filterSlashCommands(query)` helper** (the menu's matching logic, unit-testable without a DOM).
+- Create `src/features/drawer/descriptionCommands.test.ts`: pure slash-filter tests.
+- Create `src/features/drawer/DescriptionEditor.tsx`: editor lifecycle, menus, autosave status, external-content reconciliation, and **link-click interception** (an `onOpenLink(href)` prop is invoked for clicks on link marks in both editable and read-only modes; the editor never navigates the webview itself).
 - Create `src/features/drawer/DescriptionEditor.test.tsx`: editor interaction tests.
-- Modify `src/features/drawer/IssueDrawer.tsx`: replace description edit/preview state with `DescriptionEditor`.
+- Modify `src/features/drawer/IssueDrawer.tsx`: replace description edit/preview state with `DescriptionEditor`; extract a shared `handleLink` and pass it as `onOpenLink`.
+- Modify `src/lib/queries.ts`: add an optional `silent` flag to the `useUpdateIssue` mutate variables so the description save can suppress the duplicate error toast.
 - Modify `src/styles/index.css`: editor, ProseMirror, toolbar, and slash-menu states.
 - Modify `package.json`, `package-lock.json`, and `vitest.config.ts`: dependencies and TSX test discovery.
 
@@ -30,25 +32,36 @@
 - Modify: `package-lock.json`
 - Modify: `vitest.config.ts`
 
-- [ ] **Step 1: Install runtime dependencies**
+- [ ] **Step 1: Install runtime dependencies (all MIT / FOSS, pinned to one exact version)**
 
-Run:
+`@tiptap/markdown` peer-depends on an *exact* `@tiptap/core`/`@tiptap/pm` version, so pin the whole family to the **same exact version** — using `^3` risks a duplicate `@tiptap/pm` (ProseMirror) that breaks the schema at runtime. First read the version `@tiptap/markdown` resolves to and reuse it for every package:
 
 ```bash
-npm install @tiptap/core@^3 @tiptap/pm@^3 @tiptap/react@^3 @tiptap/starter-kit@^3 @tiptap/markdown@^3 @tiptap/extension-task-list@^3 @tiptap/extension-task-item@^3 @tiptap/extension-table@^3 @tiptap/extension-table-row@^3 @tiptap/extension-table-header@^3 @tiptap/extension-table-cell@^3
+TT=$(npm view @tiptap/markdown version)   # e.g. 3.27.1
+npm install --save-exact \
+  @tiptap/core@$TT @tiptap/pm@$TT @tiptap/react@$TT @tiptap/starter-kit@$TT @tiptap/markdown@$TT \
+  @tiptap/extension-task-list@$TT @tiptap/extension-task-item@$TT \
+  @tiptap/extension-table@$TT @tiptap/extension-table-row@$TT \
+  @tiptap/extension-table-header@$TT @tiptap/extension-table-cell@$TT
 ```
 
-Expected: `package.json` and lockfile contain one compatible Tiptap 3 dependency family.
+Expected: every `@tiptap/*` entry in `package.json` is the **same exact** version (no `^`). Do not add any `@tiptap-pro/*`, Tiptap Cloud, or license-key dependency — only the MIT open-source packages. After install, verify a single ProseMirror copy:
+
+```bash
+npm ls @tiptap/pm
+```
+
+Expected: exactly one resolved `@tiptap/pm` version (no "deduped"/conflicting second copy).
 
 - [ ] **Step 2: Install test dependencies**
 
 Run:
 
 ```bash
-npm install --save-dev @testing-library/react @testing-library/user-event jsdom
+npm install --save-dev @testing-library/react jsdom
 ```
 
-Expected: Testing Library and jsdom appear under `devDependencies`.
+Expected: Testing Library and jsdom appear under `devDependencies` (both MIT). `@testing-library/user-event` is intentionally omitted — the editor's interactive flows are not driven through jsdom (see Task 4 testing notes).
 
 - [ ] **Step 3: Enable TSX tests**
 
@@ -132,8 +145,17 @@ describe("description Markdown", () => {
   it("serializes an empty document as an empty string", () => {
     expect(markdownFromEditor(fromMarkdown(""))).toBe("");
   });
+
+  it("serializes idempotently so external reconciliation does not churn the editor", () => {
+    const src = "## Plan\n\n- [ ] a\n- [x] b\n\n| A | B |\n| --- | --- |\n| 1 | 2 |";
+    const once = markdownFromEditor(fromMarkdown(src));
+    const twice = markdownFromEditor(fromMarkdown(once));
+    expect(twice).toBe(once);
+  });
 });
 ```
+
+If the second pass differs from the first, normalize within `markdownFromEditor` (or adjust `markedOptions`) until the serialization is stable — the editor's external-content reconciliation (Task 4) relies on this to avoid resetting content after every save.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
@@ -425,73 +447,60 @@ export const inlineCommands = [
   { id: "strike", label: "Strikethrough", icon: Strikethrough, active: "strike", run: (e: Editor) => e.chain().focus().toggleStrike().run() },
   { id: "code", label: "Inline code", icon: Braces, active: "code", run: (e: Editor) => e.chain().focus().toggleCode().run() },
 ] as const;
+
+/** Pure: slash-menu matches for a query, case-insensitive over label + keywords. */
+export function filterSlashCommands(query: string): DescriptionCommand[] {
+  const q = query.toLowerCase();
+  return slashCommands.filter((c) => `${c.label} ${c.keywords}`.toLowerCase().includes(q));
+}
 ```
+
+- [ ] **Step 1b: Unit-test the pure slash filter**
+
+Create `descriptionCommands.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { filterSlashCommands, slashCommands } from "./descriptionCommands";
+
+describe("filterSlashCommands", () => {
+  it("returns all commands for an empty query", () => {
+    expect(filterSlashCommands("")).toHaveLength(slashCommands.length);
+  });
+  it("matches label and keywords case-insensitively", () => {
+    expect(filterSlashCommands("HEAD").map((c) => c.id)).toEqual(["h1", "h2", "h3"]);
+    expect(filterSlashCommands("todo").map((c) => c.id)).toContain("task");
+  });
+  it("returns nothing for an unmatched query", () => {
+    expect(filterSlashCommands("zzz")).toHaveLength(0);
+  });
+});
+```
+
+Run: `npx vitest run src/features/drawer/descriptionCommands.test.ts` → 3 pass. The `DescriptionEditor` must call `filterSlashCommands` (not re-implement the filter inline) so this test covers the menu's real matching logic.
 
 - [ ] **Step 2: Write failing editor interaction tests**
 
 Create `DescriptionEditor.test.tsx`:
 
+These tests assert only what jsdom can reliably render: Tiptap mounts the document to the contenteditable DOM, and the read-only flag is applied. The menu/typing/selection flows depend on layout geometry (`view.coordsAtPos`) that jsdom does not provide, so they are covered by the pure `filterSlashCommands` test and by the `tauri dev` checklist — **not** by jsdom interaction tests. Keep this file free of `view.coordsAtPos`-dependent assertions.
+
 ```tsx
 // @vitest-environment jsdom
-import { act } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { DescriptionEditor } from "./DescriptionEditor";
 
-afterEach(() => vi.useRealTimers());
-
 describe("DescriptionEditor", () => {
-  it("renders Markdown as inline rich text", async () => {
-    render(<DescriptionEditor markdown="## Plan\n\n**Ship it**" editable onSave={vi.fn()} />);
+  it("renders Markdown as inline rich text with no Edit button", async () => {
+    render(<DescriptionEditor markdown={"## Plan\n\n**Ship it**"} editable onSave={vi.fn()} onOpenLink={vi.fn()} />);
     expect(await screen.findByRole("heading", { level: 2, name: "Plan" })).toBeTruthy();
     expect(screen.getByText("Ship it").tagName).toBe("STRONG");
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
-  it("opens the slash menu and applies a heading", async () => {
-    const user = userEvent.setup();
-    render(<DescriptionEditor markdown="" editable onSave={vi.fn()} />);
-    const editor = screen.getByRole("textbox", { name: "Issue description" });
-    await user.click(editor);
-    await user.keyboard("/hea");
-    expect(screen.getByRole("option", { name: "Heading 1" })).toBeTruthy();
-    await user.keyboard("{Enter}");
-    expect(editor.querySelector("h1")).toBeTruthy();
-  });
-
-  it("opens the selection toolbar for selected text", async () => {
-    const user = userEvent.setup();
-    render(<DescriptionEditor markdown="Select **this text**" editable onSave={vi.fn()} />);
-    const strong = await screen.findByText("this text");
-    const range = document.createRange();
-    range.selectNodeContents(strong);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    fireEvent.mouseUp(strong);
-    expect(await screen.findByRole("toolbar", { name: "Text formatting" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Bold" }).getAttribute("aria-pressed")).toBe("true");
-    await user.click(screen.getByRole("button", { name: "Link" }));
-    expect(screen.getByRole("textbox", { name: "Link URL" })).toBeTruthy();
-  });
-
-  it("debounces Markdown autosave and shows saved state", async () => {
-    vi.useFakeTimers();
-    const save = vi.fn().mockResolvedValue(undefined);
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-    render(<DescriptionEditor markdown="Start" editable onSave={save} />);
-    const editor = screen.getByRole("textbox", { name: "Issue description" });
-    await user.click(editor);
-    await user.keyboard(" more");
-    expect(screen.getByText("Saving soon…")).toBeTruthy();
-    await act(() => vi.advanceTimersByTimeAsync(750));
-    expect(save).toHaveBeenCalledWith(expect.stringContaining("Start more"));
-    expect(await screen.findByText("Saved")).toBeTruthy();
-  });
-
   it("is read-only for cached drawer data", async () => {
-    render(<DescriptionEditor markdown="Cached" editable={false} onSave={vi.fn()} />);
+    render(<DescriptionEditor markdown="Cached" editable={false} onSave={vi.fn()} onOpenLink={vi.fn()} />);
     expect(screen.getByRole("textbox", { name: "Issue description" }).getAttribute("contenteditable")).toBe("false");
   });
 });
@@ -515,7 +524,7 @@ import { BubbleMenu } from "@tiptap/react/menus";
 import { Link2 } from "lucide-react";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
 import { descriptionExtensions, markdownFromEditor } from "./descriptionExtensions";
-import { inlineCommands, slashCommands } from "./descriptionCommands";
+import { filterSlashCommands, inlineCommands } from "./descriptionCommands";
 
 type SlashState = { from: number; query: string; selected: number; left: number; top: number };
 
@@ -523,13 +532,17 @@ export function DescriptionEditor({
   markdown,
   editable,
   onSave,
+  onOpenLink,
 }: {
   markdown: string;
   editable: boolean;
   onSave: (markdown: string) => Promise<void>;
+  onOpenLink: (href: string) => void;
 }) {
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
+  const linkRef = useRef(onOpenLink);
+  linkRef.current = onOpenLink;
   const editorRef = useRef<Editor | null>(null);
   const queue = useMemo(
     () => new DescriptionAutosave(markdown, (value) => saveRef.current(value), 750),
@@ -558,9 +571,7 @@ export function DescriptionEditor({
         const current = slashRef.current;
         const currentEditor = editorRef.current;
         if (!current || !currentEditor) return false;
-        const choices = slashCommands.filter((item) =>
-          `${item.label} ${item.keywords}`.toLowerCase().includes(current.query.toLowerCase()),
-        );
+        const choices = filterSlashCommands(current.query);
         if (event.key === "Escape") { setSlash(null); return true; }
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
           event.preventDefault();
@@ -578,6 +589,19 @@ export function DescriptionEditor({
         return false;
       },
       handleBlur: () => { void queue.flush().catch(() => undefined); return false; },
+      // Intercept link clicks (editable AND read-only) so the webview never
+      // navigates. The drawer resolves in-app issue links vs. validated
+      // external links via onOpenLink.
+      handleClickOn: (_view, _pos, _node, _nodePos, event) => {
+        const anchor = (event.target as HTMLElement | null)?.closest("a");
+        const href = anchor?.getAttribute("href");
+        if (href) {
+          event.preventDefault();
+          linkRef.current(href);
+          return true;
+        }
+        return false;
+      },
     },
     onUpdate: ({ editor: current }) => {
       const value = markdownFromEditor(current);
@@ -602,9 +626,16 @@ export function DescriptionEditor({
   editorRef.current = editor;
   useEffect(() => queue.subscribe(setStatus), [queue]);
   useEffect(() => { editor?.setEditable(editable); }, [editable, editor]);
+  // Seed the autosave baseline from the SERIALIZED form and adopt server
+  // content only when the local editor is clean. Baselining on the serialized
+  // form keeps normalization-only differences from looking like a draft and
+  // prevents post-save churn.
   useEffect(() => {
-    if (editor && queue.acceptExternal(markdown) && markdownFromEditor(editor) !== markdown) {
+    if (!editor) return;
+    if (!queue.acceptExternal(markdownFromEditor(editor))) return; // dirty -> keep draft
+    if (markdownFromEditor(editor) !== markdown) {
       editor.commands.setContent(markdown, { contentType: "markdown", emitUpdate: false });
+      queue.acceptExternal(markdownFromEditor(editor)); // re-baseline on adopted content
     }
   }, [editor, markdown, queue]);
   useEffect(() => () => {
@@ -612,9 +643,7 @@ export function DescriptionEditor({
     queue.destroy();
   }, [queue]);
 
-  const choices = slash
-    ? slashCommands.filter((item) => `${item.label} ${item.keywords}`.toLowerCase().includes(slash.query.toLowerCase()))
-    : [];
+  const choices = slash ? filterSlashCommands(slash.query) : [];
 
   const applyLink = () => {
     if (!editor) return;
@@ -754,7 +783,7 @@ Append to `src/styles/index.css`:
 
 Run: `npx vitest run src/features/drawer/DescriptionEditor.test.tsx`
 
-Expected: 5 tests pass.
+Expected: 2 component tests pass. The selection toolbar, slash menu, and keyboard formatting are verified by the pure `filterSlashCommands` test and the `tauri dev` checklist (Task 6), not in jsdom.
 
 Run: `npx tsc --noEmit`
 
@@ -763,7 +792,7 @@ Expected: clean with no unused imports, stale closure errors, or unsupported Tip
 - [ ] **Step 7: Commit editor UI**
 
 ```bash
-git add src/features/drawer/descriptionCommands.ts src/features/drawer/DescriptionEditor.tsx src/features/drawer/DescriptionEditor.test.tsx src/styles/index.css
+git add src/features/drawer/descriptionCommands.ts src/features/drawer/descriptionCommands.test.ts src/features/drawer/DescriptionEditor.tsx src/features/drawer/DescriptionEditor.test.tsx src/styles/index.css
 git commit -m "feat: add Linear-style description editor"
 ```
 
@@ -772,29 +801,20 @@ git commit -m "feat: add Linear-style description editor"
 **Files:**
 - Modify: `src/features/drawer/IssueDrawer.tsx`
 
-- [ ] **Step 1: Add an integration assertion before changing the drawer**
+- [ ] **Step 1: Confirm the empty-content contract**
 
-Extend `DescriptionEditor.test.tsx` with:
+The empty-document contract is already proven by `descriptionExtensions.test.ts` ("serializes an empty document as an empty string"). The drawer owns the `"" → null` normalization at the command boundary (Step 3). Do not add a jsdom test that types into ProseMirror to assert this — it is covered by the serialization test plus the boundary mapping below.
 
-```tsx
-it("sends empty Markdown to the save boundary for null normalization", async () => {
-  vi.useFakeTimers();
-  const save = vi.fn().mockResolvedValue(undefined);
-  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
-  render(<DescriptionEditor markdown="Remove me" editable onSave={save} />);
-  const editor = screen.getByRole("textbox", { name: "Issue description" });
-  await user.click(editor);
-  await user.keyboard("{Meta>}a{/Meta}{Backspace}");
-  await act(() => vi.advanceTimersByTimeAsync(750));
-  expect(save).toHaveBeenCalledWith("");
-});
+- [ ] **Step 2: Suppress the duplicate failure toast on the description path**
+
+In `src/lib/queries.ts`, let the description save opt out of the generic mutation error toast (the editor shows its own inline status). Add an optional `silent?: boolean` to the `useUpdateIssue` mutate variables and skip the toast when set:
+
+```ts
+// in useUpdateIssue.onError(err, variables, ctx):
+if (!variables.silent) gooeyToast.error("Update failed", { description: errorText(err) });
 ```
 
-- [ ] **Step 2: Run the focused test**
-
-Run: `npx vitest run src/features/drawer/DescriptionEditor.test.tsx`
-
-Expected: PASS before drawer wiring, proving the component emits the value the boundary must normalize.
+Leave `onMutate`/`onSettled` (optimistic update + rollback + invalidation) unchanged so the description still updates optimistically and rolls back. Update the mutate-variables type accordingly.
 
 - [ ] **Step 3: Replace description state and preview UI**
 
@@ -803,18 +823,32 @@ In `IssueDrawer.tsx`:
 1. Keep `ReactMarkdown` and `remarkGfm` for read-only activity comments.
 2. Import `DescriptionEditor`.
 3. Remove `desc`, `editingDesc`, the description synchronization effect, the Edit/Done control, description textarea, and description `ReactMarkdown` preview.
-4. Add an awaitable save callback next to `patch`:
+4. Extract the existing link logic from the `md` components' `a` handler into a reusable `handleLink(href)` so the editor and the comments renderer share it (in-app issue link → `openIssue`; otherwise `safeExternalUrl` → `openUrl`; unsafe → blocked toast). Keep `md` using it for comments.
+
+```tsx
+const handleLink = (href: string) => {
+  const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
+  const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
+  if (target) return openIssue(target);
+  const external = safeExternalUrl(href);
+  if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
+  else gooeyToast.error("Blocked unsafe link");
+};
+```
+
+5. Add an awaitable save callback that suppresses the duplicate mutation toast (the editor shows inline status):
 
 ```tsx
 const saveDescription = async (markdown: string) => {
   await update.mutateAsync({
     id,
     patch: { description: markdown === "" ? null : markdown },
+    silent: true,
   });
 };
 ```
 
-5. Render the editor in the existing description section:
+6. Render the editor in the existing description section, passing the shared link handler:
 
 ```tsx
 <section className="mt-6">
@@ -823,11 +857,12 @@ const saveDescription = async (markdown: string) => {
     markdown={detailDesc}
     editable={editable}
     onSave={saveDescription}
+    onOpenLink={handleLink}
   />
 </section>
 ```
 
-Do not add localStorage, HTML persistence, a source toggle, or a second mutation path.
+Do not add localStorage, HTML persistence, a source toggle, or a second mutation path. The editor's `handleClickOn` (Task 4) routes all description link clicks through `onOpenLink`, preserving the no-webview-navigation behavior in both editable and read-only modes.
 
 - [ ] **Step 4: Run frontend tests and build**
 
@@ -846,7 +881,7 @@ Expected: Vite production build passes; record but do not treat the existing chu
 - [ ] **Step 5: Commit drawer integration**
 
 ```bash
-git add src/features/drawer/IssueDrawer.tsx src/features/drawer/DescriptionEditor.test.tsx
+git add src/features/drawer/IssueDrawer.tsx src/lib/queries.ts
 git commit -m "feat: edit issue descriptions inline"
 ```
 
@@ -883,8 +918,8 @@ Verify in a live issue drawer:
 5. Description saves after 750 ms and survives closing/reopening the drawer.
 6. Closing immediately after typing flushes the latest Markdown.
 7. A simulated network failure retains the local draft and displays sanitized failure feedback.
-8. Cached/offline drawer content is read-only.
-9. Links still open only through the validated system-browser path.
+8. Cached/offline drawer content is read-only (but its links are still clickable per item 9).
+9. Clicking a link in the description never navigates the webview: an embedded Linear issue link opens that issue in the in-app drawer; other links open in the system browser; unsafe links are blocked. Verify in both editable and read-only modes.
 
 - [ ] **Step 3: Inspect the final diff**
 
