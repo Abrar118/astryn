@@ -9,6 +9,7 @@ import type { DropArg } from "@fullcalendar/interaction";
 import { useCalendarIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
 import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
 import type { IssueFilters } from "@/lib/commands";
+import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { eventAccent, tint } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
@@ -31,6 +32,7 @@ export function CalendarPage() {
   const [colorBy, setColorBy] = useState<"state" | "priority">("state");
   const [, setParams] = useSearchParams();
   const update = useUpdateIssue();
+  const { openMenu } = useIssueMenu();
 
   // Default the assignee filter to "me" exactly once, when identity loads. After
   // that, filters.assigneeId === undefined genuinely means "All assignees".
@@ -85,6 +87,7 @@ export function CalendarPage() {
         }`}
         style={{ backgroundColor: tint(color, 0.2) }}
         title={`${identifier}  ${arg.event.title}`}
+        onContextMenu={(e) => openMenu(e, arg.event.id)}
       >
         <span className="mt-[6px] size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
         <span className="line-clamp-2 text-foreground">{arg.event.title}</span>
@@ -123,7 +126,11 @@ export function CalendarPage() {
             }}
           />
         </div>
-        <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
+        <UnscheduledRail
+          issues={unscheduled ?? []}
+          onOpen={(id) => setParams({ issue: id })}
+          onContextMenu={(e, id) => openMenu(e, id)}
+        />
       </div>
     </div>
   );

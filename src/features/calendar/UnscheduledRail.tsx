@@ -1,13 +1,15 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type MouseEvent as ReactMouseEvent } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import type { CalendarIssue } from "@/lib/commands";
 
 export function UnscheduledRail({
   issues,
   onOpen,
+  onContextMenu,
 }: {
   issues: CalendarIssue[];
   onOpen: (id: string) => void;
+  onContextMenu: (e: ReactMouseEvent, id: string) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -42,6 +44,7 @@ export function UnscheduledRail({
             key={i.id}
             data-id={i.id}
             onClick={() => onOpen(i.id)}
+            onContextMenu={(e) => onContextMenu(e, i.id)}
             title={i.title}
             className="astryn-rail-item cursor-grab rounded-md border border-border/60 px-2.5 py-2 text-xs transition-colors hover:border-border hover:bg-accent active:cursor-grabbing"
           >

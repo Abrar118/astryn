@@ -6,6 +6,7 @@ import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
 import { Settings } from "@/features/settings/Settings";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
+import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 
 function Shell() {
   const { active } = useWorkspace();
@@ -29,7 +30,9 @@ function Shell() {
 export function AppShell() {
   return (
     <WorkspaceProvider>
-      <Shell />
+      <IssueMenuProvider>
+        <Shell />
+      </IssueMenuProvider>
     </WorkspaceProvider>
   );
 }

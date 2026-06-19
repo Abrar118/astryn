@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type ReactNode,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDownUp,
@@ -20,6 +28,7 @@ import { dhakaToday, isOverdue } from "@/lib/dates";
 import type { IssueListItem, IssueFilters, Label, UpdateIssuePatch } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
+import { useIssueMenu } from "./IssueContextMenu";
 
 const PRIORITY_LABELS = ["No priority", "Urgent", "High", "Medium", "Low"];
 const PRIORITY_COLORS = ["#6b7280", "#ef4444", "#f97316", "#eab308", "#3b82f6"];
@@ -417,17 +426,20 @@ function IssueRow({
   display,
   avatar,
   onOpen,
+  onContextMenu,
   today,
 }: {
   issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   onOpen: (id: string) => void;
+  onContextMenu: (e: ReactMouseEvent) => void;
   today: string;
 }) {
   return (
     <div
       onClick={() => onOpen(issue.id)}
+      onContextMenu={onContextMenu}
       className="group flex cursor-pointer items-center gap-3 border-b border-border/40 px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50"
     >
       <span title={`Status: ${issue.stateName || issue.stateType || "No status"}`} className="flex">
@@ -452,6 +464,7 @@ function BoardCard({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onContextMenu,
   dragging,
 }: {
   issue: IssueListItem;
@@ -461,6 +474,7 @@ function BoardCard({
   onPointerDown: (e: ReactPointerEvent) => void;
   onPointerMove: (e: ReactPointerEvent) => void;
   onPointerUp: (e: ReactPointerEvent) => void;
+  onContextMenu: (e: ReactMouseEvent) => void;
   dragging?: boolean;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
@@ -470,6 +484,7 @@ function BoardCard({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onContextMenu={onContextMenu}
       style={{ touchAction: "none" }}
       className={`cursor-grab touch-none select-none rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 active:cursor-grabbing ${
         dragging ? "opacity-40" : ""
@@ -623,6 +638,7 @@ export function IssuesView() {
   const { data: filterOpts } = useFilterOptions();
   const { data: users } = useUsers();
   const update = useUpdateIssue();
+  const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
 
   const cfg = useRef<ViewConfig | null>(null);
@@ -929,7 +945,15 @@ export function IssuesView() {
                 </button>
                 {!collapsed[g.key] &&
                   g.issues.map((i) => (
-                    <IssueRow key={i.id} issue={i} display={display} avatar={avatarOf(i.assigneeId)} onOpen={open} today={today} />
+                    <IssueRow
+                      key={i.id}
+                      issue={i}
+                      display={display}
+                      avatar={avatarOf(i.assigneeId)}
+                      onOpen={open}
+                      onContextMenu={(e) => openMenu(e, i.id)}
+                      today={today}
+                    />
                   ))}
               </div>
             ))}
@@ -960,6 +984,7 @@ export function IssuesView() {
                       onPointerDown={(e) => onCardPointerDown(e, i)}
                       onPointerMove={onCardPointerMove}
                       onPointerUp={onCardPointerUp}
+                      onContextMenu={(e) => openMenu(e, i.id)}
                       dragging={draggingId === i.id}
                     />
                   ))}
