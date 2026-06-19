@@ -25,3 +25,16 @@ describe("Milkdown markdown round-trip", () => {
     });
   }
 });
+
+describe("Milkdown image node", () => {
+  it("keeps the original URL in markdown, never a data URL", async () => {
+    const r = await roundtripMarkdown(
+      "![diagram](https://uploads.linear.app/a/b.png)",
+    );
+    expect(r.valid).toBe(true);
+    expect(r.markdown).toContain(
+      "![diagram](https://uploads.linear.app/a/b.png)",
+    );
+    expect(r.markdown).not.toContain("data:");
+  });
+});

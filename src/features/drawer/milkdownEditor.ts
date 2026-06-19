@@ -16,12 +16,20 @@ import {
 import { gfm, extendListItemSchemaForTask } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
 import type { NodeSchema } from "@milkdown/transformer";
+import { descriptionImageView } from "./milkdownImageNode";
 
 /**
  * Plugins shared by the live editor and the headless round-trip helper.
- * Later tasks push image, mention, and menu plugins onto this array.
+ * `descriptionImageView` overrides only the DOM rendering of image nodes;
+ * the commonmark schema + markdown serializer are unchanged, so the original
+ * URL round-trips correctly in `roundtripMarkdown` (which uses commonmark+gfm
+ * directly and does not instantiate node views in headless mode).
  */
-export const descriptionPlugins: unknown[] = [commonmark, gfm];
+export const descriptionPlugins: unknown[] = [
+  commonmark,
+  gfm,
+  descriptionImageView,
+];
 
 /**
  * Patch a schema factory so that the `spread` attribute runner coerces
