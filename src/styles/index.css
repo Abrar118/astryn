@@ -127,3 +127,8 @@
     @apply font-sans;
     }
 }
+
+.astryn-overdue {
+  outline: 2px solid #ef4444;
+  outline-offset: -2px;
+}
