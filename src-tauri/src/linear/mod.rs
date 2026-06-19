@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 pub mod issues;
 pub mod sync;
 

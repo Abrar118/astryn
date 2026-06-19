@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::linear::{extract_data, LinearClient, LinearError};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
@@ -450,9 +451,9 @@ impl LinearClient {
         after: Option<&str>,
         since: Option<&str>,
     ) -> Result<IssuesPage, LinearError> {
-        let filter = since
+        let filter: serde_json::Value = since
             .map(|c| serde_json::json!({ "updatedAt": { "gte": c } }))
-            .unwrap_or(serde_json::json!({}));
+            .unwrap_or(serde_json::Value::Null);
         let body = serde_json::json!({
             "query": issues_query(),
             "variables": { "after": after, "filter": filter }

@@ -51,7 +51,7 @@ impl From<LinearError> for CmdError {
     fn from(e: LinearError) -> Self {
         match e {
             LinearError::Network | LinearError::Server => CmdError::Network,
-            LinearError::RateLimited => CmdError::RateLimited,
+            LinearError::RateLimited(_) => CmdError::RateLimited,
             LinearError::Auth | LinearError::Api(_) | LinearError::Malformed => CmdError::LinearApi,
         }
     }
