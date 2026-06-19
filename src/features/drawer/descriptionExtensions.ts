@@ -1,4 +1,4 @@
-import type { Editor, Extensions, JSONContent } from "@tiptap/core";
+import type { Editor, Extensions, JSONContent, MarkdownParseResult } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { TaskList } from "@tiptap/extension-task-list";
@@ -16,12 +16,18 @@ const LinearImage = Image.configure({ inline: true }).extend({
   /**
    * Parse a marked `image` token `{ href, text, title }` into an `image` node.
    * `href` is stored as-is on `src` — never the proxied data URL.
+   * Returns null (skip) when `href` is missing so a malformed token doesn't
+   * produce an empty `![]()` in the document.
    */
-  parseMarkdown(token: { href?: string; text?: string; title?: string | null }) {
+  parseMarkdown(token: { href?: string; text?: string; title?: string | null }): MarkdownParseResult {
+    // The @tiptap/markdown runtime treats a falsy result as "skip this token"
+    // (normalizeParseResult returns false → parseFallbackToken is called).
+    // The declared MarkdownParseResult type doesn't include null, so cast to satisfy tsc.
+    if (!token.href) return null as unknown as MarkdownParseResult;
     return {
       type: "image",
       attrs: {
-        src: token.href ?? "",
+        src: token.href,
         alt: token.text ?? null,
         title: token.title ?? null,
       },
@@ -31,13 +37,20 @@ const LinearImage = Image.configure({ inline: true }).extend({
   /**
    * Serialize the `image` node back to `![alt](src)` markdown.
    * Reads `node.attrs.src` — the ORIGINAL URL, never a proxied data URL.
+   *
+   * Escaping:
+   * - `]` in alt is backslash-escaped so it cannot close the alt bracket early.
+   * - src containing `(`, `)`, or whitespace is wrapped in `<…>` (CommonMark
+   *   angle-bracket destination), preserving the URL byte-for-byte on round-trip.
+   * - `"` in title is backslash-escaped.
    */
   renderMarkdown(node: JSONContent) {
     const attrs = (node.attrs ?? {}) as { src?: string; alt?: string | null; title?: string | null };
-    const src = attrs.src ?? "";
-    const alt = attrs.alt ?? "";
-    const title = attrs.title ? ` "${attrs.title}"` : "";
-    return `![${alt}](${src}${title})`;
+    const safeAlt = (attrs.alt ?? "").replace(/\]/g, "\\]");
+    const rawSrc = attrs.src ?? "";
+    const safeSrc = /[()\s]/.test(rawSrc) ? `<${rawSrc}>` : rawSrc;
+    const title = attrs.title ? ` "${attrs.title.replace(/"/g, '\\"')}"` : "";
+    return `![${safeAlt}](${safeSrc}${title})`;
   },
 
   addNodeView() {

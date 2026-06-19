@@ -98,4 +98,29 @@ describe("description Markdown", () => {
     expect(once).toContain("![diagram](https://uploads.linear.app/a/b.png)");
     expect(once).not.toContain("data:");
   });
+
+  it("escapes ] in alt so a bracket in author-supplied text cannot break the syntax", () => {
+    // Input: alt contains a literal ], which would break `![foo] bar](url)` without escaping.
+    const src = "![a] b](https://uploads.linear.app/x.png)";
+    const once = markdownFromEditor(fromMarkdown(src));
+    // The serialized alt must have \] so it no longer closes the bracket early.
+    expect(once).toContain("\\]");
+    // The full URL must still be present (image was not lost).
+    expect(once).toContain("https://uploads.linear.app/x.png");
+    // A second round-trip must be stable (idempotent).
+    const twice = markdownFromEditor(fromMarkdown(once));
+    expect(twice).toBe(once);
+  });
+
+  it("wraps a URL containing ) in angle brackets so it round-trips losslessly", () => {
+    // Input: URL contains a literal ) which would close the destination early without wrapping.
+    const src = "![pic](https://uploads.linear.app/a(1).png)";
+    const once = markdownFromEditor(fromMarkdown(src));
+    // The original URL must be preserved byte-for-byte (possibly inside <…>).
+    expect(once).toContain("https://uploads.linear.app/a(1).png");
+    expect(once).not.toContain("data:");
+    // A second round-trip must be stable (idempotent).
+    const twice = markdownFromEditor(fromMarkdown(once));
+    expect(twice).toBe(once);
+  });
 });
