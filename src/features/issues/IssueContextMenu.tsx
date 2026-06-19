@@ -218,8 +218,11 @@ function Menu({
   };
 
   const removeIssue = () => {
-    del.mutate(issue.id);
-    if (params.get("issue") === issue.id) setParams({});
+    del.mutate(issue.id, {
+      onSuccess: () => {
+        if (params.get("issue") === issue.id) setParams({});
+      },
+    });
     onClose();
   };
 
@@ -250,6 +253,7 @@ function Menu({
   return (
     <div
       ref={ref}
+      data-command-shortcut-blocker
       className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
       style={{ left, top }}
     >
@@ -325,7 +329,7 @@ function Menu({
             {users.map((u) => (
               <Row
                 key={u.id}
-                icon={<Avatar name={u.name} src={u.avatarUrl} size={16} />}
+                icon={<Avatar name={u.name} size={16} />}
                 label={u.name}
                 active={u.id === issue.assigneeId}
                 onClick={() => patch({ assigneeId: u.id })}

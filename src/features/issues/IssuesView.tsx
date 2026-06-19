@@ -23,12 +23,24 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
-import { useFilterOptions, useIssues, useMe, useUpdateIssue, useUsers } from "@/lib/queries";
-import { dhakaToday, isOverdue } from "@/lib/dates";
-import type { IssueListItem, IssueFilters, Label, UpdateIssuePatch } from "@/lib/commands";
+import { useFilterOptions, useIssues, useMe, useUpdateIssue, useUsers, useWorkflowStates } from "@/lib/queries";
+import { dhakaDateFromTimestamp, dhakaToday, isOverdue } from "@/lib/dates";
+import type { IssueListItem, IssueFilters, Label, UpdateIssuePatch, WorkflowState } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { useIssueMenu } from "./IssueContextMenu";
+import {
+  DEFAULT_DISPLAY,
+  VIEW_KEY,
+  parseViewConfig,
+  type Completed,
+  type DisplayKey,
+  type DisplayProps,
+  type GroupBy,
+  type Ordering,
+  type ViewConfig,
+  type ViewMode,
+} from "./viewConfig";
 
 const PRIORITY_LABELS = ["No priority", "Urgent", "High", "Medium", "Low"];
 const PRIORITY_COLORS = ["#6b7280", "#ef4444", "#f97316", "#eab308", "#3b82f6"];
@@ -42,43 +54,6 @@ const STATE_RANK: Record<string, number> = {
 };
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-type GroupBy = "status" | "assignee" | "priority" | "project" | "none";
-type ViewMode = "list" | "board";
-type Ordering = "status" | "priority" | "dueDate" | "title" | "created" | "updated";
-type Completed = "all" | "active";
-type DisplayKey =
-  | "id"
-  | "status"
-  | "priority"
-  | "assignee"
-  | "dueDate"
-  | "project"
-  | "labels"
-  | "estimate"
-  | "cycle"
-  | "milestone"
-  | "links"
-  | "pullRequests"
-  | "created"
-  | "updated";
-type DisplayProps = Record<DisplayKey, boolean>;
-
-const DEFAULT_DISPLAY: DisplayProps = {
-  id: true,
-  status: false,
-  priority: true,
-  assignee: true,
-  dueDate: true,
-  project: true,
-  labels: true,
-  estimate: false,
-  cycle: false,
-  milestone: false,
-  links: false,
-  pullRequests: false,
-  created: false,
-  updated: false,
-};
 const DISPLAY_LABELS: Record<DisplayKey, string> = {
   id: "ID",
   status: "Status",
@@ -96,40 +71,8 @@ const DISPLAY_LABELS: Record<DisplayKey, string> = {
   updated: "Updated",
 };
 
-// ── Persisted view config (survives reload + app launch) ─────────────────────
-type ViewConfig = {
-  filters: IssueFilters;
-  groupBy: GroupBy;
-  viewMode: ViewMode;
-  ordering: Ordering;
-  completed: Completed;
-  showSubIssues: boolean;
-  display: DisplayProps;
-};
-const VIEW_KEY = "astryn.issues-view";
-const DEFAULT_CONFIG: ViewConfig = {
-  filters: {},
-  groupBy: "status",
-  viewMode: "list",
-  ordering: "status",
-  completed: "all",
-  showSubIssues: true,
-  display: DEFAULT_DISPLAY,
-};
-
 function loadConfig(): ViewConfig {
-  try {
-    const p = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Partial<ViewConfig>;
-    return {
-      ...DEFAULT_CONFIG,
-      ...p,
-      filters: p.filters ?? {},
-      // Merge so display keys added in later versions get their default.
-      display: { ...DEFAULT_DISPLAY, ...(p.display ?? {}) },
-    };
-  } catch {
-    return DEFAULT_CONFIG;
-  }
+  return parseViewConfig(localStorage.getItem(VIEW_KEY));
 }
 
 function fmtDate(d: string): string {
@@ -260,9 +203,28 @@ function cycleText(i: IssueListItem): string | null {
 
 type Group = { key: string; label: string; color?: string; type?: string; issues: IssueListItem[]; rank: number };
 
-function groupIssues(issues: IssueListItem[], by: GroupBy, usersById: Map<string, string>): Group[] {
+function groupIssues(
+  issues: IssueListItem[],
+  by: GroupBy,
+  usersById: Map<string, string>,
+  states: WorkflowState[],
+): Group[] {
   if (by === "none") return [{ key: "all", label: "All issues", issues, rank: 0 }];
   const map = new Map<string, Group>();
+  if (by === "status") {
+    for (const state of states) {
+      if (!map.has(state.name)) {
+        map.set(state.name, {
+          key: state.name,
+          label: state.name,
+          color: state.color,
+          type: state.type,
+          issues: [],
+          rank: STATE_RANK[state.type] ?? 9,
+        });
+      }
+    }
+  }
   for (const i of issues) {
     let key: string;
     let label: string;
@@ -319,7 +281,7 @@ function compareIssues(a: IssueListItem, b: IssueListItem, by: Ordering): number
 
 // ── Rows & cards ─────────────────────────────────────────────────────────────
 
-type AvatarInfo = { name: string; src: string | null } | null;
+type AvatarInfo = { name: string } | null;
 
 function MetaCluster({
   issue,
@@ -368,15 +330,15 @@ function MetaCluster({
         </Pill>
       )}
       {display.pullRequests && issue.prCount > 0 && (
-        <Pill title={`${issue.prCount} pull request${issue.prCount === 1 ? "" : "s"}`}>
+        <Pill title={`${issue.attachmentsTruncated ? "At least " : ""}${issue.prCount} pull request${issue.prCount === 1 ? "" : "s"}`}>
           <GitPullRequest className="size-3" />
-          {issue.prCount}
+          {issue.prCount}{issue.attachmentsTruncated ? "+" : ""}
         </Pill>
       )}
       {display.links && issue.linkCount > 0 && (
-        <Pill title={`${issue.linkCount} link${issue.linkCount === 1 ? "" : "s"}`}>
+        <Pill title={`${issue.attachmentsTruncated ? "At least " : ""}${issue.linkCount} link${issue.linkCount === 1 ? "" : "s"}`}>
           <Link2 className="size-3" />
-          {issue.linkCount}
+          {issue.linkCount}{issue.attachmentsTruncated ? "+" : ""}
         </Pill>
       )}
       {display.priority && (
@@ -396,23 +358,23 @@ function MetaCluster({
       {display.created && (
         <span
           className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground xl:inline"
-          title={`Created ${fmtDate(issue.createdAt.slice(0, 10))}`}
+          title={`Created ${fmtDate(dhakaDateFromTimestamp(issue.createdAt))}`}
         >
-          {fmtDate(issue.createdAt.slice(0, 10))}
+          {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}
         </span>
       )}
       {display.updated && (
         <span
           className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground xl:inline"
-          title={`Updated ${fmtDate(issue.updatedAt.slice(0, 10))}`}
+          title={`Updated ${fmtDate(dhakaDateFromTimestamp(issue.updatedAt))}`}
         >
-          {fmtDate(issue.updatedAt.slice(0, 10))}
+          {fmtDate(dhakaDateFromTimestamp(issue.updatedAt))}
         </span>
       )}
       {display.assignee &&
         (avatar ? (
           <span title={`Assignee: ${avatar.name}`} className="flex">
-            <Avatar name={avatar.name} src={avatar.src} size={20} />
+            <Avatar name={avatar.name} size={20} />
           </span>
         ) : (
           <span title="Unassigned" className="size-5 shrink-0 rounded-full border border-dashed border-border" />
@@ -464,6 +426,7 @@ function BoardCard({
   onPointerDown,
   onPointerMove,
   onPointerUp,
+  onPointerCancel,
   onContextMenu,
   dragging,
 }: {
@@ -474,6 +437,7 @@ function BoardCard({
   onPointerDown: (e: ReactPointerEvent) => void;
   onPointerMove: (e: ReactPointerEvent) => void;
   onPointerUp: (e: ReactPointerEvent) => void;
+  onPointerCancel: () => void;
   onContextMenu: (e: ReactMouseEvent) => void;
   dragging?: boolean;
 }) {
@@ -484,6 +448,8 @@ function BoardCard({
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onLostPointerCapture={onPointerCancel}
       onContextMenu={onContextMenu}
       style={{ touchAction: "none" }}
       className={`cursor-grab touch-none select-none rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 active:cursor-grabbing ${
@@ -494,7 +460,7 @@ function BoardCard({
         <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
         {display.assignee &&
           (avatar ? (
-            <Avatar name={avatar.name} src={avatar.src} size={18} />
+            <Avatar name={avatar.name} size={18} />
           ) : (
             <span className="size-[18px] shrink-0 rounded-full border border-dashed border-border" />
           ))}
@@ -534,13 +500,13 @@ function BoardCard({
         {display.pullRequests && issue.prCount > 0 && (
           <Pill>
             <GitPullRequest className="size-3" />
-            {issue.prCount}
+            {issue.prCount}{issue.attachmentsTruncated ? "+" : ""}
           </Pill>
         )}
         {display.links && issue.linkCount > 0 && (
           <Pill>
             <Link2 className="size-3" />
-            {issue.linkCount}
+            {issue.linkCount}{issue.attachmentsTruncated ? "+" : ""}
           </Pill>
         )}
         {display.dueDate && issue.dueDate && (
@@ -551,7 +517,7 @@ function BoardCard({
         )}
       </div>
       {display.created && (
-        <div className="mt-2 text-[11px] text-muted-foreground">Created {fmtDate(issue.createdAt.slice(0, 10))}</div>
+        <div className="mt-2 text-[11px] text-muted-foreground">Created {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}</div>
       )}
     </div>
   );
@@ -637,6 +603,7 @@ export function IssuesView() {
   const { data: issues } = useIssues({});
   const { data: filterOpts } = useFilterOptions();
   const { data: users } = useUsers();
+  const { data: workflowStates } = useWorkflowStates();
   const update = useUpdateIssue();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
@@ -672,7 +639,7 @@ export function IssuesView() {
   const avatarOf = (id: string | null): AvatarInfo => {
     if (!id) return null;
     const u = (users ?? []).find((x) => x.id === id);
-    return u ? { name: u.name, src: u.avatarUrl } : null;
+    return u ? { name: u.name } : null;
   };
 
   const visible = useMemo(() => {
@@ -688,10 +655,11 @@ export function IssuesView() {
   }, [issues, filters, completed, showSubIssues]);
 
   const groups = useMemo(() => {
-    const gs = groupIssues(visible, groupBy, usersById);
+    const applicableStates = (workflowStates ?? []).filter((state) => !filters.teamId || state.teamId === filters.teamId);
+    const gs = groupIssues(visible, groupBy, usersById, applicableStates);
     for (const g of gs) g.issues.sort((a, b) => compareIssues(a, b, ordering));
     return gs;
-  }, [visible, groupBy, ordering, usersById]);
+  }, [visible, groupBy, ordering, usersById, workflowStates, filters.teamId]);
 
   const open = (id: string) => setParams({ issue: id });
 
@@ -701,11 +669,11 @@ export function IssuesView() {
   // from a sibling issue of the SAME team already in that status.
   const statesByTeamName = useMemo(() => {
     const m = new Map<string, string>();
-    for (const i of issues ?? []) {
-      if (i.teamId && i.stateName && i.stateId) m.set(`${i.teamId}::${i.stateName}`, i.stateId);
+    for (const state of workflowStates ?? []) {
+      m.set(`${state.teamId}::${state.name}`, state.id);
     }
     return m;
-  }, [issues]);
+  }, [workflowStates]);
   const dndEnabled = groupBy === "status" || groupBy === "assignee" || groupBy === "priority";
 
   const patchForDrop = (issue: IssueListItem, g: Group): UpdateIssuePatch | null => {
@@ -772,6 +740,13 @@ export function IssuesView() {
     if (!issue) return;
     const patch = patchForDrop(issue, target);
     if (patch) update.mutate({ id: g.id, patch });
+  };
+
+  const cancelCardGesture = () => {
+    gesture.current = null;
+    setDraggingId(null);
+    setDragOverKey(null);
+    setGhost(null);
   };
 
   const reset = () => {
@@ -984,6 +959,7 @@ export function IssuesView() {
                       onPointerDown={(e) => onCardPointerDown(e, i)}
                       onPointerMove={onCardPointerMove}
                       onPointerUp={onCardPointerUp}
+                      onPointerCancel={cancelCardGesture}
                       onContextMenu={(e) => openMenu(e, i.id)}
                       dragging={draggingId === i.id}
                     />

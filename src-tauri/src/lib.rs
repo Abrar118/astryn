@@ -27,6 +27,8 @@ pub fn run() {
             let db_path = data_dir.join("astryn.db");
             let pool = tauri::async_runtime::block_on(db::init_pool(&db_path))
                 .expect("failed to initialize database (directory or migrations)");
+            tauri::async_runtime::block_on(db::issues::recover_pending_deletes(&pool))
+                .expect("failed to recover pending issue deletions");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -60,6 +62,7 @@ pub fn run() {
             commands::list_users,
             commands::list_labels,
             commands::list_cycles,
+            commands::list_workflow_states,
             commands::delete_issue,
             commands::get_me
         ])

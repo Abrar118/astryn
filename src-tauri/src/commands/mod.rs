@@ -9,9 +9,9 @@ use crate::db::issues::{
     self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
 };
 use crate::linear::issues::{
-    create_input_to_value, patch_to_input, CreateIssueInput, DetailChild, DetailComment,
-    DetailCycle, DetailRef, DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle,
-    ParsedIssue, ParsedUser, UpdateIssuePatch,
+    create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput, DetailChild,
+    DetailComment, DetailCycle, DetailRef, DetailRelation, DetailState, IssueDetailNode,
+    OrgIdentity, ParsedCycle, ParsedIssue, ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -90,6 +90,8 @@ pub enum CmdError {
     Internal,
     #[error("Workspace changed; please retry.")]
     WorkspaceChanged,
+    #[error("Required issue fields are missing.")]
+    InvalidInput,
 }
 
 impl serde::Serialize for CmdError {
@@ -148,6 +150,7 @@ fn parsed_to_issue(p: &ParsedIssue) -> Issue {
         milestone_name: p.milestone_name.clone(),
         link_count: p.link_count,
         pr_count: p.pr_count,
+        attachments_truncated: p.attachments_truncated,
         created_at: p.created_at.clone(),
         updated_at: p.updated_at.clone(),
     }
@@ -355,6 +358,52 @@ where
         .await
         .map_err(|_| CmdError::Internal)?
         .ok_or(CmdError::Internal)
+}
+
+pub async fn delete_issue_logic<F, Fut>(
+    pool: &SqlitePool,
+    lock: &tokio::sync::Mutex<()>,
+    generation: &AtomicU64,
+    creds: Arc<dyn LinearCredentialProvider>,
+    id: String,
+    do_delete: F,
+) -> Result<(), CmdError>
+where
+    F: FnOnce(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<(), LinearError>>,
+{
+    let (gen, auth) = {
+        let _guard = lock.lock().await;
+        let gen = generation.load(Ordering::SeqCst);
+        let credentials = creds.clone();
+        let auth = tokio::task::spawn_blocking(move || credentials.authorization())
+            .await
+            .map_err(|_| CmdError::Internal)?
+            .map_err(|_| CmdError::SecretStore)?
+            .ok_or(CmdError::NotConfigured)?;
+        issues::stage_delete(pool, &id)
+            .await
+            .map_err(|_| CmdError::Internal)?;
+        (gen, auth)
+    };
+
+    if let Err(error) = do_delete(auth, id.clone()).await {
+        let _guard = lock.lock().await;
+        if generation.load(Ordering::SeqCst) == gen {
+            issues::unstage_delete(pool, &id)
+                .await
+                .map_err(|_| CmdError::Internal)?;
+        }
+        return Err(error.into());
+    }
+
+    let _guard = lock.lock().await;
+    if generation.load(Ordering::SeqCst) != gen {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    issues::finalize_delete(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)
 }
 
 pub async fn set_linear_key_logic(
@@ -617,6 +666,7 @@ pub async fn create_issue(
     state: State<'_, AppState>,
     input: CreateIssueInput,
 ) -> Result<Issue, CmdError> {
+    validate_create_input(&input).map_err(|_| CmdError::InvalidInput)?;
     let value = create_input_to_value(&input);
     let client = state.linear.clone();
     update_issue_logic(
@@ -671,22 +721,34 @@ pub async fn list_cycles(state: State<'_, AppState>) -> Result<Vec<ParsedCycle>,
 }
 
 #[tauri::command]
-pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
-    let _g = state.workspace_lock.lock().await;
-    let c = state.credentials.clone();
-    let auth = tokio::task::spawn_blocking(move || c.authorization())
+pub async fn list_workflow_states(
+    state: State<'_, AppState>,
+) -> Result<Vec<WorkflowState>, CmdError> {
+    let credentials = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || credentials.authorization())
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::NotConfigured)?;
     state
         .linear
-        .delete_issue(&auth, &id)
+        .workflow_states(&auth)
         .await
-        .map_err(CmdError::from)?;
-    db::issues::delete_issue(&state.pool, &id)
-        .await
-        .map_err(|_| CmdError::Internal)
+        .map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let client = state.linear.clone();
+    delete_issue_logic(
+        &state.pool,
+        &state.workspace_lock,
+        &state.workspace_generation,
+        state.credentials.clone(),
+        id,
+        move |auth, issue_id| async move { client.delete_issue(&auth, &issue_id).await },
+    )
+    .await
 }
 
 #[tauri::command]
@@ -894,6 +956,7 @@ mod logic_tests {
             milestone_name: None,
             link_count: 0,
             pr_count: 0,
+            attachments_truncated: false,
             created_at: "c".into(),
             updated_at: updated.into(),
             archived_at: None,
@@ -946,5 +1009,35 @@ mod logic_tests {
         .await;
         assert!(matches!(res, Err(CmdError::WorkspaceChanged)));
         assert!(issues::load_issue(&pool, "1").await.unwrap().is_none()); // no write
+    }
+
+    #[tokio::test]
+    async fn delete_issue_discards_local_delete_when_generation_changes() {
+        let (_dir, pool) = temp_pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(LINEAR_KEY_ACCOUNT, "lin").unwrap();
+        let creds: Arc<dyn LinearCredentialProvider> =
+            Arc::new(PersonalKeyProvider::new(store, LINEAR_KEY_ACCOUNT));
+        let (record, _) = parsed_to_record(parsed("1", None, "2026-06-19T00:00:00Z"));
+        let mut tx = pool.begin().await.unwrap();
+        issues::upsert_issue(&mut tx, &record).await.unwrap();
+        tx.commit().await.unwrap();
+        let lock = tokio::sync::Mutex::new(());
+        let generation = AtomicU64::new(0);
+        let generation_ref = &generation;
+        let result = delete_issue_logic(
+            &pool,
+            &lock,
+            &generation,
+            creds,
+            "1".into(),
+            |_auth, _id| async {
+                generation_ref.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+        assert!(issues::load_issue(&pool, "1").await.unwrap().is_some());
     }
 }

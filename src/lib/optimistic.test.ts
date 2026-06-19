@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { matchesFilters, inRange, reconcileList, applyPatchToCalendarIssue } from "./optimistic";
-import type { CalendarIssue } from "./commands";
+import { matchesFilters, inRange, reconcileList, applyPatchToCalendarIssue, calendarIssueFromList } from "./optimistic";
+import type { CalendarIssue, IssueListItem } from "./commands";
 
 const mk = (id: string, dueDate: string | null, over: Partial<CalendarIssue> = {}): CalendarIssue => ({
   id, identifier: `ENG-${id}`, title: "T", dueDate, priority: 0,
@@ -44,5 +44,18 @@ describe("applyPatchToCalendarIssue", () => {
     expect(out.dueDate).toBeNull();
     expect(out.priority).toBe(2);
     expect(out.title).toBe("T");
+  });
+});
+
+describe("calendarIssueFromList", () => {
+  it("provides a base that can be inserted into a newly matching calendar cache", () => {
+    const listItem = {
+      ...mk("1", null), stateId: "s1", stateName: "Todo", assigneeName: "Me",
+      description: null, url: "u", projectName: null, parentId: null, estimate: null,
+      cycleName: null, cycleNumber: null, milestoneName: null, linkCount: 0, prCount: 0,
+      attachmentsTruncated: false,
+      createdAt: "2026-06-18T20:30:00Z", updatedAt: "2026-06-18T20:30:00Z", labels: [],
+    } satisfies IssueListItem;
+    expect(calendarIssueFromList(listItem)).toEqual(mk("1", null));
   });
 });

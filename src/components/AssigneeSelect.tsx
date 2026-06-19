@@ -33,7 +33,7 @@ export function AssigneeSelect({
       panelClassName="max-h-72 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-2xl"
       button={
         <>
-          {selected && <Avatar name={selected.name} src={selected.avatarUrl} />}
+          {selected && <Avatar name={selected.name} />}
           <span className="max-w-[10rem] truncate">{selected ? selected.name : emptyLabel}</span>
           <ChevronDown className="size-3.5 text-muted-foreground" />
         </>
@@ -45,7 +45,7 @@ export function AssigneeSelect({
           {users.map((u) => (
             <PopoverItem
               key={u.id}
-              icon={<Avatar name={u.name} src={u.avatarUrl} size={16} />}
+              icon={<Avatar name={u.name} size={16} />}
               label={
                 <span className="flex items-center gap-1">
                   <span className="truncate">{u.name}</span>

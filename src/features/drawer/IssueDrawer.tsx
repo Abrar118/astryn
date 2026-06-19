@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { safeExternalUrl } from "@/lib/links";
 import { gooeyToast } from "goey-toast";
 import {
   Box,
@@ -198,7 +199,7 @@ function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose
   };
 
   return (
-    <div className="fixed inset-0 z-30">
+    <div className="fixed inset-0 z-30" data-command-shortcut-blocker>
       <div
         className={`absolute inset-0 bg-black/40 transition-opacity duration-200 motion-reduce:transition-none ${open ? "opacity-100" : "opacity-0"}`}
         onClick={onClose}
@@ -285,7 +286,11 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
             const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
             if (target) openIssue(target);
-            else openUrl(href).catch(() => gooeyToast.error("Couldn't open the link"));
+            else {
+              const external = safeExternalUrl(href);
+              if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
+              else gooeyToast.error("Blocked unsafe link");
+            }
           }}
           className="cursor-pointer text-primary hover:underline"
         >
@@ -350,9 +355,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                       label="Delete"
                       danger
                       onClick={() => {
-                        del.mutate(id);
                         close();
-                        onClose();
+                        del.mutate(id, { onSuccess: onClose });
                       }}
                     />
                   </>

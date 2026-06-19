@@ -1,0 +1,1 @@
+ALTER TABLE issues ADD COLUMN attachments_truncated INTEGER NOT NULL DEFAULT 0;

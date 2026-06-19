@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { dhakaToday, isOverdue, toDateStr, rangeFromDates } from "./dates";
+import { dhakaDateFromTimestamp, dhakaToday, isOverdue, toDateStr, rangeFromDates } from "./dates";
 
 describe("dhakaToday", () => {
   it("rolls into the next day in Dhaka (UTC+6)", () => {
@@ -8,6 +8,12 @@ describe("dhakaToday", () => {
   });
   it("stays same day before the Dhaka rollover", () => {
     expect(dhakaToday(new Date("2026-06-19T10:00:00Z"))).toBe("2026-06-19");
+  });
+});
+
+describe("dhakaDateFromTimestamp", () => {
+  it("uses the Dhaka calendar day across a UTC boundary", () => {
+    expect(dhakaDateFromTimestamp("2026-06-18T20:30:00Z")).toBe("2026-06-19");
   });
 });
 

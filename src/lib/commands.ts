@@ -67,6 +67,7 @@ export type Issue = {
   milestoneName: string | null;
   linkCount: number;
   prCount: number;
+  attachmentsTruncated: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -105,7 +106,7 @@ export type FilterOptions = {
   teams: { id: string; key: string }[];
   projects: { id: string; name: string }[];
 };
-export type User = { id: string; name: string; avatarUrl: string | null };
+export type User = { id: string; name: string };
 export type Me = { viewerId: string; viewerName: string };
 export type SyncResult = { mode: "full" | "incremental"; synced: number };
 
@@ -130,6 +131,7 @@ export type UpdateIssuePatch = {
 };
 
 export type Cycle = { id: string; number: number | null; name: string | null; teamId: string | null };
+export type WorkflowState = { id: string; name: string; type: string; color: string; teamId: string };
 
 export type CreateIssueInput = {
   teamId: string;
@@ -177,6 +179,8 @@ export const listUsers = (): Promise<User[]> => invoke("list_users");
 export const listLabels = (): Promise<Label[]> => invoke("list_labels");
 
 export const listCycles = (): Promise<Cycle[]> => invoke("list_cycles");
+
+export const listWorkflowStates = (): Promise<WorkflowState[]> => invoke("list_workflow_states");
 
 export const deleteIssue = (id: string): Promise<void> => invoke("delete_issue", { id });
 

@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { Calendar, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { DualClock } from "@/features/home/DualClock";
 
 const META: Record<ViewKind, { label: string; icon: ReactNode }> = {
   calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
@@ -51,6 +52,7 @@ export function TabBar() {
       >
         <Plus className="size-4" />
       </button>
+      <DualClock compact />
     </div>
   );
 }

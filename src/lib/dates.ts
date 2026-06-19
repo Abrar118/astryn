@@ -8,6 +8,11 @@ export function dhakaToday(now: Date = new Date()): string {
   }).format(now);
 }
 
+/** An instant's calendar date in Asia/Dhaka as YYYY-MM-DD. */
+export function dhakaDateFromTimestamp(timestamp: string): string {
+  return dhakaToday(new Date(timestamp));
+}
+
 /** Overdue = past due date on an issue that isn't completed/canceled. */
 export function isOverdue(
   dueDate: string | null,

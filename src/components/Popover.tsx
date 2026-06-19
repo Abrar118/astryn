@@ -79,12 +79,20 @@ export function Popover({
 
   return (
     <>
-      <button ref={btnRef} type="button" disabled={disabled} title={buttonTitle} onClick={toggle} className={buttonClassName}>
+      <button
+        ref={btnRef}
+        type="button"
+        disabled={disabled}
+        title={buttonTitle}
+        data-popover-open={open || undefined}
+        onClick={toggle}
+        className={buttonClassName}
+      >
         {button}
       </button>
       {open &&
         createPortal(
-          <div ref={panelRef} style={style} className={panelClassName}>
+          <div ref={panelRef} style={style} className={panelClassName} data-popover-open>
             {children(close)}
           </div>,
           document.body,

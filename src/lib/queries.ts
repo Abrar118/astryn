@@ -20,6 +20,7 @@ import {
   listLabels,
   listUnscheduled,
   listUsers,
+  listWorkflowStates,
   syncIssues,
   updateIssue,
   type CalendarIssue,
@@ -33,6 +34,7 @@ import {
 } from "./commands";
 import {
   applyPatchToCalendarIssue,
+  calendarIssueFromList,
   inRange,
   matchesFilters,
   reconcileList,
@@ -113,7 +115,7 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
  */
 const WORKSPACE_KEYS = [
   ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["labels"], ["cycles"],
-  ["filter-options"], ["me"],
+  ["filter-options"], ["workflow-states"], ["me"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {
@@ -152,22 +154,45 @@ export function useCycles() {
   return useQuery({ queryKey: ["cycles"], queryFn: listCycles, staleTime: 5 * 60_000 });
 }
 
+export function useWorkflowStates() {
+  return useQuery({ queryKey: ["workflow-states"], queryFn: listWorkflowStates, staleTime: 5 * 60_000 });
+}
+
 /** Delete (trash) an issue in Linear, then drop it from the renderer caches. */
 export function useDeleteIssue() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => deleteIssue(id),
-    onSuccess: (_data, id) => {
-      for (const key of [["calendar"], ["unscheduled"], ["issues"]]) {
-        for (const [k, list] of qc.getQueriesData<{ id: string }[]>({ queryKey: key })) {
-          if (list) qc.setQueryData(k, list.filter((i) => i.id !== id));
-        }
+    onMutate: async (id) => {
+      await Promise.all([
+        qc.cancelQueries({ queryKey: ["calendar"] }),
+        qc.cancelQueries({ queryKey: ["unscheduled"] }),
+        qc.cancelQueries({ queryKey: ["issues"] }),
+        qc.cancelQueries({ queryKey: ["issue", id] }),
+      ]);
+      const entries = ["calendar", "unscheduled", "issues"].flatMap((root) =>
+        qc.getQueriesData<{ id: string }[]>({ queryKey: [root] }),
+      );
+      const snapshot: Snapshot = [...entries, [["issue", id], qc.getQueryData(["issue", id])]];
+      for (const [key, list] of entries) {
+        if (list) qc.setQueryData(key, list.filter((issue) => issue.id !== id));
       }
+      return { snapshot };
+    },
+    onSuccess: (_data, id) => {
       qc.removeQueries({ queryKey: ["issue", id] });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
       gooeyToast.success("Issue deleted");
     },
-    onError: (err) => gooeyToast.error("Delete failed", { description: errorText(err) }),
+    onError: (err, _id, context) => {
+      context?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
+      gooeyToast.error("Delete failed", { description: errorText(err) });
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["unscheduled"] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
+    },
   });
 }
 
@@ -263,18 +288,20 @@ export function useUpdateIssue() {
         if (it.projectId) lookups.projectNameById.set(it.projectId, it.projectName);
         for (const l of it.labels) lookups.labelById.set(l.id, l);
       }
-      for (const [key, list] of issuesEntries) {
-        if (!list) continue;
-        qc.setQueryData(
-          key,
-          list.map((it) => (it.id === id ? applyPatchToListItem(it, patch, lookups) : it)),
-        );
+      const currentList = allListed.find((item) => item.id === id);
+      if (currentList) {
+        const updatedList = applyPatchToListItem(currentList, patch, lookups);
+        for (const [key, list] of issuesEntries) {
+          const filters = (key[1] ?? {}) as IssueFilters;
+          qc.setQueryData(key, reconcileList(list ?? [], updatedList, matchesFilters(updatedList, filters)));
+        }
       }
 
       // Find the issue's current CalendarIssue from any cache, then compute its patched form.
       const current =
         calEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id) ??
-        unschedEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id);
+        unschedEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id) ??
+        (currentList ? calendarIssueFromList(currentList) : undefined);
 
       if (current) {
         const updated = applyPatchToCalendarIssue(current, patch);

@@ -1,23 +1,11 @@
-/** User avatar: image when available, otherwise initials on a muted circle. */
+/** User avatar rendered locally so the webview never fetches remote assets. */
 export function Avatar({
   name,
-  src,
   size = 18,
 }: {
   name: string;
-  src?: string | null;
   size?: number;
 }) {
-  if (src) {
-    return (
-      <img
-        src={src}
-        alt=""
-        className="shrink-0 rounded-full object-cover"
-        style={{ width: size, height: size }}
-      />
-    );
-  }
   const initials =
     name
       .trim()

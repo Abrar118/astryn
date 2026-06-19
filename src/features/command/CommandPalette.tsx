@@ -22,6 +22,7 @@ import {
 import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
 import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
 import { CreateIssueModal } from "./CreateIssueModal";
+import { shouldOpenCreateShortcut } from "./shortcuts";
 
 async function copyText(text: string, label: string) {
   try {
@@ -69,8 +70,14 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         return;
       }
       // Bare "c" opens the create modal, unless typing or an overlay is open.
-      if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey) {
-        if (mode || isEditableTarget(e.target)) return;
+      if (shouldOpenCreateShortcut({
+        key: e.key,
+        editable: isEditableTarget(e.target),
+        overlayOpen: !!mode || !!document.querySelector("[data-command-shortcut-blocker], [data-popover-open]"),
+        metaKey: e.metaKey,
+        ctrlKey: e.ctrlKey,
+        altKey: e.altKey,
+      })) {
         e.preventDefault();
         setMode("create");
       }
@@ -120,10 +127,10 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
     gooeyToast.info(full ? "Full resync started…" : "Syncing…");
     syncIssues(full)
       .then(() => {
-        invalidateWorkspaceQueries(qc);
         gooeyToast.success(full ? "Full resync complete" : "Synced");
       })
-      .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }));
+      .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }))
+      .finally(() => invalidateWorkspaceQueries(qc));
   };
 
   const openIssue = (id: string) => {

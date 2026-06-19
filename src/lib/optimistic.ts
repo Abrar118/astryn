@@ -1,4 +1,4 @@
-import type { CalendarIssue, IssueFilters, UpdateIssuePatch } from "./commands";
+import type { CalendarIssue, IssueFilters, IssueListItem, UpdateIssuePatch } from "./commands";
 
 /** Does this issue satisfy the (sparse) filter set? Unset filter fields match all. */
 export function matchesFilters(i: CalendarIssue, f: IssueFilters): boolean {
@@ -14,13 +14,21 @@ export function inRange(dueDate: string | null, start: string, end: string): boo
 }
 
 /** Insert/update the issue when it belongs, else remove it. Pure, id-keyed. */
-export function reconcileList(
-  list: CalendarIssue[],
-  issue: CalendarIssue,
+export function reconcileList<T extends { id: string }>(
+  list: T[],
+  issue: T,
   belongs: boolean,
-): CalendarIssue[] {
+): T[] {
   const without = list.filter((i) => i.id !== issue.id);
   return belongs ? [...without, issue] : without;
+}
+
+export function calendarIssueFromList(issue: IssueListItem): CalendarIssue {
+  const {
+    id, identifier, title, dueDate, priority, stateType, stateColor,
+    assigneeId, teamId, teamKey, projectId,
+  } = issue;
+  return { id, identifier, title, dueDate, priority, stateType, stateColor, assigneeId, teamId, teamKey, projectId };
 }
 
 /** Apply only the CalendarIssue-visible fields of a patch onto a base issue. Pure. */

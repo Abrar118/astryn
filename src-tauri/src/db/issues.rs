@@ -37,12 +37,13 @@ pub struct Issue {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
-    pub estimate: Option<i64>,
+    pub estimate: Option<f64>,
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
     pub link_count: i64,
     pub pr_count: i64,
+    pub attachments_truncated: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -85,12 +86,13 @@ pub struct IssueRecord {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
-    pub estimate: Option<i64>,
+    pub estimate: Option<f64>,
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
     pub link_count: i64,
     pub pr_count: i64,
+    pub attachments_truncated: bool,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -131,9 +133,9 @@ pub async fn upsert_issue(
            (id, identifier, title, description, due_date, priority, url,
             state_id, state_name, state_type, state_color, assignee_id, assignee_name,
             team_id, team_key, project_id, project_name, parent_id,
-            estimate, cycle_name, cycle_number, milestone_name, link_count, pr_count,
+            estimate, cycle_name, cycle_number, milestone_name, link_count, pr_count, attachments_truncated,
             created_at, updated_at, archived_at, synced_at, raw_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27, datetime('now'), ?28)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28, datetime('now'), ?29)
          ON CONFLICT(id) DO UPDATE SET
            identifier=excluded.identifier, title=excluded.title, description=excluded.description,
            due_date=excluded.due_date, priority=excluded.priority, url=excluded.url,
@@ -143,6 +145,7 @@ pub async fn upsert_issue(
            project_name=excluded.project_name, parent_id=excluded.parent_id,
            estimate=excluded.estimate, cycle_name=excluded.cycle_name, cycle_number=excluded.cycle_number,
            milestone_name=excluded.milestone_name, link_count=excluded.link_count, pr_count=excluded.pr_count,
+           attachments_truncated=excluded.attachments_truncated,
            created_at=excluded.created_at, updated_at=excluded.updated_at, archived_at=excluded.archived_at,
            synced_at=excluded.synced_at, raw_json=excluded.raw_json
          WHERE excluded.updated_at >= issues.updated_at
@@ -172,6 +175,7 @@ pub async fn upsert_issue(
     .bind(&r.milestone_name)
     .bind(r.link_count)
     .bind(r.pr_count)
+    .bind(r.attachments_truncated)
     .bind(&r.created_at)
     .bind(&r.updated_at)
     .bind(&r.archived_at)
@@ -259,6 +263,7 @@ const ISSUE_COLS: &str =
     team_id, team_key, project_id, project_name, parent_id,
     estimate, cycle_name, cycle_number, milestone_name,
     COALESCE(link_count,0) AS link_count, COALESCE(pr_count,0) AS pr_count,
+    attachments_truncated,
     created_at, updated_at";
 
 pub async fn load_issue(pool: &SqlitePool, id: &str) -> Result<Option<Issue>, sqlx::Error> {
@@ -315,8 +320,23 @@ pub async fn load_issues(
         .collect())
 }
 
-/// Remove a deleted issue (and its labels) from the cache.
-pub async fn delete_issue(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+pub async fn stage_delete(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT OR IGNORE INTO pending_issue_deletes (issue_id) VALUES (?1)")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn unstage_delete(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM pending_issue_deletes WHERE issue_id = ?1")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn finalize_delete(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM labels WHERE issue_id = ?1")
         .bind(id)
@@ -326,8 +346,27 @@ pub async fn delete_issue(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error
         .bind(id)
         .execute(&mut *tx)
         .await?;
-    tx.commit().await?;
-    Ok(())
+    sqlx::query("DELETE FROM pending_issue_deletes WHERE issue_id = ?1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
+}
+
+pub async fn recover_pending_deletes(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "DELETE FROM labels WHERE issue_id IN (SELECT issue_id FROM pending_issue_deletes)",
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("DELETE FROM issues WHERE id IN (SELECT issue_id FROM pending_issue_deletes)")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM pending_issue_deletes")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 pub async fn list_filter_options(pool: &SqlitePool) -> Result<FilterOptions, sqlx::Error> {
@@ -388,6 +427,9 @@ pub async fn wipe_workspace_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> 
     )
     .execute(&mut *tx)
     .await?;
+    sqlx::query("DELETE FROM pending_issue_deletes")
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -429,6 +471,7 @@ mod tests {
             milestone_name: None,
             link_count: 0,
             pr_count: 0,
+            attachments_truncated: false,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: updated.into(),
             archived_at: None,
@@ -538,16 +581,30 @@ mod tests {
     async fn new_scalar_fields_roundtrip() {
         let (_d, p) = pool().await;
         let mut r = rec("1", Some("2026-06-10"), "t1");
-        r.estimate = Some(5);
+        r.estimate = Some(2.5);
         r.cycle_name = Some("Sprint 1".into());
         r.cycle_number = Some(1);
         r.milestone_name = Some("Beta".into());
         upsert(&p, &r).await;
         let got = load_issue(&p, "1").await.unwrap().unwrap();
-        assert_eq!(got.estimate, Some(5));
+        assert_eq!(got.estimate, Some(2.5));
         assert_eq!(got.cycle_number, Some(1));
         assert_eq!(got.cycle_name.as_deref(), Some("Sprint 1"));
         assert_eq!(got.milestone_name.as_deref(), Some("Beta"));
+    }
+
+    #[tokio::test]
+    async fn pending_delete_recovery_removes_stale_cached_issue() {
+        let (_d, pool) = pool().await;
+        upsert(&pool, &rec("1", None, "2026-06-19T00:00:00Z")).await;
+        stage_delete(&pool, "1").await.unwrap();
+        recover_pending_deletes(&pool).await.unwrap();
+        assert!(load_issue(&pool, "1").await.unwrap().is_none());
+        let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM pending_issue_deletes")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count.0, 0);
     }
 
     #[tokio::test]

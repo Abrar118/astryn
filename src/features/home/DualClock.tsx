@@ -30,8 +30,16 @@ function ClockCard({ city, zone, now }: { city: string; zone: string; now: Date 
   );
 }
 
-export function DualClock() {
+export function DualClock({ compact = false }: { compact?: boolean }) {
   const now = useNow();
+  if (compact) {
+    return (
+      <div className="ml-auto flex items-center gap-3 font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span title="Asia/Dhaka">Dhaka {formatTime(now, "Asia/Dhaka")}</span>
+        <span title="Europe/Berlin">Germany {formatTime(now, "Europe/Berlin")}</span>
+      </div>
+    );
+  }
   return (
     <div className="grid grid-cols-2 gap-4">
       <ClockCard city="Dhaka" zone="Asia/Dhaka" now={now} />

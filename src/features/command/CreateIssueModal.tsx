@@ -58,16 +58,24 @@ function Pop({
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), setOpen(false));
     document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
     return () => {
       document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
     };
   }, [open]);
   return (
-    <div className="relative" ref={ref}>
+    <div
+      className="relative"
+      ref={ref}
+      data-popover-open={open || undefined}
+      onKeyDown={(event) => {
+        if (open && event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen(false);
+        }
+      }}
+    >
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -210,7 +218,7 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && !document.querySelector("[data-popover-open]")) onClose();
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
         e.preventDefault();
         submit();
@@ -228,7 +236,11 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
   const curCycle = teamCycles.find((c) => c.id === cycleId);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh]" onMouseDown={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh]"
+      data-command-shortcut-blocker
+      onMouseDown={onClose}
+    >
       <div
         className="flex w-[min(680px,92vw)] flex-col rounded-xl border border-border bg-card shadow-2xl"
         onMouseDown={(e) => e.stopPropagation()}

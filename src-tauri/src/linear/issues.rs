@@ -29,12 +29,13 @@ pub struct ParsedIssue {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
-    pub estimate: Option<i64>,
+    pub estimate: Option<f64>,
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
     pub link_count: i64,
     pub pr_count: i64,
+    pub attachments_truncated: bool,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -62,7 +63,6 @@ pub struct OrgIdentity {
 pub struct ParsedUser {
     pub id: String,
     pub name: String,
-    pub avatar_url: Option<String>,
 }
 
 // ---- helpers to read nested JSON safely ----
@@ -79,11 +79,27 @@ fn nested(v: &Value, obj: &str, k: &str) -> Option<String> {
 /// A PR-style attachment URL across the common forges (GitHub `/pull/`,
 /// GitLab `/merge_requests/`, Bitbucket `/pull-requests/`).
 fn is_pr_url(url: &str) -> bool {
-    url.contains("/pull/") || url.contains("/merge_requests/") || url.contains("/pull-requests/")
+    let Ok(parsed) = reqwest::Url::parse(url) else {
+        return false;
+    };
+    let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+    let segments: Vec<_> = parsed
+        .path_segments()
+        .map(Iterator::collect)
+        .unwrap_or_default();
+    let marker = match host.as_str() {
+        "github.com" | "www.github.com" => "pull",
+        "gitlab.com" | "www.gitlab.com" => "merge_requests",
+        "bitbucket.org" | "www.bitbucket.org" => "pull-requests",
+        _ => return false,
+    };
+    segments
+        .windows(2)
+        .any(|parts| parts[0] == marker && parts[1].parse::<u64>().is_ok())
 }
 
 /// Count an issue's attachments, split into pull requests vs. other links.
-fn classify_attachments(n: &Value) -> (i64, i64) {
+fn classify_attachments(n: &Value) -> (i64, i64, bool) {
     let (mut links, mut prs) = (0i64, 0i64);
     if let Some(arr) = n
         .get("attachments")
@@ -99,11 +115,17 @@ fn classify_attachments(n: &Value) -> (i64, i64) {
             }
         }
     }
-    (links, prs)
+    let truncated = n
+        .get("attachments")
+        .and_then(|attachments| attachments.get("pageInfo"))
+        .and_then(|page| page.get("hasNextPage"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    (links, prs, truncated)
 }
 
 fn node_to_issue(n: &Value) -> ParsedIssue {
-    let (link_count, pr_count) = classify_attachments(n);
+    let (link_count, pr_count, attachments_truncated) = classify_attachments(n);
     let labels = n
         .get("labels")
         .and_then(|l| l.get("nodes"))
@@ -138,7 +160,7 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         project_name: nested(n, "project", "name"),
         parent_id: nested(n, "parent", "id"),
         // `estimate` may arrive as an int or a float (fibonacci scales); read as f64.
-        estimate: n.get("estimate").and_then(|x| x.as_f64()).map(|f| f as i64),
+        estimate: n.get("estimate").and_then(|x| x.as_f64()),
         cycle_name: nested(n, "cycle", "name"),
         cycle_number: n
             .get("cycle")
@@ -147,6 +169,7 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         milestone_name: nested(n, "projectMilestone", "name"),
         link_count,
         pr_count,
+        attachments_truncated,
         created_at: s(n, "createdAt").unwrap_or_default(),
         updated_at: s(n, "updatedAt").unwrap_or_default(),
         archived_at: s(n, "archivedAt"),
@@ -198,7 +221,6 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
             Some(ParsedUser {
                 id: s(u, "id")?,
                 name: s(u, "name").unwrap_or_default(),
-                avatar_url: s(u, "avatarUrl"),
             })
         })
         .collect())
@@ -230,6 +252,37 @@ pub struct ParsedCycle {
     pub number: Option<i64>,
     pub name: Option<String>,
     pub team_id: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkflowState {
+    pub id: String,
+    pub name: String,
+    pub r#type: String,
+    pub color: String,
+    pub team_id: String,
+}
+
+pub fn parse_workflow_states(body: &str) -> Result<Vec<WorkflowState>, LinearError> {
+    let data = extract_data(body)?;
+    let nodes = data
+        .get("workflowStates")
+        .and_then(|value| value.get("nodes"))
+        .and_then(Value::as_array)
+        .ok_or(LinearError::Malformed)?;
+    Ok(nodes
+        .iter()
+        .filter_map(|state| {
+            Some(WorkflowState {
+                id: s(state, "id")?,
+                name: s(state, "name")?,
+                r#type: s(state, "type").unwrap_or_default(),
+                color: s(state, "color").unwrap_or_default(),
+                team_id: nested(state, "team", "id")?,
+            })
+        })
+        .collect())
 }
 
 pub fn parse_cycles(body: &str) -> Result<Vec<ParsedCycle>, LinearError> {
@@ -494,7 +547,7 @@ pub struct UpdateIssuePatch {
     #[serde(default, deserialize_with = "double_option")]
     pub project_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
-    pub estimate: Option<Option<i64>>,
+    pub estimate: Option<Option<f64>>,
     #[serde(default, deserialize_with = "double_option")]
     pub cycle_id: Option<Option<String>>,
 }
@@ -579,7 +632,7 @@ pub struct CreateIssueInput {
     #[serde(default)]
     pub project_id: Option<String>,
     #[serde(default)]
-    pub estimate: Option<i64>,
+    pub estimate: Option<f64>,
     #[serde(default)]
     pub cycle_id: Option<String>,
 }
@@ -623,10 +676,20 @@ pub fn create_input_to_value(p: &CreateIssueInput) -> Value {
     Value::Object(m)
 }
 
+pub fn validate_create_input(p: &CreateIssueInput) -> Result<(), &'static str> {
+    if p.team_id.trim().is_empty() {
+        return Err("teamId is required");
+    }
+    if p.title.trim().is_empty() {
+        return Err("title is required");
+    }
+    Ok(())
+}
+
 // ---- GraphQL query strings + LinearClient methods ----
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
-  attachments(first: 50) { nodes { url } }
+  attachments(first: 50) { pageInfo { hasNextPage } nodes { url } }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
   labels { nodes { id name color } }";
 
@@ -656,9 +719,11 @@ fn issue_detail_query() -> String {
     )
 }
 
-const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl } } }";
+const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
 const LABELS_QUERY: &str = "query { issueLabels(first: 250) { nodes { id name color } } }";
 const CYCLES_QUERY: &str = "query { cycles(first: 250) { nodes { id number name team { id } } } }";
+const WORKFLOW_STATES_QUERY: &str =
+    "query { workflowStates(first: 250) { nodes { id name type color team { id } } } }";
 const ISSUE_DELETE_MUTATION: &str = "mutation D($id: String!) { issueDelete(id: $id) { success } }";
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
 
@@ -717,6 +782,11 @@ impl LinearClient {
     pub async fn cycles(&self, auth: &str) -> Result<Vec<ParsedCycle>, LinearError> {
         let body = serde_json::json!({ "query": CYCLES_QUERY });
         parse_cycles(&self.post(auth, body).await?)
+    }
+
+    pub async fn workflow_states(&self, auth: &str) -> Result<Vec<WorkflowState>, LinearError> {
+        let body = serde_json::json!({ "query": WORKFLOW_STATES_QUERY });
+        parse_workflow_states(&self.post(auth, body).await?)
     }
 
     pub async fn delete_issue(&self, auth: &str, id: &str) -> Result<(), LinearError> {
@@ -780,7 +850,7 @@ mod tests {
         assert_eq!(i.identifier, "ENG-1");
         assert_eq!(i.priority, 2);
         assert_eq!(i.team_key.as_deref(), Some("ENG"));
-        assert_eq!(i.estimate, Some(3));
+        assert_eq!(i.estimate, Some(3.0));
         assert_eq!(i.cycle_number, Some(7));
         assert_eq!(i.cycle_name.as_deref(), Some("Sprint 7"));
         assert_eq!(i.milestone_name.as_deref(), Some("Beta"));
@@ -789,6 +859,23 @@ mod tests {
         assert_eq!(i.labels.len(), 1);
         assert_eq!(i.archived_at, None);
         assert!(!i.raw_json.is_empty());
+    }
+
+    #[test]
+    fn preserves_fractional_estimates_and_rejects_spoofed_pr_urls() {
+        let body = r##"{"data":{"issues":{"pageInfo":{"hasNextPage":false,"endCursor":null},
+          "nodes":[{"id":"i1","identifier":"ENG-1","title":"T","priority":0,"url":"u",
+          "createdAt":"c","updatedAt":"u","estimate":2.5,
+          "attachments":{"pageInfo":{"hasNextPage":true},"nodes":[
+            {"url":"https://github.com/o/r/pull/12"},
+            {"url":"https://example.com/github.com/o/r/pull/12"},
+            {"url":"https://github.com/o/r/pull/not-a-number"}]},
+          "labels":{"nodes":[]}}]}}}"##;
+        let issue = &parse_issues_page(body).unwrap().issues[0];
+        assert_eq!(issue.estimate, Some(2.5));
+        assert_eq!(issue.pr_count, 1);
+        assert_eq!(issue.link_count, 2);
+        assert!(issue.attachments_truncated);
     }
 
     #[test]
@@ -819,6 +906,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_team_scoped_workflow_states_including_empty_columns() {
+        let body = r##"{"data":{"workflowStates":{"nodes":[
+          {"id":"s1","name":"Todo","type":"unstarted","color":"#aaa","team":{"id":"t1"}}
+        ]}}}"##;
+        let states = parse_workflow_states(body).unwrap();
+        assert_eq!(states.len(), 1);
+        assert_eq!(states[0].team_id, "t1");
+        assert_eq!(states[0].name, "Todo");
+    }
+
+    #[test]
     fn patch_tristate_maps_to_graphql_input() {
         // omitted -> field absent
         let p: UpdateIssuePatch = serde_json::from_str("{}").unwrap();
@@ -846,7 +944,7 @@ mod tests {
             serde_json::json!({
                 "labelIds": ["a", "b"],
                 "projectId": "p1",
-                "estimate": 5,
+                "estimate": 5.0,
                 "cycleId": null
             })
         );
@@ -890,9 +988,17 @@ mod tests {
             create_input_to_value(&p),
             serde_json::json!({
                 "teamId": "t1", "title": "H", "priority": 2, "assigneeId": "u1",
-                "labelIds": ["a"], "projectId": "p1", "estimate": 3, "dueDate": "2026-07-01"
+                "labelIds": ["a"], "projectId": "p1", "estimate": 3.0, "dueDate": "2026-07-01"
             })
         );
+
+        let blank_team: CreateIssueInput =
+            serde_json::from_str(r#"{"teamId":"  ","title":"Hello"}"#).unwrap();
+        assert!(validate_create_input(&blank_team).is_err());
+        let blank_title: CreateIssueInput =
+            serde_json::from_str(r#"{"teamId":"t1","title":"\n\t"}"#).unwrap();
+        assert!(validate_create_input(&blank_title).is_err());
+        assert!(validate_create_input(&p).is_ok());
     }
 
     #[test]
