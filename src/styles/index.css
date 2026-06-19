@@ -352,3 +352,47 @@
 .rdp-button_next:hover .rdp-chevron {
   fill: var(--foreground);
 }
+
+.astryn-description-editor {
+  min-height: 8rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  outline: none;
+}
+.astryn-description-editor[contenteditable="true"]:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 55%, transparent);
+  padding-inline: 0.75rem;
+}
+.astryn-description-editor p.is-editor-empty:first-child::before {
+  content: "Add description…";
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.astryn-description-editor h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
+.astryn-description-editor h2 { margin: 1rem 0 0.4rem; font-size: 1.25rem; font-weight: 650; }
+.astryn-description-editor h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
+.astryn-description-editor ul { list-style: disc; padding-left: 1.4rem; }
+.astryn-description-editor ol { list-style: decimal; padding-left: 1.4rem; }
+.astryn-description-editor ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.astryn-description-editor li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-description-editor li[data-type="taskItem"] > label { margin-top: 0.2rem; }
+.astryn-description-editor blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); }
+.astryn-description-editor pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
+.astryn-description-editor code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; }
+.astryn-description-editor table { width: 100%; border-collapse: collapse; }
+.astryn-description-editor th, .astryn-description-editor td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
+.description-bubble-menu, .description-slash-menu { border: 1px solid var(--border); background: var(--popover); box-shadow: 0 12px 36px rgb(0 0 0 / 35%); }
+.description-bubble-menu { display: flex; gap: 0.125rem; border-radius: 0.5rem; padding: 0.25rem; }
+.description-bubble-menu button { border-radius: 0.3rem; padding: 0.35rem; color: var(--muted-foreground); }
+.description-bubble-menu button:hover, .description-bubble-menu button[aria-pressed="true"] { background: var(--accent); color: var(--foreground); }
+.description-bubble-menu input { width: 14rem; border-radius: 0.3rem; background: transparent; padding: 0.3rem 0.45rem; color: var(--foreground); outline: none; }
+.description-slash-menu { position: absolute; z-index: 70; width: 15rem; border-radius: 0.6rem; padding: 0.3rem; }
+.description-slash-menu button { display: flex; width: 100%; align-items: center; gap: 0.6rem; border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); }
+.description-slash-menu button[aria-selected="true"], .description-slash-menu button:hover { background: var(--accent); }
+.description-save-status { position: absolute; right: 0; top: -1.25rem; font-size: 0.6875rem; color: var(--muted-foreground); }
+.description-save-status--error { color: #f87171; }
