@@ -56,6 +56,7 @@ pub fn run() {
             commands::list_filter_options,
             commands::get_issue_detail,
             commands::update_issue,
+            commands::create_issue,
             commands::list_users,
             commands::list_labels,
             commands::list_cycles,

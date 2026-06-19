@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import {
+  createIssue,
   deleteIssue,
   errorText,
   getIssueDetail,
@@ -22,6 +23,7 @@ import {
   syncIssues,
   updateIssue,
   type CalendarIssue,
+  type CreateIssueInput,
   type IssueDetailResult,
   type IssueFilters,
   type IssueListItem,
@@ -162,6 +164,22 @@ export function useDeleteIssue() {
       gooeyToast.success("Issue deleted");
     },
     onError: (err) => gooeyToast.error("Delete failed", { description: errorText(err) }),
+  });
+}
+
+/** Create an issue in Linear, then refresh the workspace caches so it appears. */
+export function useCreateIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateIssueInput) => createIssue(input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["calendar"] });
+      qc.invalidateQueries({ queryKey: ["unscheduled"] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
+      qc.invalidateQueries({ queryKey: ["filter-options"] });
+      gooeyToast.success("Issue created");
+    },
+    onError: (err) => gooeyToast.error("Create failed", { description: errorText(err) }),
   });
 }
 

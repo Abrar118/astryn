@@ -280,6 +280,18 @@ pub fn parse_issue_update(body: &str) -> Result<ParsedIssue, LinearError> {
     Ok(node_to_issue(issue))
 }
 
+pub fn parse_issue_create(body: &str) -> Result<ParsedIssue, LinearError> {
+    let data = extract_data(body)?;
+    let created = data.get("issueCreate").ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "issueCreate returned success=false".into(),
+        ));
+    }
+    let issue = created.get("issue").ok_or(LinearError::Malformed)?;
+    Ok(node_to_issue(issue))
+}
+
 // ---- issue detail (drawer) ----
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -541,6 +553,70 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
     Value::Object(m)
 }
 
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateIssueInput {
+    pub team_id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub state_id: Option<String>,
+    #[serde(default)]
+    pub priority: Option<i64>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub assignee_id: Option<String>,
+    #[serde(default)]
+    pub label_ids: Option<Vec<String>>,
+    #[serde(default)]
+    pub project_id: Option<String>,
+    #[serde(default)]
+    pub estimate: Option<i64>,
+    #[serde(default)]
+    pub cycle_id: Option<String>,
+}
+
+/// Build the GraphQL `IssueCreateInput`. `teamId`/`title` are required; the rest
+/// are included only when present (no tri-state — create has no "clear").
+pub fn create_input_to_value(p: &CreateIssueInput) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("teamId".into(), Value::String(p.team_id.clone()));
+    m.insert("title".into(), Value::String(p.title.clone()));
+    if let Some(v) = &p.description {
+        m.insert("description".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &p.state_id {
+        m.insert("stateId".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = p.priority {
+        m.insert("priority".into(), Value::from(v));
+    }
+    if let Some(v) = &p.due_date {
+        m.insert("dueDate".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &p.assignee_id {
+        m.insert("assigneeId".into(), Value::String(v.clone()));
+    }
+    if let Some(ids) = &p.label_ids {
+        m.insert(
+            "labelIds".into(),
+            Value::Array(ids.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    if let Some(v) = &p.project_id {
+        m.insert("projectId".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = p.estimate {
+        m.insert("estimate".into(), Value::from(v));
+    }
+    if let Some(v) = &p.cycle_id {
+        m.insert("cycleId".into(), Value::String(v.clone()));
+    }
+    Value::Object(m)
+}
+
 // ---- GraphQL query strings + LinearClient methods ----
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
@@ -584,6 +660,14 @@ fn issue_update_mutation() -> String {
     format!(
         "mutation U($id: String!, $input: IssueUpdateInput!) {{
            issueUpdate(id: $id, input: $input) {{ success issue {{ {ISSUE_NODE_FIELDS} }} }}
+         }}"
+    )
+}
+
+fn issue_create_mutation() -> String {
+    format!(
+        "mutation C($input: IssueCreateInput!) {{
+           issueCreate(input: $input) {{ success issue {{ {ISSUE_NODE_FIELDS} }} }}
          }}"
     )
 }
@@ -650,6 +734,18 @@ impl LinearClient {
             "variables": { "id": id, "input": input }
         });
         parse_issue_update(&self.post(auth, body).await?)
+    }
+
+    pub async fn create_issue(
+        &self,
+        auth: &str,
+        input: &serde_json::Value,
+    ) -> Result<ParsedIssue, LinearError> {
+        let body = serde_json::json!({
+            "query": issue_create_mutation(),
+            "variables": { "input": input }
+        });
+        parse_issue_create(&self.post(auth, body).await?)
     }
 }
 
@@ -761,6 +857,43 @@ mod tests {
     fn parses_issue_delete_success() {
         assert!(parse_issue_delete(r#"{"data":{"issueDelete":{"success":true}}}"#).is_ok());
         assert!(parse_issue_delete(r#"{"data":{"issueDelete":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn create_input_requires_team_title_and_includes_present_fields() {
+        // minimal: only the required fields
+        let p: CreateIssueInput =
+            serde_json::from_str(r#"{"teamId":"t1","title":"Hello"}"#).unwrap();
+        assert_eq!(
+            create_input_to_value(&p),
+            serde_json::json!({ "teamId": "t1", "title": "Hello" })
+        );
+        // full: optional fields included only when present
+        let p: CreateIssueInput = serde_json::from_str(
+            r#"{"teamId":"t1","title":"H","priority":2,"assigneeId":"u1",
+                "labelIds":["a"],"projectId":"p1","estimate":3,"dueDate":"2026-07-01"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            create_input_to_value(&p),
+            serde_json::json!({
+                "teamId": "t1", "title": "H", "priority": 2, "assigneeId": "u1",
+                "labelIds": ["a"], "projectId": "p1", "estimate": 3, "dueDate": "2026-07-01"
+            })
+        );
+    }
+
+    #[test]
+    fn parses_issue_create_returned_issue() {
+        let body = r##"{"data":{"issueCreate":{"success":true,"issue":{"id":"new1","identifier":"PSY-9",
+          "title":"New","description":null,"dueDate":null,"priority":0,"url":"u","createdAt":"c","updatedAt":"u1","archivedAt":null,
+          "state":{"id":"s","name":"Backlog","type":"backlog","color":"#aaa"},"assignee":null,
+          "team":{"id":"t","key":"PSY"},"project":null,"cycle":null,"parent":null,
+          "labels":{"nodes":[]}}}}}"##;
+        let i = parse_issue_create(body).unwrap();
+        assert_eq!(i.id, "new1");
+        assert_eq!(i.identifier, "PSY-9");
+        assert!(parse_issue_create(r#"{"data":{"issueCreate":{"success":false}}}"#).is_err());
     }
 
     #[test]

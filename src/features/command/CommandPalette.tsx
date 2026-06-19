@@ -1,0 +1,327 @@
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { gooeyToast } from "goey-toast";
+import {
+  Copy,
+  ExternalLink,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Search,
+} from "lucide-react";
+import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
+import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
+import { CreateIssueModal } from "./CreateIssueModal";
+
+async function copyText(text: string, label: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+    } finally {
+      ta.remove();
+    }
+  }
+  gooeyToast.success(`${label} copied`);
+}
+
+type Ctx = { openPalette: () => void; openCreate: () => void };
+const PaletteCtx = createContext<Ctx | null>(null);
+
+export function useCommandPalette(): Ctx {
+  const ctx = useContext(PaletteCtx);
+  if (!ctx) throw new Error("useCommandPalette must be used within CommandPaletteProvider");
+  return ctx;
+}
+
+/** Is the user currently typing in a field? Used to gate single-key shortcuts. */
+function isEditableTarget(el: EventTarget | null): boolean {
+  const t = el as HTMLElement | null;
+  if (!t) return false;
+  const tag = t.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
+}
+
+export function CommandPaletteProvider({ children }: { children: ReactNode }) {
+  const [mode, setMode] = useState<null | "palette" | "create">(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      // Cmd/Ctrl+K toggles the palette from anywhere.
+      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setMode((m) => (m === "palette" ? null : "palette"));
+        return;
+      }
+      // Bare "c" opens the create modal, unless typing or an overlay is open.
+      if ((e.key === "c" || e.key === "C") && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        if (mode || isEditableTarget(e.target)) return;
+        e.preventDefault();
+        setMode("create");
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [mode]);
+
+  const value = useMemo<Ctx>(
+    () => ({ openPalette: () => setMode("palette"), openCreate: () => setMode("create") }),
+    [],
+  );
+
+  return (
+    <PaletteCtx.Provider value={value}>
+      {children}
+      {mode === "palette" && (
+        <Palette onClose={() => setMode(null)} onCreate={() => setMode("create")} />
+      )}
+      {mode === "create" && <CreateIssueModal onClose={() => setMode(null)} />}
+    </PaletteCtx.Provider>
+  );
+}
+
+type Command = {
+  key: string;
+  section: string;
+  icon: ReactNode;
+  label: string;
+  hint?: string;
+  onSelect: () => void;
+};
+
+function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
+  const { data: issues } = useIssues({});
+  const qc = useQueryClient();
+  const [, setParams] = useSearchParams();
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => inputRef.current?.focus(), []);
+
+  const resync = (full: boolean) => {
+    onClose();
+    gooeyToast.info(full ? "Full resync started…" : "Syncing…");
+    syncIssues(full)
+      .then(() => {
+        invalidateWorkspaceQueries(qc);
+        gooeyToast.success(full ? "Full resync complete" : "Synced");
+      })
+      .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }));
+  };
+
+  const openIssue = (id: string) => {
+    setParams({ issue: id });
+    onClose();
+  };
+
+  const commands: Command[] = useMemo(
+    () => [
+      { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", onSelect: () => resync(false) },
+      { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", onSelect: () => resync(true) },
+    ],
+    // resync/onCreate are stable enough for this overlay's lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  const term = q.trim().toLowerCase();
+  const filteredCommands = term
+    ? commands.filter((c) => c.label.toLowerCase().includes(term))
+    : commands;
+
+  // Issue search: rank identifier-prefix matches first, then any substring.
+  const matchedIssues = useMemo(() => {
+    const all = issues ?? [];
+    if (!term) return all.slice(0, 6);
+    const scored = all
+      .map((i) => {
+        const id = i.identifier.toLowerCase();
+        const title = i.title.toLowerCase();
+        let score = -1;
+        if (id.startsWith(term)) score = 0;
+        else if (id.includes(term)) score = 1;
+        else if (title.includes(term)) score = 2;
+        return { i, score };
+      })
+      .filter((x) => x.score >= 0)
+      .sort((a, b) => a.score - b.score);
+    return scored.slice(0, 8).map((x) => x.i);
+  }, [issues, term]);
+
+  // Flatten command + issue selections so arrow keys traverse the whole list.
+  const items = useMemo(
+    () => [
+      ...filteredCommands.map((c) => ({ kind: "cmd" as const, cmd: c })),
+      ...matchedIssues.map((i) => ({ kind: "issue" as const, issue: i })),
+    ],
+    [filteredCommands, matchedIssues],
+  );
+
+  useEffect(() => setSel(0), [term]);
+  useEffect(() => {
+    if (sel >= items.length) setSel(Math.max(0, items.length - 1));
+  }, [items.length, sel]);
+
+  const activate = (idx: number) => {
+    const it = items[idx];
+    if (!it) return;
+    if (it.kind === "cmd") it.cmd.onSelect();
+    else openIssue(it.issue.id);
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setSel((s) => Math.min(items.length - 1, s + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSel((s) => Math.max(0, s - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      activate(sel);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
+  // Keep the selected row in view as the user arrows through.
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(`[data-idx="${sel}"]`);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [sel]);
+
+  // Section dividers: render a heading when the section changes.
+  let lastSection = "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh]" onMouseDown={onClose}>
+      <div
+        className="flex w-[min(640px,92vw)] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-2xl"
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+          <Search className="size-4 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Type a command or search…"
+            className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+          />
+        </div>
+
+        <div ref={listRef} className="max-h-[52vh] overflow-y-auto p-1.5">
+          {items.length === 0 && (
+            <div className="px-3 py-6 text-center text-sm text-muted-foreground">No results</div>
+          )}
+          {items.map((it, idx) => {
+            const section = it.kind === "cmd" ? it.cmd.section : "Issues";
+            const heading = section !== lastSection ? section : null;
+            lastSection = section;
+            const selected = idx === sel;
+            return (
+              <div key={it.kind === "cmd" ? `c-${it.cmd.key}` : `i-${it.issue.id}`}>
+                {heading && (
+                  <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {heading}
+                  </div>
+                )}
+                {it.kind === "cmd" ? (
+                  <button
+                    type="button"
+                    data-idx={idx}
+                    onMouseMove={() => setSel(idx)}
+                    onClick={() => activate(idx)}
+                    className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] text-foreground ${
+                      selected ? "bg-accent" : ""
+                    }`}
+                  >
+                    <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">{it.cmd.icon}</span>
+                    <span className="flex-1 truncate">{it.cmd.label}</span>
+                    {it.cmd.hint && (
+                      <kbd className="rounded border border-border bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">{it.cmd.hint}</kbd>
+                    )}
+                  </button>
+                ) : (
+                  <IssueRow issue={it.issue} idx={idx} selected={selected} onSelect={setSel} onOpen={() => activate(idx)} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function IssueRow({
+  issue,
+  idx,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  issue: IssueListItem;
+  idx: number;
+  selected: boolean;
+  onSelect: (idx: number) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <div
+      data-idx={idx}
+      onMouseMove={() => onSelect(idx)}
+      className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] ${selected ? "bg-accent" : ""}`}
+    >
+      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: issue.stateColor }} />
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{issue.identifier}</span>
+        <span className="truncate text-foreground">{issue.title}</span>
+      </button>
+      <div className={`flex shrink-0 items-center gap-0.5 ${selected ? "" : "opacity-0 group-hover:opacity-100"}`}>
+        <IconBtn title="Copy ID" onClick={() => copyText(issue.identifier, "ID")}>
+          <Copy className="size-3.5" />
+        </IconBtn>
+        <IconBtn title="Copy link" onClick={() => copyText(issue.url, "Link")}>
+          <Copy className="size-3.5 opacity-60" />
+        </IconBtn>
+        <IconBtn title="Open in Linear" onClick={() => openUrl(issue.url).catch(() => gooeyToast.error("Couldn't open the link"))}>
+          <ExternalLink className="size-3.5" />
+        </IconBtn>
+      </div>
+    </div>
+  );
+}
+
+function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+    >
+      {children}
+    </button>
+  );
+}

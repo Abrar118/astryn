@@ -9,9 +9,9 @@ use crate::db::issues::{
     self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
 };
 use crate::linear::issues::{
-    patch_to_input, DetailChild, DetailComment, DetailCycle, DetailRef, DetailRelation,
-    DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue, ParsedUser,
-    UpdateIssuePatch,
+    create_input_to_value, patch_to_input, CreateIssueInput, DetailChild, DetailComment,
+    DetailCycle, DetailRef, DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle,
+    ParsedIssue, ParsedUser, UpdateIssuePatch,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -608,6 +608,23 @@ pub async fn update_issue(
         &state.workspace_generation,
         state.credentials.clone(),
         move |auth| async move { client.update_issue(&auth, &id2, &input).await },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn create_issue(
+    state: State<'_, AppState>,
+    input: CreateIssueInput,
+) -> Result<Issue, CmdError> {
+    let value = create_input_to_value(&input);
+    let client = state.linear.clone();
+    update_issue_logic(
+        &state.pool,
+        &state.workspace_lock,
+        &state.workspace_generation,
+        state.credentials.clone(),
+        move |auth| async move { client.create_issue(&auth, &value).await },
     )
     .await
 }

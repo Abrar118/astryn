@@ -7,6 +7,7 @@ import { IssuesView } from "@/features/issues/IssuesView";
 import { Settings } from "@/features/settings/Settings";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
 import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
+import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
 function Shell() {
   const { active } = useWorkspace();
@@ -31,7 +32,9 @@ export function AppShell() {
   return (
     <WorkspaceProvider>
       <IssueMenuProvider>
-        <Shell />
+        <CommandPaletteProvider>
+          <Shell />
+        </CommandPaletteProvider>
       </IssueMenuProvider>
     </WorkspaceProvider>
   );

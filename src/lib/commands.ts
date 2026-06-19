@@ -130,6 +130,20 @@ export type UpdateIssuePatch = {
 
 export type Cycle = { id: string; number: number | null; name: string | null; teamId: string | null };
 
+export type CreateIssueInput = {
+  teamId: string;
+  title: string;
+  description?: string | null;
+  stateId?: string | null;
+  priority?: number;
+  dueDate?: string | null;
+  assigneeId?: string | null;
+  labelIds?: string[];
+  projectId?: string | null;
+  estimate?: number | null;
+  cycleId?: string | null;
+};
+
 // ── M1 bindings ───────────────────────────────────────────────────────────────
 
 export const syncIssues = (full = false): Promise<SyncResult> =>
@@ -153,6 +167,9 @@ export const getIssueDetail = (id: string): Promise<IssueDetailResult> =>
 
 export const updateIssue = (id: string, patch: UpdateIssuePatch): Promise<Issue> =>
   invoke("update_issue", { id, patch });
+
+export const createIssue = (input: CreateIssueInput): Promise<Issue> =>
+  invoke("create_issue", { input });
 
 export const listUsers = (): Promise<User[]> => invoke("list_users");
 
