@@ -608,7 +608,11 @@ git commit -m "feat(m1): SQLite issues/labels/cursors schema + repositories"
 The query strings and `parse_*` functions below hard-code field names. Per `requirements.md` §7 / CLAUDE.md "Live API wins", **introspect the live schema first** and adjust any names that differ. Use the Linear key (from Settings/keychain) against the API:
 
 ```bash
-KEY='<LINEAR_PERSONAL_API_KEY>'   # raw personal key, NO "Bearer "
+# Pull the key straight from the OS keychain — never paste it on the command line
+# (keeps it out of shell history). macOS:
+KEY="$(security find-generic-password -s com.orion.astryn -a linear_api_key -w)"
+# (Linux/Windows, or if the above fails: add a throwaway Rust bin that reads it via
+#  SecretStore and prints introspection — do NOT echo the key itself.)
 gq() { curl -s https://api.linear.app/graphql -H "Content-Type: application/json" \
   -H "Authorization: $KEY" -d "{\"query\":\"$1\"}" | jq; }
 
@@ -1095,11 +1099,18 @@ impl LinearClient {
         let status = resp.status().as_u16();
         // Capture the reset hint from headers before the body is consumed.
         if status == 429 {
-            let retry = resp
-                .headers()
-                .get("retry-after")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<i64>().ok());
+            let h = resp.headers();
+            let num = |name: &str| h.get(name).and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<i64>().ok());
+            // Retry-After is a delta (seconds); X-RateLimit-Requests-Reset is an epoch.
+            let retry = num("retry-after").or_else(|| {
+                num("x-ratelimit-requests-reset").map(|reset| {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    reset - now
+                })
+            });
             return Err(LinearError::RateLimited(retry));
         }
         let text = resp.text().await.map_err(|_| LinearError::Network)?;
@@ -1731,8 +1742,13 @@ pub async fn sync_issues_logic(
     rate_limited_until: &AtomicU64,
     full: bool,
 ) -> Result<SyncResult, CmdError> {
-    // Suppress network sync while inside a rate-limit window; report a silent no-op.
+    // Suppress network sync while inside a rate-limit window. A background poll
+    // (full=false) reports a silent no-op; an explicit Resync (full=true) surfaces
+    // the rate limit instead of a misleading "Resynced 0 issues".
     if now_epoch() < rate_limited_until.load(Ordering::SeqCst) {
+        if full {
+            return Err(CmdError::RateLimited);
+        }
         return Ok(SyncResult { mode: SyncMode::Incremental, synced: 0 });
     }
 
@@ -2479,7 +2495,14 @@ export function AppShell() {
 }
 ```
 
-> `useSyncLoop` is defined in Task 9. To keep this task self-contained, create a minimal `src/lib/queries.ts` now exporting only a temporary `useSyncLoop` that returns `{ isSyncing: false, refresh: () => {} }`; Task 9 replaces the whole file with the real hooks. This is a compile-time scaffold, not a missing spec — the full implementation is given verbatim in Task 9.
+> `useSyncLoop` is defined in Task 9. To keep this task self-contained, create `src/lib/queries.ts` now with exactly this temporary scaffold; Task 9 replaces the whole file with the real hooks:
+>
+> ```ts
+> // src/lib/queries.ts — temporary scaffold; Task 9 replaces this entire file.
+> export function useSyncLoop(): { isSyncing: boolean; refresh: () => void } {
+>   return { isSyncing: false, refresh: () => {} };
+> }
+> ```
 
 - [ ] **Step 4: Settings "Resync" button** (`src/features/settings/Settings.tsx`)
 
@@ -2487,6 +2510,8 @@ The M0 Settings takes an `onBack` prop; routing replaces that. Change the header
 
 ```tsx
 import { syncIssues, errorText } from "@/lib/commands";
+import { clearWorkspaceQueries } from "@/lib/queries";
+// `qc` already exists in M0 Settings via useQueryClient().
 // inside the component, alongside testMut/clearMut:
 const resyncMut = useMutation({
   mutationFn: () => syncIssues(true),
@@ -2500,6 +2525,32 @@ const resyncMut = useMutation({
 //   </Button>
 ```
 Remove `Settings`'s `{ onBack }` param and the `<Button ... onClick={onBack}>Back</Button>`.
+
+**Drop the renderer's workspace caches on every key change (P0).** The Rust wipe happens before the keyring write, so the webview must clear regardless of success/failure:
+- In `handleSave`, after `await setLinearKey(key)` succeeds **and** in its `catch`, call `clearWorkspaceQueries(qc)` (in addition to `invalidateStatus()`).
+- In `clearMut`, call `clearWorkspaceQueries(qc)` in **both** `onSuccess` and `onError`.
+
+```tsx
+// handleSave try/catch:
+try {
+  await setLinearKey(key);
+  clearWorkspaceQueries(qc);
+  gooeyToast.success("Linear key saved");
+  invalidateStatus();
+} catch (err) {
+  clearWorkspaceQueries(qc);
+  gooeyToast.error("Could not save the key", { description: errorText(err) });
+} finally {
+  setSaving(false);
+}
+
+// clearMut:
+const clearMut = useMutation({
+  mutationFn: () => clearLinearKey(),
+  onSuccess: () => { clearWorkspaceQueries(qc); gooeyToast.success("Key cleared"); invalidateStatus(); },
+  onError: (err) => { clearWorkspaceQueries(qc); gooeyToast.error("Could not clear the key", { description: errorText(err) }); },
+});
+```
 
 - [ ] **Step 5: Update `Home.tsx` usage** — `Home` is no longer routed (calendar replaces it). Leave the file in place (unused) or delete it; if `noUnusedLocals`/build complains about an unused import anywhere, remove the stale `Home` import from `App.tsx` (already replaced above). Delete `src/features/home/Home.tsx` to avoid a dead-code import (keep `DualClock.tsx`, still used by the shell).
 
@@ -2539,6 +2590,7 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
+  type QueryClient,
   type QueryKey,
 } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
@@ -2581,6 +2633,21 @@ function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueD
     }
   }
   return { ...result, detail: d } as IssueDetailResult;
+}
+
+/**
+ * Drop every workspace-scoped query so the renderer cannot keep showing the old
+ * workspace's data after the Rust cache is wiped (key set/clear). Call this on
+ * BOTH success and failure of set/clear — the Rust wipe happens before the
+ * keyring write, so a failed write still leaves an empty cache.
+ */
+export function clearWorkspaceQueries(qc: QueryClient) {
+  for (const key of [
+    ["calendar"], ["unscheduled"], ["issue"], ["users"], ["filter-options"], ["me"],
+  ]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
 }
 
 export function useMe() {
@@ -2883,6 +2950,13 @@ export function CalendarPage() {
   const { data: scheduled } = useCalendarIssues(range, filters);
   const { data: unscheduled } = useUnscheduled(filters);
 
+  // Any explicit filter interaction counts as "initialized" so the me-default
+  // effect above can never later clobber a deliberate "All assignees" choice.
+  const handleFilters = (f: IssueFilters) => {
+    setInitialized(true);
+    setFilters(f);
+  };
+
   const events = useMemo(
     () =>
       (scheduled ?? [])
@@ -2900,7 +2974,7 @@ export function CalendarPage() {
   return (
     <div className="flex h-full">
       <div className="min-w-0 flex-1 p-4">
-        <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={setFilters} onColorBy={setColorBy} />
+        <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -2956,6 +3030,8 @@ git commit -m "feat(m1): F1 calendar view — events, filters, color toggle, uns
 
 Add a `useEffect` that initializes a `Draggable` on the rail container. `create: false` tells FullCalendar not to add its own event (our cache drives rendering); the calendar's `drop` callback still fires with the target date.
 
+Replace the whole file from Task 10 with this version (Task 10's markup + the `ref`/`Draggable` wiring):
+
 ```tsx
 import { useEffect, useRef } from "react";
 import { Draggable } from "@fullcalendar/interaction";
@@ -2970,6 +3046,8 @@ export function UnscheduledRail({
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!ref.current) return;
+    // create:false => FullCalendar adds no internal event on drop; our cache drives
+    // rendering. The calendar's `drop` callback still fires with the target date.
     const d = new Draggable(ref.current, {
       itemSelector: ".astryn-rail-item",
       eventData: () => ({ create: false }),
@@ -2979,12 +3057,27 @@ export function UnscheduledRail({
 
   return (
     <aside id="astryn-unscheduled" ref={ref} className="w-64 shrink-0 border-l p-3">
-      {/* ...unchanged body from Task 10... */}
+      <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        Unscheduled ({issues.length})
+      </div>
+      <div className="flex flex-col gap-1">
+        {issues.map((i) => (
+          <div
+            key={i.id}
+            data-id={i.id}
+            className="astryn-rail-item cursor-pointer rounded-md border px-2 py-1 text-xs hover:bg-accent"
+            onClick={() => onOpen(i.id)}
+            title={i.title}
+          >
+            <span className="text-muted-foreground">{i.identifier}</span> {i.title}
+          </div>
+        ))}
+        {issues.length === 0 && <div className="text-xs text-muted-foreground">Nothing unscheduled.</div>}
+      </div>
     </aside>
   );
 }
 ```
-(Keep the existing header + list markup from Task 10; only the imports, `ref`, and `useEffect` are added.)
 
 - [ ] **Step 2: Wire drop handlers in `CalendarPage.tsx`**
 
@@ -3347,3 +3440,10 @@ git commit -m "chore(m1): integration verification — F1-F3 acceptance met"
 - **P1 — sync correctness:** lookback now uses the `time` crate (RFC3339, fractional seconds); `hasNextPage` with no cursor fails the sync; full sync resets the watermark and an empty workspace still records a `now` baseline; `update_issue` replaces labels only when the upsert applied (Tasks 3, 5).
 - **P1 — introspection gate** added (Task 2 Step 0).
 - **P2:** assignee filter selects any workspace user (with a one-time "me" default that no longer fights an explicit "All"); cycle is queried in the detail query and displayed; detail connections request `pageInfo` and the drawer shows "Showing first 50"; the broken Task 3 stub helper is removed; `vitest` uses `--passWithNoTests` for the empty Task 6 run.
+
+### Post-review revisions (round 5)
+
+- **P0 — renderer cache:** added `clearWorkspaceQueries(qc)` (cancels + removes `calendar`/`unscheduled`/`issue`/`users`/`filter-options`/`me`), called on **both** success and failure of `handleSave` and `clearMut`, so the webview can't keep showing the old workspace after a wipe (Tasks 8, 9).
+- **P1 — Resync honesty:** a rate-limited `sync_issues({ full: true })` now returns `CmdError::RateLimited` (not a fake "Resynced 0"); `http_post` also parses `X-RateLimit-Requests-Reset` (epoch) as a fallback to `Retry-After` (Tasks 2, 5).
+- **P1 — key hygiene:** the introspection gate reads the key from the keychain (`security find-generic-password …`), never from a shell-history-visible variable (Task 2 Step 0).
+- **P2:** Task 11 `UnscheduledRail` and Task 8's temporary `useSyncLoop` are now spelled out in full (no `...unchanged...` placeholder); the me-default effect is short-circuited by `handleFilters` on any interaction.
