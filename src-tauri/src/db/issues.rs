@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use sqlx::{Sqlite, SqlitePool, Transaction};
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, sqlx::FromRow)]

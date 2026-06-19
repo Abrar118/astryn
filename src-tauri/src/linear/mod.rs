@@ -21,7 +21,6 @@ pub enum LinearError {
 
 /// Classify a non-empty GraphQL `errors` array. Linear may report throttling as
 /// a GraphQL error with extension code RATELIMITED (even on HTTP 200/400).
-#[allow(dead_code)]
 pub fn classify_graphql_errors(errors: &[Value]) -> LinearError {
     let is_ratelimited = errors.iter().any(|e| {
         e.get("extensions")
@@ -46,7 +45,6 @@ pub fn classify_graphql_errors(errors: &[Value]) -> LinearError {
 
 /// Parse a GraphQL body to its `data` object, treating a non-empty `errors`
 /// array as a failure (HTTP-200-with-errors), RATELIMITED-aware.
-#[allow(dead_code)]
 pub fn extract_data(body: &str) -> Result<Value, LinearError> {
     let v: Value = serde_json::from_str(body).map_err(|_| LinearError::Malformed)?;
     if let Some(errors) = v.get("errors").and_then(|e| e.as_array()) {
@@ -59,7 +57,6 @@ pub fn extract_data(body: &str) -> Result<Value, LinearError> {
 
 /// Map only the unambiguous transport statuses to errors; 2xx and 400 fall
 /// through to body parsing (where GraphQL errors incl. RATELIMITED are detected).
-#[allow(dead_code)]
 pub fn http_status_to_error(status: u16) -> Option<LinearError> {
     match status {
         401 | 403 => Some(LinearError::Auth),
@@ -125,7 +122,6 @@ impl LinearClient {
 
     /// POST a GraphQL body, returning the raw response text. Maps unambiguous
     /// transport statuses to errors; leaves body parsing to the caller's parser.
-    #[allow(dead_code)]
     pub async fn http_post(
         &self,
         authorization: &str,

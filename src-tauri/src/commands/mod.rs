@@ -5,11 +5,57 @@ use std::sync::Arc;
 use tauri::State;
 
 use crate::db;
-use crate::linear::issues::OrgIdentity;
+use crate::db::issues::{
+    self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
+};
+use crate::linear::issues::{
+    patch_to_input, DetailChild, DetailComment, DetailCycle, DetailRef, DetailRelation,
+    DetailState, IssueDetailNode, OrgIdentity, ParsedIssue, ParsedUser, UpdateIssuePatch,
+};
+use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
 use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LabelOut {
+    pub id: String,
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LiveDetail {
+    #[serde(flatten)]
+    pub issue: Issue,
+    pub labels: Vec<LabelOut>,
+    pub team_states: Vec<DetailState>,
+    pub cycle: Option<DetailCycle>,
+    pub parent: Option<DetailRef>,
+    pub children: Vec<DetailChild>,
+    pub relations: Vec<DetailRelation>,
+    pub comments: Vec<DetailComment>,
+    pub has_more_children: bool,
+    pub has_more_relations: bool,
+    pub has_more_comments: bool,
+}
+
+#[derive(serde::Serialize)]
+#[serde(tag = "source", rename_all = "lowercase")]
+pub enum IssueDetailResult {
+    Live { detail: Box<LiveDetail> },
+    Cache { detail: Box<Issue> },
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Me {
+    pub viewer_id: String,
+    pub viewer_name: String,
+}
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -41,7 +87,6 @@ pub enum CmdError {
     LinearApi,
     #[error("Internal error.")]
     Internal,
-    #[allow(dead_code)]
     #[error("Workspace changed; please retry.")]
     WorkspaceChanged,
 }
@@ -72,8 +117,237 @@ pub struct AppState {
     /// Bumped by every cache wipe; guards `update_issue`'s late write.
     pub workspace_generation: AtomicU64,
     /// Epoch-seconds deadline before which sync is suppressed after a 429 (0 = none).
-    #[allow(dead_code)]
     pub rate_limited_until: AtomicU64,
+}
+
+/// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
+fn parsed_to_issue(p: &ParsedIssue) -> Issue {
+    Issue {
+        id: p.id.clone(),
+        identifier: p.identifier.clone(),
+        title: p.title.clone(),
+        description: p.description.clone(),
+        due_date: p.due_date.clone(),
+        priority: p.priority,
+        url: p.url.clone(),
+        state_id: p.state_id.clone(),
+        state_name: p.state_name.clone(),
+        state_type: p.state_type.clone().unwrap_or_default(),
+        state_color: p.state_color.clone().unwrap_or_default(),
+        assignee_id: p.assignee_id.clone(),
+        assignee_name: p.assignee_name.clone(),
+        team_id: p.team_id.clone(),
+        team_key: p.team_key.clone(),
+        project_id: p.project_id.clone(),
+        project_name: p.project_name.clone(),
+        parent_id: p.parent_id.clone(),
+        created_at: p.created_at.clone(),
+        updated_at: p.updated_at.clone(),
+    }
+}
+
+fn parsed_to_record(p: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
+    crate::linear::sync::to_record(p)
+}
+
+fn now_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// On a rate-limit error, arm the backoff deadline (default 60s) before mapping
+/// to CmdError so the next sync within the window is suppressed.
+fn arm_backoff(e: LinearError, rate_limited_until: &AtomicU64) -> CmdError {
+    if let LinearError::RateLimited(secs) = e {
+        let wait = secs.unwrap_or(60).max(0) as u64;
+        rate_limited_until.store(now_epoch() + wait, Ordering::SeqCst);
+    }
+    CmdError::from(e)
+}
+
+pub async fn sync_issues_logic(
+    creds: Arc<dyn LinearCredentialProvider>,
+    linear: LinearClient,
+    pool: &SqlitePool,
+    generation: &AtomicU64,
+    rate_limited_until: &AtomicU64,
+    full: bool,
+) -> Result<SyncResult, CmdError> {
+    // Suppress network sync while inside a rate-limit window. A background poll
+    // (full=false) reports a silent no-op; an explicit Resync (full=true) surfaces
+    // the rate limit instead of a misleading "Resynced 0 issues".
+    if now_epoch() < rate_limited_until.load(Ordering::SeqCst) {
+        if full {
+            return Err(CmdError::RateLimited);
+        }
+        return Ok(SyncResult {
+            mode: SyncMode::Incremental,
+            synced: 0,
+        });
+    }
+
+    let c = creds.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+
+    // Validate org identity; wipe on mismatch (or honor an explicit full Resync).
+    let id = match linear.viewer_with_org(&auth).await {
+        Ok(id) => id,
+        Err(e) => return Err(arm_backoff(e, rate_limited_until)),
+    };
+    let mut force_full = full;
+    let cached = db::load_org_id(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    let mismatch = cached.as_deref().map(|c| c != id.org_id).unwrap_or(false);
+    if full || mismatch {
+        issues::wipe_workspace_cache(pool)
+            .await
+            .map_err(|_| CmdError::Internal)?;
+        generation.fetch_add(1, Ordering::SeqCst);
+        force_full = true;
+    }
+    if mismatch || cached.is_none() || full {
+        db::save_identity(
+            pool,
+            &id.viewer_id,
+            &id.viewer_name,
+            &id.org_id,
+            &id.org_name,
+            &id.org_url_key,
+        )
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    }
+
+    let client = linear.clone();
+    let auth2 = auth.clone();
+    run_sync(
+        pool,
+        move |after, since| {
+            let client = client.clone();
+            let auth = auth2.clone();
+            async move {
+                client
+                    .issues_page(&auth, after.as_deref(), since.as_deref())
+                    .await
+            }
+        },
+        force_full,
+    )
+    .await
+    .map_err(|e| arm_backoff(e, rate_limited_until))
+}
+
+pub async fn get_issue_detail_logic(
+    creds: Arc<dyn LinearCredentialProvider>,
+    linear: LinearClient,
+    pool: &SqlitePool,
+    id: String,
+) -> Result<IssueDetailResult, CmdError> {
+    let c = creds.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?;
+    if let Some(auth) = auth {
+        match linear.issue_detail(&auth, &id).await {
+            Ok(node) => {
+                return Ok(IssueDetailResult::Live {
+                    detail: Box::new(node_to_live(node)),
+                })
+            }
+            Err(_) => { /* fall through to cache */ }
+        }
+    }
+    match issues::load_issue(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)?
+    {
+        Some(issue) => Ok(IssueDetailResult::Cache {
+            detail: Box::new(issue),
+        }),
+        None => Err(CmdError::Network), // offline + not cached
+    }
+}
+
+fn node_to_live(n: IssueDetailNode) -> LiveDetail {
+    let labels = n
+        .issue
+        .labels
+        .iter()
+        .map(|l| LabelOut {
+            id: l.id.clone(),
+            name: l.name.clone(),
+            color: l.color.clone(),
+        })
+        .collect();
+    LiveDetail {
+        issue: parsed_to_issue(&n.issue),
+        labels,
+        team_states: n.team_states,
+        cycle: n.cycle,
+        parent: n.parent,
+        children: n.children,
+        relations: n.relations,
+        comments: n.comments,
+        has_more_children: n.has_more_children,
+        has_more_relations: n.has_more_relations,
+        has_more_comments: n.has_more_comments,
+    }
+}
+
+pub async fn update_issue_logic<F, Fut>(
+    pool: &SqlitePool,
+    lock: &tokio::sync::Mutex<()>,
+    generation: &AtomicU64,
+    creds: Arc<dyn LinearCredentialProvider>,
+    do_update: F,
+) -> Result<Issue, CmdError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<ParsedIssue, LinearError>>,
+{
+    // (1) snapshot generation + credential under the lock
+    let (gen, auth) = {
+        let _g = lock.lock().await;
+        let gen = generation.load(Ordering::SeqCst);
+        let c = creds.clone();
+        let auth = tokio::task::spawn_blocking(move || c.authorization())
+            .await
+            .map_err(|_| CmdError::Internal)?
+            .map_err(|_| CmdError::SecretStore)?
+            .ok_or(CmdError::NotConfigured)?;
+        (gen, auth)
+    };
+    // (2) network mutation, no lock held
+    let parsed = do_update(auth).await?;
+    // (3) recheck + write under the lock
+    let _g = lock.lock().await;
+    if generation.load(Ordering::SeqCst) != gen {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    let id = parsed.id.clone();
+    let (rec, labels) = parsed_to_record(parsed);
+    let mut tx = pool.begin().await.map_err(|_| CmdError::Internal)?;
+    let applied = issues::upsert_issue(&mut tx, &rec)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    if applied {
+        issues::replace_labels(&mut tx, &rec.id, &labels)
+            .await
+            .map_err(|_| CmdError::Internal)?;
+    }
+    tx.commit().await.map_err(|_| CmdError::Internal)?;
+    issues::load_issue(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .ok_or(CmdError::Internal)
 }
 
 pub async fn set_linear_key_logic(
@@ -217,6 +491,130 @@ pub async fn test_linear_connection(
         move |auth| async move { client.viewer_with_org(&auth).await },
     )
     .await
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarArgs {
+    pub start: String,
+    pub end: String,
+    pub team_id: Option<String>,
+    pub assignee_id: Option<String>,
+    pub project_id: Option<String>,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnscheduledArgs {
+    pub team_id: Option<String>,
+    pub assignee_id: Option<String>,
+    pub project_id: Option<String>,
+}
+
+#[tauri::command]
+pub async fn sync_issues(
+    state: State<'_, AppState>,
+    full: Option<bool>,
+) -> Result<SyncResult, CmdError> {
+    let _g = state.workspace_lock.lock().await;
+    sync_issues_logic(
+        state.credentials.clone(),
+        state.linear.clone(),
+        &state.pool,
+        &state.workspace_generation,
+        &state.rate_limited_until,
+        full.unwrap_or(false),
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn list_calendar_issues(
+    state: State<'_, AppState>,
+    args: CalendarArgs,
+) -> Result<Vec<CalendarIssue>, CmdError> {
+    issues::load_issues_in_range(
+        &state.pool,
+        &args.start,
+        &args.end,
+        args.team_id,
+        args.assignee_id,
+        args.project_id,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
+pub async fn list_unscheduled(
+    state: State<'_, AppState>,
+    args: UnscheduledArgs,
+) -> Result<Vec<CalendarIssue>, CmdError> {
+    issues::load_unscheduled(&state.pool, args.team_id, args.assignee_id, args.project_id)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
+pub async fn list_filter_options(state: State<'_, AppState>) -> Result<FilterOptions, CmdError> {
+    issues::list_filter_options(&state.pool)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
+pub async fn get_issue_detail(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<IssueDetailResult, CmdError> {
+    get_issue_detail_logic(
+        state.credentials.clone(),
+        state.linear.clone(),
+        &state.pool,
+        id,
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn update_issue(
+    state: State<'_, AppState>,
+    id: String,
+    patch: UpdateIssuePatch,
+) -> Result<Issue, CmdError> {
+    let input = patch_to_input(&patch);
+    let client = state.linear.clone();
+    let id2 = id.clone();
+    update_issue_logic(
+        &state.pool,
+        &state.workspace_lock,
+        &state.workspace_generation,
+        state.credentials.clone(),
+        move |auth| async move { client.update_issue(&auth, &id2, &input).await },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, CmdError> {
+    let c = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+    state.linear.users(&auth).await.map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn get_me(state: State<'_, AppState>) -> Result<Option<Me>, CmdError> {
+    Ok(db::load_me(&state.pool)
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map(|(viewer_id, viewer_name)| Me {
+            viewer_id,
+            viewer_name,
+        }))
 }
 
 #[cfg(test)]
@@ -385,5 +783,79 @@ mod logic_tests {
             .unwrap();
         assert_eq!(g.load(Ordering::SeqCst), 1); // mismatch -> wipe -> bump
         assert_eq!(db::load_org_id(&pool).await.unwrap(), Some("orgB".into())); // new identity saved
+    }
+
+    fn parsed(id: &str, due: Option<&str>, updated: &str) -> ParsedIssue {
+        ParsedIssue {
+            id: id.into(),
+            identifier: format!("ENG-{id}"),
+            title: "T".into(),
+            description: None,
+            due_date: due.map(Into::into),
+            priority: 0,
+            url: "u".into(),
+            state_id: Some("s".into()),
+            state_name: Some("Todo".into()),
+            state_type: Some("unstarted".into()),
+            state_color: Some("#fff".into()),
+            assignee_id: Some("me".into()),
+            assignee_name: Some("Me".into()),
+            team_id: Some("t".into()),
+            team_key: Some("ENG".into()),
+            project_id: None,
+            project_name: None,
+            parent_id: None,
+            created_at: "c".into(),
+            updated_at: updated.into(),
+            archived_at: None,
+            labels: vec![],
+            raw_json: "{}".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn update_issue_persists_when_generation_unchanged() {
+        let (_dir, pool) = temp_pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(LINEAR_KEY_ACCOUNT, "lin").unwrap();
+        let creds: Arc<dyn LinearCredentialProvider> =
+            Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
+        let lock = tokio::sync::Mutex::new(());
+        let g = AtomicU64::new(0);
+        let issue = update_issue_logic(&pool, &lock, &g, creds, |_auth| async {
+            Ok(parsed("1", Some("2026-06-20"), "2026-06-19T00:00:00Z"))
+        })
+        .await
+        .unwrap();
+        assert_eq!(issue.due_date.as_deref(), Some("2026-06-20"));
+        assert_eq!(
+            issues::load_issue(&pool, "1")
+                .await
+                .unwrap()
+                .unwrap()
+                .due_date
+                .as_deref(),
+            Some("2026-06-20")
+        );
+    }
+
+    #[tokio::test]
+    async fn update_issue_discards_write_when_generation_changes() {
+        let (_dir, pool) = temp_pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(LINEAR_KEY_ACCOUNT, "lin").unwrap();
+        let creds: Arc<dyn LinearCredentialProvider> =
+            Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
+        let lock = tokio::sync::Mutex::new(());
+        let g = AtomicU64::new(0);
+        // Simulate a key change landing during the network mutation by bumping inside the fetcher.
+        let gref = &g;
+        let res = update_issue_logic(&pool, &lock, &g, creds, |_auth| async {
+            gref.fetch_add(1, Ordering::SeqCst);
+            Ok(parsed("1", Some("2026-06-20"), "2026-06-19T00:00:00Z"))
+        })
+        .await;
+        assert!(matches!(res, Err(CmdError::WorkspaceChanged)));
+        assert!(issues::load_issue(&pool, "1").await.unwrap().is_none()); // no write
     }
 }

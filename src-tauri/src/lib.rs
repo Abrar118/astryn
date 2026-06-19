@@ -48,7 +48,15 @@ pub fn run() {
             commands::set_linear_key,
             commands::clear_linear_key,
             commands::get_connection_status,
-            commands::test_linear_connection
+            commands::test_linear_connection,
+            commands::sync_issues,
+            commands::list_calendar_issues,
+            commands::list_unscheduled,
+            commands::list_filter_options,
+            commands::get_issue_detail,
+            commands::update_issue,
+            commands::list_users,
+            commands::get_me
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

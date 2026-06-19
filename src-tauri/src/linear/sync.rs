@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use crate::db::issues::{self, IssueRecord, LabelRecord};
 use crate::linear::issues::{IssuesPage, ParsedIssue};
 use crate::linear::LinearError;
@@ -22,7 +20,7 @@ pub struct SyncResult {
     pub synced: usize,
 }
 
-fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
+pub fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
     let labels = i
         .labels
         .iter()

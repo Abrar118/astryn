@@ -1,4 +1,3 @@
-#![allow(dead_code)]
 use crate::linear::{extract_data, LinearClient, LinearError};
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
