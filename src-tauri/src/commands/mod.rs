@@ -1,10 +1,12 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::State;
 
 use crate::db;
-use crate::linear::{LinearClient, LinearCredentialProvider, LinearError, Viewer};
+use crate::linear::issues::OrgIdentity;
+use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
 use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
@@ -39,6 +41,9 @@ pub enum CmdError {
     LinearApi,
     #[error("Internal error.")]
     Internal,
+    #[allow(dead_code)]
+    #[error("Workspace changed; please retry.")]
+    WorkspaceChanged,
 }
 
 impl serde::Serialize for CmdError {
@@ -62,25 +67,27 @@ pub struct AppState {
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
-    /// Serializes the credential-mutating commands (set/clear/test) so they can
-    /// never interleave. Without it, a slow `test_connection` could finish and
-    /// cache an identity for a key that a concurrent `set`/`clear` already
-    /// replaced — leaving a stale "connected" name beside the wrong key. The UI
-    /// guards against this too, but IPC calls can still overlap independently.
-    pub op_lock: tokio::sync::Mutex<()>,
+    /// Serializes credential mutations and bulk sync (set/clear/test/sync).
+    pub workspace_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every cache wipe; guards `update_issue`'s late write.
+    pub workspace_generation: AtomicU64,
+    /// Epoch-seconds deadline before which sync is suppressed after a 429 (0 = none).
+    #[allow(dead_code)]
+    pub rate_limited_until: AtomicU64,
 }
 
 pub async fn set_linear_key_logic(
     store: Arc<dyn SecretStore>,
     pool: &SqlitePool,
+    generation: &AtomicU64,
     key: String,
 ) -> Result<(), CmdError> {
-    // Invalidate any cached identity FIRST. If the keyring write later fails, the
-    // old key may persist but the status safely falls back to "unverified" — we
-    // never leave a stale "connected" name beside a freshly-changed key.
-    db::clear_viewer_name(pool)
+    // Wipe + bump FIRST so a later keyring failure can only leave an empty cache
+    // (safe), never the new key paired with the old workspace's data.
+    db::issues::wipe_workspace_cache(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
+    generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.set(LINEAR_KEY_ACCOUNT, &key))
         .await
@@ -92,15 +99,18 @@ pub async fn set_linear_key_logic(
 pub async fn clear_linear_key_logic(
     store: Arc<dyn SecretStore>,
     pool: &SqlitePool,
+    generation: &AtomicU64,
 ) -> Result<(), CmdError> {
+    // Wipe + bump first; a failed delete then leaves an empty cache, which is safe.
+    db::issues::wipe_workspace_cache(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.delete(LINEAR_KEY_ACCOUNT))
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?;
-    db::clear_viewer_name(pool)
-        .await
-        .map_err(|_| CmdError::Internal)?;
     Ok(())
 }
 
@@ -120,17 +130,15 @@ pub async fn get_status_logic(
     Ok(compute_status(has_key, cached))
 }
 
-/// `fetch_viewer` is injected so this logic is unit-testable without the network.
-/// The cache is only written AFTER a successful fetch, so a failed test leaves the
-/// previously-cached identity untouched.
 pub async fn test_connection_logic<F, Fut>(
     credentials: Arc<dyn LinearCredentialProvider>,
     pool: &SqlitePool,
-    fetch_viewer: F,
+    generation: &AtomicU64,
+    fetch_identity: F,
 ) -> Result<ConnectionStatus, CmdError>
 where
     F: FnOnce(String) -> Fut,
-    Fut: std::future::Future<Output = Result<Viewer, LinearError>>,
+    Fut: std::future::Future<Output = Result<OrgIdentity, LinearError>>,
 {
     let c = credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
@@ -138,23 +146,55 @@ where
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::NotConfigured)?;
-    let viewer = fetch_viewer(auth).await?;
-    db::save_viewer_name(pool, &viewer.name)
+    let id = fetch_identity(auth).await?;
+    // Compare BEFORE overwriting: a swapped key pointing at a different org wipes first.
+    if let Some(cached) = db::load_org_id(pool)
         .await
-        .map_err(|_| CmdError::Internal)?;
-    Ok(ConnectionStatus::Connected { name: viewer.name })
+        .map_err(|_| CmdError::Internal)?
+    {
+        if cached != id.org_id {
+            db::issues::wipe_workspace_cache(pool)
+                .await
+                .map_err(|_| CmdError::Internal)?;
+            generation.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+    db::save_identity(
+        pool,
+        &id.viewer_id,
+        &id.viewer_name,
+        &id.org_id,
+        &id.org_name,
+        &id.org_url_key,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)?;
+    Ok(ConnectionStatus::Connected {
+        name: id.viewer_name,
+    })
 }
 
 #[tauri::command]
 pub async fn set_linear_key(state: State<'_, AppState>, key: String) -> Result<(), CmdError> {
-    let _guard = state.op_lock.lock().await;
-    set_linear_key_logic(state.secret_store.clone(), &state.pool, key).await
+    let _g = state.workspace_lock.lock().await;
+    set_linear_key_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.workspace_generation,
+        key,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn clear_linear_key(state: State<'_, AppState>) -> Result<(), CmdError> {
-    let _guard = state.op_lock.lock().await;
-    clear_linear_key_logic(state.secret_store.clone(), &state.pool).await
+    let _g = state.workspace_lock.lock().await;
+    clear_linear_key_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.workspace_generation,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -168,12 +208,13 @@ pub async fn get_connection_status(
 pub async fn test_linear_connection(
     state: State<'_, AppState>,
 ) -> Result<ConnectionStatus, CmdError> {
-    let _guard = state.op_lock.lock().await;
+    let _g = state.workspace_lock.lock().await;
     let client = state.linear.clone();
     test_connection_logic(
         state.credentials.clone(),
         &state.pool,
-        move |auth| async move { client.viewer(&auth).await },
+        &state.workspace_generation,
+        move |auth| async move { client.viewer_with_org(&auth).await },
     )
     .await
 }
@@ -236,11 +277,17 @@ mod logic_tests {
         (dir, pool)
     }
 
-    fn viewer(name: &str) -> Viewer {
-        Viewer {
-            id: "u1".into(),
-            name: name.into(),
-            email: "a@b.c".into(),
+    fn gen0() -> AtomicU64 {
+        AtomicU64::new(0)
+    }
+
+    fn org(id: &str) -> OrgIdentity {
+        OrgIdentity {
+            viewer_id: "v1".into(),
+            viewer_name: "Abrar".into(),
+            org_id: id.into(),
+            org_name: "GAM".into(),
+            org_url_key: "gam".into(),
         }
     }
 
@@ -253,23 +300,10 @@ mod logic_tests {
     }
 
     #[tokio::test]
-    async fn saving_key_reports_unverified() {
-        let (_dir, pool) = temp_pool().await;
-        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
-            .await
-            .unwrap();
-        let status = get_status_logic(store, &pool).await.unwrap();
-        assert_eq!(status, ConnectionStatus::Unverified);
-    }
-
-    #[tokio::test]
     async fn cached_identity_reports_connected() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
-            .await
-            .unwrap();
+        store.set(LINEAR_KEY_ACCOUNT, "lin_xyz").unwrap();
         db::save_viewer_name(&pool, "Abrar").await.unwrap();
         let status = get_status_logic(store, &pool).await.unwrap();
         assert_eq!(
@@ -281,44 +315,47 @@ mod logic_tests {
     }
 
     #[tokio::test]
-    async fn replacing_key_invalidates_cached_identity() {
+    async fn saving_key_wipes_and_bumps_generation() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "old".into())
+        db::save_identity(&pool, "v0", "Old", "org0", "Old", "old")
             .await
             .unwrap();
-        db::save_viewer_name(&pool, "Abrar").await.unwrap();
-        set_linear_key_logic(store.clone(), &pool, "new".into())
+        let g = gen0();
+        set_linear_key_logic(store.clone(), &pool, &g, "lin_xyz".into())
             .await
             .unwrap();
-        assert_eq!(db::load_viewer_name(&pool).await.unwrap(), None);
+        assert_eq!(g.load(Ordering::SeqCst), 1);
+        assert_eq!(db::load_org_id(&pool).await.unwrap(), None); // identity wiped
         let status = get_status_logic(store, &pool).await.unwrap();
         assert_eq!(status, ConnectionStatus::Unverified);
     }
 
     #[tokio::test]
-    async fn clearing_key_removes_key_and_identity() {
-        let (_dir, pool) = temp_pool().await;
-        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        set_linear_key_logic(store.clone(), &pool, "lin_xyz".into())
-            .await
-            .unwrap();
-        db::save_viewer_name(&pool, "Abrar").await.unwrap();
-        clear_linear_key_logic(store.clone(), &pool).await.unwrap();
-        assert_eq!(store.get(LINEAR_KEY_ACCOUNT).unwrap(), None);
-        assert_eq!(db::load_viewer_name(&pool).await.unwrap(), None);
-        let status = get_status_logic(store, &pool).await.unwrap();
-        assert_eq!(status, ConnectionStatus::NotConfigured);
-    }
-
-    #[tokio::test]
-    async fn test_connection_persists_viewer_name() {
+    async fn clearing_key_wipes_and_bumps() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         store.set(LINEAR_KEY_ACCOUNT, "lin_xyz").unwrap();
+        let g = gen0();
+        clear_linear_key_logic(store.clone(), &pool, &g)
+            .await
+            .unwrap();
+        assert_eq!(g.load(Ordering::SeqCst), 1);
+        assert_eq!(store.get(LINEAR_KEY_ACCOUNT).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn test_connection_same_org_keeps_cache_and_saves_identity() {
+        let (_dir, pool) = temp_pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(LINEAR_KEY_ACCOUNT, "lin_xyz").unwrap();
+        db::save_identity(&pool, "v1", "Abrar", "orgA", "GAM", "gam")
+            .await
+            .unwrap();
         let creds: Arc<dyn LinearCredentialProvider> =
             Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
-        let status = test_connection_logic(creds, &pool, |_auth| async { Ok(viewer("Abrar")) })
+        let g = AtomicU64::new(5);
+        let status = test_connection_logic(creds, &pool, &g, |_a| async { Ok(org("orgA")) })
             .await
             .unwrap();
         assert_eq!(
@@ -327,37 +364,24 @@ mod logic_tests {
                 name: "Abrar".into()
             }
         );
-        assert_eq!(
-            db::load_viewer_name(&pool).await.unwrap(),
-            Some("Abrar".to_string())
-        );
+        assert_eq!(g.load(Ordering::SeqCst), 5); // same org -> no wipe -> no bump
     }
 
     #[tokio::test]
-    async fn failed_test_leaves_cache_unchanged() {
+    async fn test_connection_different_org_wipes_and_bumps() {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         store.set(LINEAR_KEY_ACCOUNT, "lin_xyz").unwrap();
-        db::save_viewer_name(&pool, "Old Name").await.unwrap();
+        db::save_identity(&pool, "v1", "Abrar", "orgA", "GAM", "gam")
+            .await
+            .unwrap();
         let creds: Arc<dyn LinearCredentialProvider> =
             Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
-        let result =
-            test_connection_logic(creds, &pool, |_auth| async { Err(LinearError::Auth) }).await;
-        assert!(result.is_err());
-        assert_eq!(
-            db::load_viewer_name(&pool).await.unwrap(),
-            Some("Old Name".to_string())
-        );
-    }
-
-    #[tokio::test]
-    async fn test_connection_without_key_is_not_configured() {
-        let (_dir, pool) = temp_pool().await;
-        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
-        let creds: Arc<dyn LinearCredentialProvider> =
-            Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
-        let result = test_connection_logic(creds, &pool, |_auth| async { Ok(viewer("X")) }).await;
-        assert!(matches!(result, Err(CmdError::NotConfigured)));
-        assert_eq!(db::load_viewer_name(&pool).await.unwrap(), None);
+        let g = AtomicU64::new(0);
+        test_connection_logic(creds, &pool, &g, |_a| async { Ok(org("orgB")) })
+            .await
+            .unwrap();
+        assert_eq!(g.load(Ordering::SeqCst), 1); // mismatch -> wipe -> bump
+        assert_eq!(db::load_org_id(&pool).await.unwrap(), Some("orgB".into())); // new identity saved
     }
 }

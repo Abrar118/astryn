@@ -38,7 +38,9 @@ pub fn run() {
                 secret_store: store,
                 credentials,
                 linear,
-                op_lock: tokio::sync::Mutex::new(()),
+                workspace_lock: tokio::sync::Mutex::new(()),
+                workspace_generation: std::sync::atomic::AtomicU64::new(0),
+                rate_limited_until: std::sync::atomic::AtomicU64::new(0),
             });
             Ok(())
         })

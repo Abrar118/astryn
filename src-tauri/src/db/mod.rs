@@ -100,6 +100,7 @@ pub async fn load_me(pool: &SqlitePool) -> Result<Option<(String, String)>, sqlx
     })
 }
 
+#[allow(dead_code)]
 pub async fn save_viewer_name(pool: &SqlitePool, name: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
@@ -120,6 +121,7 @@ pub async fn load_viewer_name(pool: &SqlitePool) -> Result<Option<String>, sqlx:
     Ok(row.map(|r| r.0))
 }
 
+#[allow(dead_code)]
 pub async fn clear_viewer_name(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM settings WHERE key = ?1")
         .bind(VIEWER_NAME_KEY)

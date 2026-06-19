@@ -70,6 +70,7 @@ pub fn http_status_to_error(status: u16) -> Option<LinearError> {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, PartialEq)]
 pub struct Viewer {
     pub id: String,
@@ -77,17 +78,20 @@ pub struct Viewer {
     pub email: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct GraphQLResponse<T> {
     data: Option<T>,
     errors: Option<Vec<GraphQLError>>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct GraphQLError {
     message: String,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize)]
 struct ViewerData {
     viewer: Viewer,
@@ -95,6 +99,7 @@ struct ViewerData {
 
 /// Parse a GraphQL response body. GraphQL surfaces errors with HTTP 200, so a
 /// non-empty `errors` array is a failure even when the transport succeeded.
+#[allow(dead_code)]
 pub fn parse_viewer_response(body: &str) -> Result<Viewer, LinearError> {
     let resp: GraphQLResponse<ViewerData> =
         serde_json::from_str(body).map_err(|_| LinearError::Malformed)?;
@@ -113,6 +118,7 @@ pub fn parse_viewer_response(body: &str) -> Result<Viewer, LinearError> {
 
 /// Map an HTTP status + body to a result. Distinguishes auth / rate-limit /
 /// server failures from malformed GraphQL so they are never misclassified.
+#[allow(dead_code)]
 pub fn interpret_response(status: u16, body: &str) -> Result<Viewer, LinearError> {
     match status {
         401 | 403 => Err(LinearError::Auth),
@@ -222,6 +228,7 @@ impl LinearClient {
         Ok(text)
     }
 
+    #[allow(dead_code)]
     pub async fn viewer(&self, authorization: &str) -> Result<Viewer, LinearError> {
         let body = serde_json::json!({ "query": "query { viewer { id name email } }" });
         let resp = self
