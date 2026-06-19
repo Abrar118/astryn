@@ -604,7 +604,7 @@ export function IssuesView() {
     "cursor-pointer appearance-none rounded-md border border-border bg-secondary/40 py-1.5 pl-2.5 pr-7 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4 pb-24">
+    <div className="flex h-full flex-col gap-3 p-4 pb-4">
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="mr-2 text-sm font-semibold text-foreground">
@@ -749,7 +749,7 @@ export function IssuesView() {
             No issues. Sync to populate, or relax the filters.
           </div>
         ) : viewMode === "list" ? (
-          <div className="h-full overflow-y-auto">
+          <div className="h-full overflow-y-auto pb-20">
             {groups.map((g) => (
               <div key={g.key}>
                 <button
@@ -768,13 +768,15 @@ export function IssuesView() {
             ))}
           </div>
         ) : (
-          <div className="flex h-full gap-3 overflow-x-auto p-3">
+          // Darker board surface so the (bg-card) cards pop; columns separated by
+          // a single hairline divider rather than a heavy gap.
+          <div className="flex h-full overflow-x-auto bg-background">
             {groups.map((g) => (
-              <div key={g.key} className="flex w-80 shrink-0 flex-col rounded-lg bg-background/50">
-                <div className="flex items-center gap-2 px-3 py-2.5 text-xs font-semibold text-foreground">
+              <div key={g.key} className="flex w-80 shrink-0 flex-col border-r border-border/50 last:border-r-0">
+                <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
                   <GroupHeading group={g} />
                 </div>
-                <div className="flex flex-col gap-2 overflow-y-auto px-2 pb-2">
+                <div className="flex flex-col gap-2.5 overflow-y-auto px-2.5 pb-20">
                   {g.issues.map((i) => (
                     <BoardCard key={i.id} issue={i} display={display} avatar={avatarOf(i.assigneeId)} onOpen={open} today={today} />
                   ))}

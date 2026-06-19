@@ -36,7 +36,7 @@ export function UnscheduledRail({
         </span>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-3">
+      <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-20">
         {issues.map((i) => (
           <div
             key={i.id}
