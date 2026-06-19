@@ -4,9 +4,10 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import type { DatesSetArg, EventClickArg } from "@fullcalendar/core";
-import { useCalendarIssues, useMe, useUnscheduled } from "@/lib/queries";
-import { dhakaToday, rangeFromDates } from "@/lib/dates";
+import type { DatesSetArg, EventClickArg, EventDropArg } from "@fullcalendar/core";
+import type { DropArg } from "@fullcalendar/interaction";
+import { useCalendarIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
+import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
 import type { IssueFilters } from "@/lib/commands";
 import { eventStyle } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
@@ -29,6 +30,7 @@ export function CalendarPage() {
   const [initialized, setInitialized] = useState(false);
   const [colorBy, setColorBy] = useState<"state" | "priority">("state");
   const [, setParams] = useSearchParams();
+  const update = useUpdateIssue();
 
   // Default the assignee filter to "me" exactly once, when identity loads. After
   // that, filters.assigneeId === undefined genuinely means "All assignees".
@@ -73,11 +75,20 @@ export function CalendarPage() {
           firstDay={0}
           now={today}
           editable={true}
+          droppable={true}
           height="auto"
           headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
           events={events}
           datesSet={(arg: DatesSetArg) => setRange(rangeFromDates(arg.start, arg.end))}
           eventClick={(arg: EventClickArg) => setParams({ issue: arg.event.id })}
+          eventDrop={(arg: EventDropArg) => {
+            if (!arg.event.start) return;
+            update.mutate({ id: arg.event.id, patch: { dueDate: toDateStr(arg.event.start) } });
+          }}
+          drop={(arg: DropArg) => {
+            const id = arg.draggedEl.getAttribute("data-id");
+            if (id) update.mutate({ id, patch: { dueDate: toDateStr(arg.date) } });
+          }}
         />
       </div>
       <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />

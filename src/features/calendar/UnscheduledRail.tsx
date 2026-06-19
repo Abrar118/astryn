@@ -1,3 +1,5 @@
+import { useEffect, useRef } from "react";
+import { Draggable } from "@fullcalendar/interaction";
 import type { CalendarIssue } from "@/lib/commands";
 
 export function UnscheduledRail({
@@ -6,8 +8,20 @@ export function UnscheduledRail({
   issues: CalendarIssue[];
   onOpen: (id: string) => void;
 }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!ref.current) return;
+    // create:false => FullCalendar adds no internal event on drop; our cache drives
+    // rendering. The calendar's `drop` callback still fires with the target date.
+    const d = new Draggable(ref.current, {
+      itemSelector: ".astryn-rail-item",
+      eventData: () => ({ create: false }),
+    });
+    return () => d.destroy();
+  }, []);
+
   return (
-    <aside id="astryn-unscheduled" className="w-64 shrink-0 border-l p-3">
+    <aside id="astryn-unscheduled" ref={ref} className="w-64 shrink-0 border-l p-3">
       <div className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
         Unscheduled ({issues.length})
       </div>
