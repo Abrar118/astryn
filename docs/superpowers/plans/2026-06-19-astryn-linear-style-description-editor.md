@@ -822,7 +822,7 @@ In `IssueDrawer.tsx`:
 
 1. Keep `ReactMarkdown` and `remarkGfm` for read-only activity comments.
 2. Import `DescriptionEditor`.
-3. Remove `desc`, `editingDesc`, the description synchronization effect, the Edit/Done control, description textarea, and description `ReactMarkdown` preview.
+3. Remove `desc`, `editingDesc`, the Edit/Done control, description textarea, and description `ReactMarkdown` preview. **Note:** the existing re-seed effect is *combined* — it sets both `title` and `desc` (`useEffect(() => { setTitle(detailTitle); setDesc(detailDesc); }, [id, result.source, detailTitle, detailDesc])`). Do not delete it; only drop the `setDesc(detailDesc)` line and the now-unused `detailDesc` dependency. The `setTitle` re-seed must remain or title editing breaks on issue switch. `detailDesc` itself stays (it feeds `markdown={detailDesc}`).
 4. Extract the existing link logic from the `md` components' `a` handler into a reusable `handleLink(href)` so the editor and the comments renderer share it (in-app issue link → `openIssue`; otherwise `safeExternalUrl` → `openUrl`; unsafe → blocked toast). Keep `md` using it for comments.
 
 ```tsx
