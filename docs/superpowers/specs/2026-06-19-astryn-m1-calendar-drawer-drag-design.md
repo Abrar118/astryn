@@ -29,8 +29,17 @@ Follows the M0 pattern: **thin `#[tauri::command]` wrappers over unit-testable a
 - **`db/`** (extends existing): migration `0002`, plus repositories: `upsert_issue` (conditional), `upsert_labels`, `load_issues_in_range`, `load_unscheduled`, `load_issue`, `list_filter_options`, `get_sync_cursor`, `set_sync_cursor`, and a transactional `wipe_workspace_cache`.
 - **`commands/`** (extends existing): `sync_issues`, `list_calendar_issues`, `list_unscheduled`, `get_issue_detail`, `update_issue`, `list_users`, `list_filter_options`.
 
-### Concurrency — one lock (P0)
-M0's `op_lock` and a separate sync lock would be **independent**, so a key change could interleave with an in-flight sync and cache the previous workspace's issues. M1 therefore **unifies them into a single `AppState.workspace_lock: tokio::sync::Mutex<()>`** acquired by **`set_linear_key`, `clear_linear_key`, `test_linear_connection`, and `sync_issues`**. These are mutually exclusive. Read commands (`list_*`, `get_issue_detail`) and the single-issue `update_issue` do not take it.
+### Concurrency — lock + generation token (P0)
+Two mechanisms, because the bulk writers and the single-issue writer have different latency profiles:
+
+1. **`AppState.workspace_lock: tokio::sync::Mutex<()>`** — acquired by **`set_linear_key`, `clear_linear_key`, `test_linear_connection`, and `sync_issues`**. These are mutually exclusive, so a key change can never interleave with a bulk sync. (Replaces M0's `op_lock`, which was independent of any sync lock.)
+
+2. **`AppState.workspace_generation: AtomicU64`** — bumped (under the lock) whenever `set_linear_key`/`clear_linear_key` wipes the cache. This guards the one credential-bound *writer* that must **not** hold the lock for its whole duration (it would block on a long sync): **`update_issue`**. The flow:
+   - capture `gen = workspace_generation.load()` at entry;
+   - run `issueUpdate` over the network (no lock held);
+   - **before** the SQLite upsert, re-check `workspace_generation == gen`. If it changed (a key was replaced mid-flight), **discard the write** and return `CmdError::WorkspaceChanged` so the optimistic UI rolls back. This is what stops a late update from repopulating SQLite with an old-workspace issue after a wipe.
+
+**Read commands** (`get_issue_detail`, `list_users`, `list_*`) do **not persist** anything, so a result that races a key change is transient and harmless; the frontend clears the drawer/users caches on key change (the calendar invalidation after a wipe already does this). They take neither the lock nor the generation guard.
 
 ### Frontend (`src/`)
 - **Routing:** `react-router-dom` — `/` → Calendar, `/settings` → Settings. The **drawer is driven by a `?issue=<id>` search param** so it overlays the calendar without unmounting it (non-modal, deep-linkable).
@@ -97,7 +106,9 @@ INSERT INTO issues (...) VALUES (...)
 ON CONFLICT(id) DO UPDATE SET <cols> = excluded.<cols>
 WHERE excluded.updated_at >= issues.updated_at;
 ```
-so an older record fetched via boundary-overlap (or out of order) never clobbers a newer cached row.
+so an older record fetched via boundary-overlap (or out of order) never clobbers a newer cached row. The upsert reports whether it **applied** (via `RETURNING` / `changes()`).
+
+**Label replacement is gated on the upsert applying (P1):** issue + labels are written in one transaction; labels for an issue are deleted-and-reinserted **only when that issue's conditional upsert applied**. So a rejected (older) issue never disturbs the current labels, and a removed label *is* pruned (delete-then-insert, not insert-only).
 
 **Filtering is SQL-side**, not client-side: `list_calendar_issues` / `list_unscheduled` take optional `team_id` / `assignee_id` / `project_id` (default `assignee_id` = cached viewer id). All read queries exclude `archived_at IS NOT NULL`.
 
@@ -115,34 +126,37 @@ Choose by **cursor presence, not table emptiness**: if `sync_cursors("linear_iss
 ### 4.2 `full_sync`
 Page `issues(first: 100, after: $cursor, includeArchived: true)` with no due-date filter, ordered by `updatedAt`. Upsert `issues` + `labels` per page (conditional upsert; archived nodes set `archived_at`). Track the max `updatedAt` across all pages. **Write the cursor only after the final page is durably committed** — never mid-pagination.
 
-### 4.3 `incremental_sync` (overlap watermark, P1)
-Query `issues(filter: { updatedAt: { gte: $cursor } }, includeArchived: true)` — **`gte`, not `gt`**, so an issue updated in the same second as the cursor isn't skipped; the conditional upsert makes the re-fetched boundary rows idempotent. Page, upsert, then advance the cursor to the new max `updatedAt` after all pages commit. `includeArchived: true` lets newly-archived issues arrive with their `archived_at` set so they drop out of the calendar.
+### 4.3 `incremental_sync` (lookback window, P1)
+Plain `gte: $cursor` only covers the exact boundary instant; an issue updated *during* a multi-page scan can shift across page boundaries and be missed. So M1 queries with a **lookback window**: `issues(filter: { updatedAt: { gte: $cursor − LOOKBACK } }, includeArchived: true)`, `LOOKBACK = 5 minutes` (absorbs in-scan updates and modest clock skew). The conditional upsert makes the re-fetched window idempotent and cheap. Page, upsert (with gated label replacement), then advance the cursor to the new max `updatedAt` **after all pages commit** — never mid-pagination. `includeArchived: true` lets newly-archived issues arrive with `archived_at` set so they drop out of the calendar.
 
 ### 4.4 Workspace validation & cache wipe (P0 / decision 6)
-- On `set_linear_key` / `clear_linear_key` (under `workspace_lock`): call `db::wipe_workspace_cache` — a **single transaction** that deletes all rows from `issues`, `labels`, `sync_cursors` and clears the cached viewer + organization identity from `settings`. This guarantees a key change can never leave another workspace's issues cached.
-- On `sync_issues` (under the same lock): fetch the org identity and compare to the cached one; on mismatch, `wipe_workspace_cache` first, then full-sync. Belt-and-suspenders against a key swapped outside the normal flow.
+The invariant: **cached issues always belong to the org currently identified in `settings`, and that identity is only ever written after a compare.** The "compare → wipe-on-mismatch → save identity" sequence is shared by the three identity-touching commands:
+
+- **`set_linear_key` / `clear_linear_key`** (under `workspace_lock`): always `db::wipe_workspace_cache` — a **single transaction** deleting all rows from `issues`, `labels`, `sync_cursors` and clearing cached viewer + org identity — then **bump `workspace_generation`**. (On `set`, identity is left empty; the next `test`/`sync` populates it.) A key change therefore can never leave another workspace's issues cached.
+- **`test_linear_connection`** (under the lock): fetch `viewer { … organization { id name urlKey } }`. **Compare the fetched org id to the cached one *before* overwriting:** if a cached org exists and differs (key was swapped externally), `wipe_workspace_cache` + bump generation first; then **save** the fetched viewer + org identity. If no cached org exists, just save it. This prevents relabeling existing cache as a new workspace.
+- **`sync_issues`** (under the lock): fetch org identity and compare to cached. On mismatch → `wipe_workspace_cache` + bump generation. On mismatch **or** when no identity is cached (fresh / post-wipe) → **save the fetched identity**, then proceed (full sync, since the cursor is now absent). On match → proceed normally. Identity is thus always persisted after being fetched.
 
 ### 4.5 Triggers
 - **Startup:** no cursor → `full_sync` (visible syncing state); cursor present → render cache immediately, `incremental_sync` in the background.
 - **Manual refresh / 5-min auto-poll:** `sync_issues` (incremental, or full if no cursor). All acquire `workspace_lock`; an in-flight sync makes the next await the lock.
 
-### 4.6 Archival / deletion (corrected)
-`includeArchived: true` + the `archived_at` column means **archived issues are fetched and then hidden** — archival is handled, not merely "understated." The remaining gap: a **hard-deleted** issue (rare in Linear) is not pruned by an upsert-only sync and persists until a manual full resync; documented, not fixed in M1.
+### 4.6 Archival / deletion
+`includeArchived: true` + the `archived_at` column means **archived issues are fetched and then hidden** — archival is handled. **Hard-deleted** issues (rare in Linear) are *not* pruned by an upsert-only sync: there is no tombstone to fetch, so they **persist in the cache until a cache wipe.** A wipe happens on a key change and via an explicit **`sync_issues({ full: true })`** ("Resync" in Settings), which runs `wipe_workspace_cache` + `full_sync` under the lock (requires being online; on failure the next auto-sync re-runs full since the cursor is absent). M1 does **not** add snapshot/diff pruning to the normal sync path.
 
 ---
 
 ## 5. Tauri command surface (typed, shared with TS)
 
-All return a sanitized `CmdError` (M0's enum + `From<LinearError>`).
+All return a sanitized `CmdError` (M0's enum + `From<LinearError>`, plus a new `WorkspaceChanged` variant).
 
 | Command | Input → Output | Notes |
 |---|---|---|
-| `sync_issues` | `{}` → `SyncResult { mode: "full"\|"incremental", synced: number }` | `workspace_lock`-guarded; validates org identity |
+| `sync_issues` | `{ full?: boolean }` → `SyncResult { mode: "full"\|"incremental", synced: number }` | `workspace_lock`-guarded; validates org identity; `full:true` wipes + full-syncs (Settings "Resync") |
 | `list_calendar_issues` | `{ start, end, team_id?, assignee_id?, project_id? }` → `CalendarIssue[]` | Half-open range; excludes archived |
 | `list_unscheduled` | `{ team_id?, assignee_id?, project_id? }` → `CalendarIssue[]` | `due_date IS NULL`; excludes archived |
 | `list_filter_options` | `{}` → `FilterOptions { teams, projects }` | `SELECT DISTINCT` over cached issues (works offline) |
 | `get_issue_detail` | `{ id }` → `IssueDetailResult` | Live `issue(id)`; **discriminated** live/cache result (below) |
-| `update_issue` | `{ id, patch: UpdateIssuePatch }` → `Issue` | `issueUpdate`; upserts the returned issue (§7 `[REQ]`) |
+| `update_issue` | `{ id, patch: UpdateIssuePatch }` → `Issue` | `issueUpdate`; generation-guarded upsert of the returned issue (§7 `[REQ]`); `WorkspaceChanged` if the key changed mid-flight |
 | `list_users` | `{}` → `User[]` | Assignee picker; bounded `first: 250`; cached in TanStack |
 
 ### 5.1 Types
@@ -162,10 +176,13 @@ type Issue = CalendarIssue & {
   parentId: string | null; createdAt: string; updatedAt: string;
 };
 
-// Discriminated so offline never pretends to have data it lacks (P1)
+// Discriminated so the UI never pretends to have data it lacks (P1).
+// "preview" is the FRONTEND placeholder (built from the calendar row) shown
+// before the query resolves; "cache"/"live" are what the command returns.
 type IssueDetailResult =
-  | { source: "live"; detail: IssueDetail }
-  | { source: "cache"; detail: CachedIssue };   // editors that need live data are disabled
+  | { source: "preview"; detail: CalendarIssue }   // frontend-only placeholder; all editors disabled
+  | { source: "cache";   detail: CachedIssue }     // command, offline fallback; live-only editors disabled
+  | { source: "live";    detail: IssueDetail };    // command, online; all editors enabled
 
 type CachedIssue = Issue;   // exactly what the cache can honestly provide
 
@@ -219,8 +236,8 @@ Mapping: outer `None` ⇒ omit from the GraphQL input; `Some(None)` ⇒ send exp
 
 ### 6.3 F2 — Drawer (`features/drawer/`)
 - Opens whenever `?issue=<id>` is present; non-modal; the calendar stays interactive.
-- **Instant open** comes from the frontend seeding `useIssueDetail` via TanStack `placeholderData` built from the **calendar query's already-cached `CalendarIssue`** — *not* from the command. The live `get_issue_detail` query runs underneath and replaces it on arrival.
-- **Result handling:** when the command returns `source: "cache"` (offline/failed live query), the drawer renders the cached fields and **disables editors that need live data** (state picker has no `teamStates`, etc.); a small "offline — showing cached" note shows. `source: "live"` enables all six editors.
+- **Instant open** comes from the frontend seeding `useIssueDetail` via TanStack `placeholderData` = `{ source: "preview", detail: <CalendarIssue from the calendar cache> }`. Because the union has a dedicated `preview` branch, the placeholder is type-consistent with the query's `IssueDetailResult` (no shape mismatch). The live `get_issue_detail` query runs underneath and replaces it on arrival.
+- **Result handling by branch:** `preview` → render the calendar fields, **all editors disabled** (data still loading). `cache` (command's offline/failed-live fallback) → render cached fields, **live-only editors disabled** (no `teamStates`, comments, etc.), with a "offline — showing cached" note. `live` → all six editors enabled.
 - **Editable (live only):** state (from `teamStates`), priority (static enum 0–4), due date (date picker, clearable), title (text), assignee (combobox over `useUsers`, clearable), description (textarea + `react-markdown` preview, clearable). Each calls `update_issue` optimistically.
 - **Read-only:** labels, project/cycle, sub-issues, relations, comments.
 
@@ -247,7 +264,8 @@ Mapping: outer `None` ⇒ omit from the GraphQL input; `Some(None)` ⇒ send exp
 - **Offline-first:** calendar always renders from cache; `get_issue_detail` falls back to `source: "cache"`.
 - **Optimistic writes with rollback:** every edit/drag reverts on failure with a `goey-toast` error whose **description carries the sanitized message** (M0 `errorText`).
 - **Rate limiting (P1):** Linear may signal throttling as **HTTP 429 *or* an HTTP-400 GraphQL error with extension code `RATELIMITED`**. M1 extends M0's `interpret_response` + GraphQL-error parsing to detect both and map to `LinearError::RateLimited`, and reads `X-RateLimit-Requests-Reset` / `Retry-After` to back off the sync loop rather than hammering. Surfaced as a non-blocking toast; cached calendar untouched.
-- **Sync failures** never clear the cache; first-launch full-sync failure shows an error + retry with whatever is cached still visible.
+- **Sync failures** never clear the cache; first-launch full-sync failure shows an error + retry with whatever is cached still visible. (An explicit `full:true` Resync is the *only* path that deliberately wipes first.)
+- **`WorkspaceChanged`** from `update_issue` (key replaced mid-edit): the optimistic change rolls back; no toast needed beyond a quiet notice, since the calendar has already been wiped/reloaded for the new workspace.
 - Commands never leak raw diagnostics; GraphQL `errors` on HTTP 200 are failures.
 
 ---
@@ -259,6 +277,10 @@ Mapping: outer `None` ⇒ omit from the GraphQL input; `Some(None)` ⇒ send exp
 - `full_sync` over a multi-page injected fetcher: all pages upserted; cursor = max `updatedAt`; **cursor unset if a page fails**.
 - `incremental_sync`: `gte` boundary re-fetch is idempotent (conditional upsert); cursor advances only after commit.
 - Conditional upsert: older `updated_at` is rejected; archived node sets `archived_at` and drops from `load_issues_in_range`.
+- **Label gating:** a removed label is pruned (delete-then-insert) when the upsert applies; a rejected (older) issue upsert leaves existing labels untouched.
+- **Incremental lookback:** with a cursor, the fetch filter is `updatedAt >= cursor − 5min`; re-fetched window rows are idempotent.
+- **Identity compare-before-overwrite:** matching org keeps the cache; a mismatched org wipes *then* saves the new identity (and bumps generation); a fresh (no-identity) sync saves identity.
+- **Generation guard:** `update_issue` discards its upsert and returns `WorkspaceChanged` when the generation changed between entry and commit; persists normally when unchanged.
 - Repositories vs temp SQLite: half-open range boundaries, unscheduled (NULL only), filter combinations, `list_filter_options` distinctness, `wipe_workspace_cache` clears all tables + identity.
 - `UpdateIssuePatch` deserialization: omit vs explicit-null vs value on a nullable field; GraphQL-input mapping.
 
