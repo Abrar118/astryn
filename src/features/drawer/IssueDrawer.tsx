@@ -59,7 +59,7 @@ function DrawerBody({
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
 
   return (
-    <aside className="fixed right-0 top-0 z-20 flex h-full w-[460px] flex-col gap-4 overflow-y-auto border-l bg-background p-5 shadow-xl">
+    <aside className="fixed right-0 top-0 z-20 flex h-full w-[460px] flex-col gap-4 overflow-y-auto border-l border-border bg-popover p-5 shadow-xl">
       <header className="flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{identifier}</span>
         <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>

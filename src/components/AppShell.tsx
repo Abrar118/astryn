@@ -10,7 +10,7 @@ export function AppShell() {
   const { isSyncing, refresh } = useSyncLoop();
   return (
     <div className="flex min-h-screen bg-background text-foreground">
-      <aside className="flex w-56 flex-col gap-1 border-r p-3">
+      <aside className="flex w-56 flex-col gap-1 border-r border-border bg-sidebar p-3">
         <div className="px-3 py-2 text-lg font-semibold">Astryn</div>
         <nav className="flex flex-col gap-1">
           <NavLink to="/" className={({ isActive }) => navItem(isActive)} end>Calendar</NavLink>

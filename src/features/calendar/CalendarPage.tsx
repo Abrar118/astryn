@@ -95,10 +95,10 @@ export function CalendarPage() {
   };
 
   return (
-    <div className="flex h-full">
-      <div className="flex min-w-0 flex-1 flex-col p-4">
-        <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
-        <div className="min-h-0 flex-1">
+    <div className="flex h-full flex-col gap-3 p-4">
+      <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
+      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+        <div className="min-h-0 min-w-0 flex-1 p-3">
           <FullCalendar
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
@@ -125,8 +125,8 @@ export function CalendarPage() {
             }}
           />
         </div>
+        <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
       </div>
-      <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
       <IssueDrawer />
     </div>
   );

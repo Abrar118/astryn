@@ -43,7 +43,7 @@ export function UnscheduledRail({
             data-id={i.id}
             onClick={() => onOpen(i.id)}
             title={i.title}
-            className="astryn-rail-item cursor-grab rounded-md border border-border/60 bg-card/50 px-2.5 py-2 text-xs transition-colors hover:border-border hover:bg-accent active:cursor-grabbing"
+            className="astryn-rail-item cursor-grab rounded-md border border-border/60 px-2.5 py-2 text-xs transition-colors hover:border-border hover:bg-accent active:cursor-grabbing"
           >
             <div className="flex items-center gap-1.5">
               <span
