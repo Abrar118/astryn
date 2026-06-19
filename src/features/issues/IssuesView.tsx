@@ -6,8 +6,10 @@ import {
   CalendarDays,
   ChevronDown,
   Gauge,
+  GitPullRequest,
   IterationCcw,
   LayoutGrid,
+  Link2,
   List as ListIcon,
   Milestone,
   RotateCcw,
@@ -46,6 +48,8 @@ type DisplayKey =
   | "estimate"
   | "cycle"
   | "milestone"
+  | "links"
+  | "pullRequests"
   | "created"
   | "updated";
 type DisplayProps = Record<DisplayKey, boolean>;
@@ -61,6 +65,8 @@ const DEFAULT_DISPLAY: DisplayProps = {
   estimate: false,
   cycle: false,
   milestone: false,
+  links: false,
+  pullRequests: false,
   created: false,
   updated: false,
 };
@@ -75,6 +81,8 @@ const DISPLAY_LABELS: Record<DisplayKey, string> = {
   estimate: "Estimate",
   cycle: "Cycle",
   milestone: "Milestone",
+  links: "Links",
+  pullRequests: "Pull requests",
   created: "Created",
   updated: "Updated",
 };
@@ -308,6 +316,18 @@ function MetaCluster({
           {issue.estimate}
         </Pill>
       )}
+      {display.pullRequests && issue.prCount > 0 && (
+        <Pill>
+          <GitPullRequest className="size-3" />
+          {issue.prCount}
+        </Pill>
+      )}
+      {display.links && issue.linkCount > 0 && (
+        <Pill>
+          <Link2 className="size-3" />
+          {issue.linkCount}
+        </Pill>
+      )}
       {display.priority && (
         <span className="hidden sm:flex">
           <PriorityIcon p={issue.priority} />
@@ -426,6 +446,18 @@ function BoardCard({
           <Pill>
             <Gauge className="size-3" />
             {issue.estimate}
+          </Pill>
+        )}
+        {display.pullRequests && issue.prCount > 0 && (
+          <Pill>
+            <GitPullRequest className="size-3" />
+            {issue.prCount}
+          </Pill>
+        )}
+        {display.links && issue.linkCount > 0 && (
+          <Pill>
+            <Link2 className="size-3" />
+            {issue.linkCount}
           </Pill>
         )}
         {display.dueDate && issue.dueDate && (

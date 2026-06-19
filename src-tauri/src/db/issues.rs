@@ -41,6 +41,8 @@ pub struct Issue {
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
+    pub link_count: i64,
+    pub pr_count: i64,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -87,6 +89,8 @@ pub struct IssueRecord {
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
+    pub link_count: i64,
+    pub pr_count: i64,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -127,9 +131,9 @@ pub async fn upsert_issue(
            (id, identifier, title, description, due_date, priority, url,
             state_id, state_name, state_type, state_color, assignee_id, assignee_name,
             team_id, team_key, project_id, project_name, parent_id,
-            estimate, cycle_name, cycle_number, milestone_name,
+            estimate, cycle_name, cycle_number, milestone_name, link_count, pr_count,
             created_at, updated_at, archived_at, synced_at, raw_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25, datetime('now'), ?26)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27, datetime('now'), ?28)
          ON CONFLICT(id) DO UPDATE SET
            identifier=excluded.identifier, title=excluded.title, description=excluded.description,
            due_date=excluded.due_date, priority=excluded.priority, url=excluded.url,
@@ -138,7 +142,7 @@ pub async fn upsert_issue(
            team_id=excluded.team_id, team_key=excluded.team_key, project_id=excluded.project_id,
            project_name=excluded.project_name, parent_id=excluded.parent_id,
            estimate=excluded.estimate, cycle_name=excluded.cycle_name, cycle_number=excluded.cycle_number,
-           milestone_name=excluded.milestone_name,
+           milestone_name=excluded.milestone_name, link_count=excluded.link_count, pr_count=excluded.pr_count,
            created_at=excluded.created_at, updated_at=excluded.updated_at, archived_at=excluded.archived_at,
            synced_at=excluded.synced_at, raw_json=excluded.raw_json
          WHERE excluded.updated_at >= issues.updated_at
@@ -166,6 +170,8 @@ pub async fn upsert_issue(
     .bind(&r.cycle_name)
     .bind(r.cycle_number)
     .bind(&r.milestone_name)
+    .bind(r.link_count)
+    .bind(r.pr_count)
     .bind(&r.created_at)
     .bind(&r.updated_at)
     .bind(&r.archived_at)
@@ -251,7 +257,9 @@ const ISSUE_COLS: &str =
     state_id, state_name, COALESCE(state_type,'') AS state_type,
     COALESCE(state_color,'') AS state_color, assignee_id, assignee_name,
     team_id, team_key, project_id, project_name, parent_id,
-    estimate, cycle_name, cycle_number, milestone_name, created_at, updated_at";
+    estimate, cycle_name, cycle_number, milestone_name,
+    COALESCE(link_count,0) AS link_count, COALESCE(pr_count,0) AS pr_count,
+    created_at, updated_at";
 
 pub async fn load_issue(pool: &SqlitePool, id: &str) -> Result<Option<Issue>, sqlx::Error> {
     sqlx::query_as(&format!(
@@ -404,6 +412,8 @@ mod tests {
             cycle_name: None,
             cycle_number: None,
             milestone_name: None,
+            link_count: 0,
+            pr_count: 0,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: updated.into(),
             archived_at: None,

@@ -145,6 +145,8 @@ fn parsed_to_issue(p: &ParsedIssue) -> Issue {
         cycle_name: p.cycle_name.clone(),
         cycle_number: p.cycle_number,
         milestone_name: p.milestone_name.clone(),
+        link_count: p.link_count,
+        pr_count: p.pr_count,
         created_at: p.created_at.clone(),
         updated_at: p.updated_at.clone(),
     }
@@ -823,6 +825,8 @@ mod logic_tests {
             cycle_name: None,
             cycle_number: None,
             milestone_name: None,
+            link_count: 0,
+            pr_count: 0,
             created_at: "c".into(),
             updated_at: updated.into(),
             archived_at: None,

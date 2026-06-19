@@ -65,6 +65,8 @@ export type Issue = {
   cycleName: string | null;
   cycleNumber: number | null;
   milestoneName: string | null;
+  linkCount: number;
+  prCount: number;
   createdAt: string;
   updatedAt: string;
 };

@@ -33,6 +33,8 @@ pub struct ParsedIssue {
     pub cycle_name: Option<String>,
     pub cycle_number: Option<i64>,
     pub milestone_name: Option<String>,
+    pub link_count: i64,
+    pub pr_count: i64,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -74,7 +76,34 @@ fn nested(v: &Value, obj: &str, k: &str) -> Option<String> {
         .map(Into::into)
 }
 
+/// A PR-style attachment URL across the common forges (GitHub `/pull/`,
+/// GitLab `/merge_requests/`, Bitbucket `/pull-requests/`).
+fn is_pr_url(url: &str) -> bool {
+    url.contains("/pull/") || url.contains("/merge_requests/") || url.contains("/pull-requests/")
+}
+
+/// Count an issue's attachments, split into pull requests vs. other links.
+fn classify_attachments(n: &Value) -> (i64, i64) {
+    let (mut links, mut prs) = (0i64, 0i64);
+    if let Some(arr) = n
+        .get("attachments")
+        .and_then(|a| a.get("nodes"))
+        .and_then(|x| x.as_array())
+    {
+        for a in arr {
+            let url = a.get("url").and_then(|u| u.as_str()).unwrap_or("");
+            if is_pr_url(url) {
+                prs += 1;
+            } else {
+                links += 1;
+            }
+        }
+    }
+    (links, prs)
+}
+
 fn node_to_issue(n: &Value) -> ParsedIssue {
+    let (link_count, pr_count) = classify_attachments(n);
     let labels = n
         .get("labels")
         .and_then(|l| l.get("nodes"))
@@ -116,6 +145,8 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
             .and_then(|c| c.get("number"))
             .and_then(|x| x.as_i64()),
         milestone_name: nested(n, "projectMilestone", "name"),
+        link_count,
+        pr_count,
         created_at: s(n, "createdAt").unwrap_or_default(),
         updated_at: s(n, "updatedAt").unwrap_or_default(),
         archived_at: s(n, "archivedAt"),
@@ -416,6 +447,7 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
 // ---- GraphQL query strings + LinearClient methods ----
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
+  attachments(first: 50) { nodes { url } }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
   labels { nodes { id name color } }";
 
@@ -517,6 +549,8 @@ mod tests {
           "dueDate":"2026-06-10","priority":2,"url":"u","createdAt":"c","updatedAt":"u1","archivedAt":null,
           "estimate":3,"cycle":{"id":"cy1","number":7,"name":"Sprint 7"},
           "projectMilestone":{"id":"m1","name":"Beta"},
+          "attachments":{"nodes":[{"url":"https://github.com/o/r/pull/12"},
+            {"url":"https://example.com/doc"},{"url":"https://gitlab.com/o/r/-/merge_requests/3"}]},
           "state":{"id":"s","name":"Todo","type":"unstarted","color":"#fff"},
           "assignee":{"id":"me","name":"Me"},"team":{"id":"t","key":"ENG"},
           "project":{"id":"p","name":"P"},"parent":null,
@@ -533,6 +567,8 @@ mod tests {
         assert_eq!(i.cycle_number, Some(7));
         assert_eq!(i.cycle_name.as_deref(), Some("Sprint 7"));
         assert_eq!(i.milestone_name.as_deref(), Some("Beta"));
+        assert_eq!(i.pr_count, 2); // github pull + gitlab merge_request
+        assert_eq!(i.link_count, 1); // the plain doc link
         assert_eq!(i.labels.len(), 1);
         assert_eq!(i.archived_at, None);
         assert!(!i.raw_json.is_empty());
