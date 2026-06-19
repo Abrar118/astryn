@@ -12,6 +12,7 @@ import type { IssueFilters } from "@/lib/commands";
 import { eventStyle } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
+import { IssueDrawer } from "@/features/drawer/IssueDrawer";
 
 function currentDhakaMonth(today: string) {
   const [y, m] = today.split("-").map(Number);
@@ -92,6 +93,7 @@ export function CalendarPage() {
         />
       </div>
       <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
+      <IssueDrawer />
     </div>
   );
 }
