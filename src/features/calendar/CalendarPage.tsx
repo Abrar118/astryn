@@ -4,12 +4,12 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import type { DatesSetArg, EventClickArg, EventDropArg } from "@fullcalendar/core";
+import type { DatesSetArg, EventClickArg, EventContentArg, EventDropArg } from "@fullcalendar/core";
 import type { DropArg } from "@fullcalendar/interaction";
 import { useCalendarIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
 import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
 import type { IssueFilters } from "@/lib/commands";
-import { eventStyle } from "./eventStyle";
+import { eventAccent, tint } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
@@ -56,41 +56,75 @@ export function CalendarPage() {
     () =>
       (scheduled ?? [])
         .filter((i) => i.dueDate)
-        .map((i) => ({
-          id: i.id,
-          title: `${i.identifier}  ${i.title}`,
-          start: i.dueDate as string,
-          allDay: true,
-          ...eventStyle(i, colorBy, today),
-        })),
+        .map((i) => {
+          const { color, overdue } = eventAccent(i, colorBy, today);
+          return {
+            id: i.id,
+            title: i.title,
+            start: i.dueDate as string,
+            allDay: true,
+            // Rendered entirely by renderEvent; keep FC's own chrome invisible.
+            backgroundColor: "transparent",
+            borderColor: "transparent",
+            extendedProps: { identifier: i.identifier, color, overdue },
+          };
+        }),
     [scheduled, colorBy, today],
   );
 
+  // Soft tinted chip: colored dot + muted identifier + title (Linear/GCal style).
+  const renderEvent = (arg: EventContentArg) => {
+    const { identifier, color, overdue } = arg.event.extendedProps as {
+      identifier: string;
+      color: string;
+      overdue: boolean;
+    };
+    return (
+      <div
+        className={`flex items-center gap-1.5 overflow-hidden rounded-md px-1.5 py-[3px] text-[11px] leading-tight ${
+          overdue ? "ring-1 ring-red-500/60" : ""
+        }`}
+        style={{ backgroundColor: tint(color, 0.16) }}
+        title={arg.event.title}
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="shrink-0 font-medium text-muted-foreground">{identifier}</span>
+        <span className="truncate text-foreground">{arg.event.title}</span>
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full">
-      <div className="min-w-0 flex-1 p-4">
+      <div className="flex min-w-0 flex-1 flex-col p-4">
         <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
-        <FullCalendar
-          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-          initialView="dayGridMonth"
-          firstDay={0}
-          now={today}
-          editable={true}
-          droppable={true}
-          height="auto"
-          headerToolbar={{ left: "prev,next today", center: "title", right: "dayGridMonth,timeGridWeek" }}
-          events={events}
-          datesSet={(arg: DatesSetArg) => setRange(rangeFromDates(arg.start, arg.end))}
-          eventClick={(arg: EventClickArg) => setParams({ issue: arg.event.id })}
-          eventDrop={(arg: EventDropArg) => {
-            if (!arg.event.start) return;
-            update.mutate({ id: arg.event.id, patch: { dueDate: toDateStr(arg.event.start) } });
-          }}
-          drop={(arg: DropArg) => {
-            const id = arg.draggedEl.getAttribute("data-id");
-            if (id) update.mutate({ id, patch: { dueDate: toDateStr(arg.date) } });
-          }}
-        />
+        <div className="min-h-0 flex-1">
+          <FullCalendar
+            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+            initialView="dayGridMonth"
+            firstDay={0}
+            now={today}
+            editable={true}
+            droppable={true}
+            height="100%"
+            dayMaxEvents={true}
+            fixedWeekCount={false}
+            headerToolbar={{ left: "title", center: "", right: "prev,today,next dayGridMonth,timeGridWeek" }}
+            buttonText={{ today: "Today", month: "Month", week: "Week" }}
+            events={events}
+            eventContent={renderEvent}
+            datesSet={(arg: DatesSetArg) => setRange(rangeFromDates(arg.start, arg.end))}
+            eventClick={(arg: EventClickArg) => setParams({ issue: arg.event.id })}
+            eventDrop={(arg: EventDropArg) => {
+              if (!arg.event.start) return;
+              update.mutate({ id: arg.event.id, patch: { dueDate: toDateStr(arg.event.start) } });
+            }}
+            drop={(arg: DropArg) => {
+              const id = arg.draggedEl.getAttribute("data-id");
+              if (id) update.mutate({ id, patch: { dueDate: toDateStr(arg.date) } });
+            }}
+          />
+        </div>
       </div>
       <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
       <IssueDrawer />
