@@ -80,14 +80,14 @@ export function CalendarPage() {
     };
     return (
       <div
-        className={`flex items-center gap-1.5 overflow-hidden rounded-md px-1.5 py-[3px] text-[11px] leading-tight ${
+        className={`flex items-start gap-1.5 overflow-hidden rounded-md px-1.5 py-1 text-[12px] leading-snug ${
           overdue ? "ring-1 ring-red-500/60" : ""
         }`}
         style={{ backgroundColor: tint(color, 0.16) }}
         title={`${identifier}  ${arg.event.title}`}
       >
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="truncate text-foreground">{arg.event.title}</span>
+        <span className="mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+        <span className="line-clamp-2 font-medium text-foreground">{arg.event.title}</span>
       </div>
     );
   };
