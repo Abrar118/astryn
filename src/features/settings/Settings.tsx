@@ -9,10 +9,12 @@ import {
   clearLinearKey,
   errorText,
   setLinearKey,
+  syncIssues,
   testLinearConnection,
 } from "@/lib/commands";
+import { clearWorkspaceQueries } from "@/lib/queries";
 
-export function Settings({ onBack }: { onBack: () => void }) {
+export function Settings() {
   const qc = useQueryClient();
   const [keyInput, setKeyInput] = useState("");
   const [saving, setSaving] = useState(false);
@@ -32,16 +34,25 @@ export function Settings({ onBack }: { onBack: () => void }) {
   const clearMut = useMutation({
     mutationFn: () => clearLinearKey(),
     onSuccess: () => {
+      clearWorkspaceQueries(qc);
       gooeyToast.success("Key cleared");
       invalidateStatus();
     },
-    onError: (err) =>
-      gooeyToast.error("Could not clear the key", { description: errorText(err) }),
+    onError: (err) => {
+      clearWorkspaceQueries(qc);
+      gooeyToast.error("Could not clear the key", { description: errorText(err) });
+    },
   });
 
-  // One operation at a time: never let Test/Clear run while a key is being saved
+  const resyncMut = useMutation({
+    mutationFn: () => syncIssues(true),
+    onSuccess: (r) => gooeyToast.success(`Resynced ${r.synced} issues`),
+    onError: (err) => gooeyToast.error("Resync failed", { description: errorText(err) }),
+  });
+
+  // One operation at a time: never let Test/Clear/Resync run while a key is being saved
   // (or vice versa), which could cache an identity against the wrong key.
-  const busy = saving || testMut.isPending || clearMut.isPending;
+  const busy = saving || testMut.isPending || clearMut.isPending || resyncMut.isPending;
 
   // Save WITHOUT TanStack Query so the secret never enters the mutation cache.
   const handleSave = async (e: FormEvent) => {
@@ -53,9 +64,11 @@ export function Settings({ onBack }: { onBack: () => void }) {
     setSaving(true);
     try {
       await setLinearKey(key);
+      clearWorkspaceQueries(qc);
       gooeyToast.success("Linear key saved");
       invalidateStatus();
     } catch (err) {
+      clearWorkspaceQueries(qc);
       gooeyToast.error("Could not save the key", { description: errorText(err) });
     } finally {
       setSaving(false);
@@ -66,9 +79,6 @@ export function Settings({ onBack }: { onBack: () => void }) {
     <main className="mx-auto flex max-w-2xl flex-col gap-8 p-10">
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Settings</h1>
-        <Button variant="outline" size="sm" onClick={onBack}>
-          Back
-        </Button>
       </header>
 
       <Card className="flex flex-col gap-4 p-6">
@@ -102,6 +112,14 @@ export function Settings({ onBack }: { onBack: () => void }) {
               onClick={() => clearMut.mutate()}
             >
               Clear key
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={busy}
+              onClick={() => resyncMut.mutate()}
+            >
+              Resync workspace
             </Button>
           </div>
         </form>

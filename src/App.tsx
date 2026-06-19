@@ -1,22 +1,22 @@
-import { useState } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { GooeyToaster } from "goey-toast";
 import "goey-toast/styles.css";
-import { Home } from "@/features/home/Home";
+import { AppShell } from "@/components/AppShell";
+import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { Settings } from "@/features/settings/Settings";
 
-type View = "home" | "settings";
-
 function App() {
-  const [view, setView] = useState<View>("home");
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      {view === "home" ? (
-        <Home onOpenSettings={() => setView("settings")} />
-      ) : (
-        <Settings onBack={() => setView("home")} />
-      )}
+    <>
+      <Routes>
+        <Route element={<AppShell />}>
+          <Route path="/" element={<CalendarPage />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
       <GooeyToaster position="bottom-right" />
-    </div>
+    </>
   );
 }
 
