@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDownUp,
@@ -448,34 +448,32 @@ function BoardCard({
   issue,
   display,
   avatar,
-  onOpen,
   today,
-  draggable,
-  onDragStart,
-  onDragEnd,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
   dragging,
 }: {
   issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
-  onOpen: (id: string) => void;
   today: string;
-  draggable?: boolean;
-  onDragStart?: (e: DragEvent) => void;
-  onDragEnd?: () => void;
+  onPointerDown: (e: ReactPointerEvent) => void;
+  onPointerMove: (e: ReactPointerEvent) => void;
+  onPointerUp: (e: ReactPointerEvent) => void;
   dragging?: boolean;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
   const cycle = cycleText(issue);
   return (
     <div
-      onClick={() => onOpen(issue.id)}
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-      className={`rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 ${
-        draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
-      } ${dragging ? "opacity-40" : ""}`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      style={{ touchAction: "none" }}
+      className={`cursor-grab touch-none select-none rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 active:cursor-grabbing ${
+        dragging ? "opacity-40" : ""
+      }`}
     >
       <div className="mb-1.5 flex items-center justify-between">
         <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
@@ -639,6 +637,8 @@ export function IssuesView() {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [ghost, setGhost] = useState<{ title: string; x: number; y: number } | null>(null);
+  const gesture = useRef<{ id: string; title: string; x: number; y: number; started: boolean } | null>(null);
 
   // Persist the view config (filters + display options) across reloads/launches.
   useEffect(() => {
@@ -708,15 +708,54 @@ export function IssuesView() {
     return null;
   };
 
-  const handleDrop = (g: Group) => {
-    setDragOverKey(null);
-    const id = draggingId;
+  // Pointer-event dragging. Native HTML5 drag-and-drop does not deliver `drop`
+  // events in WKWebView (Tauri), so we drive the gesture manually — the same
+  // reason FullCalendar uses pointer events. A small movement threshold keeps a
+  // plain click opening the drawer.
+  const DRAG_THRESHOLD = 6;
+
+  const groupKeyAt = (x: number, y: number): string | null => {
+    const el = document.elementFromPoint(x, y) as HTMLElement | null;
+    return el?.closest<HTMLElement>("[data-group-key]")?.dataset.groupKey ?? null;
+  };
+
+  const onCardPointerDown = (e: ReactPointerEvent, issue: IssueListItem) => {
+    if (e.button !== 0) return;
+    gesture.current = { id: issue.id, title: issue.title, x: e.clientX, y: e.clientY, started: false };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const onCardPointerMove = (e: ReactPointerEvent) => {
+    const g = gesture.current;
+    if (!g) return;
+    if (!g.started) {
+      if (!dndEnabled) return;
+      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) < DRAG_THRESHOLD) return;
+      g.started = true;
+      setDraggingId(g.id);
+    }
+    setGhost({ title: g.title, x: e.clientX, y: e.clientY });
+    setDragOverKey(groupKeyAt(e.clientX, e.clientY));
+  };
+
+  const onCardPointerUp = (e: ReactPointerEvent) => {
+    const g = gesture.current;
+    gesture.current = null;
     setDraggingId(null);
-    if (!id) return;
-    const issue = (issues ?? []).find((i) => i.id === id);
+    setDragOverKey(null);
+    setGhost(null);
+    if (!g) return;
+    if (!g.started) {
+      open(g.id); // below threshold => treat as a click
+      return;
+    }
+    const key = groupKeyAt(e.clientX, e.clientY);
+    const target = key ? groups.find((gr) => gr.key === key) : null;
+    if (!target) return;
+    const issue = (issues ?? []).find((i) => i.id === g.id);
     if (!issue) return;
-    const patch = patchForDrop(issue, g);
-    if (patch) update.mutate({ id, patch });
+    const patch = patchForDrop(issue, target);
+    if (patch) update.mutate({ id: g.id, patch });
   };
 
   const reset = () => {
@@ -902,11 +941,9 @@ export function IssuesView() {
             {groups.map((g) => (
               <div
                 key={g.key}
-                onDragOver={dndEnabled ? (e) => { e.preventDefault(); setDragOverKey(g.key); } : undefined}
-                onDragLeave={() => dragOverKey === g.key && setDragOverKey(null)}
-                onDrop={dndEnabled ? () => handleDrop(g) : undefined}
+                data-group-key={g.key}
                 className={`flex w-80 shrink-0 flex-col border-r border-border/50 transition-colors last:border-r-0 ${
-                  dragOverKey === g.key ? "bg-accent/25" : ""
+                  draggingId && dragOverKey === g.key ? "bg-accent/25" : ""
                 }`}
               >
                 <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
@@ -919,15 +956,10 @@ export function IssuesView() {
                       issue={i}
                       display={display}
                       avatar={avatarOf(i.assigneeId)}
-                      onOpen={open}
                       today={today}
-                      draggable={dndEnabled}
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData("text/plain", i.id);
-                        e.dataTransfer.effectAllowed = "move";
-                        setDraggingId(i.id);
-                      }}
-                      onDragEnd={() => setDraggingId(null)}
+                      onPointerDown={(e) => onCardPointerDown(e, i)}
+                      onPointerMove={onCardPointerMove}
+                      onPointerUp={onCardPointerUp}
                       dragging={draggingId === i.id}
                     />
                   ))}
@@ -937,6 +969,15 @@ export function IssuesView() {
           </div>
         )}
       </div>
+
+      {ghost && (
+        <div
+          className="pointer-events-none fixed z-50 max-w-64 truncate rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-medium text-foreground shadow-2xl"
+          style={{ left: ghost.x + 14, top: ghost.y + 14 }}
+        >
+          {ghost.title}
+        </div>
+      )}
     </div>
   );
 }
