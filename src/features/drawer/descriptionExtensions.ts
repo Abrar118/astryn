@@ -29,13 +29,22 @@ export function descriptionExtensions(): Extensions {
 
 /** Strip padded whitespace from GFM table cells so serialization is stable. */
 function normalizeTablePadding(markdown: string): string {
+  let inFence = false;
   return markdown
     .split("\n")
     .map((line) => {
+      // Track fenced code block boundaries (``` or ~~~, three or more)
+      if (/^(`{3,}|~{3,})/.test(line.trim())) {
+        inFence = !inFence;
+        return line;
+      }
+      // Pass through lines inside fenced code blocks verbatim
+      if (inFence) return line;
       // Match GFM table rows: starts and ends with |
       if (/^\|.*\|$/.test(line.trim())) {
         return line
-          .split("|")
+          // Split on unescaped pipes only to preserve \| inside cell text
+          .split(/(?<!\\)\|/)
           .map((cell, i, arr) => {
             // keep the empty first/last segments that result from leading/trailing |
             if (i === 0 || i === arr.length - 1) return cell;
@@ -52,5 +61,5 @@ function normalizeTablePadding(markdown: string): string {
 
 export function markdownFromEditor(editor: Editor): string {
   if (editor.isEmpty) return "";
-  return normalizeTablePadding(editor.getMarkdown().trim());
+  return normalizeTablePadding(editor.getMarkdown()).trim();
 }
