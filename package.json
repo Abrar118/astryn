@@ -7,11 +7,16 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
     "@base-ui/react": "^1.6.0",
     "@fontsource-variable/geist": "^5.2.9",
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/interaction": "^6.1.21",
+    "@fullcalendar/react": "^6.1.21",
+    "@fullcalendar/timegrid": "^6.1.21",
     "@tailwindcss/vite": "^4.3.1",
     "@tanstack/react-query": "^5.101.0",
     "@tauri-apps/api": "^2",
@@ -23,6 +28,9 @@
     "lucide-react": "^1.21.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.18.0",
+    "remark-gfm": "^4.0.1",
     "shadcn": "^4.11.0",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.1",
@@ -35,6 +43,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "vite": "^7.0.4",
+    "vitest": "^4.1.9"
   }
 }
