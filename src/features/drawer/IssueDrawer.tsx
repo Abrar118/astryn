@@ -1,14 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import ReactMarkdown from "react-markdown";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
   Box,
-  Calendar,
-  Check,
+  ChevronDown,
   Copy,
   ExternalLink,
   Gauge,
@@ -25,13 +24,17 @@ import {
   useDeleteIssue,
   useFilterOptions,
   useIssueDetail,
+  useIssues,
   useLabels,
   useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
+import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { CalendarIssue, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
+import { DatePicker } from "@/components/DatePicker";
+import { Popover, PopoverItem } from "@/components/Popover";
 
 const PRIORITIES = [
   { value: 0, label: "No priority", color: "#6b7280" },
@@ -41,6 +44,19 @@ const PRIORITIES = [
   { value: 4, label: "Low", color: "#3b82f6" },
 ];
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
+
+const WIDTH_KEY = "astryn.drawer-width";
+const DEFAULT_WIDTH = 920;
+const MIN_WIDTH = 480;
+
+function loadWidth(): number {
+  try {
+    const v = Number(localStorage.getItem(WIDTH_KEY));
+    return v >= MIN_WIDTH ? v : DEFAULT_WIDTH;
+  } catch {
+    return DEFAULT_WIDTH;
+  }
+}
 
 function timeAgo(iso: string): string {
   const t = Date.parse(iso);
@@ -85,7 +101,6 @@ function useSeed(id: string | null): CalendarIssue | undefined {
   return undefined;
 }
 
-/** Linear-style status glyph derived from the workflow state type + color. */
 function StatusIcon({ type, color }: { type: string; color: string }) {
   const c = color || "#6b7280";
   if (type === "completed")
@@ -111,7 +126,7 @@ function StatusIcon({ type, color }: { type: string; color: string }) {
   );
 }
 
-const priorityIcon = (value: number) => {
+const priorityDot = (value: number) => {
   const p = PRIORITIES.find((x) => x.value === value) ?? PRIORITIES[0];
   return <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />;
 };
@@ -122,8 +137,6 @@ export function IssueDrawer() {
   const [shownId, setShownId] = useState<string | null>(id);
   const [open, setOpen] = useState(false);
 
-  // Keep the panel mounted through its slide-out: clear the visible id only
-  // after the exit transition finishes.
   useEffect(() => {
     if (id) {
       setShownId(id);
@@ -142,12 +155,47 @@ export function IssueDrawer() {
 function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose: () => void }) {
   const seed = useSeed(id);
   const { data: result } = useIssueDetail(id, seed);
+  const [width, setWidth] = useState(loadWidth);
+  const widthRef = useRef(width);
+  widthRef.current = width;
+  const resizing = useRef(false);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!resizing.current) return;
+      setWidth(Math.max(MIN_WIDTH, Math.min(window.innerWidth * 0.96, window.innerWidth - e.clientX)));
+    };
+    const onUp = () => {
+      if (!resizing.current) return;
+      resizing.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      try {
+        localStorage.setItem(WIDTH_KEY, String(Math.round(widthRef.current)));
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+  }, []);
+
+  const startResize = (e: React.PointerEvent) => {
+    e.preventDefault();
+    resizing.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  };
 
   return (
     <div className="fixed inset-0 z-30">
@@ -156,10 +204,16 @@ function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose
         onClick={onClose}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-[min(940px,95vw)] flex-col border-l border-border bg-popover shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+        style={{ width }}
+        className={`absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
+        <div
+          onPointerDown={startResize}
+          title="Drag to resize"
+          className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary/40"
+        />
         {result ? <DrawerContent id={id} result={result} onClose={onClose} /> : null}
       </aside>
     </div>
@@ -174,6 +228,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const { data: labels } = useLabels();
   const { data: cycles } = useCycles();
   const { data: filterOpts } = useFilterOptions();
+  const { data: issues } = useIssues({});
+  const { openMenu } = useIssueMenu();
 
   const live = result.source === "live" ? (result.detail as LiveDetail) : null;
   const editable = result.source === "live";
@@ -184,7 +240,6 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const priority = d.priority;
   const dueDate = d.dueDate;
   const projectId = d.projectId;
-  // Rich fields exist only on the cache/live branches; preview (CalendarIssue) lacks them.
   const url = "url" in d ? d.url : null;
   const projectName = "projectName" in d ? d.projectName : null;
   const estimate = "estimate" in d ? d.estimate : null;
@@ -205,7 +260,6 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
     setDesc(detailDesc);
   }, [id, result.source, detailTitle, detailDesc]);
 
-  // Auto-grow the title textarea to its content.
   useEffect(() => {
     const el = titleRef.current;
     if (el) {
@@ -217,11 +271,35 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
   const openIssue = (next: string) => setParams({ issue: next });
 
+  // Map identifier -> id so Linear issue links in markdown open the in-app
+  // drawer; every other link opens in the system browser (never the webview).
+  const identMap = useMemo(() => new Map((issues ?? []).map((i) => [i.identifier.toUpperCase(), i.id])), [issues]);
+  const md = useMemo<Components>(
+    () => ({
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            if (!href) return;
+            const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
+            const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
+            if (target) openIssue(target);
+            else openUrl(href).catch(() => gooeyToast.error("Couldn't open the link"));
+          }}
+          className="cursor-pointer text-primary hover:underline"
+        >
+          {children}
+        </a>
+      ),
+    }),
+    // openIssue is stable enough for the drawer's lifetime
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [identMap],
+  );
+
   const teamCycles = useMemo(
-    () =>
-      (cycles ?? [])
-        .filter((c) => c.teamId === d.teamId)
-        .sort((a, b) => (b.number ?? 0) - (a.number ?? 0)),
+    () => (cycles ?? []).filter((c) => c.teamId === d.teamId).sort((a, b) => (b.number ?? 0) - (a.number ?? 0)),
     [cycles, d.teamId],
   );
 
@@ -229,6 +307,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const stateType = d.stateType;
   const stateName = "stateName" in d ? d.stateName ?? stateType : stateType;
   const cycleLabel = cycleName ?? (cycleNumber != null ? `Cycle ${cycleNumber}` : null);
+  const openLinear = url ? () => openUrl(url).catch(() => gooeyToast.error("Couldn't open the link")) : undefined;
 
   return (
     <>
@@ -246,24 +325,41 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           <IconBtn title="Copy ID" onClick={() => copyText(identifier, "ID")}>
             <Copy className="size-4" />
           </IconBtn>
-          {url && (
-            <IconBtn title="Open in Linear" onClick={() => openUrl(url).catch(() => gooeyToast.error("Couldn't open the link"))}>
+          {openLinear && (
+            <IconBtn title="Open in Linear" onClick={openLinear}>
               <ExternalLink className="size-4" />
             </IconBtn>
           )}
-          <OverflowMenu
-            onCopyId={() => copyText(identifier, "ID")}
-            onCopyLink={() => copyText(url ?? identifier, "Link")}
-            onOpenLinear={url ? () => openUrl(url).catch(() => gooeyToast.error("Couldn't open the link")) : undefined}
-            onDelete={
-              editable
-                ? () => {
-                    del.mutate(id);
-                    onClose();
-                  }
-                : undefined
-            }
-          />
+          <Popover
+            align="end"
+            buttonTitle="More"
+            buttonClassName="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            button={<MoreHorizontal className="size-4" />}
+            panelClassName="w-52 rounded-lg border border-border bg-popover p-1 shadow-2xl"
+          >
+            {(close) => (
+              <>
+                <PopoverItem icon={<Copy className="size-4" />} label="Copy ID" onClick={() => (copyText(identifier, "ID"), close())} />
+                <PopoverItem icon={<Link2 className="size-4" />} label="Copy link" onClick={() => (copyText(url ?? identifier, "Link"), close())} />
+                {openLinear && <PopoverItem icon={<ExternalLink className="size-4" />} label="Open in Linear" onClick={() => (openLinear(), close())} />}
+                {editable && (
+                  <>
+                    <div className="my-1 border-t border-border/60" />
+                    <PopoverItem
+                      icon={<Trash2 className="size-4" />}
+                      label="Delete"
+                      danger
+                      onClick={() => {
+                        del.mutate(id);
+                        close();
+                        onClose();
+                      }}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          </Popover>
           <IconBtn title="Close" onClick={onClose}>
             <X className="size-4" />
           </IconBtn>
@@ -286,10 +382,9 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             disabled={!editable}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => editable && title.trim() && title !== d.title && patch({ title: title.trim() })}
-            className="w-full resize-none bg-transparent text-2xl font-semibold leading-snug text-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-100"
+            className="w-full resize-none bg-transparent text-2xl font-semibold leading-snug text-foreground focus:outline-none disabled:opacity-100"
           />
 
-          {/* Parent / sub-issue reference */}
           {live?.parent && (
             <button
               type="button"
@@ -301,7 +396,6 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             </button>
           )}
 
-          {/* Description */}
           <section className="mt-6">
             {editable && (
               <div className="mb-1 flex justify-end">
@@ -321,16 +415,17 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 onChange={(e) => setDesc(e.target.value)}
                 onBlur={() => patch({ description: desc === "" ? null : desc })}
                 placeholder="Add description…"
-                className="min-h-48 w-full resize-y rounded-md border border-border bg-background p-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="min-h-48 w-full resize-y rounded-md border border-border bg-card p-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               />
             ) : (
               <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>{desc || "_No description_"}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
+                  {desc || "_No description_"}
+                </ReactMarkdown>
               </div>
             )}
           </section>
 
-          {/* Activity */}
           {live && (
             <section className="mt-8 border-t border-border pt-5">
               <h3 className="mb-3 text-sm font-semibold text-foreground">Activity</h3>
@@ -347,7 +442,9 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                           <span className="text-xs text-muted-foreground">{timeAgo(c.createdAt)}</span>
                         </div>
                         <div className="prose prose-sm prose-invert mt-0.5 max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{c.body}</ReactMarkdown>
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
+                            {c.body}
+                          </ReactMarkdown>
                         </div>
                       </div>
                     </div>
@@ -359,123 +456,119 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           )}
         </div>
 
-        {/* Properties rail */}
-        <aside className="w-[280px] shrink-0 overflow-y-auto border-l border-border bg-sidebar/40 px-3 py-4">
-          <div className="mb-2 px-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">Properties</div>
-
-          {/* Status */}
-          <Field
-            label="Status"
-            value={
-              <span className="flex items-center gap-2">
-                <StatusIcon type={stateType} color={stateColor} />
-                {stateName}
-              </span>
-            }
-            disabled={!editable}
-            menu={(close) =>
-              (live?.teamStates ?? []).map((s) => (
-                <Opt
-                  key={s.id}
-                  icon={<StatusIcon type={s.type} color={s.color} />}
-                  label={s.name}
-                  active={s.id === live?.stateId}
-                  onClick={() => (patch({ stateId: s.id }), close())}
-                />
-              ))
-            }
-          />
-
-          {/* Priority */}
-          <Field
-            label="Priority"
-            value={
-              <span className="flex items-center gap-2">
-                {priorityIcon(priority)}
-                {PRIORITIES.find((p) => p.value === priority)?.label ?? "No priority"}
-              </span>
-            }
-            disabled={!editable}
-            menu={(close) =>
-              PRIORITIES.map((p) => (
-                <Opt
-                  key={p.value}
-                  icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />}
-                  label={p.label}
-                  active={p.value === priority}
-                  onClick={() => (patch({ priority: p.value }), close())}
-                />
-              ))
-            }
-          />
-
-          {/* Assignee */}
-          <div className="flex items-center gap-2 px-1.5 py-1">
-            <AssigneeSelect
-              value={d.assigneeId ?? null}
-              onChange={(uid) => patch({ assigneeId: uid })}
-              users={users.data ?? []}
-              emptyLabel="Unassigned"
+        {/* Properties rail — right-click anywhere here for the full issue menu */}
+        <aside
+          className="flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto p-3"
+          onContextMenu={(e) => openMenu(e, id)}
+        >
+          <RailCard title="Properties">
+            <Field
+              value={
+                <>
+                  <StatusIcon type={stateType} color={stateColor} />
+                  {stateName}
+                </>
+              }
               disabled={!editable}
+              menu={(close) =>
+                (live?.teamStates ?? []).map((s) => (
+                  <PopoverItem key={s.id} icon={<StatusIcon type={s.type} color={s.color} />} label={s.name} active={s.id === live?.stateId} onClick={() => (patch({ stateId: s.id }), close())} />
+                ))
+              }
             />
-          </div>
-
-          {/* Estimate */}
-          <Field
-            label="Estimate"
-            value={
-              <span className="flex items-center gap-2">
-                <Gauge className="size-3.5 text-muted-foreground" />
-                {estimate != null ? `${estimate} ${estimate === 1 ? "Point" : "Points"}` : "No estimate"}
-              </span>
-            }
-            disabled={!editable}
-            menu={(close) => (
-              <>
-                <Opt icon={<Gauge className="size-4" />} label="No estimate" active={estimate == null} onClick={() => (patch({ estimate: null }), close())} />
-                {ESTIMATES.map((n) => (
-                  <Opt key={n} icon={<Gauge className="size-4" />} label={`${n} ${n === 1 ? "point" : "points"}`} active={estimate === n} onClick={() => (patch({ estimate: n }), close())} />
-                ))}
-              </>
-            )}
-          />
-
-          {/* Cycle */}
-          <Field
-            label="Cycle"
-            value={
-              <span className="flex items-center gap-2">
-                <IterationCcw className="size-3.5 text-muted-foreground" />
-                {cycleLabel ?? "No cycle"}
-              </span>
-            }
-            disabled={!editable}
-            menu={(close) => (
-              <>
-                <Opt icon={<IterationCcw className="size-4" />} label="No cycle" active={cycleNumber == null} onClick={() => (patch({ cycleId: null }), close())} />
-                {teamCycles.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No cycles</div>}
-                {teamCycles.map((c) => (
-                  <Opt key={c.id} icon={<IterationCcw className="size-4" />} label={c.name ?? `Cycle ${c.number ?? "?"}`} active={c.number != null && c.number === cycleNumber} onClick={() => (patch({ cycleId: c.id }), close())} />
-                ))}
-              </>
-            )}
-          />
-
-          {/* Due date */}
-          <div className="flex items-center gap-2 px-1.5 py-1.5 text-sm">
-            <Calendar className="size-3.5 shrink-0 text-muted-foreground" />
-            <input
-              type="date"
-              value={dueDate ?? ""}
+            <Field
+              value={
+                <>
+                  {priorityDot(priority)}
+                  {PRIORITIES.find((p) => p.value === priority)?.label ?? "No priority"}
+                </>
+              }
               disabled={!editable}
-              onChange={(e) => patch({ dueDate: e.target.value || null })}
-              className="bg-transparent text-sm text-foreground focus:outline-none disabled:opacity-70 [color-scheme:dark]"
+              menu={(close) =>
+                PRIORITIES.map((p) => (
+                  <PopoverItem key={p.value} icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />} label={p.label} active={p.value === priority} onClick={() => (patch({ priority: p.value }), close())} />
+                ))
+              }
             />
-          </div>
+            <div className="px-1.5 py-1">
+              <AssigneeSelect value={d.assigneeId ?? null} onChange={(uid) => patch({ assigneeId: uid })} users={users.data ?? []} emptyLabel="Unassigned" disabled={!editable} />
+            </div>
+            <Field
+              value={
+                <>
+                  <Gauge className="size-3.5 text-muted-foreground" />
+                  {estimate != null ? `${estimate} ${estimate === 1 ? "Point" : "Points"}` : "No estimate"}
+                </>
+              }
+              disabled={!editable}
+              menu={(close) => (
+                <>
+                  <PopoverItem icon={<Gauge className="size-4" />} label="No estimate" active={estimate == null} onClick={() => (patch({ estimate: null }), close())} />
+                  {ESTIMATES.map((n) => (
+                    <PopoverItem key={n} icon={<Gauge className="size-4" />} label={`${n} ${n === 1 ? "point" : "points"}`} active={estimate === n} onClick={() => (patch({ estimate: n }), close())} />
+                  ))}
+                </>
+              )}
+            />
+            <Field
+              value={
+                <>
+                  <IterationCcw className="size-3.5 text-muted-foreground" />
+                  {cycleLabel ?? "No cycle"}
+                </>
+              }
+              disabled={!editable}
+              menu={(close) => (
+                <>
+                  <PopoverItem icon={<IterationCcw className="size-4" />} label="No cycle" active={cycleNumber == null} onClick={() => (patch({ cycleId: null }), close())} />
+                  {teamCycles.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No cycles</div>}
+                  {teamCycles.map((c) => (
+                    <PopoverItem key={c.id} icon={<IterationCcw className="size-4" />} label={c.name ?? `Cycle ${c.number ?? "?"}`} active={c.number != null && c.number === cycleNumber} onClick={() => (patch({ cycleId: c.id }), close())} />
+                  ))}
+                </>
+              )}
+            />
+            <div className="px-1.5">
+              <DatePicker value={dueDate} onChange={(v) => patch({ dueDate: v })} disabled={!editable} />
+            </div>
+          </RailCard>
 
-          {/* Labels */}
-          <RailSection title="Labels">
-            <div className="flex flex-wrap items-center gap-1.5">
+          <RailCard
+            title="Labels"
+            action={
+              editable ? (
+                <Popover
+                  align="end"
+                  buttonTitle="Add label"
+                  buttonClassName="flex size-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  button={<Tag className="size-3" />}
+                  panelClassName="max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl"
+                >
+                  {() => (
+                    <>
+                      {(labels ?? []).length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No labels</div>}
+                      {(labels ?? []).map((l) => {
+                        const has = live?.labels.some((x) => x.id === l.id) ?? false;
+                        return (
+                          <PopoverItem
+                            key={l.id}
+                            icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />}
+                            label={l.name ?? "label"}
+                            active={has}
+                            onClick={() => {
+                              const ids = live?.labels.map((x) => x.id) ?? [];
+                              patch({ labelIds: has ? ids.filter((x) => x !== l.id) : [...ids, l.id] });
+                            }}
+                          />
+                        );
+                      })}
+                    </>
+                  )}
+                </Popover>
+              ) : undefined
+            }
+          >
+            <div className="flex flex-wrap items-center gap-1.5 px-1.5">
               {live?.labels.map((l) => (
                 <span key={l.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
                   <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
@@ -483,46 +576,32 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 </span>
               ))}
               {(!live || live.labels.length === 0) && <span className="text-xs text-muted-foreground">None</span>}
-              {editable && (
-                <LabelPicker
-                  all={labels ?? []}
-                  selected={live?.labels.map((l) => l.id) ?? []}
-                  onToggle={(labelId) => {
-                    const ids = live?.labels.map((l) => l.id) ?? [];
-                    const next = ids.includes(labelId) ? ids.filter((x) => x !== labelId) : [...ids, labelId];
-                    patch({ labelIds: next });
-                  }}
-                />
-              )}
             </div>
-          </RailSection>
+          </RailCard>
 
-          {/* Project */}
-          <RailSection title="Project">
+          <RailCard title="Project">
             <Field
-              label=""
               value={
-                <span className="flex items-center gap-2">
+                <>
                   <Box className="size-3.5 text-muted-foreground" />
                   {projectName ?? "No project"}
-                </span>
+                </>
               }
               disabled={!editable}
               menu={(close) => (
                 <>
-                  <Opt icon={<Box className="size-4" />} label="No project" active={!projectId} onClick={() => (patch({ projectId: null }), close())} />
+                  <PopoverItem icon={<Box className="size-4" />} label="No project" active={!projectId} onClick={() => (patch({ projectId: null }), close())} />
                   {(filterOpts?.projects ?? []).map((p) => (
-                    <Opt key={p.id} icon={<Box className="size-4" />} label={p.name} active={p.id === projectId} onClick={() => (patch({ projectId: p.id }), close())} />
+                    <PopoverItem key={p.id} icon={<Box className="size-4" />} label={p.name} active={p.id === projectId} onClick={() => (patch({ projectId: p.id }), close())} />
                   ))}
                 </>
               )}
             />
-          </RailSection>
+          </RailCard>
 
-          {/* Relations */}
           {live && (live.children.length > 0 || live.relations.length > 0) && (
-            <RailSection title="Relations">
-              <div className="flex flex-col gap-1">
+            <RailCard title="Relations">
+              <div className="flex flex-col gap-0.5">
                 {live.children.map((c) => (
                   <button key={c.id} type="button" onClick={() => openIssue(c.id)} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent">
                     <StatusIcon type={c.stateType} color="#6b7280" />
@@ -538,12 +617,11 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                   </button>
                 ))}
               </div>
-            </RailSection>
+            </RailCard>
           )}
 
-          {/* Links / PRs summary */}
           {(linkCount > 0 || prCount > 0) && (
-            <div className="mt-3 flex items-center gap-4 px-1.5 text-xs text-muted-foreground">
+            <div className="flex items-center gap-4 px-3 text-xs text-muted-foreground">
               {linkCount > 0 && (
                 <span className="flex items-center gap-1.5">
                   <Link2 className="size-3.5" />
@@ -566,186 +644,41 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
 
 function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-    >
+    <button type="button" title={title} onClick={onClick} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
       {children}
     </button>
   );
 }
 
-/** A clickable property row that opens a dropdown menu (read-only when disabled). */
-function Field({
-  label,
-  value,
-  menu,
-  disabled,
-}: {
-  label: string;
-  value: ReactNode;
-  menu: (close: () => void) => ReactNode;
-  disabled?: boolean;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), setOpen(false));
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+/** A collapsible card grouping rail properties (Properties / Labels / etc.). */
+function RailCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <div className="rounded-xl border border-border bg-card">
+      <div className="flex items-center px-3 py-2">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex flex-1 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {title}
+          <ChevronDown className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
+        </button>
+        {action && <span onClick={(e) => e.stopPropagation()}>{action}</span>}
+      </div>
+      {open && <div className="px-1.5 pb-2">{children}</div>}
+    </div>
+  );
+}
 
+/** A clickable property row that opens a portal dropdown (read-only when disabled). */
+function Field({ value, menu, disabled }: { value: ReactNode; menu: (close: () => void) => ReactNode; disabled?: boolean }) {
   if (disabled) {
     return <div className="flex items-center gap-2 px-1.5 py-1.5 text-sm text-foreground">{value}</div>;
   }
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        title={label}
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
-      >
-        {value}
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 max-h-72 w-60 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl">
-          {menu(() => setOpen(false))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Opt({ icon, label, active, onClick }: { icon: ReactNode; label: string; active?: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent"
+    <Popover
+      align="end"
+      buttonClassName="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
+      button={<span className="flex items-center gap-2">{value}</span>}
     >
-      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
-      {active && <Check className="size-3.5 shrink-0 text-primary" />}
-    </button>
-  );
-}
-
-function RailSection({ title, children }: { title: string; children: ReactNode }) {
-  return (
-    <div className="mt-3 border-t border-border/60 pt-3">
-      <div className="mb-1.5 px-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</div>
-      {children}
-    </div>
-  );
-}
-
-function LabelPicker({ all, selected, onToggle }: { all: { id: string; name: string | null; color: string | null }[]; selected: string[]; onToggle: (id: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), setOpen(false));
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        title="Add label"
-        onClick={() => setOpen((o) => !o)}
-        className="flex size-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Tag className="size-3" />
-      </button>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl">
-          {all.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No labels</div>}
-          {all.map((l) => (
-            <Opt
-              key={l.id}
-              icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />}
-              label={l.name ?? "label"}
-              active={selected.includes(l.id)}
-              onClick={() => onToggle(l.id)}
-            />
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OverflowMenu({
-  onCopyId,
-  onCopyLink,
-  onOpenLinear,
-  onDelete,
-}: {
-  onCopyId: () => void;
-  onCopyLink: () => void;
-  onOpenLinear?: () => void;
-  onDelete?: () => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && (e.stopPropagation(), setOpen(false));
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
-  const run = (fn: () => void) => () => (fn(), setOpen(false));
-  return (
-    <div className="relative" ref={ref}>
-      <IconBtn title="More" onClick={() => setOpen((o) => !o)}>
-        <MoreHorizontal className="size-4" />
-      </IconBtn>
-      {open && (
-        <div className="absolute right-0 top-full z-10 mt-1 w-52 rounded-lg border border-border bg-popover p-1 shadow-2xl">
-          <Opt icon={<Copy className="size-4" />} label="Copy ID" onClick={run(onCopyId)} />
-          <Opt icon={<Link2 className="size-4" />} label="Copy link" onClick={run(onCopyLink)} />
-          {onOpenLinear && <Opt icon={<ExternalLink className="size-4" />} label="Open in Linear" onClick={run(onOpenLinear)} />}
-          {onDelete && (
-            <>
-              <div className="my-1 border-t border-border/60" />
-              <button
-                type="button"
-                onClick={run(onDelete)}
-                className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
-              >
-                <Trash2 className="size-4" />
-                <span className="flex-1">Delete</span>
-              </button>
-            </>
-          )}
-        </div>
-      )}
-    </div>
+      {menu}
+    </Popover>
   );
 }

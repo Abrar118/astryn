@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Box,
-  Calendar,
   Check,
   Gauge,
   IterationCcw,
@@ -22,6 +21,7 @@ import {
 } from "@/lib/queries";
 import type { CreateIssueInput } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
+import { DatePicker } from "@/components/DatePicker";
 
 const PRIORITIES = [
   { value: 1, label: "Urgent", color: "#ef4444" },
@@ -369,15 +369,12 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
             )}
           </Pop>
 
-          <label className="flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-xs font-medium text-muted-foreground">
-            <Calendar className="size-3.5" />
-            <input
-              type="date"
-              value={dueDate ?? ""}
-              onChange={(e) => setDueDate(e.target.value || null)}
-              className="bg-transparent text-xs text-foreground focus:outline-none [color-scheme:dark]"
-            />
-          </label>
+          <DatePicker
+            value={dueDate}
+            onChange={setDueDate}
+            placeholder="Due date"
+            triggerClassName="flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+          />
         </div>
 
         {/* Footer */}

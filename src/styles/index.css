@@ -274,3 +274,55 @@
   color: var(--muted-foreground);
   font-size: 0.6875rem;
 }
+/* ── react-day-picker (DatePicker) — dark Linear-style theme ───────────────── */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  --rdp-today-color: var(--primary);
+  --rdp-day-width: 2rem;
+  --rdp-day-height: 2rem;
+  --rdp-day_button-width: 2rem;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+.rdp-month_caption {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: 0 0.25rem 0.25rem;
+}
+.rdp-weekday {
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+}
+.rdp-day_button {
+  color: var(--foreground);
+  border: none;
+}
+.rdp-day_button:hover {
+  background: var(--accent);
+}
+.rdp-outside .rdp-day_button {
+  color: var(--muted-foreground);
+  opacity: 0.5;
+}
+.rdp-selected .rdp-day_button {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+.rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--primary);
+  font-weight: 600;
+}
+.rdp-chevron {
+  fill: var(--muted-foreground);
+}
+.rdp-button_previous:hover .rdp-chevron,
+.rdp-button_next:hover .rdp-chevron {
+  fill: var(--foreground);
+}
