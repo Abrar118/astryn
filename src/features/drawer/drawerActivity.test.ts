@@ -55,7 +55,7 @@ describe("buildActivity", () => {
       creatorName: null,
       comments: [],
       history: [
-        { ...base, id: "attachment", attachment: { id: "a1", title: "PR #324", subtitle: null, url: "https://github.com/o/r/pull/324", sourceType: "github", createdAt: "2026-06-19T09:00:00Z" } },
+        { ...base, id: "attachment", attachment: { id: "a1", title: "PR #324", subtitle: null, url: "https://github.com/o/r/pull/324", sourceType: "github", createdAt: "2026-06-19T09:00:00Z", body: null } },
         { ...base, id: "relation", relationChanges: [{ type: "related", identifier: "AST-9" }] },
         { ...base, id: "description", updatedDescription: true },
       ],

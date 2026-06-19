@@ -27,6 +27,7 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 thiserror = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 time = { version = "0.3", features = ["parsing", "formatting"] }
+base64 = "0.22"
 
 # keyring backend is selected per-OS; the SecretStore code is identical across all three.
 [target.'cfg(target_os = "macos")'.dependencies]
@@ -40,4 +41,3 @@ keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
 
 [dev-dependencies]
 tempfile = "3"
-

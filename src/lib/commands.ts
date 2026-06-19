@@ -103,6 +103,7 @@ export type DetailAttachment = {
   url: string;
   sourceType: string | null;
   createdAt: string;
+  body: string | null;
 };
 export type DetailRelationChange = { type: string; identifier: string };
 export type DetailHistory = {
@@ -210,6 +211,9 @@ export const listFilterOptions = (): Promise<FilterOptions> =>
 
 export const getIssueDetail = (id: string): Promise<IssueDetailResult> =>
   invoke("get_issue_detail", { id });
+
+export const loadLinearImage = (url: string): Promise<string> =>
+  invoke("load_linear_image", { url });
 
 export const updateIssue = (id: string, patch: UpdateIssuePatch): Promise<Issue> =>
   invoke("update_issue", { id, patch });

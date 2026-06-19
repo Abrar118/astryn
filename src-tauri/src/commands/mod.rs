@@ -97,6 +97,8 @@ pub enum CmdError {
     WorkspaceChanged,
     #[error("Required issue fields are missing.")]
     InvalidInput,
+    #[error("Image unavailable.")]
+    ImageUnavailable,
 }
 
 impl serde::Serialize for CmdError {
@@ -111,6 +113,7 @@ impl From<LinearError> for CmdError {
             LinearError::Network | LinearError::Server => CmdError::Network,
             LinearError::RateLimited(_) => CmdError::RateLimited,
             LinearError::Auth | LinearError::Api(_) | LinearError::Malformed => CmdError::LinearApi,
+            LinearError::Asset => CmdError::ImageUnavailable,
         }
     }
 }
@@ -649,6 +652,14 @@ pub async fn get_issue_detail(
         id,
     )
     .await
+}
+
+#[tauri::command]
+pub async fn load_linear_image(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<String, CmdError> {
+    state.linear.load_image(&url).await.map_err(CmdError::from)
 }
 
 #[tauri::command]

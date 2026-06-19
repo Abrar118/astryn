@@ -17,6 +17,7 @@ import {
   GitPullRequest,
   IterationCcw,
   Link2,
+  Maximize2,
   MoreHorizontal,
   Tag,
   Trash2,
@@ -33,12 +34,13 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
-import type { CalendarIssue, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import type { CalendarIssue, DetailAttachment, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { buildActivity } from "./drawerActivity";
+import { LinearMarkdownImage } from "./LinearMarkdownImage";
 
 const PRIORITIES = [
   { value: 0, label: "No priority", color: "#6b7280" },
@@ -165,7 +167,9 @@ function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose
   const resizing = useRef(false);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[data-drawer-resource-modal]")) onClose();
+    };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose]);
@@ -266,11 +270,13 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const [title, setTitle] = useState(detailTitle);
   const [desc, setDesc] = useState(detailDesc);
   const [editingDesc, setEditingDesc] = useState(false);
+  const [expandedResource, setExpandedResource] = useState<DetailAttachment | null>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setTitle(detailTitle);
     setDesc(detailDesc);
+    setExpandedResource(null);
   }, [id, result.source, detailTitle, detailDesc]);
 
   useEffect(() => {
@@ -309,6 +315,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           {children}
         </a>
       ),
+      img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
     }),
     // openIssue is stable enough for the drawer's lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -514,26 +521,45 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             <DrawerSection title="Resources">
               <div className="space-y-2">
                 {live.attachments.map((attachment) => (
-                  <button
-                    key={attachment.id}
-                    type="button"
-                    onClick={() => {
-                      const external = safeExternalUrl(attachment.url);
-                      if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
-                      else gooeyToast.error("Blocked unsafe link");
-                    }}
-                    className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    {attachment.sourceType === "github" ? (
-                      <GitPullRequest className="size-4 shrink-0 text-muted-foreground" />
-                    ) : (
-                      <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                    )}
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{attachment.title}</span>
-                    {attachment.subtitle && <span className="max-w-40 truncate text-xs text-muted-foreground">{attachment.subtitle}</span>}
-                    <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
-                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
-                  </button>
+                  <div key={attachment.id} className="flex min-w-0 items-center rounded-xl border border-border bg-card transition-colors hover:border-foreground/20 hover:bg-accent">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedResource(attachment)}
+                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                    >
+                      {attachment.sourceType === "github" ? (
+                        <GitPullRequest className="size-4 shrink-0 text-muted-foreground" />
+                      ) : (
+                        <Link2 className="size-4 shrink-0 text-muted-foreground" />
+                      )}
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{attachment.title}</span>
+                      {attachment.subtitle && <span className="max-w-52 truncate text-xs text-muted-foreground">{attachment.subtitle}</span>}
+                      <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
+                    </button>
+                    <Popover
+                      align="end"
+                      buttonTitle="Resource actions"
+                      buttonClassName="mr-2 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      button={<MoreHorizontal className="size-4" />}
+                      panelClassName="w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl"
+                    >
+                      {(close) => (
+                        <>
+                          <PopoverItem icon={<Maximize2 className="size-4" />} label="Expand in Linear" onClick={() => (setExpandedResource(attachment), close())} />
+                          <PopoverItem
+                            icon={<ExternalLink className="size-4" />}
+                            label="Open original"
+                            onClick={() => {
+                              close();
+                              const external = safeExternalUrl(attachment.url);
+                              if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
+                              else gooeyToast.error("Blocked unsafe link");
+                            }}
+                          />
+                        </>
+                      )}
+                    </Popover>
+                  </div>
                 ))}
                 {live.attachmentsTruncated && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 resources.</p>}
               </div>
@@ -726,7 +752,75 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
 
         </aside>
       </div>
+      {expandedResource && (
+        <ResourceModal
+          attachment={expandedResource}
+          markdownComponents={md}
+          onClose={() => setExpandedResource(null)}
+        />
+      )}
     </>
+  );
+}
+
+function ResourceModal({
+  attachment,
+  markdownComponents,
+  onClose,
+}: {
+  attachment: DetailAttachment;
+  markdownComponents: Components;
+  onClose: () => void;
+}) {
+  const closeRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+  const openOriginal = () => {
+    const external = safeExternalUrl(attachment.url);
+    if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
+    else gooeyToast.error("Blocked unsafe link");
+  };
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      data-drawer-resource-modal
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
+    >
+      <section role="dialog" aria-modal="true" aria-labelledby="resource-modal-title" className="drawer-scrollbar flex max-h-[84vh] w-[min(760px,92vw)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
+        <header className="flex items-start gap-3 border-b border-border px-5 py-4">
+          <div className="min-w-0 flex-1">
+            <h2 id="resource-modal-title" className="truncate text-base font-semibold text-foreground">{attachment.title}</h2>
+            <p className="mt-0.5 truncate text-sm text-muted-foreground">{attachment.subtitle ?? attachment.sourceType ?? "Resource"}</p>
+          </div>
+          <IconBtn title="Open original" onClick={openOriginal}><ExternalLink className="size-4" /></IconBtn>
+          <button ref={closeRef} type="button" aria-label="Close resource" onClick={onClose} className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            <X className="size-4" />
+          </button>
+        </header>
+        <div className="drawer-scrollbar min-h-0 overflow-y-auto px-6 py-5">
+          {attachment.body ? (
+            <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{attachment.body}</ReactMarkdown>
+            </div>
+          ) : (
+            <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
+              <p className="text-sm text-muted-foreground">This resource does not include expandable content.</p>
+              <button type="button" onClick={openOriginal} className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Open original</button>
+            </div>
+          )}
+        </div>
+      </section>
+    </div>
   );
 }
 

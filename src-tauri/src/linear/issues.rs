@@ -397,6 +397,7 @@ pub struct DetailAttachment {
     pub url: String,
     pub source_type: Option<String>,
     pub created_at: String,
+    pub body: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -467,6 +468,51 @@ fn conn_has_next(n: &Value, conn: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn collect_document_text(value: &Value, output: &mut Vec<String>, depth: usize) {
+    // Cap recursion: bodyData is external (Linear) JSON, so a pathologically deep
+    // document must not overflow the stack.
+    if depth >= 32 {
+        return;
+    }
+    if let Some(text) = value.get("text").and_then(Value::as_str) {
+        if !text.trim().is_empty() {
+            output.push(text.to_owned());
+        }
+    }
+    if let Some(children) = value.get("content").and_then(Value::as_array) {
+        for child in children {
+            collect_document_text(child, output, depth + 1);
+        }
+    }
+}
+
+fn attachment_body(n: &Value) -> Option<String> {
+    let messages = n
+        .get("metadata")
+        .and_then(|metadata| metadata.get("messages"))
+        .and_then(Value::as_array)
+        .map(|messages| {
+            messages
+                .iter()
+                .filter_map(|message| s(message, "body"))
+                .filter(|body| !body.trim().is_empty())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        })
+        .filter(|body| !body.is_empty());
+    if messages.is_some() {
+        return messages;
+    }
+    let body_data = s(n, "bodyData")?;
+    if let Ok(document) = serde_json::from_str::<Value>(&body_data) {
+        let mut text = Vec::new();
+        collect_document_text(&document, &mut text, 0);
+        let joined = text.join("\n\n");
+        return (!joined.is_empty()).then_some(joined);
+    }
+    (!body_data.trim().is_empty()).then_some(body_data)
+}
+
 fn detail_attachment(n: &Value) -> DetailAttachment {
     DetailAttachment {
         id: s(n, "id").unwrap_or_default(),
@@ -475,6 +521,7 @@ fn detail_attachment(n: &Value) -> DetailAttachment {
         url: s(n, "url").unwrap_or_default(),
         source_type: s(n, "sourceType"),
         created_at: s(n, "createdAt").unwrap_or_default(),
+        body: attachment_body(n),
     }
 }
 
@@ -839,6 +886,7 @@ fn issue_detail_query() -> String {
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
              creator {{ name }}
+             attachments(first: 50) {{ nodes {{ bodyData metadata }} }}
              children(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{
                id identifier title priority dueDate estimate
                state {{ name type color }} assignee {{ name }} project {{ name }} cycle {{ name number }}
@@ -1043,7 +1091,10 @@ mod tests {
         assert_eq!(detail.children[0].due_date.as_deref(), Some("2026-06-25"));
         assert_eq!(detail.attachments[0].title, "Message from Abrar");
         assert_eq!(detail.attachments[0].source_type.as_deref(), Some("slack"));
-        assert_eq!(detail.attachments[0].body.as_deref(), Some("The complete Slack message"));
+        assert_eq!(
+            detail.attachments[0].body.as_deref(),
+            Some("The complete Slack message")
+        );
         assert_eq!(detail.history[0].from_state_name.as_deref(), Some("Todo"));
         assert_eq!(
             detail.history[0].to_state_name.as_deref(),

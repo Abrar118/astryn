@@ -1,7 +1,10 @@
 pub mod issues;
 pub mod sync;
 
+use base64::Engine;
 use serde_json::Value;
+
+pub const MAX_IMAGE_BYTES: usize = 12 * 1024 * 1024;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LinearError {
@@ -17,6 +20,40 @@ pub enum LinearError {
     Server,
     #[error("api error: {0}")]
     Api(String),
+    #[error("asset unavailable")]
+    Asset,
+}
+
+pub fn validate_linear_upload_url(value: &str) -> Result<reqwest::Url, LinearError> {
+    let url = reqwest::Url::parse(value).map_err(|_| LinearError::Asset)?;
+    if url.scheme() != "https"
+        || url.host_str() != Some("uploads.linear.app")
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+    {
+        return Err(LinearError::Asset);
+    }
+    Ok(url)
+}
+
+pub fn image_data_url(content_type: &str, bytes: &[u8]) -> Result<String, LinearError> {
+    let mime = content_type
+        .split(';')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .to_ascii_lowercase();
+    if bytes.len() > MAX_IMAGE_BYTES
+        || !matches!(
+            mime.as_str(),
+            "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif"
+        )
+    {
+        return Err(LinearError::Asset);
+    }
+    let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+    Ok(format!("data:{mime};base64,{encoded}"))
 }
 
 /// Classify a non-empty GraphQL `errors` array. Linear may report throttling as
@@ -99,6 +136,7 @@ impl LinearCredentialProvider for PersonalKeyProvider {
 #[derive(Clone)]
 pub struct LinearClient {
     http: reqwest::Client,
+    assets: reqwest::Client,
     endpoint: String,
 }
 
@@ -114,8 +152,15 @@ impl LinearClient {
             .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| LinearError::Network)?;
+        let assets = reqwest::Client::builder()
+            .timeout(Duration::from_secs(20))
+            .connect_timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| LinearError::Network)?;
         Ok(Self {
             http,
+            assets,
             endpoint: endpoint.into(),
         })
     }
@@ -131,6 +176,7 @@ impl LinearClient {
             .http
             .post(&self.endpoint)
             .header("Authorization", authorization)
+            .header("public-file-urls-expire-in", "300")
             .json(&body)
             .send()
             .await
@@ -161,6 +207,42 @@ impl LinearClient {
             return Err(e);
         }
         Ok(text)
+    }
+
+    pub async fn load_image(&self, value: &str) -> Result<String, LinearError> {
+        let url = validate_linear_upload_url(value)?;
+        let mut response = self
+            .assets
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| LinearError::Network)?;
+        if !response.status().is_success()
+            || response
+                .content_length()
+                .is_some_and(|len| len > MAX_IMAGE_BYTES as u64)
+        {
+            return Err(LinearError::Asset);
+        }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .ok_or(LinearError::Asset)?
+            .to_owned();
+        let mut bytes = Vec::with_capacity(
+            response
+                .content_length()
+                .unwrap_or_default()
+                .min(MAX_IMAGE_BYTES as u64) as usize,
+        );
+        while let Some(chunk) = response.chunk().await.map_err(|_| LinearError::Network)? {
+            if bytes.len() + chunk.len() > MAX_IMAGE_BYTES {
+                return Err(LinearError::Asset);
+            }
+            bytes.extend_from_slice(&chunk);
+        }
+        image_data_url(&content_type, &bytes)
     }
 }
 
@@ -202,5 +284,28 @@ mod tests {
     #[test]
     fn status_400_is_none() {
         assert!(http_status_to_error(400).is_none());
+    }
+
+    #[test]
+    fn linear_upload_urls_are_strictly_scoped() {
+        assert!(
+            validate_linear_upload_url("https://uploads.linear.app/asset/image?signature=abc")
+                .is_ok()
+        );
+        assert!(validate_linear_upload_url("http://uploads.linear.app/asset").is_err());
+        assert!(validate_linear_upload_url("https://uploads.linear.app.evil.test/asset").is_err());
+        assert!(validate_linear_upload_url("https://user@uploads.linear.app/asset").is_err());
+        assert!(validate_linear_upload_url("https://uploads.linear.app:444/asset").is_err());
+    }
+
+    #[test]
+    fn image_data_urls_allow_bounded_raster_content_only() {
+        assert_eq!(
+            image_data_url("image/png", b"png").unwrap(),
+            "data:image/png;base64,cG5n"
+        );
+        assert!(image_data_url("image/svg+xml", b"<svg/>").is_err());
+        assert!(image_data_url("text/html", b"nope").is_err());
+        assert!(image_data_url("image/png", &vec![0; MAX_IMAGE_BYTES + 1]).is_err());
     }
 }
