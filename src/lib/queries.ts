@@ -21,6 +21,7 @@ import {
   type CalendarIssue,
   type IssueDetailResult,
   type IssueFilters,
+  type IssueListItem,
   type LiveDetail,
   type UpdateIssuePatch,
 } from "./commands";
@@ -47,6 +48,40 @@ function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueD
     }
   }
   return { ...result, detail: d } as IssueDetailResult;
+}
+
+type StateInfo = { stateName: string | null; stateType: string; stateColor: string };
+
+/**
+ * Apply a patch to a cached list item, re-deriving the denormalized fields the
+ * board groups on (assignee name, status name/type/color) from lookup maps built
+ * out of the other cached issues. Best-effort: unknown targets leave fields as-is.
+ */
+function applyPatchToListItem(
+  it: IssueListItem,
+  patch: UpdateIssuePatch,
+  stateById: Map<string, StateInfo>,
+  nameById: Map<string, string | null>,
+): IssueListItem {
+  const next: IssueListItem = { ...it };
+  if (patch.title !== undefined) next.title = patch.title;
+  if (patch.priority !== undefined) next.priority = patch.priority;
+  if (patch.dueDate !== undefined) next.dueDate = patch.dueDate;
+  if (patch.description !== undefined) next.description = patch.description;
+  if (patch.assigneeId !== undefined) {
+    next.assigneeId = patch.assigneeId;
+    next.assigneeName = patch.assigneeId ? nameById.get(patch.assigneeId) ?? null : null;
+  }
+  if (patch.stateId !== undefined) {
+    next.stateId = patch.stateId;
+    const st = patch.stateId ? stateById.get(patch.stateId) : undefined;
+    if (st) {
+      next.stateName = st.stateName;
+      next.stateType = st.stateType;
+      next.stateColor = st.stateColor;
+    }
+  }
+  return next;
 }
 
 /**
@@ -129,15 +164,41 @@ export function useUpdateIssue() {
     onMutate: async ({ id, patch }) => {
       await qc.cancelQueries({ queryKey: ["calendar"] });
       await qc.cancelQueries({ queryKey: ["unscheduled"] });
+      await qc.cancelQueries({ queryKey: ["issues"] });
       await qc.cancelQueries({ queryKey: ["issue", id] });
 
       const calEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] });
       const unschedEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["unscheduled"] });
+      const issuesEntries = qc.getQueriesData<IssueListItem[]>({ queryKey: ["issues"] });
       const snapshot: Snapshot = [
         ...calEntries,
         ...unschedEntries,
+        ...issuesEntries,
         [["issue", id], qc.getQueryData(["issue", id])],
       ];
+
+      // Optimistically move the issue within the list/board caches so a board
+      // drag lands immediately (and rolls back on error) instead of snapping back.
+      const allListed = issuesEntries.flatMap(([, l]) => l ?? []);
+      const stateById = new Map<string, StateInfo>();
+      const nameById = new Map<string, string | null>();
+      for (const it of allListed) {
+        if (it.stateId) {
+          stateById.set(it.stateId, {
+            stateName: it.stateName,
+            stateType: it.stateType,
+            stateColor: it.stateColor,
+          });
+        }
+        if (it.assigneeId) nameById.set(it.assigneeId, it.assigneeName);
+      }
+      for (const [key, list] of issuesEntries) {
+        if (!list) continue;
+        qc.setQueryData(
+          key,
+          list.map((it) => (it.id === id ? applyPatchToListItem(it, patch, stateById, nameById) : it)),
+        );
+      }
 
       // Find the issue's current CalendarIssue from any cache, then compute its patched form.
       const current =
