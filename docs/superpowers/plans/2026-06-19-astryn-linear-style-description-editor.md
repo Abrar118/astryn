@@ -393,7 +393,7 @@ Create `descriptionCommands.ts`:
 import type { Editor } from "@tiptap/core";
 import {
   Bold, Braces, CheckSquare, Code2, Heading1, Heading2, Heading3,
-  Italic, List, ListOrdered, Minus, Quote, Strikethrough, Table2,
+  Italic, List, ListOrdered, Minus, Pilcrow, Quote, Strikethrough, Table2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -406,6 +406,7 @@ export type DescriptionCommand = {
 };
 
 export const slashCommands: DescriptionCommand[] = [
+  { id: "text", label: "Text", keywords: "paragraph plain", icon: Pilcrow, run: (e) => { e.chain().focus().setParagraph().run(); } },
   { id: "h1", label: "Heading 1", keywords: "title h1", icon: Heading1, run: (e) => { e.chain().focus().toggleHeading({ level: 1 }).run(); } },
   { id: "h2", label: "Heading 2", keywords: "subtitle h2", icon: Heading2, run: (e) => { e.chain().focus().toggleHeading({ level: 2 }).run(); } },
   { id: "h3", label: "Heading 3", keywords: "subtitle h3", icon: Heading3, run: (e) => { e.chain().focus().toggleHeading({ level: 3 }).run(); } },
@@ -460,6 +461,7 @@ describe("DescriptionEditor", () => {
   });
 
   it("opens the selection toolbar for selected text", async () => {
+    const user = userEvent.setup();
     render(<DescriptionEditor markdown="Select **this text**" editable onSave={vi.fn()} />);
     const strong = await screen.findByText("this text");
     const range = document.createRange();
@@ -470,6 +472,8 @@ describe("DescriptionEditor", () => {
     fireEvent.mouseUp(strong);
     expect(await screen.findByRole("toolbar", { name: "Text formatting" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Bold" }).getAttribute("aria-pressed")).toBe("true");
+    await user.click(screen.getByRole("button", { name: "Link" }));
+    expect(screen.getByRole("textbox", { name: "Link URL" })).toBeTruthy();
   });
 
   it("debounces Markdown autosave and shows saved state", async () => {
@@ -505,13 +509,15 @@ Create `DescriptionEditor.tsx` with these concrete responsibilities:
 
 ```tsx
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
+import { Link2 } from "lucide-react";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
 import { descriptionExtensions, markdownFromEditor } from "./descriptionExtensions";
 import { inlineCommands, slashCommands } from "./descriptionCommands";
 
-type SlashState = { from: number; query: string; selected: number };
+type SlashState = { from: number; query: string; selected: number; left: number; top: number };
 
 export function DescriptionEditor({
   markdown,
@@ -524,7 +530,7 @@ export function DescriptionEditor({
 }) {
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
-  const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  const editorRef = useRef<Editor | null>(null);
   const queue = useMemo(
     () => new DescriptionAutosave(markdown, (value) => saveRef.current(value), 750),
     // One queue per issue/editor mount; external Markdown is reconciled below.
@@ -532,6 +538,8 @@ export function DescriptionEditor({
   );
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [slash, setSlash] = useState<SlashState | null>(null);
+  const [linkMode, setLinkMode] = useState(false);
+  const [linkValue, setLinkValue] = useState("");
   const slashRef = useRef<SlashState | null>(null);
   slashRef.current = slash;
 
@@ -577,7 +585,17 @@ export function DescriptionEditor({
       const { $from } = current.state.selection;
       const before = $from.parent.textBetween(0, $from.parentOffset, "\n", "\0");
       const match = before.match(/(?:^|\s)\/([a-z0-9]*)$/i);
-      setSlash(match ? { from: current.state.selection.from - match[1].length - 1, query: match[1], selected: 0 } : null);
+      if (match) {
+        const coords = current.view.coordsAtPos(current.state.selection.from);
+        const root = current.view.dom.parentElement?.getBoundingClientRect();
+        setSlash({
+          from: current.state.selection.from - match[1].length - 1,
+          query: match[1],
+          selected: 0,
+          left: coords.left - (root?.left ?? 0),
+          top: coords.bottom - (root?.top ?? 0) + 6,
+        });
+      } else setSlash(null);
     },
   });
 
@@ -598,22 +616,61 @@ export function DescriptionEditor({
     ? slashCommands.filter((item) => `${item.label} ${item.keywords}`.toLowerCase().includes(slash.query.toLowerCase()))
     : [];
 
+  const applyLink = () => {
+    if (!editor) return;
+    const href = linkValue.trim();
+    if (href) editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
+    else editor.chain().focus().extendMarkRange("link").unsetLink().run();
+    setLinkMode(false);
+  };
+
   return (
     <div className="relative">
       {editor && editable && (
         <BubbleMenu editor={editor} options={{ placement: "top" }}>
           <div className="description-bubble-menu" role="toolbar" aria-label="Text formatting">
-            {inlineCommands.map(({ id, label, icon: Icon, active, run }) => (
-              <button key={id} type="button" aria-label={label} aria-pressed={editor.isActive(active)} onClick={() => run(editor)}>
-                <Icon className="size-3.5" />
-              </button>
-            ))}
+            {linkMode ? (
+              <form onSubmit={(event) => { event.preventDefault(); applyLink(); }}>
+                <input
+                  autoFocus
+                  aria-label="Link URL"
+                  value={linkValue}
+                  onChange={(event) => setLinkValue(event.target.value)}
+                  onKeyDown={(event) => { if (event.key === "Escape") setLinkMode(false); }}
+                  placeholder="Paste a link…"
+                />
+              </form>
+            ) : (
+              <>
+                {inlineCommands.map(({ id, label, icon: Icon, active, run }) => (
+                  <button key={id} type="button" aria-label={label} aria-pressed={editor.isActive(active)} onClick={() => run(editor)}>
+                    <Icon className="size-3.5" />
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  aria-label="Link"
+                  aria-pressed={editor.isActive("link")}
+                  onClick={() => {
+                    setLinkValue(editor.getAttributes("link").href ?? "");
+                    setLinkMode(true);
+                  }}
+                >
+                  <Link2 className="size-3.5" />
+                </button>
+              </>
+            )}
           </div>
         </BubbleMenu>
       )}
       <EditorContent editor={editor} />
       {slash && choices.length > 0 && (
-        <div className="description-slash-menu" role="listbox" aria-label="Formatting commands">
+        <div
+          className="description-slash-menu"
+          role="listbox"
+          aria-label="Formatting commands"
+          style={{ left: slash.left, top: slash.top }}
+        >
           {choices.map((item, index) => (
             <button
               key={item.id}
@@ -673,6 +730,9 @@ Append to `src/styles/index.css`:
 .astryn-description-editor h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
 .astryn-description-editor ul { list-style: disc; padding-left: 1.4rem; }
 .astryn-description-editor ol { list-style: decimal; padding-left: 1.4rem; }
+.astryn-description-editor ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.astryn-description-editor li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-description-editor li[data-type="taskItem"] > label { margin-top: 0.2rem; }
 .astryn-description-editor blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); }
 .astryn-description-editor pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
 .astryn-description-editor code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; }
@@ -682,7 +742,8 @@ Append to `src/styles/index.css`:
 .description-bubble-menu { display: flex; gap: 0.125rem; border-radius: 0.5rem; padding: 0.25rem; }
 .description-bubble-menu button { border-radius: 0.3rem; padding: 0.35rem; color: var(--muted-foreground); }
 .description-bubble-menu button:hover, .description-bubble-menu button[aria-pressed="true"] { background: var(--accent); color: var(--foreground); }
-.description-slash-menu { position: absolute; z-index: 70; top: 3rem; left: 0.75rem; width: 15rem; border-radius: 0.6rem; padding: 0.3rem; }
+.description-bubble-menu input { width: 14rem; border-radius: 0.3rem; background: transparent; padding: 0.3rem 0.45rem; color: var(--foreground); outline: none; }
+.description-slash-menu { position: absolute; z-index: 70; width: 15rem; border-radius: 0.6rem; padding: 0.3rem; }
 .description-slash-menu button { display: flex; width: 100%; align-items: center; gap: 0.6rem; border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); }
 .description-slash-menu button[aria-selected="true"], .description-slash-menu button:hover { background: var(--accent); }
 .description-save-status { position: absolute; right: 0; top: -1.25rem; font-size: 0.6875rem; color: var(--muted-foreground); }
