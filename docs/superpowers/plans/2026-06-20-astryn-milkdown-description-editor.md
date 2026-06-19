@@ -45,15 +45,15 @@
 **Files:**
 - Modify: `package.json`, `package-lock.json`
 
-- [ ] **Step 1: Install Milkdown React + adapter (exact, FOSS)**
+- [ ] **Step 1: Install Milkdown React bindings (exact, FOSS)**
 
-`@milkdown/kit@7.21.2` is already installed. Add the React bindings at the **same exact** version and the React ProseMirror adapter Milkdown uses for node views:
+`@milkdown/kit@7.21.2` is already installed. Add the React bindings at the **same exact** version:
 
 ```bash
-npm install --save-exact @milkdown/react@7.21.2 @prosemirror-adapter/react@0.2.7
+npm install --save-exact @milkdown/react@7.21.2
 ```
 
-Expected: both appear in `package.json` with exact versions. Do not add any `@milkdown` Pro/cloud package.
+Then determine how React node views are exposed in this version (Tasks 3–4 need them): check whether `@prosemirror-adapter/react` is available transitively (`npm ls @prosemirror-adapter/react`) and re-exported, or whether it must be installed explicitly. If an explicit install is required, install the version that matches what `@milkdown/react@7.21.2` resolves (do **not** guess — read `npm ls`), `--save-exact`. Record the chosen node-view import path in the report for Tasks 3/4/6. Do not add any `@milkdown` Pro/cloud package.
 
 - [ ] **Step 2: Verify a single ProseMirror model**
 
