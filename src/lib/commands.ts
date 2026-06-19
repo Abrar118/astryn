@@ -122,7 +122,13 @@ export type UpdateIssuePatch = {
   dueDate?: string | null;
   assigneeId?: string | null;
   description?: string | null;
+  labelIds?: string[];
+  projectId?: string | null;
+  estimate?: number | null;
+  cycleId?: string | null;
 };
+
+export type Cycle = { id: string; number: number | null; name: string | null; teamId: string | null };
 
 // ── M1 bindings ───────────────────────────────────────────────────────────────
 
@@ -149,5 +155,11 @@ export const updateIssue = (id: string, patch: UpdateIssuePatch): Promise<Issue>
   invoke("update_issue", { id, patch });
 
 export const listUsers = (): Promise<User[]> => invoke("list_users");
+
+export const listLabels = (): Promise<Label[]> => invoke("list_labels");
+
+export const listCycles = (): Promise<Cycle[]> => invoke("list_cycles");
+
+export const deleteIssue = (id: string): Promise<void> => invoke("delete_issue", { id });
 
 export const getMe = (): Promise<Me | null> => invoke("get_me");

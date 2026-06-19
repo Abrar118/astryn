@@ -8,12 +8,15 @@ import {
 } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import {
+  deleteIssue,
   errorText,
   getIssueDetail,
   getMe,
   listCalendarIssues,
+  listCycles,
   listFilterOptions,
   listIssues,
+  listLabels,
   listUnscheduled,
   listUsers,
   syncIssues,
@@ -22,6 +25,7 @@ import {
   type IssueDetailResult,
   type IssueFilters,
   type IssueListItem,
+  type Label,
   type LiveDetail,
   type UpdateIssuePatch,
 } from "./commands";
@@ -57,29 +61,40 @@ type StateInfo = { stateName: string | null; stateType: string; stateColor: stri
  * board groups on (assignee name, status name/type/color) from lookup maps built
  * out of the other cached issues. Best-effort: unknown targets leave fields as-is.
  */
-function applyPatchToListItem(
-  it: IssueListItem,
-  patch: UpdateIssuePatch,
-  stateById: Map<string, StateInfo>,
-  nameById: Map<string, string | null>,
-): IssueListItem {
+type ListLookups = {
+  stateById: Map<string, StateInfo>;
+  nameById: Map<string, string | null>;
+  labelById: Map<string, Label>;
+  projectNameById: Map<string, string | null>;
+};
+
+function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: ListLookups): IssueListItem {
   const next: IssueListItem = { ...it };
   if (patch.title !== undefined) next.title = patch.title;
   if (patch.priority !== undefined) next.priority = patch.priority;
   if (patch.dueDate !== undefined) next.dueDate = patch.dueDate;
   if (patch.description !== undefined) next.description = patch.description;
+  if (patch.estimate !== undefined) next.estimate = patch.estimate;
   if (patch.assigneeId !== undefined) {
     next.assigneeId = patch.assigneeId;
-    next.assigneeName = patch.assigneeId ? nameById.get(patch.assigneeId) ?? null : null;
+    next.assigneeName = patch.assigneeId ? lk.nameById.get(patch.assigneeId) ?? null : null;
   }
   if (patch.stateId !== undefined) {
     next.stateId = patch.stateId;
-    const st = patch.stateId ? stateById.get(patch.stateId) : undefined;
+    const st = patch.stateId ? lk.stateById.get(patch.stateId) : undefined;
     if (st) {
       next.stateName = st.stateName;
       next.stateType = st.stateType;
       next.stateColor = st.stateColor;
     }
+  }
+  if (patch.projectId !== undefined) {
+    next.projectId = patch.projectId;
+    next.projectName = patch.projectId ? lk.projectNameById.get(patch.projectId) ?? null : null;
+  }
+  if (patch.labelIds !== undefined) {
+    // Resolve known labels; ids not yet seen in the cache fill in on refetch.
+    next.labels = patch.labelIds.map((id) => lk.labelById.get(id)).filter((l): l is Label => !!l);
   }
   return next;
 }
@@ -91,7 +106,8 @@ function applyPatchToListItem(
  * keyring write, so a failed write still leaves an empty cache.
  */
 const WORKSPACE_KEYS = [
-  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["filter-options"], ["me"],
+  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["labels"], ["cycles"],
+  ["filter-options"], ["me"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {
@@ -120,6 +136,33 @@ export function useFilterOptions() {
 
 export function useUsers() {
   return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000 });
+}
+
+export function useLabels() {
+  return useQuery({ queryKey: ["labels"], queryFn: listLabels, staleTime: 5 * 60_000 });
+}
+
+export function useCycles() {
+  return useQuery({ queryKey: ["cycles"], queryFn: listCycles, staleTime: 5 * 60_000 });
+}
+
+/** Delete (trash) an issue in Linear, then drop it from the renderer caches. */
+export function useDeleteIssue() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => deleteIssue(id),
+    onSuccess: (_data, id) => {
+      for (const key of [["calendar"], ["unscheduled"], ["issues"]]) {
+        for (const [k, list] of qc.getQueriesData<{ id: string }[]>({ queryKey: key })) {
+          if (list) qc.setQueryData(k, list.filter((i) => i.id !== id));
+        }
+      }
+      qc.removeQueries({ queryKey: ["issue", id] });
+      qc.invalidateQueries({ queryKey: ["filter-options"] });
+      gooeyToast.success("Issue deleted");
+    },
+    onError: (err) => gooeyToast.error("Delete failed", { description: errorText(err) }),
+  });
 }
 
 export function useCalendarIssues(range: { start: string; end: string }, filters: IssueFilters) {
@@ -180,23 +223,29 @@ export function useUpdateIssue() {
       // Optimistically move the issue within the list/board caches so a board
       // drag lands immediately (and rolls back on error) instead of snapping back.
       const allListed = issuesEntries.flatMap(([, l]) => l ?? []);
-      const stateById = new Map<string, StateInfo>();
-      const nameById = new Map<string, string | null>();
+      const lookups: ListLookups = {
+        stateById: new Map(),
+        nameById: new Map(),
+        labelById: new Map(),
+        projectNameById: new Map(),
+      };
       for (const it of allListed) {
         if (it.stateId) {
-          stateById.set(it.stateId, {
+          lookups.stateById.set(it.stateId, {
             stateName: it.stateName,
             stateType: it.stateType,
             stateColor: it.stateColor,
           });
         }
-        if (it.assigneeId) nameById.set(it.assigneeId, it.assigneeName);
+        if (it.assigneeId) lookups.nameById.set(it.assigneeId, it.assigneeName);
+        if (it.projectId) lookups.projectNameById.set(it.projectId, it.projectName);
+        for (const l of it.labels) lookups.labelById.set(l.id, l);
       }
       for (const [key, list] of issuesEntries) {
         if (!list) continue;
         qc.setQueryData(
           key,
-          list.map((it) => (it.id === id ? applyPatchToListItem(it, patch, stateById, nameById) : it)),
+          list.map((it) => (it.id === id ? applyPatchToListItem(it, patch, lookups) : it)),
         );
       }
 

@@ -315,6 +315,21 @@ pub async fn load_issues(
         .collect())
 }
 
+/// Remove a deleted issue (and its labels) from the cache.
+pub async fn delete_issue(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM labels WHERE issue_id = ?1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM issues WHERE id = ?1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 pub async fn list_filter_options(pool: &SqlitePool) -> Result<FilterOptions, sqlx::Error> {
     let teams: Vec<TeamOption> = sqlx::query_as(
         "SELECT DISTINCT team_id AS id, team_key AS key FROM issues

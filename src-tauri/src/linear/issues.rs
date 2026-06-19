@@ -204,6 +204,70 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
         .collect())
 }
 
+pub fn parse_labels(body: &str) -> Result<Vec<ParsedLabel>, LinearError> {
+    let data = extract_data(body)?;
+    let nodes = data
+        .get("issueLabels")
+        .and_then(|u| u.get("nodes"))
+        .and_then(|n| n.as_array())
+        .ok_or(LinearError::Malformed)?;
+    Ok(nodes
+        .iter()
+        .filter_map(|l| {
+            Some(ParsedLabel {
+                id: s(l, "id")?,
+                name: s(l, "name"),
+                color: s(l, "color"),
+            })
+        })
+        .collect())
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedCycle {
+    pub id: String,
+    pub number: Option<i64>,
+    pub name: Option<String>,
+    pub team_id: Option<String>,
+}
+
+pub fn parse_cycles(body: &str) -> Result<Vec<ParsedCycle>, LinearError> {
+    let data = extract_data(body)?;
+    let nodes = data
+        .get("cycles")
+        .and_then(|u| u.get("nodes"))
+        .and_then(|n| n.as_array())
+        .ok_or(LinearError::Malformed)?;
+    Ok(nodes
+        .iter()
+        .filter_map(|c| {
+            Some(ParsedCycle {
+                id: s(c, "id")?,
+                number: c.get("number").and_then(|x| x.as_i64()),
+                name: s(c, "name"),
+                team_id: nested(c, "team", "id"),
+            })
+        })
+        .collect())
+}
+
+pub fn parse_issue_delete(body: &str) -> Result<(), LinearError> {
+    let data = extract_data(body)?;
+    let ok = data
+        .get("issueDelete")
+        .and_then(|d| d.get("success"))
+        .and_then(|b| b.as_bool())
+        == Some(true);
+    if ok {
+        Ok(())
+    } else {
+        Err(LinearError::Api(
+            "issueDelete returned success=false".into(),
+        ))
+    }
+}
+
 pub fn parse_issue_update(body: &str) -> Result<ParsedIssue, LinearError> {
     let data = extract_data(body)?;
     let upd = data.get("issueUpdate").ok_or(LinearError::Malformed)?;
@@ -409,6 +473,15 @@ pub struct UpdateIssuePatch {
     pub assignee_id: Option<Option<String>>,
     #[serde(default, deserialize_with = "double_option")]
     pub description: Option<Option<String>>,
+    /// Replace the full label set (present => set, absent => unchanged).
+    #[serde(default)]
+    pub label_ids: Option<Vec<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub project_id: Option<Option<String>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub estimate: Option<Option<i64>>,
+    #[serde(default, deserialize_with = "double_option")]
+    pub cycle_id: Option<Option<String>>,
 }
 
 /// Build the GraphQL `IssueUpdateInput`. Omitted => absent; Some(None) => null (clear).
@@ -438,6 +511,30 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
     if let Some(opt) = &p.description {
         m.insert(
             "description".into(),
+            opt.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(ids) = &p.label_ids {
+        m.insert(
+            "labelIds".into(),
+            Value::Array(ids.iter().cloned().map(Value::String).collect()),
+        );
+    }
+    if let Some(opt) = &p.project_id {
+        m.insert(
+            "projectId".into(),
+            opt.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(opt) = &p.estimate {
+        m.insert(
+            "estimate".into(),
+            opt.map(Value::from).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(opt) = &p.cycle_id {
+        m.insert(
+            "cycleId".into(),
             opt.clone().map(Value::String).unwrap_or(Value::Null),
         );
     }
@@ -478,6 +575,9 @@ fn issue_detail_query() -> String {
 }
 
 const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl } } }";
+const LABELS_QUERY: &str = "query { issueLabels(first: 250) { nodes { id name color } } }";
+const CYCLES_QUERY: &str = "query { cycles(first: 250) { nodes { id number name team { id } } } }";
+const ISSUE_DELETE_MUTATION: &str = "mutation D($id: String!) { issueDelete(id: $id) { success } }";
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
 
 fn issue_update_mutation() -> String {
@@ -517,6 +617,21 @@ impl LinearClient {
     pub async fn users(&self, auth: &str) -> Result<Vec<ParsedUser>, LinearError> {
         let body = serde_json::json!({ "query": USERS_QUERY });
         parse_users(&self.post(auth, body).await?)
+    }
+
+    pub async fn labels(&self, auth: &str) -> Result<Vec<ParsedLabel>, LinearError> {
+        let body = serde_json::json!({ "query": LABELS_QUERY });
+        parse_labels(&self.post(auth, body).await?)
+    }
+
+    pub async fn cycles(&self, auth: &str) -> Result<Vec<ParsedCycle>, LinearError> {
+        let body = serde_json::json!({ "query": CYCLES_QUERY });
+        parse_cycles(&self.post(auth, body).await?)
+    }
+
+    pub async fn delete_issue(&self, auth: &str, id: &str) -> Result<(), LinearError> {
+        let body = serde_json::json!({ "query": ISSUE_DELETE_MUTATION, "variables": { "id": id } });
+        parse_issue_delete(&self.post(auth, body).await?)
     }
 
     pub async fn viewer_with_org(&self, auth: &str) -> Result<OrgIdentity, LinearError> {
@@ -616,6 +731,36 @@ mod tests {
             patch_to_input(&p),
             serde_json::json!({"dueDate":"2026-06-12","priority":1})
         );
+    }
+
+    #[test]
+    fn patch_maps_labels_project_estimate_cycle() {
+        let p: UpdateIssuePatch = serde_json::from_str(
+            r#"{"labelIds":["a","b"],"projectId":"p1","estimate":5,"cycleId":null}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            patch_to_input(&p),
+            serde_json::json!({
+                "labelIds": ["a", "b"],
+                "projectId": "p1",
+                "estimate": 5,
+                "cycleId": null
+            })
+        );
+        // estimate cleared, project cleared
+        let p: UpdateIssuePatch =
+            serde_json::from_str(r#"{"estimate":null,"projectId":null}"#).unwrap();
+        assert_eq!(
+            patch_to_input(&p),
+            serde_json::json!({ "estimate": null, "projectId": null })
+        );
+    }
+
+    #[test]
+    fn parses_issue_delete_success() {
+        assert!(parse_issue_delete(r#"{"data":{"issueDelete":{"success":true}}}"#).is_ok());
+        assert!(parse_issue_delete(r#"{"data":{"issueDelete":{"success":false}}}"#).is_err());
     }
 
     #[test]

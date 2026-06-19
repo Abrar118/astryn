@@ -10,7 +10,8 @@ use crate::db::issues::{
 };
 use crate::linear::issues::{
     patch_to_input, DetailChild, DetailComment, DetailCycle, DetailRef, DetailRelation,
-    DetailState, IssueDetailNode, OrgIdentity, ParsedIssue, ParsedUser, UpdateIssuePatch,
+    DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue, ParsedUser,
+    UpdateIssuePatch,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -620,6 +621,55 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::NotConfigured)?;
     state.linear.users(&auth).await.map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn list_labels(state: State<'_, AppState>) -> Result<Vec<LabelOut>, CmdError> {
+    let c = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+    let labels = state.linear.labels(&auth).await.map_err(CmdError::from)?;
+    Ok(labels
+        .into_iter()
+        .map(|l| LabelOut {
+            id: l.id,
+            name: l.name,
+            color: l.color,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn list_cycles(state: State<'_, AppState>) -> Result<Vec<ParsedCycle>, CmdError> {
+    let c = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+    state.linear.cycles(&auth).await.map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let _g = state.workspace_lock.lock().await;
+    let c = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+    state
+        .linear
+        .delete_issue(&auth, &id)
+        .await
+        .map_err(CmdError::from)?;
+    db::issues::delete_issue(&state.pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)
 }
 
 #[tauri::command]

@@ -57,6 +57,9 @@ pub fn run() {
             commands::get_issue_detail,
             commands::update_issue,
             commands::list_users,
+            commands::list_labels,
+            commands::list_cycles,
+            commands::delete_issue,
             commands::get_me
         ])
         .run(tauri::generate_context!())

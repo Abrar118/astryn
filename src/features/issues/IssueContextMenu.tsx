@@ -12,17 +12,30 @@ import { useSearchParams } from "react-router-dom";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
+  Box,
   Calendar,
   Check,
   ChevronRight,
   Copy,
   ExternalLink,
+  Gauge,
+  IterationCcw,
   ListChecks,
   PanelRight,
   SignalHigh,
+  Tag,
+  Trash2,
   User as UserIcon,
 } from "lucide-react";
-import { useIssues, useUpdateIssue, useUsers } from "@/lib/queries";
+import {
+  useCycles,
+  useDeleteIssue,
+  useFilterOptions,
+  useIssues,
+  useLabels,
+  useUpdateIssue,
+  useUsers,
+} from "@/lib/queries";
 import { dhakaToday } from "@/lib/dates";
 import type { IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
@@ -41,6 +54,7 @@ const STATE_RANK: Record<string, number> = {
   completed: 3,
   canceled: 4,
 };
+const ESTIMATES = [0, 1, 2, 3, 5, 8];
 
 function addDays(ymd: string, n: number): string {
   const d = new Date(`${ymd}T00:00:00Z`);
@@ -165,7 +179,11 @@ function Menu({
   onClose: () => void;
 }) {
   const update = useUpdateIssue();
-  const [, setParams] = useSearchParams();
+  const del = useDeleteIssue();
+  const { data: labels } = useLabels();
+  const { data: cycles } = useCycles();
+  const { data: filterOpts } = useFilterOptions();
+  const [params, setParams] = useSearchParams();
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<string | null>(null);
 
@@ -188,6 +206,29 @@ function Menu({
     update.mutate({ id: issue.id, patch: p });
     onClose();
   };
+
+  // Labels are multi-select: toggle without closing so several can be set.
+  const toggleLabel = (labelId: string) => {
+    const has = issue.labels.some((l) => l.id === labelId);
+    const ids = has
+      ? issue.labels.filter((l) => l.id !== labelId).map((l) => l.id)
+      : [...issue.labels.map((l) => l.id), labelId];
+    update.mutate({ id: issue.id, patch: { labelIds: ids } });
+  };
+
+  const removeIssue = () => {
+    del.mutate(issue.id);
+    if (params.get("issue") === issue.id) setParams({});
+    onClose();
+  };
+
+  const teamCycles = useMemo(
+    () =>
+      (cycles ?? [])
+        .filter((c) => c.teamId === issue.teamId)
+        .sort((a, b) => (b.number ?? 0) - (a.number ?? 0)),
+    [cycles, issue.teamId],
+  );
 
   // Available states for this issue's team, derived from the cached issues.
   const teamStates = useMemo(() => {
@@ -290,6 +331,87 @@ function Menu({
         )}
       </div>
 
+      {/* Labels (multi-select, stays open) */}
+      <div className="relative" onMouseEnter={() => setSub("labels")}>
+        <Row icon={<Tag className="size-4" />} label="Labels" hasSub />
+        {sub === "labels" && (
+          <SubMenu flip={flip}>
+            {(labels ?? []).length === 0 && (
+              <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No labels</div>
+            )}
+            {(labels ?? []).map((l) => (
+              <Row
+                key={l.id}
+                icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />}
+                label={l.name ?? "label"}
+                active={issue.labels.some((x) => x.id === l.id)}
+                onClick={() => toggleLabel(l.id)}
+              />
+            ))}
+          </SubMenu>
+        )}
+      </div>
+
+      {/* Project */}
+      <div className="relative" onMouseEnter={() => setSub("project")}>
+        <Row icon={<Box className="size-4" />} label="Project" hasSub />
+        {sub === "project" && (
+          <SubMenu flip={flip}>
+            <Row icon={<Box className="size-4" />} label="No project" active={!issue.projectId} onClick={() => patch({ projectId: null })} />
+            {(filterOpts?.projects ?? []).map((p) => (
+              <Row
+                key={p.id}
+                icon={<Box className="size-4" />}
+                label={p.name}
+                active={p.id === issue.projectId}
+                onClick={() => patch({ projectId: p.id })}
+              />
+            ))}
+          </SubMenu>
+        )}
+      </div>
+
+      {/* Estimate */}
+      <div className="relative" onMouseEnter={() => setSub("estimate")}>
+        <Row icon={<Gauge className="size-4" />} label="Estimate" hasSub />
+        {sub === "estimate" && (
+          <SubMenu flip={flip}>
+            <Row icon={<Gauge className="size-4" />} label="No estimate" active={issue.estimate == null} onClick={() => patch({ estimate: null })} />
+            {ESTIMATES.map((n) => (
+              <Row
+                key={n}
+                icon={<Gauge className="size-4" />}
+                label={`${n} ${n === 1 ? "point" : "points"}`}
+                active={issue.estimate === n}
+                onClick={() => patch({ estimate: n })}
+              />
+            ))}
+          </SubMenu>
+        )}
+      </div>
+
+      {/* Cycle */}
+      <div className="relative" onMouseEnter={() => setSub("cycle")}>
+        <Row icon={<IterationCcw className="size-4" />} label="Cycle" hasSub />
+        {sub === "cycle" && (
+          <SubMenu flip={flip}>
+            <Row icon={<IterationCcw className="size-4" />} label="No cycle" active={issue.cycleNumber == null} onClick={() => patch({ cycleId: null })} />
+            {teamCycles.length === 0 && (
+              <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No cycles</div>
+            )}
+            {teamCycles.map((c) => (
+              <Row
+                key={c.id}
+                icon={<IterationCcw className="size-4" />}
+                label={c.name ?? `Cycle ${c.number ?? "?"}`}
+                active={c.number != null && c.number === issue.cycleNumber}
+                onClick={() => patch({ cycleId: c.id })}
+              />
+            ))}
+          </SubMenu>
+        )}
+      </div>
+
       <div className="my-1 border-t border-border/60" />
 
       {/* Copy */}
@@ -327,6 +449,34 @@ function Menu({
           onClose();
         }}
       />
+
+      <div className="my-1 border-t border-border/60" />
+
+      {/* Delete (confirm via submenu) */}
+      <div className="relative" onMouseEnter={() => setSub("delete")}>
+        <button
+          type="button"
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+        >
+          <span className="flex size-4 shrink-0 items-center justify-center">
+            <Trash2 className="size-4" />
+          </span>
+          <span className="flex-1">Delete</span>
+          <ChevronRight className="size-3.5 shrink-0 text-red-400/70" />
+        </button>
+        {sub === "delete" && (
+          <SubMenu flip={flip}>
+            <button
+              type="button"
+              onClick={removeIssue}
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+            >
+              <Trash2 className="size-4" />
+              <span className="flex-1">Delete issue</span>
+            </button>
+          </SubMenu>
+        )}
+      </div>
     </div>
   );
 }
