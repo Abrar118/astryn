@@ -81,4 +81,21 @@ describe("description Markdown", () => {
     const output = markdownFromEditor(editor);
     expect(output).toContain("[docs](https://example.com)");
   });
+
+  it("preserves original URL when round-tripping a Linear image (no data: URL leaks)", () => {
+    const src = "![diagram](https://uploads.linear.app/a/b.png)";
+    const editor = fromMarkdown(src);
+    const output = markdownFromEditor(editor);
+    expect(output).toContain("![diagram](https://uploads.linear.app/a/b.png)");
+    expect(output).not.toContain("data:");
+  });
+
+  it("serializes idempotently for markdown containing an image", () => {
+    const src = "## Title\n\n![diagram](https://uploads.linear.app/a/b.png)\n\n- item";
+    const once = markdownFromEditor(fromMarkdown(src));
+    const twice = markdownFromEditor(fromMarkdown(once));
+    expect(twice).toBe(once);
+    expect(once).toContain("![diagram](https://uploads.linear.app/a/b.png)");
+    expect(once).not.toContain("data:");
+  });
 });

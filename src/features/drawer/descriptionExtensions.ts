@@ -1,9 +1,49 @@
-import type { Editor, Extensions } from "@tiptap/core";
+import type { Editor, Extensions, JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "@tiptap/markdown";
 import { TaskList } from "@tiptap/extension-task-list";
 import { TaskItem } from "@tiptap/extension-task-item";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
+import { Image } from "@tiptap/extension-image";
+import { ReactNodeViewRenderer } from "@tiptap/react";
+import { DescriptionImage } from "./DescriptionImage";
+
+/** Image extension wired for Markdown round-trip + React NodeView proxy rendering. */
+const LinearImage = Image.configure({ inline: true }).extend({
+  /** Token type emitted by marked for `![alt](url)` syntax. */
+  markdownTokenName: "image",
+
+  /**
+   * Parse a marked `image` token `{ href, text, title }` into an `image` node.
+   * `href` is stored as-is on `src` — never the proxied data URL.
+   */
+  parseMarkdown(token: { href?: string; text?: string; title?: string | null }) {
+    return {
+      type: "image",
+      attrs: {
+        src: token.href ?? "",
+        alt: token.text ?? null,
+        title: token.title ?? null,
+      },
+    };
+  },
+
+  /**
+   * Serialize the `image` node back to `![alt](src)` markdown.
+   * Reads `node.attrs.src` — the ORIGINAL URL, never a proxied data URL.
+   */
+  renderMarkdown(node: JSONContent) {
+    const attrs = (node.attrs ?? {}) as { src?: string; alt?: string | null; title?: string | null };
+    const src = attrs.src ?? "";
+    const alt = attrs.alt ?? "";
+    const title = attrs.title ? ` "${attrs.title}"` : "";
+    return `![${alt}](${src}${title})`;
+  },
+
+  addNodeView() {
+    return ReactNodeViewRenderer(DescriptionImage);
+  },
+});
 
 export function descriptionExtensions(): Extensions {
   return [
@@ -23,6 +63,7 @@ export function descriptionExtensions(): Extensions {
     TableRow,
     TableHeader,
     TableCell,
+    LinearImage,
     Markdown.configure({ markedOptions: { gfm: true, breaks: false } }),
   ];
 }
