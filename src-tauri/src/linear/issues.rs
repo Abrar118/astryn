@@ -29,6 +29,10 @@ pub struct ParsedIssue {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
+    pub estimate: Option<i64>,
+    pub cycle_name: Option<String>,
+    pub cycle_number: Option<i64>,
+    pub milestone_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -104,6 +108,14 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         project_id: nested(n, "project", "id"),
         project_name: nested(n, "project", "name"),
         parent_id: nested(n, "parent", "id"),
+        // `estimate` may arrive as an int or a float (fibonacci scales); read as f64.
+        estimate: n.get("estimate").and_then(|x| x.as_f64()).map(|f| f as i64),
+        cycle_name: nested(n, "cycle", "name"),
+        cycle_number: n
+            .get("cycle")
+            .and_then(|c| c.get("number"))
+            .and_then(|x| x.as_i64()),
+        milestone_name: nested(n, "projectMilestone", "name"),
         created_at: s(n, "createdAt").unwrap_or_default(),
         updated_at: s(n, "updatedAt").unwrap_or_default(),
         archived_at: s(n, "archivedAt"),
@@ -403,6 +415,7 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
 
 // ---- GraphQL query strings + LinearClient methods ----
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
+  estimate cycle { id number name } projectMilestone { id name }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
   labels { nodes { id name color } }";
 
@@ -422,7 +435,6 @@ fn issue_detail_query() -> String {
         "query Issue($id: String!) {{
            issue(id: $id) {{
              {ISSUE_NODE_FIELDS}
-             cycle {{ id number name }}
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
              children(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id identifier title state {{ type }} }} }}
@@ -435,11 +447,14 @@ fn issue_detail_query() -> String {
 
 const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl } } }";
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
-const ISSUE_UPDATE_MUTATION: &str =
-    "mutation U($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) {
-       success issue { id identifier title description dueDate priority url createdAt updatedAt archivedAt
-         state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
-         labels { nodes { id name color } } } } }";
+
+fn issue_update_mutation() -> String {
+    format!(
+        "mutation U($id: String!, $input: IssueUpdateInput!) {{
+           issueUpdate(id: $id, input: $input) {{ success issue {{ {ISSUE_NODE_FIELDS} }} }}
+         }}"
+    )
+}
 
 impl LinearClient {
     async fn post(&self, auth: &str, body: serde_json::Value) -> Result<String, LinearError> {
@@ -484,7 +499,7 @@ impl LinearClient {
         input: &serde_json::Value,
     ) -> Result<ParsedIssue, LinearError> {
         let body = serde_json::json!({
-            "query": ISSUE_UPDATE_MUTATION,
+            "query": issue_update_mutation(),
             "variables": { "id": id, "input": input }
         });
         parse_issue_update(&self.post(auth, body).await?)
@@ -500,9 +515,11 @@ mod tests {
         let body = r##"{"data":{"issues":{"pageInfo":{"hasNextPage":true,"endCursor":"C1"},
           "nodes":[{"id":"i1","identifier":"ENG-1","title":"T","description":null,
           "dueDate":"2026-06-10","priority":2,"url":"u","createdAt":"c","updatedAt":"u1","archivedAt":null,
+          "estimate":3,"cycle":{"id":"cy1","number":7,"name":"Sprint 7"},
+          "projectMilestone":{"id":"m1","name":"Beta"},
           "state":{"id":"s","name":"Todo","type":"unstarted","color":"#fff"},
           "assignee":{"id":"me","name":"Me"},"team":{"id":"t","key":"ENG"},
-          "project":{"id":"p","name":"P"},"cycle":null,"parent":null,
+          "project":{"id":"p","name":"P"},"parent":null,
           "labels":{"nodes":[{"id":"l1","name":"bug","color":"#f00"}]}}]}}}"##;
         let page = parse_issues_page(body).unwrap();
         assert!(page.has_next);
@@ -512,6 +529,10 @@ mod tests {
         assert_eq!(i.identifier, "ENG-1");
         assert_eq!(i.priority, 2);
         assert_eq!(i.team_key.as_deref(), Some("ENG"));
+        assert_eq!(i.estimate, Some(3));
+        assert_eq!(i.cycle_number, Some(7));
+        assert_eq!(i.cycle_name.as_deref(), Some("Sprint 7"));
+        assert_eq!(i.milestone_name.as_deref(), Some("Beta"));
         assert_eq!(i.labels.len(), 1);
         assert_eq!(i.archived_at, None);
         assert!(!i.raw_json.is_empty());

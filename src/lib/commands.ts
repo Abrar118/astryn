@@ -61,11 +61,18 @@ export type Issue = {
   projectId: string | null;
   projectName: string | null;
   parentId: string | null;
+  estimate: number | null;
+  cycleName: string | null;
+  cycleNumber: number | null;
+  milestoneName: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
 export type Label = { id: string; name: string | null; color: string | null };
+
+/** A list-view issue: the cached read-shape plus its labels. */
+export type IssueListItem = Issue & { labels: Label[] };
 export type DetailState = { id: string; name: string; type: string; color: string };
 export type DetailCycle = { id: string; number: number | null; name: string | null };
 export type DetailRef = { id: string; identifier: string; title: string };
@@ -127,7 +134,7 @@ export const listCalendarIssues = (
 export const listUnscheduled = (args: IssueFilters): Promise<CalendarIssue[]> =>
   invoke("list_unscheduled", { args });
 
-export const listIssues = (args: IssueFilters): Promise<Issue[]> =>
+export const listIssues = (args: IssueFilters): Promise<IssueListItem[]> =>
   invoke("list_issues", { args });
 
 export const listFilterOptions = (): Promise<FilterOptions> =>

@@ -37,8 +37,30 @@ pub struct Issue {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
+    pub estimate: Option<i64>,
+    pub cycle_name: Option<String>,
+    pub cycle_number: Option<i64>,
+    pub milestone_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Label {
+    pub id: String,
+    pub name: Option<String>,
+    pub color: Option<String>,
+}
+
+/// A list-view issue: the cached read-shape plus its labels. (Labels can't live
+/// on `Issue` itself — `LiveDetail` flattens `Issue` and has its own `labels`.)
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IssueListItem {
+    #[serde(flatten)]
+    pub issue: Issue,
+    pub labels: Vec<Label>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +83,10 @@ pub struct IssueRecord {
     pub project_id: Option<String>,
     pub project_name: Option<String>,
     pub parent_id: Option<String>,
+    pub estimate: Option<i64>,
+    pub cycle_name: Option<String>,
+    pub cycle_number: Option<i64>,
+    pub milestone_name: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub archived_at: Option<String>,
@@ -101,8 +127,9 @@ pub async fn upsert_issue(
            (id, identifier, title, description, due_date, priority, url,
             state_id, state_name, state_type, state_color, assignee_id, assignee_name,
             team_id, team_key, project_id, project_name, parent_id,
+            estimate, cycle_name, cycle_number, milestone_name,
             created_at, updated_at, archived_at, synced_at, raw_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21, datetime('now'), ?22)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25, datetime('now'), ?26)
          ON CONFLICT(id) DO UPDATE SET
            identifier=excluded.identifier, title=excluded.title, description=excluded.description,
            due_date=excluded.due_date, priority=excluded.priority, url=excluded.url,
@@ -110,6 +137,8 @@ pub async fn upsert_issue(
            state_color=excluded.state_color, assignee_id=excluded.assignee_id, assignee_name=excluded.assignee_name,
            team_id=excluded.team_id, team_key=excluded.team_key, project_id=excluded.project_id,
            project_name=excluded.project_name, parent_id=excluded.parent_id,
+           estimate=excluded.estimate, cycle_name=excluded.cycle_name, cycle_number=excluded.cycle_number,
+           milestone_name=excluded.milestone_name,
            created_at=excluded.created_at, updated_at=excluded.updated_at, archived_at=excluded.archived_at,
            synced_at=excluded.synced_at, raw_json=excluded.raw_json
          WHERE excluded.updated_at >= issues.updated_at
@@ -133,6 +162,10 @@ pub async fn upsert_issue(
     .bind(&r.project_id)
     .bind(&r.project_name)
     .bind(&r.parent_id)
+    .bind(r.estimate)
+    .bind(&r.cycle_name)
+    .bind(r.cycle_number)
+    .bind(&r.milestone_name)
     .bind(&r.created_at)
     .bind(&r.updated_at)
     .bind(&r.archived_at)
@@ -213,43 +246,65 @@ pub async fn load_unscheduled(
     .await
 }
 
+const ISSUE_COLS: &str =
+    "id, identifier, title, description, due_date, COALESCE(priority,0) AS priority, url,
+    state_id, state_name, COALESCE(state_type,'') AS state_type,
+    COALESCE(state_color,'') AS state_color, assignee_id, assignee_name,
+    team_id, team_key, project_id, project_name, parent_id,
+    estimate, cycle_name, cycle_number, milestone_name, created_at, updated_at";
+
 pub async fn load_issue(pool: &SqlitePool, id: &str) -> Result<Option<Issue>, sqlx::Error> {
-    sqlx::query_as(
-        "SELECT id, identifier, title, description, due_date, COALESCE(priority,0) AS priority, url,
-                state_id, state_name, COALESCE(state_type,'') AS state_type,
-                COALESCE(state_color,'') AS state_color, assignee_id, assignee_name,
-                team_id, team_key, project_id, project_name, parent_id, created_at, updated_at
-         FROM issues WHERE id = ?1 AND archived_at IS NULL",
-    )
+    sqlx::query_as(&format!(
+        "SELECT {ISSUE_COLS} FROM issues WHERE id = ?1 AND archived_at IS NULL"
+    ))
     .bind(id)
     .fetch_optional(pool)
     .await
 }
 
-/// All non-archived cached issues (for the list view), newest-updated first.
+/// All non-archived cached issues (for the list view), newest-updated first,
+/// each with its labels attached.
 pub async fn load_issues(
     pool: &SqlitePool,
     team_id: Option<String>,
     assignee_id: Option<String>,
     project_id: Option<String>,
-) -> Result<Vec<Issue>, sqlx::Error> {
-    sqlx::query_as(
-        "SELECT id, identifier, title, description, due_date, COALESCE(priority,0) AS priority, url,
-                state_id, state_name, COALESCE(state_type,'') AS state_type,
-                COALESCE(state_color,'') AS state_color, assignee_id, assignee_name,
-                team_id, team_key, project_id, project_name, parent_id, created_at, updated_at
-         FROM issues
+) -> Result<Vec<IssueListItem>, sqlx::Error> {
+    let issues: Vec<Issue> = sqlx::query_as(&format!(
+        "SELECT {ISSUE_COLS} FROM issues
          WHERE archived_at IS NULL
            AND (?1 IS NULL OR team_id = ?1)
            AND (?2 IS NULL OR assignee_id = ?2)
            AND (?3 IS NULL OR project_id = ?3)
-         ORDER BY updated_at DESC, identifier",
-    )
+         ORDER BY updated_at DESC, identifier"
+    ))
     .bind(team_id)
     .bind(assignee_id)
     .bind(project_id)
     .fetch_all(pool)
-    .await
+    .await?;
+
+    // Attach labels in one pass. The workspace cache is single-tenant and bounded,
+    // so loading all labels and grouping in memory is cheaper than N queries.
+    let rows: Vec<(String, String, Option<String>, Option<String>)> =
+        sqlx::query_as("SELECT issue_id, label_id, name, color FROM labels")
+            .fetch_all(pool)
+            .await?;
+    let mut by_issue: std::collections::HashMap<String, Vec<Label>> =
+        std::collections::HashMap::new();
+    for (issue_id, id, name, color) in rows {
+        by_issue
+            .entry(issue_id)
+            .or_default()
+            .push(Label { id, name, color });
+    }
+    Ok(issues
+        .into_iter()
+        .map(|issue| {
+            let labels = by_issue.remove(&issue.id).unwrap_or_default();
+            IssueListItem { issue, labels }
+        })
+        .collect())
 }
 
 pub async fn list_filter_options(pool: &SqlitePool) -> Result<FilterOptions, sqlx::Error> {
@@ -345,6 +400,10 @@ mod tests {
             project_id: Some("p1".into()),
             project_name: Some("Proj".into()),
             parent_id: None,
+            estimate: None,
+            cycle_name: None,
+            cycle_number: None,
+            milestone_name: None,
             created_at: "2026-01-01T00:00:00Z".into(),
             updated_at: updated.into(),
             archived_at: None,
@@ -448,6 +507,49 @@ mod tests {
             rows.iter().map(|r| r.0.clone()).collect::<Vec<_>>(),
             vec!["c".to_string()]
         );
+    }
+
+    #[tokio::test]
+    async fn new_scalar_fields_roundtrip() {
+        let (_d, p) = pool().await;
+        let mut r = rec("1", Some("2026-06-10"), "t1");
+        r.estimate = Some(5);
+        r.cycle_name = Some("Sprint 1".into());
+        r.cycle_number = Some(1);
+        r.milestone_name = Some("Beta".into());
+        upsert(&p, &r).await;
+        let got = load_issue(&p, "1").await.unwrap().unwrap();
+        assert_eq!(got.estimate, Some(5));
+        assert_eq!(got.cycle_number, Some(1));
+        assert_eq!(got.cycle_name.as_deref(), Some("Sprint 1"));
+        assert_eq!(got.milestone_name.as_deref(), Some("Beta"));
+    }
+
+    #[tokio::test]
+    async fn load_issues_attaches_labels() {
+        let (_d, p) = pool().await;
+        upsert(&p, &rec("1", Some("2026-06-10"), "t1")).await;
+        upsert(&p, &rec("2", None, "t1")).await;
+        let mut tx = p.begin().await.unwrap();
+        replace_labels(
+            &mut tx,
+            "1",
+            &[LabelRecord {
+                label_id: "a".into(),
+                name: Some("bug".into()),
+                color: Some("#f00".into()),
+            }],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+        let items = load_issues(&p, None, None, None).await.unwrap();
+        assert_eq!(items.len(), 2);
+        let one = items.iter().find(|i| i.issue.id == "1").unwrap();
+        assert_eq!(one.labels.len(), 1);
+        assert_eq!(one.labels[0].name.as_deref(), Some("bug"));
+        let two = items.iter().find(|i| i.issue.id == "2").unwrap();
+        assert!(two.labels.is_empty());
     }
 
     #[tokio::test]

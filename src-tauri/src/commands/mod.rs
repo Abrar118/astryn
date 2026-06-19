@@ -141,6 +141,10 @@ fn parsed_to_issue(p: &ParsedIssue) -> Issue {
         project_id: p.project_id.clone(),
         project_name: p.project_name.clone(),
         parent_id: p.parent_id.clone(),
+        estimate: p.estimate,
+        cycle_name: p.cycle_name.clone(),
+        cycle_number: p.cycle_number,
+        milestone_name: p.milestone_name.clone(),
         created_at: p.created_at.clone(),
         updated_at: p.updated_at.clone(),
     }
@@ -559,7 +563,7 @@ pub async fn list_unscheduled(
 pub async fn list_issues(
     state: State<'_, AppState>,
     args: UnscheduledArgs,
-) -> Result<Vec<Issue>, CmdError> {
+) -> Result<Vec<issues::IssueListItem>, CmdError> {
     issues::load_issues(&state.pool, args.team_id, args.assignee_id, args.project_id)
         .await
         .map_err(|_| CmdError::Internal)
@@ -815,6 +819,10 @@ mod logic_tests {
             project_id: None,
             project_name: None,
             parent_id: None,
+            estimate: None,
+            cycle_name: None,
+            cycle_number: None,
+            milestone_name: None,
             created_at: "c".into(),
             updated_at: updated.into(),
             archived_at: None,

@@ -5,14 +5,17 @@ import {
   Box,
   CalendarDays,
   ChevronDown,
+  Gauge,
+  IterationCcw,
   LayoutGrid,
   List as ListIcon,
+  Milestone,
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
 import { useFilterOptions, useIssues, useMe, useUsers } from "@/lib/queries";
 import { dhakaToday, isOverdue } from "@/lib/dates";
-import type { Issue, IssueFilters } from "@/lib/commands";
+import type { IssueListItem, IssueFilters, Label } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 
@@ -32,7 +35,19 @@ type GroupBy = "status" | "assignee" | "priority" | "project" | "none";
 type ViewMode = "list" | "board";
 type Ordering = "status" | "priority" | "dueDate" | "title" | "created" | "updated";
 type Completed = "all" | "active";
-type DisplayKey = "id" | "status" | "priority" | "assignee" | "dueDate" | "project" | "created" | "updated";
+type DisplayKey =
+  | "id"
+  | "status"
+  | "priority"
+  | "assignee"
+  | "dueDate"
+  | "project"
+  | "labels"
+  | "estimate"
+  | "cycle"
+  | "milestone"
+  | "created"
+  | "updated";
 type DisplayProps = Record<DisplayKey, boolean>;
 
 const DEFAULT_DISPLAY: DisplayProps = {
@@ -42,6 +57,10 @@ const DEFAULT_DISPLAY: DisplayProps = {
   assignee: true,
   dueDate: true,
   project: true,
+  labels: true,
+  estimate: false,
+  cycle: false,
+  milestone: false,
   created: false,
   updated: false,
 };
@@ -52,6 +71,10 @@ const DISPLAY_LABELS: Record<DisplayKey, string> = {
   assignee: "Assignee",
   dueDate: "Due date",
   project: "Project",
+  labels: "Labels",
+  estimate: "Estimate",
+  cycle: "Cycle",
+  milestone: "Milestone",
   created: "Created",
   updated: "Updated",
 };
@@ -150,11 +173,35 @@ function Pill({ children, className = "" }: { children: ReactNode; className?: s
   );
 }
 
+/** Up to `max` label chips (colored dot + name), then a "+N" overflow pill. */
+function LabelPills({ labels, max = 2 }: { labels: Label[]; max?: number }) {
+  if (labels.length === 0) return null;
+  const shown = labels.slice(0, max);
+  const extra = labels.length - shown.length;
+  return (
+    <span className="flex shrink-0 items-center gap-1">
+      {shown.map((l) => (
+        <Pill key={l.id}>
+          <span className="size-1.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
+          <span className="max-w-24 truncate">{l.name ?? "label"}</span>
+        </Pill>
+      ))}
+      {extra > 0 && <Pill>+{extra}</Pill>}
+    </span>
+  );
+}
+
+function cycleText(i: IssueListItem): string | null {
+  if (i.cycleName) return i.cycleName;
+  if (i.cycleNumber != null) return `Cycle ${i.cycleNumber}`;
+  return null;
+}
+
 // ── Grouping & ordering ──────────────────────────────────────────────────────
 
-type Group = { key: string; label: string; color?: string; type?: string; issues: Issue[]; rank: number };
+type Group = { key: string; label: string; color?: string; type?: string; issues: IssueListItem[]; rank: number };
 
-function groupIssues(issues: Issue[], by: GroupBy, usersById: Map<string, string>): Group[] {
+function groupIssues(issues: IssueListItem[], by: GroupBy, usersById: Map<string, string>): Group[] {
   if (by === "none") return [{ key: "all", label: "All issues", issues, rank: 0 }];
   const map = new Map<string, Group>();
   for (const i of issues) {
@@ -193,7 +240,7 @@ function groupIssues(issues: Issue[], by: GroupBy, usersById: Map<string, string
   return [...map.values()].sort((a, b) => a.rank - b.rank || a.label.localeCompare(b.label));
 }
 
-function compareIssues(a: Issue, b: Issue, by: Ordering): number {
+function compareIssues(a: IssueListItem, b: IssueListItem, by: Ordering): number {
   switch (by) {
     case "priority":
       return PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority);
@@ -221,12 +268,13 @@ function MetaCluster({
   avatar,
   today,
 }: {
-  issue: Issue;
+  issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   today: string;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
+  const cycle = cycleText(issue);
   return (
     <div className="flex shrink-0 items-center gap-2">
       {display.status && issue.stateName && (
@@ -235,10 +283,29 @@ function MetaCluster({
           <span className="hidden lg:inline">{issue.stateName}</span>
         </Pill>
       )}
+      {display.labels && <span className="hidden lg:flex"><LabelPills labels={issue.labels} /></span>}
       {display.project && issue.projectName && (
         <Pill className="hidden md:inline-flex">
           <Box className="size-3" />
           <span className="max-w-32 truncate">{issue.projectName}</span>
+        </Pill>
+      )}
+      {display.milestone && issue.milestoneName && (
+        <Pill className="hidden lg:inline-flex">
+          <Milestone className="size-3" />
+          <span className="max-w-28 truncate">{issue.milestoneName}</span>
+        </Pill>
+      )}
+      {display.cycle && cycle && (
+        <Pill className="hidden lg:inline-flex">
+          <IterationCcw className="size-3" />
+          {cycle}
+        </Pill>
+      )}
+      {display.estimate && issue.estimate != null && (
+        <Pill>
+          <Gauge className="size-3" />
+          {issue.estimate}
         </Pill>
       )}
       {display.priority && (
@@ -279,7 +346,7 @@ function IssueRow({
   onOpen,
   today,
 }: {
-  issue: Issue;
+  issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   onOpen: (id: string) => void;
@@ -307,13 +374,14 @@ function BoardCard({
   onOpen,
   today,
 }: {
-  issue: Issue;
+  issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   onOpen: (id: string) => void;
   today: string;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
+  const cycle = cycleText(issue);
   return (
     <div
       onClick={() => onOpen(issue.id)}
@@ -329,12 +397,35 @@ function BoardCard({
           ))}
       </div>
       <div className="mb-2 line-clamp-2 text-[13px] font-medium leading-snug text-foreground">{issue.title}</div>
+      {display.labels && issue.labels.length > 0 && (
+        <div className="mb-2">
+          <LabelPills labels={issue.labels} max={3} />
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-2">
         {display.priority && <PriorityIcon p={issue.priority} />}
         {display.project && issue.projectName && (
           <Pill>
             <Box className="size-3" />
             <span className="max-w-32 truncate">{issue.projectName}</span>
+          </Pill>
+        )}
+        {display.milestone && issue.milestoneName && (
+          <Pill>
+            <Milestone className="size-3" />
+            <span className="max-w-28 truncate">{issue.milestoneName}</span>
+          </Pill>
+        )}
+        {display.cycle && cycle && (
+          <Pill>
+            <IterationCcw className="size-3" />
+            {cycle}
+          </Pill>
+        )}
+        {display.estimate && issue.estimate != null && (
+          <Pill>
+            <Gauge className="size-3" />
+            {issue.estimate}
           </Pill>
         )}
         {display.dueDate && issue.dueDate && (
