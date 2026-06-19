@@ -52,6 +52,7 @@ pub fn run() {
             commands::sync_issues,
             commands::list_calendar_issues,
             commands::list_unscheduled,
+            commands::list_issues,
             commands::list_filter_options,
             commands::get_issue_detail,
             commands::update_issue,

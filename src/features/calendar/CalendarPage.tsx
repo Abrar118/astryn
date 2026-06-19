@@ -12,7 +12,6 @@ import type { IssueFilters } from "@/lib/commands";
 import { eventAccent, tint } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
-import { IssueDrawer } from "@/features/drawer/IssueDrawer";
 
 function currentDhakaMonth(today: string) {
   const [y, m] = today.split("-").map(Number);
@@ -85,17 +84,16 @@ export function CalendarPage() {
           overdue ? "ring-1 ring-red-500/60" : ""
         }`}
         style={{ backgroundColor: tint(color, 0.16) }}
-        title={arg.event.title}
+        title={`${identifier}  ${arg.event.title}`}
       >
         <span className="h-1.5 w-1.5 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="shrink-0 font-medium text-muted-foreground">{identifier}</span>
         <span className="truncate text-foreground">{arg.event.title}</span>
       </div>
     );
   };
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4">
+    <div className="flex h-full flex-col gap-3 p-4 pb-24">
       <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         <div className="min-h-0 min-w-0 flex-1 p-3">
@@ -127,7 +125,6 @@ export function CalendarPage() {
         </div>
         <UnscheduledRail issues={unscheduled ?? []} onOpen={(id) => setParams({ issue: id })} />
       </div>
-      <IssueDrawer />
     </div>
   );
 }

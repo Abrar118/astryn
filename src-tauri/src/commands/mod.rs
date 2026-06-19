@@ -556,6 +556,16 @@ pub async fn list_unscheduled(
 }
 
 #[tauri::command]
+pub async fn list_issues(
+    state: State<'_, AppState>,
+    args: UnscheduledArgs,
+) -> Result<Vec<Issue>, CmdError> {
+    issues::load_issues(&state.pool, args.team_id, args.assignee_id, args.project_id)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
 pub async fn list_filter_options(state: State<'_, AppState>) -> Result<FilterOptions, CmdError> {
     issues::list_filter_options(&state.pool)
         .await

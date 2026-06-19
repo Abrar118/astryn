@@ -13,6 +13,7 @@ import {
   getMe,
   listCalendarIssues,
   listFilterOptions,
+  listIssues,
   listUnscheduled,
   listUsers,
   syncIssues,
@@ -56,7 +57,7 @@ function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueD
  */
 export function clearWorkspaceQueries(qc: QueryClient) {
   for (const key of [
-    ["calendar"], ["unscheduled"], ["issue"], ["users"], ["filter-options"], ["me"],
+    ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["filter-options"], ["me"],
   ]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
@@ -86,6 +87,13 @@ export function useUnscheduled(filters: IssueFilters) {
   return useQuery({
     queryKey: ["unscheduled", filters],
     queryFn: () => listUnscheduled(filters),
+  });
+}
+
+export function useIssues(filters: IssueFilters) {
+  return useQuery({
+    queryKey: ["issues", filters],
+    queryFn: () => listIssues(filters),
   });
 }
 
@@ -156,6 +164,7 @@ export function useUpdateIssue() {
     onSettled: (_data, _err, { id }) => {
       qc.invalidateQueries({ queryKey: ["calendar"] });
       qc.invalidateQueries({ queryKey: ["unscheduled"] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["issue", id] });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
     },
@@ -170,6 +179,7 @@ export function useSyncLoop() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["calendar"] });
       qc.invalidateQueries({ queryKey: ["unscheduled"] });
+      qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
       qc.invalidateQueries({ queryKey: ["me"] });
     },

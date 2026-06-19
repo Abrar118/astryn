@@ -96,7 +96,7 @@ export type FilterOptions = {
   teams: { id: string; key: string }[];
   projects: { id: string; name: string }[];
 };
-export type User = { id: string; name: string };
+export type User = { id: string; name: string; avatarUrl: string | null };
 export type Me = { viewerId: string; viewerName: string };
 export type SyncResult = { mode: "full" | "incremental"; synced: number };
 
@@ -126,6 +126,9 @@ export const listCalendarIssues = (
 
 export const listUnscheduled = (args: IssueFilters): Promise<CalendarIssue[]> =>
   invoke("list_unscheduled", { args });
+
+export const listIssues = (args: IssueFilters): Promise<Issue[]> =>
+  invoke("list_issues", { args });
 
 export const listFilterOptions = (): Promise<FilterOptions> =>
   invoke("list_filter_options");

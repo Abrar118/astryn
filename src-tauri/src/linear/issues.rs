@@ -56,6 +56,7 @@ pub struct OrgIdentity {
 pub struct ParsedUser {
     pub id: String,
     pub name: String,
+    pub avatar_url: Option<String>,
 }
 
 // ---- helpers to read nested JSON safely ----
@@ -154,6 +155,7 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
             Some(ParsedUser {
                 id: s(u, "id")?,
                 name: s(u, "name").unwrap_or_default(),
+                avatar_url: s(u, "avatarUrl"),
             })
         })
         .collect())
@@ -431,7 +433,7 @@ fn issue_detail_query() -> String {
     )
 }
 
-const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
+const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl } } }";
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
 const ISSUE_UPDATE_MUTATION: &str =
     "mutation U($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) {

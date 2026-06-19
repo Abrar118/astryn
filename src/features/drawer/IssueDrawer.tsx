@@ -6,6 +6,7 @@ import remarkGfm from "remark-gfm";
 import { useIssueDetail, useUpdateIssue, useUsers } from "@/lib/queries";
 import type { CalendarIssue, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { Button } from "@/components/ui/button";
+import { AssigneeSelect } from "@/components/AssigneeSelect";
 
 const PRIORITY_LABELS = ["No priority", "Urgent", "High", "Medium", "Low"];
 
@@ -118,18 +119,16 @@ function DrawerBody({
           />
         </label>
 
-        <label className="flex flex-col gap-1">
+        <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">Assignee</span>
-          <select
-            className="rounded-md border bg-background px-2 py-1 disabled:opacity-60"
+          <AssigneeSelect
+            value={d.assigneeId ?? null}
+            onChange={(id) => patch({ assigneeId: id })}
+            users={users.data ?? []}
+            emptyLabel="Unassigned"
             disabled={!editable}
-            value={d.assigneeId ?? ""}
-            onChange={(e) => patch({ assigneeId: e.target.value === "" ? null : e.target.value })}
-          >
-            <option value="">Unassigned</option>
-            {users.data?.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        </label>
+          />
+        </div>
       </div>
 
       {/* Description (markdown) */}

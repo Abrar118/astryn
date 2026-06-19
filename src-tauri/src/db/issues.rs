@@ -226,6 +226,32 @@ pub async fn load_issue(pool: &SqlitePool, id: &str) -> Result<Option<Issue>, sq
     .await
 }
 
+/// All non-archived cached issues (for the list view), newest-updated first.
+pub async fn load_issues(
+    pool: &SqlitePool,
+    team_id: Option<String>,
+    assignee_id: Option<String>,
+    project_id: Option<String>,
+) -> Result<Vec<Issue>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT id, identifier, title, description, due_date, COALESCE(priority,0) AS priority, url,
+                state_id, state_name, COALESCE(state_type,'') AS state_type,
+                COALESCE(state_color,'') AS state_color, assignee_id, assignee_name,
+                team_id, team_key, project_id, project_name, parent_id, created_at, updated_at
+         FROM issues
+         WHERE archived_at IS NULL
+           AND (?1 IS NULL OR team_id = ?1)
+           AND (?2 IS NULL OR assignee_id = ?2)
+           AND (?3 IS NULL OR project_id = ?3)
+         ORDER BY updated_at DESC, identifier",
+    )
+    .bind(team_id)
+    .bind(assignee_id)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+}
+
 pub async fn list_filter_options(pool: &SqlitePool) -> Result<FilterOptions, sqlx::Error> {
     let teams: Vec<TeamOption> = sqlx::query_as(
         "SELECT DISTINCT team_id AS id, team_key AS key FROM issues

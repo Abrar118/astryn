@@ -2,6 +2,7 @@ import type { ChangeEventHandler, ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { useFilterOptions, useUsers } from "@/lib/queries";
 import type { IssueFilters } from "@/lib/commands";
+import { AssigneeSelect } from "@/components/AssigneeSelect";
 
 function Select({
   value,
@@ -44,20 +45,13 @@ export function FilterBar({
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
-      <Select
-        value={filters.assigneeId ?? "__all"}
-        onChange={(e) =>
-          onFilters({ ...filters, assigneeId: e.target.value === "__all" ? undefined : e.target.value })
-        }
-      >
-        <option value="__all">All assignees</option>
-        {users?.map((u) => (
-          <option key={u.id} value={u.id}>
-            {u.name}
-            {u.id === meId ? " (me)" : ""}
-          </option>
-        ))}
-      </Select>
+      <AssigneeSelect
+        value={filters.assigneeId ?? null}
+        onChange={(id) => onFilters({ ...filters, assigneeId: id ?? undefined })}
+        users={users ?? []}
+        meId={meId}
+        emptyLabel="All assignees"
+      />
 
       <Select
         value={filters.teamId ?? "__all"}
