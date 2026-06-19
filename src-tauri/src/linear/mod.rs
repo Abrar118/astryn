@@ -1,4 +1,9 @@
+#[allow(dead_code)]
+pub mod issues;
+pub mod sync;
+
 use serde::Deserialize;
+use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LinearError {
@@ -9,11 +14,61 @@ pub enum LinearError {
     #[error("authentication failed")]
     Auth,
     #[error("rate limited")]
-    RateLimited,
+    RateLimited(Option<i64>),
     #[error("server error")]
     Server,
     #[error("api error: {0}")]
     Api(String),
+}
+
+/// Classify a non-empty GraphQL `errors` array. Linear may report throttling as
+/// a GraphQL error with extension code RATELIMITED (even on HTTP 200/400).
+#[allow(dead_code)]
+pub fn classify_graphql_errors(errors: &[Value]) -> LinearError {
+    let is_ratelimited = errors.iter().any(|e| {
+        e.get("extensions")
+            .and_then(|x| x.get("code"))
+            .and_then(|c| c.as_str())
+            == Some("RATELIMITED")
+            || e.get("extensions")
+                .and_then(|x| x.get("type"))
+                .and_then(|c| c.as_str())
+                == Some("RATELIMITED")
+    });
+    if is_ratelimited {
+        return LinearError::RateLimited(None);
+    }
+    let joined = errors
+        .iter()
+        .filter_map(|e| e.get("message").and_then(|m| m.as_str()))
+        .collect::<Vec<_>>()
+        .join("; ");
+    LinearError::Api(joined)
+}
+
+/// Parse a GraphQL body to its `data` object, treating a non-empty `errors`
+/// array as a failure (HTTP-200-with-errors), RATELIMITED-aware.
+#[allow(dead_code)]
+pub fn extract_data(body: &str) -> Result<Value, LinearError> {
+    let v: Value = serde_json::from_str(body).map_err(|_| LinearError::Malformed)?;
+    if let Some(errors) = v.get("errors").and_then(|e| e.as_array()) {
+        if !errors.is_empty() {
+            return Err(classify_graphql_errors(errors));
+        }
+    }
+    v.get("data").cloned().ok_or(LinearError::Malformed)
+}
+
+/// Map only the unambiguous transport statuses to errors; 2xx and 400 fall
+/// through to body parsing (where GraphQL errors incl. RATELIMITED are detected).
+#[allow(dead_code)]
+pub fn http_status_to_error(status: u16) -> Option<LinearError> {
+    match status {
+        401 | 403 => Some(LinearError::Auth),
+        429 => Some(LinearError::RateLimited(None)), // http_post fills the reset hint from headers
+        500..=599 => Some(LinearError::Server),
+        _ => None,
+    }
 }
 
 #[derive(Deserialize, Debug, PartialEq)]
@@ -62,7 +117,7 @@ pub fn parse_viewer_response(body: &str) -> Result<Viewer, LinearError> {
 pub fn interpret_response(status: u16, body: &str) -> Result<Viewer, LinearError> {
     match status {
         401 | 403 => Err(LinearError::Auth),
-        429 => Err(LinearError::RateLimited),
+        429 => Err(LinearError::RateLimited(None)),
         500..=599 => Err(LinearError::Server),
         // 2xx (and any other status carrying a GraphQL body) go through the parser,
         // which handles HTTP-200-with-errors.
@@ -122,6 +177,50 @@ impl LinearClient {
             http,
             endpoint: endpoint.into(),
         })
+    }
+
+    /// POST a GraphQL body, returning the raw response text. Maps unambiguous
+    /// transport statuses to errors; leaves body parsing to the caller's parser.
+    #[allow(dead_code)]
+    pub async fn http_post(
+        &self,
+        authorization: &str,
+        body: serde_json::Value,
+    ) -> Result<String, LinearError> {
+        let resp = self
+            .http
+            .post(&self.endpoint)
+            .header("Authorization", authorization)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|_| LinearError::Network)?;
+        let status = resp.status().as_u16();
+        // Capture the reset hint from headers before the body is consumed.
+        if status == 429 {
+            let h = resp.headers();
+            let num = |name: &str| {
+                h.get(name)
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|s| s.parse::<i64>().ok())
+            };
+            // Retry-After is a delta (seconds); X-RateLimit-Requests-Reset is an epoch.
+            let retry = num("retry-after").or_else(|| {
+                num("x-ratelimit-requests-reset").map(|reset| {
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs() as i64)
+                        .unwrap_or(0);
+                    reset - now
+                })
+            });
+            return Err(LinearError::RateLimited(retry));
+        }
+        let text = resp.text().await.map_err(|_| LinearError::Network)?;
+        if let Some(e) = http_status_to_error(status) {
+            return Err(e);
+        }
+        Ok(text)
     }
 
     pub async fn viewer(&self, authorization: &str) -> Result<Viewer, LinearError> {
@@ -185,7 +284,7 @@ mod tests {
     fn too_many_requests_is_rate_limited() {
         assert!(matches!(
             interpret_response(429, ""),
-            Err(LinearError::RateLimited)
+            Err(LinearError::RateLimited(_))
         ));
     }
 
