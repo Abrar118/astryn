@@ -8,7 +8,9 @@ import { safeExternalUrl } from "@/lib/links";
 import { gooeyToast } from "goey-toast";
 import {
   Box,
+  CalendarDays,
   ChevronDown,
+  CircleDot,
   Copy,
   ExternalLink,
   Gauge,
@@ -36,6 +38,7 @@ import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
+import { buildActivity } from "./drawerActivity";
 
 const PRIORITIES = [
   { value: 0, label: "No priority", color: "#6b7280" },
@@ -246,8 +249,17 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const estimate = "estimate" in d ? d.estimate : null;
   const cycleName = "cycleName" in d ? d.cycleName : null;
   const cycleNumber = "cycleNumber" in d ? d.cycleNumber : null;
-  const linkCount = "linkCount" in d ? d.linkCount : 0;
-  const prCount = "prCount" in d ? d.prCount : 0;
+  const activity = useMemo(
+    () => live
+      ? buildActivity({
+          createdAt: live.createdAt,
+          creatorName: live.creatorName,
+          history: live.history,
+          comments: live.comments,
+        })
+      : [],
+    [live],
+  );
 
   const detailTitle = d.title;
   const detailDesc = "description" in d ? d.description ?? "" : "";
@@ -378,7 +390,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
 
       <div className="flex min-h-0 flex-1">
         {/* Main column */}
-        <div className="min-w-0 flex-1 overflow-y-auto px-7 py-6">
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
           <textarea
             ref={titleRef}
             rows={1}
@@ -430,39 +442,148 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             )}
           </section>
 
-          {live && (
-            <section className="mt-8 border-t border-border pt-5">
-              <h3 className="mb-3 text-sm font-semibold text-foreground">Activity</h3>
-              {live.comments.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No comments yet.</p>
-              ) : (
-                <div className="flex flex-col gap-4">
-                  {live.comments.map((c) => (
-                    <div key={c.id} className="flex gap-2.5">
-                      <Avatar name={c.userName ?? "?"} size={24} />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-sm font-medium text-foreground">{c.userName ?? "Unknown"}</span>
-                          <span className="text-xs text-muted-foreground">{timeAgo(c.createdAt)}</span>
-                        </div>
-                        <div className="prose prose-sm prose-invert mt-0.5 max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
-                            {c.body}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
+          {live && live.children.length > 0 && (
+            <DrawerSection
+              title="Sub-issues"
+              meta={`${live.children.filter((child) => child.stateType === "completed").length}/${live.children.length}`}
+            >
+              <div className="space-y-1">
+                {live.children.map((child) => (
+                  <button
+                    key={child.id}
+                    type="button"
+                    onClick={() => openIssue(child.id)}
+                    className="group flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <StatusIcon type={child.stateType} color={child.stateColor} />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+                      {child.title}
+                    </span>
+                    <div className="flex min-w-0 shrink items-center justify-end gap-1.5 overflow-hidden text-xs text-muted-foreground">
+                      {child.priority > 0 && (
+                        <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5">
+                          {priorityDot(child.priority)}
+                          {PRIORITIES.find((item) => item.value === child.priority)?.label}
+                        </span>
+                      )}
+                      {child.projectName && <MetaPill>{child.projectName}</MetaPill>}
+                      {(child.cycleName || child.cycleNumber != null) && (
+                        <MetaPill>
+                          <IterationCcw className="size-3" />
+                          {child.cycleName ?? `Cycle ${child.cycleNumber}`}
+                        </MetaPill>
+                      )}
+                      {child.dueDate && (
+                        <MetaPill>
+                          <CalendarDays className="size-3" />
+                          {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "Asia/Dhaka" }).format(new Date(`${child.dueDate}T00:00:00Z`))}
+                        </MetaPill>
+                      )}
+                      {child.estimate != null && <MetaPill>{child.estimate} pt</MetaPill>}
+                      {child.assigneeName && <Avatar name={child.assigneeName} size={22} />}
                     </div>
-                  ))}
-                  {live.hasMoreComments && <p className="text-xs text-muted-foreground">Showing the first 50 comments.</p>}
-                </div>
-              )}
-            </section>
+                  </button>
+                ))}
+                {live.hasMoreChildren && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 sub-issues.</p>}
+              </div>
+            </DrawerSection>
+          )}
+
+          {live && live.relations.length > 0 && (
+            <DrawerSection title="Relations">
+              <div className="space-y-1">
+                {live.relations.map((relation, index) => (
+                  <button
+                    key={`${relation.type}-${relation.issue.id}-${index}`}
+                    type="button"
+                    onClick={() => openIssue(relation.issue.id)}
+                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    <Link2 className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="shrink-0 text-muted-foreground">{relation.type}</span>
+                    <span className="shrink-0 font-medium text-foreground">{relation.issue.identifier}</span>
+                    <span className="truncate text-muted-foreground">{relation.issue.title}</span>
+                  </button>
+                ))}
+                {live.hasMoreRelations && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 relations.</p>}
+              </div>
+            </DrawerSection>
+          )}
+
+          {live && live.attachments.length > 0 && (
+            <DrawerSection title="Resources">
+              <div className="space-y-2">
+                {live.attachments.map((attachment) => (
+                  <button
+                    key={attachment.id}
+                    type="button"
+                    onClick={() => {
+                      const external = safeExternalUrl(attachment.url);
+                      if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
+                      else gooeyToast.error("Blocked unsafe link");
+                    }}
+                    className="flex w-full min-w-0 items-center gap-3 rounded-xl border border-border bg-card px-3 py-3 text-left transition-colors hover:border-foreground/20 hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {attachment.sourceType === "github" ? (
+                      <GitPullRequest className="size-4 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <Link2 className="size-4 shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{attachment.title}</span>
+                    {attachment.subtitle && <span className="max-w-40 truncate text-xs text-muted-foreground">{attachment.subtitle}</span>}
+                    <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
+                    <ExternalLink className="size-3.5 shrink-0 text-muted-foreground" />
+                  </button>
+                ))}
+                {live.attachmentsTruncated && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 resources.</p>}
+              </div>
+            </DrawerSection>
+          )}
+
+          {live && (
+            <DrawerSection title="Activity" className="border-t border-border pt-6">
+              <div className="relative space-y-4 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
+                {activity.map((item) => (
+                  <div key={item.id} className="relative flex gap-3">
+                    <div className="relative z-10 mt-0.5 shrink-0 rounded-full bg-background">
+                      {item.kind === "comment" ? (
+                        <Avatar name={item.actorName ?? "?"} size={24} />
+                      ) : (
+                        <span className="flex size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+                          {item.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
+                        </span>
+                      )}
+                    </div>
+                    {item.kind === "comment" ? (
+                      <article className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3 py-2.5">
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-sm font-medium text-foreground">{item.actorName ?? "Unknown"}</span>
+                          <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
+                        </div>
+                        <div className="prose prose-sm prose-invert mt-1 max-w-none">
+                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{item.body}</ReactMarkdown>
+                        </div>
+                      </article>
+                    ) : (
+                      <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
+                        <span className="font-medium text-foreground">{item.actorName ?? "Linear"}</span>{" "}
+                        {item.summary} · {timeAgo(item.createdAt)}
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {activity.length === 0 && <p className="text-sm text-muted-foreground">No activity yet.</p>}
+                {(live.hasMoreHistory || live.hasMoreComments) && (
+                  <p className="pl-9 text-xs text-muted-foreground">Showing the first 50 history events and comments.</p>
+                )}
+              </div>
+            </DrawerSection>
           )}
         </div>
 
         {/* Properties rail — right-click anywhere here for the full issue menu */}
         <aside
-          className="flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto p-3"
+          className="drawer-scrollbar flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto p-3"
           onContextMenu={(e) => openMenu(e, id)}
         >
           <RailCard title="Properties">
@@ -603,47 +724,33 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             />
           </RailCard>
 
-          {live && (live.children.length > 0 || live.relations.length > 0) && (
-            <RailCard title="Relations">
-              <div className="flex flex-col gap-0.5">
-                {live.children.map((c) => (
-                  <button key={c.id} type="button" onClick={() => openIssue(c.id)} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent">
-                    <StatusIcon type={c.stateType} color="#6b7280" />
-                    <span className="shrink-0 text-muted-foreground">{c.identifier}</span>
-                    <span className="truncate text-foreground">{c.title}</span>
-                  </button>
-                ))}
-                {live.relations.map((r, idx) => (
-                  <button key={idx} type="button" onClick={() => openIssue(r.issue.id)} className="flex items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs hover:bg-accent">
-                    <span className="shrink-0 text-muted-foreground">{r.type}</span>
-                    <span className="shrink-0 text-muted-foreground">{r.issue.identifier}</span>
-                    <span className="truncate text-foreground">{r.issue.title}</span>
-                  </button>
-                ))}
-              </div>
-            </RailCard>
-          )}
-
-          {(linkCount > 0 || prCount > 0) && (
-            <div className="flex items-center gap-4 px-3 text-xs text-muted-foreground">
-              {linkCount > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <Link2 className="size-3.5" />
-                  {linkCount} {linkCount === 1 ? "link" : "links"}
-                </span>
-              )}
-              {prCount > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <GitPullRequest className="size-3.5" />
-                  {prCount} {prCount === 1 ? "PR" : "PRs"}
-                </span>
-              )}
-            </div>
-          )}
         </aside>
       </div>
     </>
   );
+}
+
+function DrawerSection({ title, meta, className = "", children }: { title: string; meta?: string; className?: string; children: ReactNode }) {
+  const [open, setOpen] = useState(true);
+  return (
+    <section className={`mt-8 ${className}`}>
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        aria-expanded={open}
+        className="mb-3 flex min-h-8 items-center gap-2 rounded-md text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+        {title}
+        {meta && <span className="font-normal tabular-nums text-muted-foreground">{meta}</span>}
+      </button>
+      {open && children}
+    </section>
+  );
+}
+
+function MetaPill({ children }: { children: ReactNode }) {
+  return <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5">{children}</span>;
 }
 
 function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {

@@ -9,9 +9,10 @@ use crate::db::issues::{
     self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
 };
 use crate::linear::issues::{
-    create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput, DetailChild,
-    DetailComment, DetailCycle, DetailRef, DetailRelation, DetailState, IssueDetailNode,
-    OrgIdentity, ParsedCycle, ParsedIssue, ParsedUser, UpdateIssuePatch, WorkflowState,
+    create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput,
+    DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailRef,
+    DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue,
+    ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -36,11 +37,15 @@ pub struct LiveDetail {
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
     pub parent: Option<DetailRef>,
+    pub creator_name: Option<String>,
     pub children: Vec<DetailChild>,
     pub relations: Vec<DetailRelation>,
+    pub attachments: Vec<DetailAttachment>,
+    pub history: Vec<DetailHistory>,
     pub comments: Vec<DetailComment>,
     pub has_more_children: bool,
     pub has_more_relations: bool,
+    pub has_more_history: bool,
     pub has_more_comments: bool,
 }
 
@@ -303,11 +308,15 @@ fn node_to_live(n: IssueDetailNode) -> LiveDetail {
         team_states: n.team_states,
         cycle: n.cycle,
         parent: n.parent,
+        creator_name: n.creator_name,
         children: n.children,
         relations: n.relations,
+        attachments: n.attachments,
+        history: n.history,
         comments: n.comments,
         has_more_children: n.has_more_children,
         has_more_relations: n.has_more_relations,
+        has_more_history: n.has_more_history,
         has_more_comments: n.has_more_comments,
     }
 }

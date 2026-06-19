@@ -361,6 +361,15 @@ pub struct DetailChild {
     pub identifier: String,
     pub title: String,
     pub state_type: String,
+    pub state_name: String,
+    pub state_color: String,
+    pub priority: i64,
+    pub due_date: Option<String>,
+    pub estimate: Option<f64>,
+    pub assignee_name: Option<String>,
+    pub project_name: Option<String>,
+    pub cycle_name: Option<String>,
+    pub cycle_number: Option<i64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -377,6 +386,43 @@ pub struct DetailComment {
     pub body: String,
     pub user_name: Option<String>,
     pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailAttachment {
+    pub id: String,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub url: String,
+    pub source_type: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailRelationChange {
+    pub r#type: String,
+    pub identifier: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailHistory {
+    pub id: String,
+    pub created_at: String,
+    pub actor_name: Option<String>,
+    pub from_state_name: Option<String>,
+    pub to_state_name: Option<String>,
+    pub from_assignee_name: Option<String>,
+    pub to_assignee_name: Option<String>,
+    pub from_priority: Option<f64>,
+    pub to_priority: Option<f64>,
+    pub from_title: Option<String>,
+    pub to_title: Option<String>,
+    pub updated_description: bool,
+    pub attachment: Option<DetailAttachment>,
+    pub relation_changes: Vec<DetailRelationChange>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -398,14 +444,18 @@ pub struct DetailCycle {
 
 pub struct IssueDetailNode {
     pub issue: ParsedIssue,
+    pub creator_name: Option<String>,
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
     pub parent: Option<DetailRef>,
     pub children: Vec<DetailChild>,
     pub relations: Vec<DetailRelation>,
+    pub attachments: Vec<DetailAttachment>,
+    pub history: Vec<DetailHistory>,
     pub comments: Vec<DetailComment>,
     pub has_more_children: bool,
     pub has_more_relations: bool,
+    pub has_more_history: bool,
     pub has_more_comments: bool,
 }
 
@@ -415,6 +465,17 @@ fn conn_has_next(n: &Value, conn: &str) -> bool {
         .and_then(|p| p.get("hasNextPage"))
         .and_then(|b| b.as_bool())
         .unwrap_or(false)
+}
+
+fn detail_attachment(n: &Value) -> DetailAttachment {
+    DetailAttachment {
+        id: s(n, "id").unwrap_or_default(),
+        title: s(n, "title").unwrap_or_else(|| "Untitled resource".into()),
+        subtitle: s(n, "subtitle"),
+        url: s(n, "url").unwrap_or_default(),
+        source_type: s(n, "sourceType"),
+        created_at: s(n, "createdAt").unwrap_or_default(),
+    }
 }
 
 pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
@@ -461,6 +522,18 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                     identifier: s(c, "identifier").unwrap_or_default(),
                     title: s(c, "title").unwrap_or_default(),
                     state_type: nested(c, "state", "type").unwrap_or_default(),
+                    state_name: nested(c, "state", "name").unwrap_or_default(),
+                    state_color: nested(c, "state", "color").unwrap_or_default(),
+                    priority: c.get("priority").and_then(Value::as_i64).unwrap_or(0),
+                    due_date: s(c, "dueDate"),
+                    estimate: c.get("estimate").and_then(Value::as_f64),
+                    assignee_name: nested(c, "assignee", "name"),
+                    project_name: nested(c, "project", "name"),
+                    cycle_name: nested(c, "cycle", "name"),
+                    cycle_number: c
+                        .get("cycle")
+                        .and_then(|cycle| cycle.get("number"))
+                        .and_then(Value::as_i64),
                 })
                 .collect()
         })
@@ -500,16 +573,70 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                 .collect()
         })
         .unwrap_or_default();
+    let attachments = n
+        .get("attachments")
+        .and_then(|a| a.get("nodes"))
+        .and_then(Value::as_array)
+        .map(|nodes| nodes.iter().map(detail_attachment).collect())
+        .unwrap_or_default();
+    let history = n
+        .get("history")
+        .and_then(|h| h.get("nodes"))
+        .and_then(Value::as_array)
+        .map(|nodes| {
+            nodes
+                .iter()
+                .map(|event| DetailHistory {
+                    id: s(event, "id").unwrap_or_default(),
+                    created_at: s(event, "createdAt").unwrap_or_default(),
+                    actor_name: nested(event, "actor", "name"),
+                    from_state_name: nested(event, "fromState", "name"),
+                    to_state_name: nested(event, "toState", "name"),
+                    from_assignee_name: nested(event, "fromAssignee", "name"),
+                    to_assignee_name: nested(event, "toAssignee", "name"),
+                    from_priority: event.get("fromPriority").and_then(Value::as_f64),
+                    to_priority: event.get("toPriority").and_then(Value::as_f64),
+                    from_title: s(event, "fromTitle"),
+                    to_title: s(event, "toTitle"),
+                    updated_description: event
+                        .get("updatedDescription")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
+                    attachment: event
+                        .get("attachment")
+                        .filter(|attachment| !attachment.is_null())
+                        .map(detail_attachment),
+                    relation_changes: event
+                        .get("relationChanges")
+                        .and_then(Value::as_array)
+                        .map(|changes| {
+                            changes
+                                .iter()
+                                .map(|change| DetailRelationChange {
+                                    r#type: s(change, "type").unwrap_or_default(),
+                                    identifier: s(change, "identifier").unwrap_or_default(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default(),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Ok(IssueDetailNode {
         issue,
+        creator_name: nested(n, "creator", "name"),
         team_states,
         cycle,
         parent,
         children,
         relations,
+        attachments,
+        history,
         comments,
         has_more_children: conn_has_next(n, "children"),
         has_more_relations: conn_has_next(n, "relations"),
+        has_more_history: conn_has_next(n, "history"),
         has_more_comments: conn_has_next(n, "comments"),
     })
 }
@@ -689,7 +816,7 @@ pub fn validate_create_input(p: &CreateIssueInput) -> Result<(), &'static str> {
 // ---- GraphQL query strings + LinearClient methods ----
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
-  attachments(first: 50) { pageInfo { hasNextPage } nodes { url } }
+  attachments(first: 50) { pageInfo { hasNextPage } nodes { id title subtitle url sourceType createdAt } }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
   labels { nodes { id name color } }";
 
@@ -711,8 +838,18 @@ fn issue_detail_query() -> String {
              {ISSUE_NODE_FIELDS}
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
-             children(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id identifier title state {{ type }} }} }}
+             creator {{ name }}
+             children(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{
+               id identifier title priority dueDate estimate
+               state {{ name type color }} assignee {{ name }} project {{ name }} cycle {{ name number }}
+             }} }}
              relations(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ type relatedIssue {{ id identifier title }} }} }}
+             history(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{
+               id createdAt actor {{ name }} fromState {{ name }} toState {{ name }}
+               fromAssignee {{ name }} toAssignee {{ name }} fromPriority toPriority fromTitle toTitle
+               updatedDescription relationChanges {{ type identifier }}
+               attachment {{ id title subtitle url sourceType createdAt }}
+             }} }}
              comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id body createdAt user {{ name }} }} }}
            }}
          }}"
@@ -876,6 +1013,44 @@ mod tests {
         assert_eq!(issue.pr_count, 1);
         assert_eq!(issue.link_count, 2);
         assert!(issue.attachments_truncated);
+    }
+
+    #[test]
+    fn parses_drawer_children_resources_and_activity_history() {
+        let body = r##"{"data":{"issue":{"id":"i1","identifier":"AST-1","title":"Parent",
+          "priority":2,"url":"https://linear.app/issue/AST-1","createdAt":"2026-06-19T08:00:00Z",
+          "updatedAt":"2026-06-19T09:00:00Z","creator":{"name":"Abrar"},
+          "attachments":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"a1","title":"Message from Abrar","subtitle":"#issues","url":"https://linear.app/attachment/a1","sourceType":"slack","createdAt":"2026-06-19T08:30:00Z",
+             "bodyData":null,"metadata":{"messages":[{"subject":"Thread","body":"The complete Slack message","timestamp":"2026-06-19T08:29:00Z"}]}}]},
+          "labels":{"nodes":[]},"team":{"id":"t1","key":"AST","states":{"nodes":[]}},
+          "children":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"c1","identifier":"AST-2","title":"Child","priority":1,"dueDate":"2026-06-25","estimate":3,
+             "state":{"name":"In Progress","type":"started","color":"#eab308"},"assignee":{"name":"Abrar"},
+             "project":{"name":"M1"},"cycle":{"number":4,"name":"Cycle 4"}}]},
+          "relations":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+          "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+          "history":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"h1","createdAt":"2026-06-19T09:00:00Z","actor":{"name":"Abrar"},
+             "fromState":{"name":"Todo"},"toState":{"name":"In Progress"},"updatedDescription":false,
+             "relationChanges":[{"type":"related","identifier":"AST-9"}],"attachment":null}]}
+        }}}"##;
+
+        let detail = parse_issue_detail(body).unwrap();
+        assert_eq!(detail.creator_name.as_deref(), Some("Abrar"));
+        assert_eq!(detail.children[0].state_name, "In Progress");
+        assert_eq!(detail.children[0].priority, 1);
+        assert_eq!(detail.children[0].due_date.as_deref(), Some("2026-06-25"));
+        assert_eq!(detail.attachments[0].title, "Message from Abrar");
+        assert_eq!(detail.attachments[0].source_type.as_deref(), Some("slack"));
+        assert_eq!(detail.attachments[0].body.as_deref(), Some("The complete Slack message"));
+        assert_eq!(detail.history[0].from_state_name.as_deref(), Some("Todo"));
+        assert_eq!(
+            detail.history[0].to_state_name.as_deref(),
+            Some("In Progress")
+        );
+        assert_eq!(detail.history[0].relation_changes[0].identifier, "AST-9");
+        assert!(!detail.has_more_history);
     }
 
     #[test]

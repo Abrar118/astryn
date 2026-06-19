@@ -79,20 +79,63 @@ export type IssueListItem = Issue & { labels: Label[] };
 export type DetailState = { id: string; name: string; type: string; color: string };
 export type DetailCycle = { id: string; number: number | null; name: string | null };
 export type DetailRef = { id: string; identifier: string; title: string };
-export type DetailChild = { id: string; identifier: string; title: string; stateType: string };
+export type DetailChild = {
+  id: string;
+  identifier: string;
+  title: string;
+  stateType: string;
+  stateName: string;
+  stateColor: string;
+  priority: number;
+  dueDate: string | null;
+  estimate: number | null;
+  assigneeName: string | null;
+  projectName: string | null;
+  cycleName: string | null;
+  cycleNumber: number | null;
+};
 export type DetailRelation = { type: string; issue: DetailRef };
 export type DetailComment = { id: string; body: string; userName: string | null; createdAt: string };
+export type DetailAttachment = {
+  id: string;
+  title: string;
+  subtitle: string | null;
+  url: string;
+  sourceType: string | null;
+  createdAt: string;
+};
+export type DetailRelationChange = { type: string; identifier: string };
+export type DetailHistory = {
+  id: string;
+  createdAt: string;
+  actorName: string | null;
+  fromStateName: string | null;
+  toStateName: string | null;
+  fromAssigneeName: string | null;
+  toAssigneeName: string | null;
+  fromPriority: number | null;
+  toPriority: number | null;
+  fromTitle: string | null;
+  toTitle: string | null;
+  updatedDescription: boolean;
+  attachment: DetailAttachment | null;
+  relationChanges: DetailRelationChange[];
+};
 
 export type LiveDetail = Issue & {
   labels: Label[];
   teamStates: DetailState[];
   cycle: DetailCycle | null;
   parent: DetailRef | null;
+  creatorName: string | null;
   children: DetailChild[];
   relations: DetailRelation[];
+  attachments: DetailAttachment[];
+  history: DetailHistory[];
   comments: DetailComment[];
   hasMoreChildren: boolean;
   hasMoreRelations: boolean;
+  hasMoreHistory: boolean;
   hasMoreComments: boolean;
 };
 
