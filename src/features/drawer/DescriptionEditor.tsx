@@ -1,11 +1,75 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
+import ReactMarkdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Link2 } from "lucide-react";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
 import { descriptionExtensions, markdownFromEditor } from "./descriptionExtensions";
 import { filterSlashCommands, inlineCommands } from "./descriptionCommands";
+import { LinearMarkdownImage } from "./LinearMarkdownImage";
+
+/**
+ * Some Linear descriptions contain Markdown that @tiptap/markdown parses into a
+ * ProseMirror doc the schema rejects (e.g. a code span that is also a link, an
+ * image as a bare list item, or duplicate marks from malformed `**`). Markdown
+ * content gets no schema coercion, so the invalid doc only throws
+ * ("contentMatchAt … invalid content") when the real editor view mounts. This
+ * boundary catches that so the drawer shows the description read-only instead of
+ * crashing the whole app.
+ */
+export class EditorErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown) {
+    // eslint-disable-next-line no-console
+    console.warn("[astryn] description editor could not render; showing read-only view", error);
+  }
+  render() {
+    return this.state.hasError ? this.props.fallback : this.props.children;
+  }
+}
+
+/** Read-only Markdown render used when the rich editor can't mount the content. */
+export function ReadOnlyDescription({
+  markdown,
+  onOpenLink,
+}: {
+  markdown: string;
+  onOpenLink: (href: string) => void;
+}) {
+  const components = useMemo<Components>(
+    () => ({
+      a: ({ href, children }) => (
+        <a
+          href={href}
+          onClick={(e) => {
+            e.preventDefault();
+            if (href) onOpenLink(href);
+          }}
+          className="cursor-pointer text-primary hover:underline"
+        >
+          {children}
+        </a>
+      ),
+      img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
+    }),
+    [onOpenLink],
+  );
+  return (
+    <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+        {markdown || "_No description_"}
+      </ReactMarkdown>
+    </div>
+  );
+}
 
 type SlashState = { from: number; query: string; selected: number; left: number; top: number };
 
@@ -138,6 +202,7 @@ export function DescriptionEditor({
   };
 
   return (
+    <EditorErrorBoundary fallback={<ReadOnlyDescription markdown={markdown} onOpenLink={onOpenLink} />}>
     <div className="relative">
       {editor && editable && (
         <BubbleMenu editor={editor} options={{ placement: "top" }}>
@@ -209,5 +274,6 @@ export function DescriptionEditor({
         </span>
       )}
     </div>
+    </EditorErrorBoundary>
   );
 }

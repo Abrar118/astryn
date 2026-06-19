@@ -9,7 +9,7 @@ import { ReactNodeViewRenderer } from "@tiptap/react";
 import { DescriptionImage } from "./DescriptionImage";
 
 /** Image extension wired for Markdown round-trip + React NodeView proxy rendering. */
-const LinearImage = Image.configure({ inline: true }).extend({
+const LinearImage = Image.configure({ inline: false }).extend({
   /** Token type emitted by marked for `![alt](url)` syntax. */
   markdownTokenName: "image",
 

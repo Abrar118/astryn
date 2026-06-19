@@ -14,8 +14,9 @@ export function DescriptionImage({ node }: NodeViewProps) {
   const src: string = node.attrs.src ?? "";
   const alt: string = node.attrs.alt ?? "";
 
+  // Block-level image node (inline: false) — use a block wrapper.
   return (
-    <NodeViewWrapper as="span" className="inline-block w-full">
+    <NodeViewWrapper className="my-2">
       <LinearMarkdownImage src={src} alt={alt} />
     </NodeViewWrapper>
   );

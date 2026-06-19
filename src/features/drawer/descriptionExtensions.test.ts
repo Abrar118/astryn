@@ -124,3 +124,34 @@ describe("description Markdown", () => {
     expect(twice).toBe(once);
   });
 });
+
+// Regression: a description must build a SCHEMA-VALID ProseMirror doc, or the
+// editor view throws "contentMatchAt … invalid content" on mount (jsdom does
+// not exercise that, so assert validity with doc.check()). Images were
+// configured `inline: true`, which made a standalone image an inline node in a
+// block (doc) position — invalid. They are now block images.
+describe("schema validity (doc.check)", () => {
+  function checkDoc(markdown: string): string {
+    const editor = fromMarkdown(markdown);
+    try {
+      editor.state.doc.check();
+      return "valid";
+    } catch (error) {
+      return error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  it("a standalone image is a valid block node", () => {
+    expect(checkDoc("![pic](https://uploads.linear.app/a.png)")).toBe("valid");
+  });
+
+  it("an image among paragraphs is valid", () => {
+    expect(
+      checkDoc("Intro line\n\n![pic](https://uploads.linear.app/a.png)\n\nOutro line"),
+    ).toBe("valid");
+  });
+
+  it("a heading followed by an image is valid", () => {
+    expect(checkDoc("## Design\n\n![pic](https://uploads.linear.app/a.png)")).toBe("valid");
+  });
+});
