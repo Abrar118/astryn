@@ -7,11 +7,12 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
+  ArrowLeft,
   Copy,
   ExternalLink,
   Plus,
@@ -114,6 +115,7 @@ type Command = {
 function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
   const { data: issues } = useIssues({});
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [, setParams] = useSearchParams();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -141,6 +143,7 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
   const commands: Command[] = useMemo(
     () => [
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", onSelect: () => { navigate(-1); onClose(); } },
       { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", onSelect: () => resync(false) },
       { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", onSelect: () => resync(true) },
     ],
