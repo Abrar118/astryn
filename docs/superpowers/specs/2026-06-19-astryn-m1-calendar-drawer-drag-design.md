@@ -34,10 +34,12 @@ Two mechanisms, because the bulk writers and the single-issue writer have differ
 
 1. **`AppState.workspace_lock: tokio::sync::Mutex<()>`** — acquired by **`set_linear_key`, `clear_linear_key`, `test_linear_connection`, and `sync_issues`**. These are mutually exclusive, so a key change can never interleave with a bulk sync. (Replaces M0's `op_lock`, which was independent of any sync lock.)
 
-2. **`AppState.workspace_generation: AtomicU64`** — bumped (under the lock) whenever `set_linear_key`/`clear_linear_key` wipes the cache. This guards the one credential-bound *writer* that must **not** hold the lock for its whole duration (it would block on a long sync): **`update_issue`**. The flow:
-   - capture `gen = workspace_generation.load()` at entry;
-   - run `issueUpdate` over the network (no lock held);
-   - **before** the SQLite upsert, re-check `workspace_generation == gen`. If it changed (a key was replaced mid-flight), **discard the write** and return `CmdError::WorkspaceChanged` so the optimistic UI rolls back. This is what stops a late update from repopulating SQLite with an old-workspace issue after a wipe.
+2. **`AppState.workspace_generation: AtomicU64`** — bumped (under the lock) by **every** cache wipe: `set_linear_key`, `clear_linear_key`, a mismatch wipe inside `test_linear_connection`/`sync_issues`, and the `sync_issues({ full: true })` Resync. It guards **`update_issue`**, the credential-bound writer that must not *hold* the lock across its network call (it would block on a long sync). To avoid a check-then-write TOCTOU, the write is **bracketed by the lock**, not merely preceded by a check:
+   1. **Acquire `workspace_lock`**; snapshot **both** `gen = workspace_generation` **and** the auth credential together; **release** the lock.
+   2. Perform `issueUpdate` over the network using the snapshotted credential (no lock held).
+   3. **Re-acquire `workspace_lock`.** Re-check `workspace_generation == gen`: if equal, perform the SQLite upsert **while still holding the lock**, then release; if it changed, release **without writing** and return `CmdError::WorkspaceChanged`.
+
+   Snapshotting the credential under the lock closes the credential race (capturing the old generation but reading the new key); holding the lock across the recheck-and-write closes the write race (a wipe landing between check and write). The optimistic UI rolls back on `WorkspaceChanged`. The lock is held only for two brief critical sections, never across the network call — so a long sync still can't be blocked by an edit, and vice-versa.
 
 **Read commands** (`get_issue_detail`, `list_users`, `list_*`) do **not persist** anything, so a result that races a key change is transient and harmless; the frontend clears the drawer/users caches on key change (the calendar invalidation after a wipe already does this). They take neither the lock nor the generation guard.
 
@@ -134,14 +136,14 @@ The invariant: **cached issues always belong to the org currently identified in 
 
 - **`set_linear_key` / `clear_linear_key`** (under `workspace_lock`): always `db::wipe_workspace_cache` — a **single transaction** deleting all rows from `issues`, `labels`, `sync_cursors` and clearing cached viewer + org identity — then **bump `workspace_generation`**. (On `set`, identity is left empty; the next `test`/`sync` populates it.) A key change therefore can never leave another workspace's issues cached.
 - **`test_linear_connection`** (under the lock): fetch `viewer { … organization { id name urlKey } }`. **Compare the fetched org id to the cached one *before* overwriting:** if a cached org exists and differs (key was swapped externally), `wipe_workspace_cache` + bump generation first; then **save** the fetched viewer + org identity. If no cached org exists, just save it. This prevents relabeling existing cache as a new workspace.
-- **`sync_issues`** (under the lock): fetch org identity and compare to cached. On mismatch → `wipe_workspace_cache` + bump generation. On mismatch **or** when no identity is cached (fresh / post-wipe) → **save the fetched identity**, then proceed (full sync, since the cursor is now absent). On match → proceed normally. Identity is thus always persisted after being fetched.
+- **`sync_issues`** (under the lock): fetch identity (`viewer { id name organization { id name urlKey } }`) and compare the org to cached. On mismatch → `wipe_workspace_cache` + bump generation. On mismatch **or** when no identity is cached (fresh / post-wipe) → **save the fetched identity — viewer id + name *and* org id/name/urlKey** — then proceed (full sync, since the cursor is now absent). On match → proceed normally. Persisting the **viewer id here** (not only in `test_linear_connection`) means an upgraded M0 install gets the default *assigned-to-me* filter on its first M1 sync without re-testing the connection.
 
 ### 4.5 Triggers
 - **Startup:** no cursor → `full_sync` (visible syncing state); cursor present → render cache immediately, `incremental_sync` in the background.
 - **Manual refresh / 5-min auto-poll:** `sync_issues` (incremental, or full if no cursor). All acquire `workspace_lock`; an in-flight sync makes the next await the lock.
 
 ### 4.6 Archival / deletion
-`includeArchived: true` + the `archived_at` column means **archived issues are fetched and then hidden** — archival is handled. **Hard-deleted** issues (rare in Linear) are *not* pruned by an upsert-only sync: there is no tombstone to fetch, so they **persist in the cache until a cache wipe.** A wipe happens on a key change and via an explicit **`sync_issues({ full: true })`** ("Resync" in Settings), which runs `wipe_workspace_cache` + `full_sync` under the lock (requires being online; on failure the next auto-sync re-runs full since the cursor is absent). M1 does **not** add snapshot/diff pruning to the normal sync path.
+`includeArchived: true` + the `archived_at` column means **archived issues are fetched and then hidden** — archival is handled. **Hard-deleted** issues (rare in Linear) are *not* pruned by an upsert-only sync: there is no tombstone to fetch, so they **persist in the cache until a cache wipe.** A wipe happens on a key change and via an explicit **`sync_issues({ full: true })`** ("Resync" in Settings), which runs `wipe_workspace_cache` + **bump generation** + `full_sync` under the lock (requires being online; on failure the next auto-sync re-runs full since the cursor is absent). M1 does **not** add snapshot/diff pruning to the normal sync path.
 
 ---
 
@@ -280,7 +282,7 @@ Mapping: outer `None` ⇒ omit from the GraphQL input; `Some(None)` ⇒ send exp
 - **Label gating:** a removed label is pruned (delete-then-insert) when the upsert applies; a rejected (older) issue upsert leaves existing labels untouched.
 - **Incremental lookback:** with a cursor, the fetch filter is `updatedAt >= cursor − 5min`; re-fetched window rows are idempotent.
 - **Identity compare-before-overwrite:** matching org keeps the cache; a mismatched org wipes *then* saves the new identity (and bumps generation); a fresh (no-identity) sync saves identity.
-- **Generation guard:** `update_issue` discards its upsert and returns `WorkspaceChanged` when the generation changed between entry and commit; persists normally when unchanged.
+- **Generation guard:** `update_issue` snapshots gen+credential under the lock, and after the (mocked) mutation discards its upsert + returns `WorkspaceChanged` when a wipe bumped the generation in between; persists normally otherwise. Assert **every** wipe path (`set`/`clear`/mismatch/`full:true`) bumps the generation.
 - Repositories vs temp SQLite: half-open range boundaries, unscheduled (NULL only), filter combinations, `list_filter_options` distinctness, `wipe_workspace_cache` clears all tables + identity.
 - `UpdateIssuePatch` deserialization: omit vs explicit-null vs value on a nullable field; GraphQL-input mapping.
 
