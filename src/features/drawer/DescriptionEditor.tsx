@@ -2,13 +2,13 @@ import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 
 import type { Editor } from "@tiptap/core";
 import { EditorContent, useEditor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import ReactMarkdown, { type Components } from "react-markdown";
+import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Link2 } from "lucide-react";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
 import { descriptionExtensions, markdownFromEditor } from "./descriptionExtensions";
 import { filterSlashCommands, inlineCommands } from "./descriptionCommands";
-import { LinearMarkdownImage } from "./LinearMarkdownImage";
+import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
 
 /**
  * Some Linear descriptions contain Markdown that @tiptap/markdown parses into a
@@ -40,30 +40,22 @@ export class EditorErrorBoundary extends Component<
 export function ReadOnlyDescription({
   markdown,
   onOpenLink,
+  resolveMention,
 }: {
   markdown: string;
   onOpenLink: (href: string) => void;
+  resolveMention?: MentionResolver;
 }) {
-  const components = useMemo<Components>(
-    () => ({
-      a: ({ href, children }) => (
-        <a
-          href={href}
-          onClick={(e) => {
-            e.preventDefault();
-            if (href) onOpenLink(href);
-          }}
-          className="cursor-pointer text-primary hover:underline"
-        >
-          {children}
-        </a>
-      ),
-      img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
-    }),
-    [onOpenLink],
+  const components = useMemo(
+    () =>
+      createMarkdownComponents({
+        onActivateLink: onOpenLink,
+        resolveMention: resolveMention ?? (() => undefined),
+      }),
+    [onOpenLink, resolveMention],
   );
   return (
-    <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+    <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {markdown || "_No description_"}
       </ReactMarkdown>
@@ -78,11 +70,13 @@ export function DescriptionEditor({
   editable,
   onSave,
   onOpenLink,
+  resolveMention,
 }: {
   markdown: string;
   editable: boolean;
   onSave: (markdown: string) => Promise<void>;
   onOpenLink: (href: string) => void;
+  resolveMention?: MentionResolver;
 }) {
   const saveRef = useRef(onSave);
   saveRef.current = onSave;
@@ -202,7 +196,7 @@ export function DescriptionEditor({
   };
 
   return (
-    <EditorErrorBoundary fallback={<ReadOnlyDescription markdown={markdown} onOpenLink={onOpenLink} />}>
+    <EditorErrorBoundary fallback={<ReadOnlyDescription markdown={markdown} onOpenLink={onOpenLink} resolveMention={resolveMention} />}>
     <div className="relative">
       {editor && editable && (
         <BubbleMenu editor={editor} options={{ placement: "top" }}>

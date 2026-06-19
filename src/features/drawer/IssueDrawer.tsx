@@ -41,7 +41,7 @@ import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { buildActivity } from "./drawerActivity";
 import { DescriptionEditor } from "./DescriptionEditor";
-import { LinearMarkdownImage } from "./LinearMarkdownImage";
+import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
 
 const PRIORITIES = [
   { value: 0, label: "No priority", color: "#6b7280" },
@@ -288,40 +288,37 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
   const openIssue = useCallback((next: string) => setParams({ issue: next }), [setParams]);
 
-  // Map identifier -> id so Linear issue links in markdown open the in-app
-  // drawer; every other link opens in the system browser (never the webview).
-  const identMap = useMemo(() => new Map((issues ?? []).map((i) => [i.identifier.toUpperCase(), i.id])), [issues]);
+  // Map identifier -> cached issue so Linear issue links/mentions resolve: they
+  // open the in-app drawer (and render as highlighted pills); every other link
+  // opens in the system browser (never the webview).
+  const issueByIdent = useMemo(
+    () => new Map((issues ?? []).map((i) => [i.identifier.toUpperCase(), i])),
+    [issues],
+  );
 
   const handleLink = useCallback(
     (href: string) => {
       const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
-      const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
-      if (target) return openIssue(target);
+      const target = m ? issueByIdent.get(m[1].toUpperCase()) : undefined;
+      if (target) return openIssue(target.id);
       const external = safeExternalUrl(href);
       if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
       else gooeyToast.error("Blocked unsafe link");
     },
-    [identMap, openIssue],
+    [issueByIdent, openIssue],
+  );
+
+  const resolveMention = useCallback<MentionResolver>(
+    (identifier) => {
+      const i = issueByIdent.get(identifier.toUpperCase());
+      return i ? { stateColor: i.stateColor, title: i.title } : undefined;
+    },
+    [issueByIdent],
   );
 
   const md = useMemo<Components>(
-    () => ({
-      a: ({ href, children }) => (
-        <a
-          href={href}
-          onClick={(e) => {
-            e.preventDefault();
-            if (!href) return;
-            handleLink(href);
-          }}
-          className="cursor-pointer text-primary hover:underline"
-        >
-          {children}
-        </a>
-      ),
-      img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
-    }),
-    [handleLink],
+    () => createMarkdownComponents({ onActivateLink: handleLink, resolveMention }),
+    [handleLink, resolveMention],
   );
 
   const saveDescription = async (markdown: string) => {
@@ -432,6 +429,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               editable={editable}
               onSave={saveDescription}
               onOpenLink={handleLink}
+              resolveMention={resolveMention}
             />
           </section>
 
@@ -572,7 +570,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                           <span className="text-sm font-medium text-foreground">{item.actorName ?? "Unknown"}</span>
                           <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
                         </div>
-                        <div className="prose prose-sm prose-invert mt-1 max-w-none">
+                        <div className="astryn-prose prose prose-sm prose-invert mt-1 max-w-none">
                           <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{item.body}</ReactMarkdown>
                         </div>
                       </article>
@@ -795,7 +793,7 @@ function ResourceModal({
         </header>
         <div className="drawer-scrollbar min-h-0 overflow-y-auto px-6 py-5">
           {attachment.body ? (
-            <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+            <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
               <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{attachment.body}</ReactMarkdown>
             </div>
           ) : (

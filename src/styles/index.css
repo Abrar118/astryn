@@ -396,3 +396,33 @@
 .description-slash-menu button[aria-selected="true"], .description-slash-menu button:hover { background: var(--accent); }
 .description-save-status { position: absolute; right: 0; top: -1.25rem; font-size: 0.6875rem; color: var(--muted-foreground); }
 .description-save-status--error { color: #f87171; }
+
+/* ── Read-only Markdown (description fallback, comments, resource modal) ─────── */
+/* GFM task lists: inline checkbox + text, no bullet (matches Linear). */
+.astryn-prose ul.contains-task-list { list-style: none; padding-left: 0; }
+.astryn-prose li.task-list-item { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-prose li.task-list-item::marker { content: none; }
+.astryn-prose li.task-list-item > input[type="checkbox"] {
+  margin: 0.3rem 0 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.astryn-prose li.task-list-item > p { margin: 0; }
+
+/* Issue-mention links inside the rich editor render as highlighted pills.
+   (The read-only fallback renders richer pills with a status dot in JSX.) */
+.astryn-description-editor a[href*="/issue/"] {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+  padding: 0 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--foreground);
+  text-decoration: none;
+}
+.astryn-description-editor a[href*="/issue/"]:hover {
+  background: var(--accent);
+}
