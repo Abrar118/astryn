@@ -242,7 +242,7 @@ export function useIssueDetail(id: string | null, seed?: CalendarIssue) {
   });
 }
 
-type UpdateVars = { id: string; patch: UpdateIssuePatch };
+type UpdateVars = { id: string; patch: UpdateIssuePatch; silent?: boolean };
 
 // Snapshot of every calendar/unscheduled cache entry we touch, for rollback.
 type Snapshot = [QueryKey, unknown][];
@@ -327,9 +327,9 @@ export function useUpdateIssue() {
 
       return { snapshot };
     },
-    onError: (err, _vars, ctx) => {
+    onError: (err, vars, ctx) => {
       ctx?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
-      gooeyToast.error("Update failed", { description: errorText(err) });
+      if (!vars.silent) gooeyToast.error("Update failed", { description: errorText(err) });
     },
     onSettled: (_data, _err, { id }) => {
       qc.invalidateQueries({ queryKey: ["calendar"] });

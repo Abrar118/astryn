@@ -40,6 +40,7 @@ import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { buildActivity } from "./drawerActivity";
+import { DescriptionEditor } from "./DescriptionEditor";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
 
 const PRIORITIES = [
@@ -268,16 +269,13 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const detailTitle = d.title;
   const detailDesc = "description" in d ? d.description ?? "" : "";
   const [title, setTitle] = useState(detailTitle);
-  const [desc, setDesc] = useState(detailDesc);
-  const [editingDesc, setEditingDesc] = useState(false);
   const [expandedResource, setExpandedResource] = useState<DetailAttachment | null>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     setTitle(detailTitle);
-    setDesc(detailDesc);
     setExpandedResource(null);
-  }, [id, result.source, detailTitle, detailDesc]);
+  }, [id, result.source, detailTitle]);
 
   useEffect(() => {
     const el = titleRef.current;
@@ -293,6 +291,16 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   // Map identifier -> id so Linear issue links in markdown open the in-app
   // drawer; every other link opens in the system browser (never the webview).
   const identMap = useMemo(() => new Map((issues ?? []).map((i) => [i.identifier.toUpperCase(), i.id])), [issues]);
+
+  const handleLink = (href: string) => {
+    const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
+    const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
+    if (target) return openIssue(target);
+    const external = safeExternalUrl(href);
+    if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
+    else gooeyToast.error("Blocked unsafe link");
+  };
+
   const md = useMemo<Components>(
     () => ({
       a: ({ href, children }) => (
@@ -301,14 +309,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           onClick={(e) => {
             e.preventDefault();
             if (!href) return;
-            const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
-            const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
-            if (target) openIssue(target);
-            else {
-              const external = safeExternalUrl(href);
-              if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
-              else gooeyToast.error("Blocked unsafe link");
-            }
+            handleLink(href);
           }}
           className="cursor-pointer text-primary hover:underline"
         >
@@ -321,6 +322,10 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [identMap],
   );
+
+  const saveDescription = async (markdown: string) => {
+    await update.mutateAsync({ id, patch: { description: markdown === "" ? null : markdown }, silent: true });
+  };
 
   const teamCycles = useMemo(
     () => (cycles ?? []).filter((c) => c.teamId === d.teamId).sort((a, b) => (b.number ?? 0) - (a.number ?? 0)),
@@ -420,33 +425,13 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           )}
 
           <section className="mt-6">
-            {editable && (
-              <div className="mb-1 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => setEditingDesc((v) => !v)}
-                  className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
-                >
-                  {editingDesc ? "Done" : "Edit"}
-                </button>
-              </div>
-            )}
-            {editingDesc && editable ? (
-              <textarea
-                autoFocus
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                onBlur={() => patch({ description: desc === "" ? null : desc })}
-                placeholder="Add description…"
-                className="min-h-48 w-full resize-y rounded-md border border-border bg-card p-3 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            ) : (
-              <div className="prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>
-                  {desc || "_No description_"}
-                </ReactMarkdown>
-              </div>
-            )}
+            <DescriptionEditor
+              key={id}
+              markdown={detailDesc}
+              editable={editable}
+              onSave={saveDescription}
+              onOpenLink={handleLink}
+            />
           </section>
 
           {live && live.children.length > 0 && (
