@@ -2,18 +2,21 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
-import { getConnectionStatus } from "@/lib/commands";
+import { errorText, getConnectionStatus } from "@/lib/commands";
 import { DualClock } from "./DualClock";
 
 export function Home({ onOpenSettings }: { onOpenSettings: () => void }) {
-  const { data: status, isError } = useQuery({
+  const { data: status, isError, error } = useQuery({
     queryKey: ["connection-status"],
     queryFn: getConnectionStatus,
   });
 
   useEffect(() => {
-    if (isError) gooeyToast.error("Could not read connection status");
-  }, [isError]);
+    if (isError)
+      gooeyToast.error("Could not read connection status", {
+        description: errorText(error),
+      });
+  }, [isError, error]);
 
   let label = "Checking…";
   if (isError) {

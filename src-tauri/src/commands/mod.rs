@@ -62,6 +62,12 @@ pub struct AppState {
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
+    /// Serializes the credential-mutating commands (set/clear/test) so they can
+    /// never interleave. Without it, a slow `test_connection` could finish and
+    /// cache an identity for a key that a concurrent `set`/`clear` already
+    /// replaced — leaving a stale "connected" name beside the wrong key. The UI
+    /// guards against this too, but IPC calls can still overlap independently.
+    pub op_lock: tokio::sync::Mutex<()>,
 }
 
 pub async fn set_linear_key_logic(
@@ -141,11 +147,13 @@ where
 
 #[tauri::command]
 pub async fn set_linear_key(state: State<'_, AppState>, key: String) -> Result<(), CmdError> {
+    let _guard = state.op_lock.lock().await;
     set_linear_key_logic(state.secret_store.clone(), &state.pool, key).await
 }
 
 #[tauri::command]
 pub async fn clear_linear_key(state: State<'_, AppState>) -> Result<(), CmdError> {
+    let _guard = state.op_lock.lock().await;
     clear_linear_key_logic(state.secret_store.clone(), &state.pool).await
 }
 
@@ -160,6 +168,7 @@ pub async fn get_connection_status(
 pub async fn test_linear_connection(
     state: State<'_, AppState>,
 ) -> Result<ConnectionStatus, CmdError> {
+    let _guard = state.op_lock.lock().await;
     let client = state.linear.clone();
     test_connection_logic(
         state.credentials.clone(),

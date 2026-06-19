@@ -16,3 +16,12 @@ export const getConnectionStatus = (): Promise<ConnectionStatus> =>
 
 export const testLinearConnection = (): Promise<ConnectionStatus> =>
   invoke("test_linear_connection");
+
+/// Tauri commands reject with the backend's already-sanitized `CmdError` string
+/// (e.g. "Linear rate limit reached. Try again shortly."). Normalize whatever the
+/// IPC layer throws into a safe, human-readable line for a toast description.
+export function errorText(err: unknown): string {
+  if (typeof err === "string") return err;
+  if (err instanceof Error) return err.message;
+  return "Unexpected error. Please try again.";
+}

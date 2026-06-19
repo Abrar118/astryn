@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
   clearLinearKey,
+  errorText,
   setLinearKey,
   testLinearConnection,
 } from "@/lib/commands";
@@ -24,7 +25,8 @@ export function Settings({ onBack }: { onBack: () => void }) {
       if (status.state === "connected") gooeyToast.success(`Connected as ${status.name}`);
       invalidateStatus();
     },
-    onError: () => gooeyToast.error("Connection failed"),
+    onError: (err) =>
+      gooeyToast.error("Connection failed", { description: errorText(err) }),
   });
 
   const clearMut = useMutation({
@@ -33,7 +35,8 @@ export function Settings({ onBack }: { onBack: () => void }) {
       gooeyToast.success("Key cleared");
       invalidateStatus();
     },
-    onError: () => gooeyToast.error("Could not clear the key"),
+    onError: (err) =>
+      gooeyToast.error("Could not clear the key", { description: errorText(err) }),
   });
 
   // One operation at a time: never let Test/Clear run while a key is being saved
@@ -52,8 +55,8 @@ export function Settings({ onBack }: { onBack: () => void }) {
       await setLinearKey(key);
       gooeyToast.success("Linear key saved");
       invalidateStatus();
-    } catch {
-      gooeyToast.error("Could not save the key");
+    } catch (err) {
+      gooeyToast.error("Could not save the key", { description: errorText(err) });
     } finally {
       setSaving(false);
     }

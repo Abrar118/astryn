@@ -38,6 +38,7 @@ pub fn run() {
                 secret_store: store,
                 credentials,
                 linear,
+                op_lock: tokio::sync::Mutex::new(()),
             });
             Ok(())
         })
