@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -286,20 +286,23 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   }, [title]);
 
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
-  const openIssue = (next: string) => setParams({ issue: next });
+  const openIssue = useCallback((next: string) => setParams({ issue: next }), [setParams]);
 
   // Map identifier -> id so Linear issue links in markdown open the in-app
   // drawer; every other link opens in the system browser (never the webview).
   const identMap = useMemo(() => new Map((issues ?? []).map((i) => [i.identifier.toUpperCase(), i.id])), [issues]);
 
-  const handleLink = (href: string) => {
-    const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
-    const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
-    if (target) return openIssue(target);
-    const external = safeExternalUrl(href);
-    if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
-    else gooeyToast.error("Blocked unsafe link");
-  };
+  const handleLink = useCallback(
+    (href: string) => {
+      const m = href.match(/\/issue\/([A-Za-z0-9]+-\d+)/);
+      const target = m ? identMap.get(m[1].toUpperCase()) : undefined;
+      if (target) return openIssue(target);
+      const external = safeExternalUrl(href);
+      if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the link"));
+      else gooeyToast.error("Blocked unsafe link");
+    },
+    [identMap, openIssue],
+  );
 
   const md = useMemo<Components>(
     () => ({
@@ -318,9 +321,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
       ),
       img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
     }),
-    // openIssue is stable enough for the drawer's lifetime
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [identMap],
+    [handleLink],
   );
 
   const saveDescription = async (markdown: string) => {
