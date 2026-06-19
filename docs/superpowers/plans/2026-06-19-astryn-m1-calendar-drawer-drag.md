@@ -167,7 +167,8 @@ pub async fn load_setting(pool: &SqlitePool, key: &str) -> Result<Option<String>
     Ok(row.map(|r| r.0))
 }
 
-/// Persist the full identity (viewer id+name and org id/name/urlKey) in one call.
+/// Persist the full identity (viewer id+name and org id/name/urlKey) atomically,
+/// so a partial failure can't leave a half-written identity.
 pub async fn save_identity(
     pool: &SqlitePool,
     viewer_id: &str,
@@ -176,11 +177,24 @@ pub async fn save_identity(
     org_name: &str,
     org_url_key: &str,
 ) -> Result<(), sqlx::Error> {
-    save_viewer_name(pool, viewer_name).await?;
-    save_setting(pool, VIEWER_ID_KEY, viewer_id).await?;
-    save_setting(pool, ORG_ID_KEY, org_id).await?;
-    save_setting(pool, ORG_NAME_KEY, org_name).await?;
-    save_setting(pool, ORG_URL_KEY_KEY, org_url_key).await?;
+    let mut tx = pool.begin().await?;
+    for (k, v) in [
+        (VIEWER_NAME_KEY, viewer_name),
+        (VIEWER_ID_KEY, viewer_id),
+        (ORG_ID_KEY, org_id),
+        (ORG_NAME_KEY, org_name),
+        (ORG_URL_KEY_KEY, org_url_key),
+    ] {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(k)
+        .bind(v)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     Ok(())
 }
 
@@ -339,7 +353,9 @@ pub struct CalendarIssue {
     pub state_type: String,
     pub state_color: String,
     pub assignee_id: Option<String>,
+    pub team_id: Option<String>,
     pub team_key: Option<String>,
+    pub project_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, sqlx::FromRow)]
@@ -462,7 +478,7 @@ pub async fn replace_labels(
 
 const CAL_COLS: &str = "id, identifier, title, due_date, COALESCE(priority,0) AS priority,
     COALESCE(state_type,'') AS state_type, COALESCE(state_color,'') AS state_color,
-    assignee_id, team_key";
+    assignee_id, team_id, team_key, project_id";
 
 pub async fn load_issues_in_range(
     pool: &SqlitePool,
@@ -587,9 +603,37 @@ git commit -m "feat(m1): SQLite issues/labels/cursors schema + repositories"
   - `UpdateIssuePatch` (tri-state) + `patch_to_input(&UpdateIssuePatch) -> serde_json::Value`.
   - `LinearClient` methods: `issues_page(auth, after, since) -> IssuesPage`, `issue_detail(auth, id) -> IssueDetailNode`, `users(auth) -> Vec<ParsedUser>`, `viewer_with_org(auth) -> OrgIdentity`, `update_issue(auth, id, &serde_json::Value) -> ParsedIssue`.
 
-- [ ] **Step 1: Add shared error helpers in `linear/mod.rs`**
+- [ ] **Step 0 (gate): Confirm the live Linear schema before writing parsers**
 
-After the existing `interpret_response`, add a rate-limit-aware GraphQL error classifier and a `data` extractor, and declare the submodules at the top:
+The query strings and `parse_*` functions below hard-code field names. Per `requirements.md` §7 / CLAUDE.md "Live API wins", **introspect the live schema first** and adjust any names that differ. Use the Linear key (from Settings/keychain) against the API:
+
+```bash
+KEY='<LINEAR_PERSONAL_API_KEY>'   # raw personal key, NO "Bearer "
+gq() { curl -s https://api.linear.app/graphql -H "Content-Type: application/json" \
+  -H "Authorization: $KEY" -d "{\"query\":\"$1\"}" | jq; }
+
+# Inputs/enums and field names to confirm:
+gq 'query { __type(name: \"IssueUpdateInput\") { inputFields { name } } }'   # dueDate, stateId, assigneeId, priority, title, description
+gq 'query { __type(name: \"IssueFilter\") { inputFields { name } } }'         # updatedAt comparator exists
+gq 'query { issues(first: 1, includeArchived: true, orderBy: updatedAt) { pageInfo { hasNextPage endCursor } nodes { id identifier archivedAt state { type color } labels { nodes { id } } } } }'
+gq 'query { viewer { id name organization { id name urlKey } } }'
+gq 'query { __type(name: \"Issue\") { fields { name } } }'                    # cycle, relations, children, comments, team
+```
+Confirm: `issues(... includeArchived orderBy ...)`, `IssueFilter.updatedAt` accepts `{ gte }`, `archivedAt`, `viewer.organization.urlKey`, `relations.nodes.relatedIssue`, `issue.team.states`, `cycle { id number name }`, and `IssueUpdateInput` field names. If any differ, update the corresponding query string + parser in this task.
+
+- [ ] **Step 1: Carry the rate-limit reset hint + add shared error helpers in `linear/mod.rs`**
+
+First, change the M0 `LinearError::RateLimited` unit variant to carry an optional seconds-until-reset, and update its two existing M0 call sites:
+
+```rust
+// in the LinearError enum:
+    #[error("rate limited")]
+    RateLimited(Option<i64>),
+```
+- In `interpret_response`, change `429 => Err(LinearError::RateLimited)` to `429 => Err(LinearError::RateLimited(None))`.
+- In the M0 test `too_many_requests_is_rate_limited`, change the match arm to `Err(LinearError::RateLimited(_))`.
+
+Then declare the submodules at the top and add the shared classifier + extractor:
 
 ```rust
 pub mod issues;
@@ -607,7 +651,7 @@ pub fn classify_graphql_errors(errors: &[Value]) -> LinearError {
             || e.get("extensions").and_then(|x| x.get("type")).and_then(|c| c.as_str()) == Some("RATELIMITED")
     });
     if is_ratelimited {
-        return LinearError::RateLimited;
+        return LinearError::RateLimited(None);
     }
     let joined = errors
         .iter()
@@ -638,7 +682,7 @@ Also change `interpret_response` so a **400** is parsed (it may carry a RATELIMI
 pub fn http_status_to_error(status: u16) -> Option<LinearError> {
     match status {
         401 | 403 => Some(LinearError::Auth),
-        429 => Some(LinearError::RateLimited),
+        429 => Some(LinearError::RateLimited(None)), // http_post fills the reset hint from headers
         500..=599 => Some(LinearError::Server),
         _ => None,
     }
@@ -677,7 +721,7 @@ mod tests {
     #[test]
     fn graphql_ratelimited_is_rate_limited() {
         let body = r#"{"errors":[{"message":"slow down","extensions":{"code":"RATELIMITED"}}]}"#;
-        assert!(matches!(parse_issues_page(body), Err(LinearError::RateLimited)));
+        assert!(matches!(parse_issues_page(body), Err(LinearError::RateLimited(_))));
     }
 
     #[test]
@@ -855,20 +899,37 @@ pub struct DetailComment { pub id: String, pub body: String, pub user_name: Opti
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DetailState { pub id: String, pub name: String, pub r#type: String, pub color: String }
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DetailCycle { pub id: String, pub number: Option<i64>, pub name: Option<String> }
 
 pub struct IssueDetailNode {
     pub issue: ParsedIssue,
     pub team_states: Vec<DetailState>,
+    pub cycle: Option<DetailCycle>,
     pub parent: Option<DetailRef>,
     pub children: Vec<DetailChild>,
     pub relations: Vec<DetailRelation>,
     pub comments: Vec<DetailComment>,
+    pub has_more_children: bool,
+    pub has_more_relations: bool,
+    pub has_more_comments: bool,
+}
+
+fn conn_has_next(n: &Value, conn: &str) -> bool {
+    n.get(conn).and_then(|c| c.get("pageInfo")).and_then(|p| p.get("hasNextPage"))
+        .and_then(|b| b.as_bool()).unwrap_or(false)
 }
 
 pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
     let data = extract_data(body)?;
     let n = data.get("issue").ok_or(LinearError::Malformed)?;
     let issue = node_to_issue(n);
+    let cycle = n.get("cycle").filter(|c| !c.is_null()).map(|c| DetailCycle {
+        id: s(c, "id").unwrap_or_default(),
+        number: c.get("number").and_then(|x| x.as_i64()),
+        name: s(c, "name"),
+    });
     let team_states = n.get("team").and_then(|t| t.get("states")).and_then(|s2| s2.get("nodes"))
         .and_then(|x| x.as_array()).map(|arr| arr.iter().map(|st| DetailState {
             id: s(st, "id").unwrap_or_default(), name: s(st, "name").unwrap_or_default(),
@@ -900,7 +961,12 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
             id: s(c, "id").unwrap_or_default(), body: s(c, "body").unwrap_or_default(),
             user_name: nested(c, "user", "name"), created_at: s(c, "createdAt").unwrap_or_default(),
         }).collect()).unwrap_or_default();
-    Ok(IssueDetailNode { issue, team_states, parent, children, relations, comments })
+    Ok(IssueDetailNode {
+        issue, team_states, cycle, parent, children, relations, comments,
+        has_more_children: conn_has_next(n, "children"),
+        has_more_relations: conn_has_next(n, "relations"),
+        has_more_comments: conn_has_next(n, "comments"),
+    })
 }
 
 // ---- tri-state patch ----
@@ -937,7 +1003,7 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
 
 ```rust
 const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
-  state { id name type color } assignee { id name } team { id key } project { id name } cycle { id } parent { id }
+  state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
   labels { nodes { id name color } }";
 
 fn issues_query() -> String {
@@ -956,11 +1022,12 @@ fn issue_detail_query() -> String {
         "query Issue($id: String!) {{
            issue(id: $id) {{
              {ISSUE_NODE_FIELDS}
+             cycle {{ id number name }}
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
-             children(first: 50) {{ nodes {{ id identifier title state {{ type }} }} }}
-             relations(first: 50) {{ nodes {{ type relatedIssue {{ id identifier title }} }} }}
-             comments(first: 50) {{ nodes {{ id body createdAt user {{ name }} }} }}
+             children(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id identifier title state {{ type }} }} }}
+             relations(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ type relatedIssue {{ id identifier title }} }} }}
+             comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id body createdAt user {{ name }} }} }}
            }}
          }}"
     )
@@ -971,7 +1038,7 @@ const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name 
 const ISSUE_UPDATE_MUTATION: &str =
     "mutation U($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) {
        success issue { id identifier title description dueDate priority url createdAt updatedAt archivedAt
-         state { id name type color } assignee { id name } team { id key } project { id name } cycle { id } parent { id }
+         state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
          labels { nodes { id name color } } } } }";
 
 impl LinearClient {
@@ -1026,6 +1093,15 @@ impl LinearClient {
             .await
             .map_err(|_| LinearError::Network)?;
         let status = resp.status().as_u16();
+        // Capture the reset hint from headers before the body is consumed.
+        if status == 429 {
+            let retry = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<i64>().ok());
+            return Err(LinearError::RateLimited(retry));
+        }
         let text = resp.text().await.map_err(|_| LinearError::Network)?;
         if let Some(e) = http_status_to_error(status) {
             return Err(e);
@@ -1054,6 +1130,7 @@ git commit -m "feat(m1): Linear issue/detail/user parsers, rate-limit + tri-stat
 ### Task 3: Sync engine (full + incremental)
 
 **Files:**
+- Modify: `src-tauri/Cargo.toml` (add the `time` dependency)
 - Create: `src-tauri/src/linear/sync.rs`
 
 **Interfaces:**
@@ -1073,12 +1150,6 @@ mod tests {
     use crate::db::{init_pool, issues::{get_sync_cursor, load_issue, set_sync_cursor}};
     use crate::linear::issues::{IssuesPage, ParsedIssue, ParsedLabel};
     use std::sync::{Arc, Mutex};
-
-    async fn pool() -> (tempfile::TempDir, sqlx::SqlitePool) {
-        let dir = tempfile::tempdir().unwrap();
-        (	{ let d = dir; d }, init_pool(&std::path::Path::new("/x")).await.unwrap_err()); // placeholder removed below
-        unreachable!()
-    }
 
     fn issue(id: &str, updated: &str) -> ParsedIssue {
         ParsedIssue {
@@ -1156,9 +1227,17 @@ mod tests {
 }
 ```
 
-> Note: delete the broken `pool()` helper stub above before implementing — each test builds its own pool inline (kept explicit so the `create_dir_all` path is exercised).
+> Each test builds its own pool inline via `init_pool(&dir.path().join("a/t.db"))` (kept explicit so the `create_dir_all` path is exercised).
 
-- [ ] **Step 2: Implement `src-tauri/src/linear/sync.rs`**
+- [ ] **Step 2: Add the `time` dependency**
+
+In `src-tauri/Cargo.toml` under `[dependencies]`:
+```toml
+time = { version = "0.3", features = ["parsing", "formatting"] }
+```
+(`parsing` for `OffsetDateTime::parse(.., &Rfc3339)`; `std`/`now_utc` are on by default.)
+
+- [ ] **Step 3: Implement `src-tauri/src/linear/sync.rs`**
 
 ```rust
 use crate::db::issues::{self, IssueRecord, LabelRecord};
@@ -1193,55 +1272,31 @@ fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
     (rec, labels)
 }
 
-/// Subtract LOOKBACK_SECS from an ISO-8601 UTC timestamp ("...Z"). On any parse
-/// failure, returns the input unchanged (a safe over-fetch, never an under-fetch).
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
+
+fn fmt_utc_secs(dt: OffsetDateTime) -> String {
+    let u = dt.to_offset(time::UtcOffset::UTC);
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        u.year(), u8::from(u.month()), u.day(), u.hour(), u.minute(), u.second(),
+    )
+}
+
+/// Subtract LOOKBACK_SECS from an RFC3339 timestamp (handles fractional seconds
+/// and any offset). On a parse failure, returns the input unchanged (safe
+/// over-fetch, never an under-fetch).
 pub fn lookback_cursor(cursor: &str) -> String {
-    // Parse "YYYY-MM-DDTHH:MM:SSZ" via the building blocks we already have (no chrono dep):
-    // compute seconds-from-midnight, subtract, borrow across the date if needed.
-    match shift_iso_seconds(cursor, -LOOKBACK_SECS) {
-        Some(s) => s,
-        None => cursor.to_string(),
+    match OffsetDateTime::parse(cursor, &Rfc3339) {
+        Ok(dt) => fmt_utc_secs(dt - time::Duration::seconds(LOOKBACK_SECS)),
+        Err(_) => cursor.to_string(),
     }
 }
 
-/// Minimal ISO-8601 (UTC, second precision) arithmetic. Returns None if the
-/// input isn't exactly `YYYY-MM-DDTHH:MM:SSZ`.
-fn shift_iso_seconds(ts: &str, delta: i64) -> Option<String> {
-    let b = ts.as_bytes();
-    if b.len() != 20 || b[4] != b'-' || b[7] != b'-' || b[10] != b'T'
-        || b[13] != b':' || b[16] != b':' || b[19] != b'Z' { return None; }
-    let p = |a: usize, c: usize| ts.get(a..c)?.parse::<i64>().ok();
-    let (y, mo, d) = (p(0,4)?, p(5,7)?, p(8,10)?);
-    let (h, mi, se) = (p(11,13)?, p(14,16)?, p(17,19)?);
-    let days = days_from_civil(y, mo, d);
-    let total = days * 86_400 + h * 3600 + mi * 60 + se + delta;
-    let (nd, rem) = (total.div_euclid(86_400), total.rem_euclid(86_400));
-    let (ny, nmo, nday) = civil_from_days(nd);
-    Some(format!(
-        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
-        ny, nmo, nday, rem / 3600, (rem % 3600) / 60, rem % 60
-    ))
-}
-// Howard Hinnant's civil<->days algorithms (public domain).
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = (if y >= 0 { y } else { y - 399 }) / 400;
-    let yoe = y - era * 400;
-    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-fn civil_from_days(z: i64) -> (i64, i64, i64) {
-    let z = z + 719_468;
-    let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
-    let doe = z - era * 146_097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    (if m <= 2 { y + 1 } else { y }, m, d)
+/// Current UTC time as second-precision RFC3339 — the baseline cursor for an
+/// empty workspace, so we don't full-sync forever.
+fn now_rfc3339() -> String {
+    fmt_utc_secs(OffsetDateTime::now_utc())
 }
 
 /// Run a sync. `force_full` (Resync) or an absent cursor => full; else incremental
@@ -1263,7 +1318,12 @@ where
 
     let mut after: Option<String> = None;
     let mut synced = 0usize;
-    let mut max_updated: Option<String> = cursor.clone();
+    // Full sync builds a fresh baseline from scratch; incremental keeps the prior
+    // cursor as the floor so a zero-result run doesn't lose the watermark.
+    let mut max_updated: Option<String> = match mode {
+        SyncMode::Full => None,
+        SyncMode::Incremental => cursor.clone(),
+    };
 
     loop {
         let page = fetch_page(after.clone(), since.clone()).await?;
@@ -1282,30 +1342,34 @@ where
         }
         tx.commit().await.map_err(|_| LinearError::Malformed)?;
         if page.has_next {
-            after = page.end_cursor;
-            if after.is_none() { break; } // defensive: hasNext but no cursor
+            // hasNextPage with no cursor is a broken response — fail rather than
+            // commit an incomplete baseline.
+            after = Some(page.end_cursor.ok_or(LinearError::Malformed)?);
         } else {
             break;
         }
     }
 
-    // Advance the cursor only after all pages are durably committed.
-    if let Some(m) = max_updated {
-        issues::set_sync_cursor(pool, &m).await.map_err(|_| LinearError::Malformed)?;
-    }
+    // Advance the cursor only after all pages are durably committed. An empty
+    // full sync still records a baseline (now) so we don't full-sync forever.
+    let new_cursor = match max_updated {
+        Some(m) => m,
+        None => now_rfc3339(),
+    };
+    issues::set_sync_cursor(pool, &new_cursor).await.map_err(|_| LinearError::Malformed)?;
     Ok(SyncResult { mode, synced })
 }
 ```
 
-- [ ] **Step 3: Run the tests**
+- [ ] **Step 4: Run the tests**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml linear::sync`
 Expected: the three sync tests pass.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add src-tauri/src/linear/sync.rs
+git add src-tauri/Cargo.toml src-tauri/src/linear/sync.rs
 git commit -m "feat(m1): full + incremental sync with lookback window and gated labels"
 ```
 
@@ -1347,6 +1411,8 @@ pub struct AppState {
     pub workspace_lock: tokio::sync::Mutex<()>,
     /// Bumped by every cache wipe; guards `update_issue`'s late write.
     pub workspace_generation: AtomicU64,
+    /// Epoch-seconds deadline before which sync is suppressed after a 429 (0 = none).
+    pub rate_limited_until: AtomicU64,
 }
 ```
 
@@ -1355,6 +1421,12 @@ Add a `CmdError` variant:
 ```rust
     #[error("Workspace changed; please retry.")]
     WorkspaceChanged,
+```
+
+Update the M0 `From<LinearError> for CmdError` match arm for the new payload-carrying variant:
+
+```rust
+    LinearError::RateLimited(_) => CmdError::RateLimited,
 ```
 
 - [ ] **Step 2: Rework the set/clear/test logic** (replace the M0 bodies)
@@ -1366,15 +1438,15 @@ pub async fn set_linear_key_logic(
     generation: &AtomicU64,
     key: String,
 ) -> Result<(), CmdError> {
-    // Write the key first; only on success do we wipe (a failed write leaves the
-    // old key + its cache consistent).
+    // Wipe + bump FIRST so a later keyring failure can only leave an empty cache
+    // (safe), never the new key paired with the old workspace's data.
+    db::issues::wipe_workspace_cache(pool).await.map_err(|_| CmdError::Internal)?;
+    generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.set(LINEAR_KEY_ACCOUNT, &key))
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?;
-    db::issues::wipe_workspace_cache(pool).await.map_err(|_| CmdError::Internal)?;
-    generation.fetch_add(1, Ordering::SeqCst);
     Ok(())
 }
 
@@ -1383,13 +1455,14 @@ pub async fn clear_linear_key_logic(
     pool: &SqlitePool,
     generation: &AtomicU64,
 ) -> Result<(), CmdError> {
+    // Wipe + bump first; a failed delete then leaves an empty cache, which is safe.
+    db::issues::wipe_workspace_cache(pool).await.map_err(|_| CmdError::Internal)?;
+    generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.delete(LINEAR_KEY_ACCOUNT))
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?;
-    db::issues::wipe_workspace_cache(pool).await.map_err(|_| CmdError::Internal)?;
-    generation.fetch_add(1, Ordering::SeqCst);
     Ok(())
 }
 
@@ -1536,6 +1609,7 @@ app.manage(AppState {
     linear,
     workspace_lock: tokio::sync::Mutex::new(()),
     workspace_generation: std::sync::atomic::AtomicU64::new(0),
+    rate_limited_until: std::sync::atomic::AtomicU64::new(0),
 });
 ```
 
@@ -1571,7 +1645,7 @@ git commit -m "feat(m1): workspace_lock + generation; wipe + identity-compare on
 ```rust
 use crate::db::issues::{self, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord};
 use crate::linear::issues::{
-    DetailChild, DetailComment, DetailRef, DetailRelation, DetailState, IssueDetailNode,
+    DetailChild, DetailComment, DetailCycle, DetailRef, DetailRelation, DetailState, IssueDetailNode,
     ParsedIssue, ParsedUser, UpdateIssuePatch, patch_to_input,
 };
 use crate::linear::sync::{run_sync, SyncResult};
@@ -1586,10 +1660,14 @@ pub struct LiveDetail {
     #[serde(flatten)] pub issue: Issue,
     pub labels: Vec<LabelOut>,
     pub team_states: Vec<DetailState>,
+    pub cycle: Option<DetailCycle>,
     pub parent: Option<DetailRef>,
     pub children: Vec<DetailChild>,
     pub relations: Vec<DetailRelation>,
     pub comments: Vec<DetailComment>,
+    pub has_more_children: bool,
+    pub has_more_relations: bool,
+    pub has_more_comments: bool,
 }
 
 #[derive(serde::Serialize)]
@@ -1628,13 +1706,36 @@ fn parsed_to_record(p: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
 - [ ] **Step 2: Write the data-command logic fns**
 
 ```rust
+fn now_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// On a rate-limit error, arm the backoff deadline (default 60s) before mapping
+/// to CmdError so the next sync within the window is suppressed.
+fn arm_backoff(e: LinearError, rate_limited_until: &AtomicU64) -> CmdError {
+    if let LinearError::RateLimited(secs) = e {
+        let wait = secs.unwrap_or(60).max(0) as u64;
+        rate_limited_until.store(now_epoch() + wait, Ordering::SeqCst);
+    }
+    CmdError::from(e)
+}
+
 pub async fn sync_issues_logic(
     creds: Arc<dyn LinearCredentialProvider>,
     linear: LinearClient,
     pool: &SqlitePool,
     generation: &AtomicU64,
+    rate_limited_until: &AtomicU64,
     full: bool,
 ) -> Result<SyncResult, CmdError> {
+    // Suppress network sync while inside a rate-limit window; report a silent no-op.
+    if now_epoch() < rate_limited_until.load(Ordering::SeqCst) {
+        return Ok(SyncResult { mode: SyncMode::Incremental, synced: 0 });
+    }
+
     let c = creds.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await.map_err(|_| CmdError::Internal)?
@@ -1642,7 +1743,10 @@ pub async fn sync_issues_logic(
         .ok_or(CmdError::NotConfigured)?;
 
     // Validate org identity; wipe on mismatch (or honor an explicit full Resync).
-    let id = linear.viewer_with_org(&auth).await?;
+    let id = match linear.viewer_with_org(&auth).await {
+        Ok(id) => id,
+        Err(e) => return Err(arm_backoff(e, rate_limited_until)),
+    };
     let mut force_full = full;
     let cached = db::load_org_id(pool).await.map_err(|_| CmdError::Internal)?;
     let mismatch = cached.as_deref().map(|c| c != id.org_id).unwrap_or(false);
@@ -1664,7 +1768,7 @@ pub async fn sync_issues_logic(
         async move { client.issues_page(&auth, after.as_deref(), since.as_deref()).await }
     }, force_full)
     .await
-    .map_err(CmdError::from)
+    .map_err(|e| arm_backoff(e, rate_limited_until))
 }
 
 pub async fn get_issue_detail_logic(
@@ -1697,10 +1801,14 @@ fn node_to_live(n: IssueDetailNode) -> LiveDetail {
         issue: parsed_to_issue(&n.issue),
         labels,
         team_states: n.team_states,
+        cycle: n.cycle,
         parent: n.parent,
         children: n.children,
         relations: n.relations,
         comments: n.comments,
+        has_more_children: n.has_more_children,
+        has_more_relations: n.has_more_relations,
+        has_more_comments: n.has_more_comments,
     }
 }
 
@@ -1736,8 +1844,10 @@ where
     let id = parsed.id.clone();
     let (rec, labels) = parsed_to_record(parsed);
     let mut tx = pool.begin().await.map_err(|_| CmdError::Internal)?;
-    issues::upsert_issue(&mut tx, &rec).await.map_err(|_| CmdError::Internal)?;
-    issues::replace_labels(&mut tx, &rec.id, &labels).await.map_err(|_| CmdError::Internal)?;
+    let applied = issues::upsert_issue(&mut tx, &rec).await.map_err(|_| CmdError::Internal)?;
+    if applied {
+        issues::replace_labels(&mut tx, &rec.id, &labels).await.map_err(|_| CmdError::Internal)?;
+    }
     tx.commit().await.map_err(|_| CmdError::Internal)?;
     issues::load_issue(pool, &id).await.map_err(|_| CmdError::Internal)?.ok_or(CmdError::Internal)
 }
@@ -1763,7 +1873,7 @@ pub async fn sync_issues(state: State<'_, AppState>, full: Option<bool>) -> Resu
     let _g = state.workspace_lock.lock().await;
     sync_issues_logic(
         state.credentials.clone(), state.linear.clone(), &state.pool,
-        &state.workspace_generation, full.unwrap_or(false),
+        &state.workspace_generation, &state.rate_limited_until, full.unwrap_or(false),
     ).await
 }
 
@@ -1930,7 +2040,7 @@ Expected: installs succeed; `react-router-dom` v6+, FullCalendar v6+ (all MIT).
 
 - [ ] **Step 2: Add the `test` script + Vitest config**
 
-In `package.json` `scripts`, add: `"test": "vitest run"`.
+In `package.json` `scripts`, add: `"test": "vitest run --passWithNoTests"` (the `--passWithNoTests` flag lets this task's empty run exit 0; real tests arrive in Task 7).
 
 Create `vitest.config.ts`:
 ```ts
@@ -1957,7 +2067,9 @@ export type CalendarIssue = {
   stateType: string;
   stateColor: string;
   assigneeId: string | null;
+  teamId: string | null;
   teamKey: string | null;
+  projectId: string | null;
 };
 
 export type Issue = {
@@ -1985,6 +2097,7 @@ export type Issue = {
 
 export type Label = { id: string; name: string | null; color: string | null };
 export type DetailState = { id: string; name: string; type: string; color: string };
+export type DetailCycle = { id: string; number: number | null; name: string | null };
 export type DetailRef = { id: string; identifier: string; title: string };
 export type DetailChild = { id: string; identifier: string; title: string; stateType: string };
 export type DetailRelation = { type: string; issue: DetailRef };
@@ -1993,10 +2106,14 @@ export type DetailComment = { id: string; body: string; userName: string | null;
 export type LiveDetail = Issue & {
   labels: Label[];
   teamStates: DetailState[];
+  cycle: DetailCycle | null;
   parent: DetailRef | null;
   children: DetailChild[];
   relations: DetailRelation[];
   comments: DetailComment[];
+  hasMoreChildren: boolean;
+  hasMoreRelations: boolean;
+  hasMoreComments: boolean;
 };
 
 // "preview" is frontend-only (placeholder); the command returns "live" | "cache".
@@ -2075,7 +2192,7 @@ git commit -m "feat(m1): frontend deps, vitest wiring, typed command bindings"
 - Create: `src/lib/optimistic.ts`, `src/lib/optimistic.test.ts`
 
 **Interfaces:**
-- Produces: `dhakaToday(now?)`, `isOverdue(dueDate, stateType, today)`, `toDateStr(d)`, `rangeFromDates(start, end)`; `applyReschedule(scheduled, unscheduled, id, dueDate)`, `patchCalendarItem(list, id, fields)`.
+- Produces: `dhakaToday(now?)`, `isOverdue(dueDate, stateType, today)`, `toDateStr(d)`, `rangeFromDates(start, end)`; `matchesFilters(i, f)`, `inRange(dueDate, start, end)`, `reconcileList(list, issue, belongs)`, `applyPatchToCalendarIssue(base, patch)`.
 
 - [ ] **Step 1: Write `src/lib/dates.test.ts`**
 
@@ -2160,46 +2277,55 @@ export function rangeFromDates(start: Date, end: Date): { start: string; end: st
 
 - [ ] **Step 3: Write `src/lib/optimistic.test.ts`**
 
+These are the building blocks the (query-key-aware) optimistic update in Task 9 composes — they must be exact so a moved issue lands only in caches whose range *and* filters it actually matches.
+
 ```ts
 import { describe, it, expect } from "vitest";
-import { applyReschedule, patchCalendarItem } from "./optimistic";
+import { matchesFilters, inRange, reconcileList, applyPatchToCalendarIssue } from "./optimistic";
 import type { CalendarIssue } from "./commands";
 
-const mk = (id: string, dueDate: string | null): CalendarIssue => ({
+const mk = (id: string, dueDate: string | null, over: Partial<CalendarIssue> = {}): CalendarIssue => ({
   id, identifier: `ENG-${id}`, title: "T", dueDate, priority: 0,
-  stateType: "unstarted", stateColor: "#fff", assigneeId: "me", teamKey: "ENG",
+  stateType: "unstarted", stateColor: "#fff", assigneeId: "me",
+  teamId: "t1", teamKey: "ENG", projectId: "p1", ...over,
 });
 
-describe("applyReschedule", () => {
-  it("moves a rail (unscheduled) issue onto a day", () => {
-    const r = applyReschedule([], [mk("1", null)], "1", "2026-06-12");
-    expect(r.unscheduled).toHaveLength(0);
-    expect(r.scheduled.map((i) => i.id)).toEqual(["1"]);
-    expect(r.scheduled[0].dueDate).toBe("2026-06-12");
-  });
-  it("changes a scheduled issue's day in place", () => {
-    const r = applyReschedule([mk("1", "2026-06-10")], [], "1", "2026-06-15");
-    expect(r.scheduled[0].dueDate).toBe("2026-06-15");
-    expect(r.unscheduled).toHaveLength(0);
-  });
-  it("clears a due date back to the rail", () => {
-    const r = applyReschedule([mk("1", "2026-06-10")], [], "1", null);
-    expect(r.scheduled).toHaveLength(0);
-    expect(r.unscheduled.map((i) => i.id)).toEqual(["1"]);
-    expect(r.unscheduled[0].dueDate).toBeNull();
-  });
-  it("is a no-op when the id is absent", () => {
-    const s = [mk("1", "2026-06-10")];
-    const r = applyReschedule(s, [], "999", "2026-06-15");
-    expect(r.scheduled).toEqual(s);
+describe("matchesFilters", () => {
+  it("matches when filter fields agree or are unset", () => {
+    expect(matchesFilters(mk("1", null), {})).toBe(true);
+    expect(matchesFilters(mk("1", null), { assigneeId: "me" })).toBe(true);
+    expect(matchesFilters(mk("1", null), { assigneeId: "other" })).toBe(false);
+    expect(matchesFilters(mk("1", null), { teamId: "t2" })).toBe(false);
+    expect(matchesFilters(mk("1", null), { projectId: "p1" })).toBe(true);
   });
 });
 
-describe("patchCalendarItem", () => {
-  it("patches matching fields and leaves others", () => {
-    const out = patchCalendarItem([mk("1", "2026-06-10")], "1", { priority: 2 });
-    expect(out[0].priority).toBe(2);
-    expect(out[0].dueDate).toBe("2026-06-10");
+describe("inRange (half-open)", () => {
+  it("includes start, excludes end, excludes null", () => {
+    expect(inRange("2026-06-01", "2026-06-01", "2026-07-01")).toBe(true);
+    expect(inRange("2026-07-01", "2026-06-01", "2026-07-01")).toBe(false);
+    expect(inRange(null, "2026-06-01", "2026-07-01")).toBe(false);
+  });
+});
+
+describe("reconcileList", () => {
+  it("inserts when belongs, removes when not, updates in place", () => {
+    const a = mk("1", "2026-06-10");
+    expect(reconcileList([], a, true).map((i) => i.id)).toEqual(["1"]);
+    expect(reconcileList([a], a, false)).toEqual([]);
+    const moved = { ...a, dueDate: "2026-06-12" };
+    const out = reconcileList([a], moved, true);
+    expect(out).toHaveLength(1);
+    expect(out[0].dueDate).toBe("2026-06-12");
+  });
+});
+
+describe("applyPatchToCalendarIssue", () => {
+  it("applies only the calendar-visible patch fields", () => {
+    const out = applyPatchToCalendarIssue(mk("1", "2026-06-10"), { dueDate: null, priority: 2 });
+    expect(out.dueDate).toBeNull();
+    expect(out.priority).toBe(2);
+    expect(out.title).toBe("T");
   });
 });
 ```
@@ -2207,32 +2333,40 @@ describe("patchCalendarItem", () => {
 - [ ] **Step 4: Implement `src/lib/optimistic.ts`**
 
 ```ts
-import type { CalendarIssue } from "./commands";
+import type { CalendarIssue, IssueFilters, UpdateIssuePatch } from "./commands";
 
-/** Move an issue to a new due date (null => to the unscheduled rail). Pure. */
-export function applyReschedule(
-  scheduled: CalendarIssue[],
-  unscheduled: CalendarIssue[],
-  id: string,
-  dueDate: string | null,
-): { scheduled: CalendarIssue[]; unscheduled: CalendarIssue[] } {
-  const found = [...scheduled, ...unscheduled].find((i) => i.id === id);
-  if (!found) return { scheduled, unscheduled };
-  const updated = { ...found, dueDate };
-  const restScheduled = scheduled.filter((i) => i.id !== id);
-  const restUnscheduled = unscheduled.filter((i) => i.id !== id);
-  return dueDate === null
-    ? { scheduled: restScheduled, unscheduled: [...restUnscheduled, updated] }
-    : { scheduled: [...restScheduled, updated], unscheduled: restUnscheduled };
+/** Does this issue satisfy the (sparse) filter set? Unset filter fields match all. */
+export function matchesFilters(i: CalendarIssue, f: IssueFilters): boolean {
+  if (f.teamId && i.teamId !== f.teamId) return false;
+  if (f.assigneeId && i.assigneeId !== f.assigneeId) return false;
+  if (f.projectId && i.projectId !== f.projectId) return false;
+  return true;
 }
 
-/** Shallow-patch one calendar item's fields by id. Pure. */
-export function patchCalendarItem(
+/** Half-open membership: [start, end), null never in range. */
+export function inRange(dueDate: string | null, start: string, end: string): boolean {
+  return dueDate !== null && dueDate >= start && dueDate < end;
+}
+
+/** Insert/update the issue when it belongs, else remove it. Pure, id-keyed. */
+export function reconcileList(
   list: CalendarIssue[],
-  id: string,
-  fields: Partial<CalendarIssue>,
+  issue: CalendarIssue,
+  belongs: boolean,
 ): CalendarIssue[] {
-  return list.map((i) => (i.id === id ? { ...i, ...fields } : i));
+  const without = list.filter((i) => i.id !== issue.id);
+  return belongs ? [...without, issue] : without;
+}
+
+/** Apply only the CalendarIssue-visible fields of a patch onto a base issue. Pure. */
+export function applyPatchToCalendarIssue(base: CalendarIssue, patch: UpdateIssuePatch): CalendarIssue {
+  return {
+    ...base,
+    ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate } : {}),
+    ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+    ...(patch.title !== undefined ? { title: patch.title } : {}),
+    ...(patch.assigneeId !== undefined ? { assigneeId: patch.assigneeId } : {}),
+  };
 }
 ```
 
@@ -2393,7 +2527,7 @@ git commit -m "feat(m1): app shell, hash routing, sidebar, header clock, Resync 
 - Modify/replace: `src/lib/queries.ts` (replace the Task 8 stub with the full set)
 
 **Interfaces:**
-- Consumes: all bindings (Task 6), `applyReschedule`/`patchCalendarItem` (Task 7), `errorText` (M0).
+- Consumes: all bindings (Task 6), `matchesFilters`/`inRange`/`reconcileList`/`applyPatchToCalendarIssue` (Task 7), `errorText` (M0).
 - Produces hooks: `useMe()`, `useFilterOptions()`, `useCalendarIssues(range, filters)`, `useUnscheduled(filters)`, `useIssueDetail(id, seed)`, `useUsers()`, `useUpdateIssue()`, `useSyncLoop()`.
 - Query keys: `["me"]`, `["filter-options"]`, `["calendar", start, end, filters]`, `["unscheduled", filters]`, `["issue", id]`, `["users"]`.
 
@@ -2421,9 +2555,33 @@ import {
   type CalendarIssue,
   type IssueDetailResult,
   type IssueFilters,
+  type LiveDetail,
   type UpdateIssuePatch,
 } from "./commands";
-import { applyReschedule, patchCalendarItem } from "./optimistic";
+import {
+  applyPatchToCalendarIssue,
+  inRange,
+  matchesFilters,
+  reconcileList,
+} from "./optimistic";
+
+/** Merge a patch's changed fields into a cached detail result (any branch). */
+function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueDetailResult {
+  const d = { ...(result.detail as Record<string, unknown>) };
+  if (patch.title !== undefined) d.title = patch.title;
+  if (patch.priority !== undefined) d.priority = patch.priority;
+  if (patch.dueDate !== undefined) d.dueDate = patch.dueDate;
+  if (patch.assigneeId !== undefined) d.assigneeId = patch.assigneeId;
+  if (patch.description !== undefined) d.description = patch.description;
+  if (patch.stateId !== undefined) {
+    d.stateId = patch.stateId;
+    if (result.source === "live") {
+      const st = (result.detail as LiveDetail).teamStates.find((s) => s.id === patch.stateId);
+      if (st) { d.stateName = st.name; d.stateType = st.type; d.stateColor = st.color; }
+    }
+  }
+  return { ...result, detail: d } as IssueDetailResult;
+}
 
 export function useMe() {
   return useQuery({ queryKey: ["me"], queryFn: getMe, staleTime: Infinity });
@@ -2473,36 +2631,42 @@ export function useUpdateIssue() {
       await qc.cancelQueries({ queryKey: ["calendar"] });
       await qc.cancelQueries({ queryKey: ["unscheduled"] });
       await qc.cancelQueries({ queryKey: ["issue", id] });
+
+      const calEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] });
+      const unschedEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["unscheduled"] });
       const snapshot: Snapshot = [
-        ...qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] }),
-        ...qc.getQueriesData<CalendarIssue[]>({ queryKey: ["unscheduled"] }),
+        ...calEntries,
+        ...unschedEntries,
         [["issue", id], qc.getQueryData(["issue", id])],
       ];
-      // dueDate change => reschedule across every cached calendar+unscheduled pair.
-      if (patch.dueDate !== undefined) {
-        const scheduledEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] });
-        const unschedEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["unscheduled"] });
-        const unsched = unschedEntries[0]?.[1] ?? [];
-        for (const [key, list] of scheduledEntries) {
-          const res = applyReschedule(list ?? [], unsched, id, patch.dueDate);
-          qc.setQueryData(key, res.scheduled);
+
+      // Find the issue's current CalendarIssue from any cache, then compute its patched form.
+      const current =
+        calEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id) ??
+        unschedEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id);
+
+      if (current) {
+        const updated = applyPatchToCalendarIssue(current, patch);
+        // Each calendar cache reconciles against ITS OWN range + filters.
+        for (const [key, list] of calEntries) {
+          const start = key[1] as string;
+          const end = key[2] as string;
+          const filters = (key[3] ?? {}) as IssueFilters;
+          const belongs = inRange(updated.dueDate, start, end) && matchesFilters(updated, filters);
+          qc.setQueryData(key, reconcileList(list ?? [], updated, belongs));
         }
-        for (const [key] of unschedEntries) {
-          // Recompute against the (single) scheduled set is unnecessary; rail holds the moved item.
-          const anyScheduled = scheduledEntries[0]?.[1] ?? [];
-          const res = applyReschedule(anyScheduled, qc.getQueryData<CalendarIssue[]>(key) ?? [], id, patch.dueDate);
-          qc.setQueryData(key, res.unscheduled);
-        }
-      }
-      // Non-due field edits: patch the visible calendar items + the detail cache.
-      const calFields: Partial<CalendarIssue> = {};
-      if (patch.priority !== undefined) calFields.priority = patch.priority;
-      if (patch.title !== undefined) calFields.title = patch.title;
-      if (Object.keys(calFields).length) {
-        for (const [key, list] of qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] })) {
-          qc.setQueryData(key, patchCalendarItem(list ?? [], id, calFields));
+        // Each unscheduled cache reconciles against its filters (belongs iff dueDate === null).
+        for (const [key, list] of unschedEntries) {
+          const filters = (key[1] ?? {}) as IssueFilters;
+          const belongs = updated.dueDate === null && matchesFilters(updated, filters);
+          qc.setQueryData(key, reconcileList(list ?? [], updated, belongs));
         }
       }
+
+      // Patch the drawer detail cache (any branch) so the open drawer reflects the edit.
+      const detail = qc.getQueryData<IssueDetailResult>(["issue", id]);
+      if (detail) qc.setQueryData(["issue", id], patchDetail(detail, patch));
+
       return { snapshot };
     },
     onError: (err, _vars, ctx) => {
@@ -2594,26 +2758,29 @@ export function eventStyle(i: CalendarIssue, colorBy: "state" | "priority", toda
 - [ ] **Step 2: `src/features/calendar/FilterBar.tsx`**
 
 ```tsx
-import { useFilterOptions } from "@/lib/queries";
+import { useFilterOptions, useUsers } from "@/lib/queries";
 import type { IssueFilters } from "@/lib/commands";
 
 export function FilterBar({
-  filters, colorBy, onFilters, onColorBy,
+  filters, colorBy, meId, onFilters, onColorBy,
 }: {
   filters: IssueFilters;
   colorBy: "state" | "priority";
+  meId?: string;
   onFilters: (f: IssueFilters) => void;
   onColorBy: (c: "state" | "priority") => void;
 }) {
   const { data } = useFilterOptions();
+  const { data: users } = useUsers();
   const sel = "rounded-md border bg-background px-2 py-1 text-sm";
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <select className={sel} value={filters.assigneeId ?? "__all"}
         onChange={(e) => onFilters({ ...filters, assigneeId: e.target.value === "__all" ? undefined : e.target.value })}>
         <option value="__all">All assignees</option>
-        {/* "me" is the default applied upstream; clearing chooses All. */}
-        {filters.assigneeId && <option value={filters.assigneeId}>Me</option>}
+        {users?.map((u) => (
+          <option key={u.id} value={u.id}>{u.name}{u.id === meId ? " (me)" : ""}</option>
+        ))}
       </select>
       <select className={sel} value={filters.teamId ?? "__all"}
         onChange={(e) => onFilters({ ...filters, teamId: e.target.value === "__all" ? undefined : e.target.value })}>
@@ -2672,7 +2839,7 @@ export function UnscheduledRail({
 - [ ] **Step 4: Replace `src/features/calendar/CalendarPage.tsx`**
 
 ```tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -2700,17 +2867,21 @@ export function CalendarPage() {
   const me = useMe();
   const [range, setRange] = useState(() => currentDhakaMonth(today));
   const [filters, setFilters] = useState<IssueFilters>({});
+  const [initialized, setInitialized] = useState(false);
   const [colorBy, setColorBy] = useState<"state" | "priority">("state");
   const [, setParams] = useSearchParams();
 
-  // Default assignee to "me" until the user explicitly changes it.
-  const effectiveFilters: IssueFilters = {
-    ...filters,
-    assigneeId: filters.assigneeId === undefined && me.data ? me.data.viewerId : filters.assigneeId,
-  };
+  // Default the assignee filter to "me" exactly once, when identity loads. After
+  // that, filters.assigneeId === undefined genuinely means "All assignees".
+  useEffect(() => {
+    if (!initialized && me.data) {
+      setFilters({ assigneeId: me.data.viewerId });
+      setInitialized(true);
+    }
+  }, [me.data, initialized]);
 
-  const { data: scheduled } = useCalendarIssues(range, effectiveFilters);
-  const { data: unscheduled } = useUnscheduled(effectiveFilters);
+  const { data: scheduled } = useCalendarIssues(range, filters);
+  const { data: unscheduled } = useUnscheduled(filters);
 
   const events = useMemo(
     () =>
@@ -2729,7 +2900,7 @@ export function CalendarPage() {
   return (
     <div className="flex h-full">
       <div className="min-w-0 flex-1 p-4">
-        <FilterBar filters={effectiveFilters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
+        <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={setFilters} onColorBy={setColorBy} />
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="dayGridMonth"
@@ -3037,12 +3208,16 @@ function DrawerBody({
             </div>
           )}
           {live.projectName && <div><span className="text-muted-foreground">Project:</span> {live.projectName}</div>}
+          {live.cycle && (
+            <div><span className="text-muted-foreground">Cycle:</span> {live.cycle.name ?? `#${live.cycle.number ?? "?"}`}</div>
+          )}
           {live.children.length > 0 && (
             <section>
               <div className="mb-1 text-xs text-muted-foreground">Sub-issues</div>
               {live.children.map((c) => (
                 <div key={c.id} className="text-xs">{c.identifier} — {c.title} <span className="text-muted-foreground">({c.stateType})</span></div>
               ))}
+              {live.hasMoreChildren && <div className="text-xs text-muted-foreground">Showing first 50</div>}
             </section>
           )}
           {live.relations.length > 0 && (
@@ -3051,6 +3226,7 @@ function DrawerBody({
               {live.relations.map((r, idx) => (
                 <div key={idx} className="text-xs">{r.type}: {r.issue.identifier} — {r.issue.title}</div>
               ))}
+              {live.hasMoreRelations && <div className="text-xs text-muted-foreground">Showing first 50</div>}
             </section>
           )}
           {live.comments.length > 0 && (
@@ -3062,6 +3238,7 @@ function DrawerBody({
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>{c.body}</ReactMarkdown>
                 </div>
               ))}
+              {live.hasMoreComments && <div className="text-xs text-muted-foreground">Showing first 50</div>}
             </section>
           )}
         </div>
@@ -3160,4 +3337,13 @@ git commit -m "chore(m1): integration verification — F1-F3 acceptance met"
 
 - **Spec coverage:** F1 (Task 10), F2 (Task 12), F3 (Task 11); full workspace sync + incremental lookback (Task 3), workspace_lock + generation + identity wipe (Tasks 4–5), tri-state patch (Task 2), bounded collections (Task 2 queries), half-open range (Task 1), RATELIMITED-on-400 (Task 2), Vitest for pure helpers (Task 7), Resync/hard-delete remedy (Tasks 5/8). Shell + router + Resync (Task 8). `get_me` for the "assigned to me" default (Tasks 5/9/10).
 - **Type consistency:** Rust serializes camelCase; TS types in Task 6 mirror them. `CalendarIssue`/`Issue`/`LiveDetail`/`IssueDetailResult` names are identical Rust↔TS. `update_issue` takes `{ id, patch }`; binding matches. `sync_issues` takes `full`; binding matches.
-- **Known approximations to confirm during execution (spec § live-API):** GraphQL field names (`viewer.organization.urlKey`, `relations.relatedIssue`, `issue.team.states`, `IssueUpdateInput`) are representative — **introspect the live Linear schema before relying on them** (`requirements.md` §7 / CLAUDE.md "Live API wins"). The 5-min lookback and FullCalendar `create:false` drop pattern are verified by Task 7 tests / Task 11 manual check respectively.
+- **Known approximations to confirm during execution (spec § live-API):** GraphQL field names (`viewer.organization.urlKey`, `relations.relatedIssue`, `issue.team.states`, `cycle.number/name`, `IssueUpdateInput`) are representative — **Task 2 Step 0 is now an explicit introspection gate** that must pass before the parsers are written (`requirements.md` §7 / CLAUDE.md "Live API wins").
+
+### Post-review revisions (round 4)
+
+- **P0 — ordering:** `set_linear_key_logic`/`clear_linear_key_logic` now wipe + bump the generation **before** the keyring write, so a failed keyring op leaves only an empty (safe) cache; `save_identity` is transactional (Tasks 1, 4).
+- **P1 — optimistic correctness:** `useUpdateIssue` is query-key-aware — each calendar/unscheduled cache reconciles against **its own** range + filters (new pure helpers `matchesFilters`/`inRange`/`reconcileList`/`applyPatchToCalendarIssue`, Vitest-covered), and the drawer cache is patched via `patchDetail`. `CalendarIssue` gained `teamId`/`projectId` so filter matching is exact (Tasks 1, 6, 7, 9).
+- **P1 — rate-limit backoff:** `LinearError::RateLimited(Option<i64>)` + `http_post` reads `Retry-After`; `AppState.rate_limited_until` suppresses sync inside the window and is armed on any 429 (Tasks 2, 4, 5).
+- **P1 — sync correctness:** lookback now uses the `time` crate (RFC3339, fractional seconds); `hasNextPage` with no cursor fails the sync; full sync resets the watermark and an empty workspace still records a `now` baseline; `update_issue` replaces labels only when the upsert applied (Tasks 3, 5).
+- **P1 — introspection gate** added (Task 2 Step 0).
+- **P2:** assignee filter selects any workspace user (with a one-time "me" default that no longer fights an explicit "All"); cycle is queried in the detail query and displayed; detail connections request `pageInfo` and the drawer shows "Showing first 50"; the broken Task 3 stub helper is removed; `vitest` uses `--passWithNoTests` for the empty Task 6 run.
