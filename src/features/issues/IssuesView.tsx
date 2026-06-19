@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   ArrowDownUp,
@@ -15,9 +15,9 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
-import { useFilterOptions, useIssues, useMe, useUsers } from "@/lib/queries";
+import { useFilterOptions, useIssues, useMe, useUpdateIssue, useUsers } from "@/lib/queries";
 import { dhakaToday, isOverdue } from "@/lib/dates";
-import type { IssueListItem, IssueFilters, Label } from "@/lib/commands";
+import type { IssueListItem, IssueFilters, Label, UpdateIssuePatch } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 
@@ -86,6 +86,42 @@ const DISPLAY_LABELS: Record<DisplayKey, string> = {
   created: "Created",
   updated: "Updated",
 };
+
+// ── Persisted view config (survives reload + app launch) ─────────────────────
+type ViewConfig = {
+  filters: IssueFilters;
+  groupBy: GroupBy;
+  viewMode: ViewMode;
+  ordering: Ordering;
+  completed: Completed;
+  showSubIssues: boolean;
+  display: DisplayProps;
+};
+const VIEW_KEY = "astryn.issues-view";
+const DEFAULT_CONFIG: ViewConfig = {
+  filters: {},
+  groupBy: "status",
+  viewMode: "list",
+  ordering: "status",
+  completed: "all",
+  showSubIssues: true,
+  display: DEFAULT_DISPLAY,
+};
+
+function loadConfig(): ViewConfig {
+  try {
+    const p = JSON.parse(localStorage.getItem(VIEW_KEY) ?? "{}") as Partial<ViewConfig>;
+    return {
+      ...DEFAULT_CONFIG,
+      ...p,
+      filters: p.filters ?? {},
+      // Merge so display keys added in later versions get their default.
+      display: { ...DEFAULT_DISPLAY, ...(p.display ?? {}) },
+    };
+  } catch {
+    return DEFAULT_CONFIG;
+  }
+}
 
 function fmtDate(d: string): string {
   const [, m, day] = d.split("-").map(Number);
@@ -393,19 +429,32 @@ function BoardCard({
   avatar,
   onOpen,
   today,
+  draggable,
+  onDragStart,
+  onDragEnd,
+  dragging,
 }: {
   issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   onOpen: (id: string) => void;
   today: string;
+  draggable?: boolean;
+  onDragStart?: (e: DragEvent) => void;
+  onDragEnd?: () => void;
+  dragging?: boolean;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
   const cycle = cycleText(issue);
   return (
     <div
       onClick={() => onOpen(issue.id)}
-      className="cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25"
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 ${
+        draggable ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"
+      } ${dragging ? "opacity-40" : ""}`}
     >
       <div className="mb-1.5 flex items-center justify-between">
         <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
@@ -554,16 +603,33 @@ export function IssuesView() {
   const { data: issues } = useIssues({});
   const { data: filterOpts } = useFilterOptions();
   const { data: users } = useUsers();
+  const update = useUpdateIssue();
   const [, setParams] = useSearchParams();
 
-  const [filters, setFilters] = useState<IssueFilters>({});
-  const [groupBy, setGroupBy] = useState<GroupBy>("status");
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const [ordering, setOrdering] = useState<Ordering>("status");
-  const [completed, setCompleted] = useState<Completed>("all");
-  const [showSubIssues, setShowSubIssues] = useState(true);
-  const [display, setDisplay] = useState<DisplayProps>(DEFAULT_DISPLAY);
+  const cfg = useRef<ViewConfig | null>(null);
+  if (!cfg.current) cfg.current = loadConfig();
+  const [filters, setFilters] = useState<IssueFilters>(cfg.current.filters);
+  const [groupBy, setGroupBy] = useState<GroupBy>(cfg.current.groupBy);
+  const [viewMode, setViewMode] = useState<ViewMode>(cfg.current.viewMode);
+  const [ordering, setOrdering] = useState<Ordering>(cfg.current.ordering);
+  const [completed, setCompleted] = useState<Completed>(cfg.current.completed);
+  const [showSubIssues, setShowSubIssues] = useState(cfg.current.showSubIssues);
+  const [display, setDisplay] = useState<DisplayProps>(cfg.current.display);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  // Persist the view config (filters + display options) across reloads/launches.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        VIEW_KEY,
+        JSON.stringify({ filters, groupBy, viewMode, ordering, completed, showSubIssues, display }),
+      );
+    } catch {
+      // Storage unavailable — keep in-memory state only.
+    }
+  }, [filters, groupBy, viewMode, ordering, completed, showSubIssues, display]);
 
   const usersById = useMemo(() => new Map((users ?? []).map((u) => [u.id, u.name])), [users]);
   const avatarOf = (id: string | null): AvatarInfo => {
@@ -591,6 +657,47 @@ export function IssuesView() {
   }, [visible, groupBy, ordering, usersById]);
 
   const open = (id: string) => setParams({ issue: id });
+
+  // ── Board drag & drop ──────────────────────────────────────────────────────
+  // Dropping a card into another column applies the patch implied by the current
+  // grouping. Status is team-scoped in Linear, so we resolve the target stateId
+  // from a sibling issue of the SAME team already in that status.
+  const statesByTeamName = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const i of issues ?? []) {
+      if (i.teamId && i.stateName && i.stateId) m.set(`${i.teamId}::${i.stateName}`, i.stateId);
+    }
+    return m;
+  }, [issues]);
+  const dndEnabled = groupBy === "status" || groupBy === "assignee" || groupBy === "priority";
+
+  const patchForDrop = (issue: IssueListItem, g: Group): UpdateIssuePatch | null => {
+    if (groupBy === "assignee") {
+      const target = g.key === "none" ? null : g.key;
+      return issue.assigneeId === target ? null : { assigneeId: target };
+    }
+    if (groupBy === "priority") {
+      const target = Number(g.key);
+      return issue.priority === target ? null : { priority: target };
+    }
+    if (groupBy === "status") {
+      const stateId = issue.teamId ? statesByTeamName.get(`${issue.teamId}::${g.label}`) : undefined;
+      return !stateId || stateId === issue.stateId ? null : { stateId };
+    }
+    return null;
+  };
+
+  const handleDrop = (g: Group) => {
+    setDragOverKey(null);
+    const id = draggingId;
+    setDraggingId(null);
+    if (!id) return;
+    const issue = (issues ?? []).find((i) => i.id === id);
+    if (!issue) return;
+    const patch = patchForDrop(issue, g);
+    if (patch) update.mutate({ id, patch });
+  };
+
   const reset = () => {
     setGroupBy("status");
     setViewMode("list");
@@ -772,13 +879,36 @@ export function IssuesView() {
           // a single hairline divider rather than a heavy gap.
           <div className="flex h-full overflow-x-auto bg-background">
             {groups.map((g) => (
-              <div key={g.key} className="flex w-80 shrink-0 flex-col border-r border-border/50 last:border-r-0">
+              <div
+                key={g.key}
+                onDragOver={dndEnabled ? (e) => { e.preventDefault(); setDragOverKey(g.key); } : undefined}
+                onDragLeave={() => dragOverKey === g.key && setDragOverKey(null)}
+                onDrop={dndEnabled ? () => handleDrop(g) : undefined}
+                className={`flex w-80 shrink-0 flex-col border-r border-border/50 transition-colors last:border-r-0 ${
+                  dragOverKey === g.key ? "bg-accent/25" : ""
+                }`}
+              >
                 <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
                   <GroupHeading group={g} />
                 </div>
                 <div className="flex flex-col gap-2.5 overflow-y-auto px-2.5 pb-20">
                   {g.issues.map((i) => (
-                    <BoardCard key={i.id} issue={i} display={display} avatar={avatarOf(i.assigneeId)} onOpen={open} today={today} />
+                    <BoardCard
+                      key={i.id}
+                      issue={i}
+                      display={display}
+                      avatar={avatarOf(i.assigneeId)}
+                      onOpen={open}
+                      today={today}
+                      draggable={dndEnabled}
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData("text/plain", i.id);
+                        e.dataTransfer.effectAllowed = "move";
+                        setDraggingId(i.id);
+                      }}
+                      onDragEnd={() => setDraggingId(null)}
+                      dragging={draggingId === i.id}
+                    />
                   ))}
                 </div>
               </div>
