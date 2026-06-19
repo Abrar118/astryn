@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import {
   clearLinearKey,
   errorText,
+  getConnectionStatus,
   setLinearKey,
   syncIssues,
   testLinearConnection,
@@ -20,6 +21,8 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
 
   const invalidateStatus = () => qc.invalidateQueries({ queryKey: ["connection-status"] });
+
+  const { data: status } = useQuery({ queryKey: ["connection-status"], queryFn: getConnectionStatus });
 
   const testMut = useMutation({
     mutationFn: () => testLinearConnection(),
@@ -82,6 +85,15 @@ export function Settings() {
       </header>
 
       <Card className="flex flex-col gap-4 p-6">
+        <p className="text-sm text-muted-foreground">
+          {status === undefined
+            ? "Checking…"
+            : status.state === "connected"
+              ? `Connected as ${status.name}`
+              : status.state === "unverified"
+                ? "Key saved — not verified"
+                : "Not connected"}
+        </p>
         <form className="flex flex-col gap-3" onSubmit={handleSave}>
           <Label htmlFor="linear-key">Linear personal API key</Label>
           <Input
