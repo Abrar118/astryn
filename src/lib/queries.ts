@@ -55,13 +55,24 @@ function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueD
  * BOTH success and failure of set/clear — the Rust wipe happens before the
  * keyring write, so a failed write still leaves an empty cache.
  */
+const WORKSPACE_KEYS = [
+  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["filter-options"], ["me"],
+];
+
 export function clearWorkspaceQueries(qc: QueryClient) {
-  for (const key of [
-    ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["filter-options"], ["me"],
-  ]) {
+  for (const key of WORKSPACE_KEYS) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }
+}
+
+/**
+ * Refetch every workspace-scoped query in place. Use after a Resync (the Rust
+ * cache was wiped + rebuilt) so removed issues disappear and the renderer
+ * reflects the rebuilt cache — without the empty flash that removeQueries causes.
+ */
+export function invalidateWorkspaceQueries(qc: QueryClient) {
+  for (const key of WORKSPACE_KEYS) qc.invalidateQueries({ queryKey: key });
 }
 
 export function useMe() {

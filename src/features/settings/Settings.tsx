@@ -13,7 +13,7 @@ import {
   syncIssues,
   testLinearConnection,
 } from "@/lib/commands";
-import { clearWorkspaceQueries } from "@/lib/queries";
+import { clearWorkspaceQueries, invalidateWorkspaceQueries } from "@/lib/queries";
 
 export function Settings() {
   const qc = useQueryClient();
@@ -28,6 +28,9 @@ export function Settings() {
     mutationFn: () => testLinearConnection(),
     onSuccess: (status) => {
       if (status.state === "connected") gooeyToast.success(`Connected as ${status.name}`);
+      // A successful test may detect an org change and wipe the Rust cache; drop
+      // the renderer's workspace queries so stale data can't linger.
+      clearWorkspaceQueries(qc);
       invalidateStatus();
     },
     onError: (err) =>
@@ -49,8 +52,17 @@ export function Settings() {
 
   const resyncMut = useMutation({
     mutationFn: () => syncIssues(true),
-    onSuccess: (r) => gooeyToast.success(`Resynced ${r.synced} issues`),
-    onError: (err) => gooeyToast.error("Resync failed", { description: errorText(err) }),
+    // Resync wipes + rebuilds the Rust cache. Refetch workspace queries on EITHER
+    // outcome: a failed post-wipe resync can leave the renderer showing issues
+    // that no longer exist locally.
+    onSuccess: (r) => {
+      invalidateWorkspaceQueries(qc);
+      gooeyToast.success(`Resynced ${r.synced} issues`);
+    },
+    onError: (err) => {
+      invalidateWorkspaceQueries(qc);
+      gooeyToast.error("Resync failed", { description: errorText(err) });
+    },
   });
 
   // One operation at a time: never let Test/Clear/Resync run while a key is being saved

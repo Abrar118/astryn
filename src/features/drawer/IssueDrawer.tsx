@@ -49,13 +49,19 @@ function DrawerBody({
   const stateName = "stateName" in d ? d.stateName ?? "" : ("stateType" in d ? d.stateType : "");
 
   // Local edit buffers for free-text fields.
-  const [title, setTitle] = useState(d.title);
-  const [desc, setDesc] = useState("description" in d ? d.description ?? "" : "");
+  const detailTitle = d.title;
+  const detailDesc = "description" in d ? d.description ?? "" : "";
+  const [title, setTitle] = useState(detailTitle);
+  const [desc, setDesc] = useState(detailDesc);
   const [showPreview, setShowPreview] = useState(true);
+  // Re-seed when the issue, branch, OR the underlying values change. The value
+  // deps matter for rollback: a rejected edit restores the cached detail, and
+  // these buffers must follow it back instead of showing the failed text.
+  // (Edits only flush on blur, so this never clobbers mid-typing.)
   useEffect(() => {
-    setTitle(d.title);
-    setDesc("description" in d ? d.description ?? "" : "");
-  }, [id, result.source]); // re-seed when the issue or branch changes
+    setTitle(detailTitle);
+    setDesc(detailDesc);
+  }, [id, result.source, detailTitle, detailDesc]);
 
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
 
