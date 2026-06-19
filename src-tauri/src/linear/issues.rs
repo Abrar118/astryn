@@ -475,6 +475,9 @@ where
 pub struct UpdateIssuePatch {
     #[serde(default)]
     pub title: Option<String>,
+    /// Move the issue to another team. Not nullable — an issue always has a team.
+    #[serde(default)]
+    pub team_id: Option<String>,
     #[serde(default)]
     pub state_id: Option<String>,
     #[serde(default)]
@@ -501,6 +504,9 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
     let mut m = serde_json::Map::new();
     if let Some(v) = &p.title {
         m.insert("title".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &p.team_id {
+        m.insert("teamId".into(), Value::String(v.clone()));
     }
     if let Some(v) = &p.state_id {
         m.insert("stateId".into(), Value::String(v.clone()));
@@ -850,6 +856,12 @@ mod tests {
         assert_eq!(
             patch_to_input(&p),
             serde_json::json!({ "estimate": null, "projectId": null })
+        );
+        // move to another team
+        let p: UpdateIssuePatch = serde_json::from_str(r#"{"teamId":"team-2"}"#).unwrap();
+        assert_eq!(
+            patch_to_input(&p),
+            serde_json::json!({ "teamId": "team-2" })
         );
     }
 

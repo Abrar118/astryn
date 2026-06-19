@@ -26,6 +26,7 @@ import {
   Tag,
   Trash2,
   User as UserIcon,
+  Users,
 } from "lucide-react";
 import {
   useCycles,
@@ -252,6 +253,27 @@ function Menu({
       className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
       style={{ left, top }}
     >
+      {/* Team (move to another team) */}
+      <div className="relative" onMouseEnter={() => setSub("team")}>
+        <Row icon={<Users className="size-4" />} label="Team" hasSub />
+        {sub === "team" && (
+          <SubMenu flip={flip}>
+            {(filterOpts?.teams ?? []).length === 0 && (
+              <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No teams</div>
+            )}
+            {(filterOpts?.teams ?? []).map((t) => (
+              <Row
+                key={t.id}
+                icon={<Users className="size-4" />}
+                label={t.key}
+                active={t.id === issue.teamId}
+                onClick={() => patch({ teamId: t.id })}
+              />
+            ))}
+          </SubMenu>
+        )}
+      </div>
+
       {/* Status */}
       <div className="relative" onMouseEnter={() => setSub("status")}>
         <Row icon={<ListChecks className="size-4" />} label="Status" hasSub />

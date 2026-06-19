@@ -98,6 +98,10 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
     // Resolve known labels; ids not yet seen in the cache fill in on refetch.
     next.labels = patch.labelIds.map((id) => lk.labelById.get(id)).filter((l): l is Label => !!l);
   }
+  if (patch.teamId !== undefined) {
+    // Team key + the now-invalid team-scoped state reconcile on the settle refetch.
+    next.teamId = patch.teamId;
+  }
   return next;
 }
 

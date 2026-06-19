@@ -117,6 +117,7 @@ export type IssueFilters = {
 
 export type UpdateIssuePatch = {
   title?: string;
+  teamId?: string;
   stateId?: string;
   priority?: number;
   dueDate?: string | null;

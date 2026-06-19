@@ -32,5 +32,6 @@ export function applyPatchToCalendarIssue(base: CalendarIssue, patch: UpdateIssu
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.assigneeId !== undefined ? { assigneeId: patch.assigneeId } : {}),
     ...(patch.projectId !== undefined ? { projectId: patch.projectId } : {}),
+    ...(patch.teamId !== undefined ? { teamId: patch.teamId } : {}),
   };
 }
