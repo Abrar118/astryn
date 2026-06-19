@@ -100,34 +100,12 @@ pub async fn load_me(pool: &SqlitePool) -> Result<Option<(String, String)>, sqlx
     })
 }
 
-#[allow(dead_code)]
-pub async fn save_viewer_name(pool: &SqlitePool, name: &str) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        "INSERT INTO settings (key, value) VALUES (?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    )
-    .bind(VIEWER_NAME_KEY)
-    .bind(name)
-    .execute(pool)
-    .await?;
-    Ok(())
-}
-
 pub async fn load_viewer_name(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?1")
         .bind(VIEWER_NAME_KEY)
         .fetch_optional(pool)
         .await?;
     Ok(row.map(|r| r.0))
-}
-
-#[allow(dead_code)]
-pub async fn clear_viewer_name(pool: &SqlitePool) -> Result<(), sqlx::Error> {
-    sqlx::query("DELETE FROM settings WHERE key = ?1")
-        .bind(VIEWER_NAME_KEY)
-        .execute(pool)
-        .await?;
-    Ok(())
 }
 
 #[cfg(test)]
@@ -152,20 +130,23 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn viewer_name_roundtrip_and_clear() {
+    async fn save_identity_sets_loadable_viewer_name() {
         let (_dir, pool) = temp_pool().await;
         assert_eq!(load_viewer_name(&pool).await.unwrap(), None);
-        save_viewer_name(&pool, "Abrar").await.unwrap();
+        save_identity(&pool, "v1", "Abrar", "org1", "GAM", "gam")
+            .await
+            .unwrap();
         assert_eq!(
             load_viewer_name(&pool).await.unwrap(),
             Some("Abrar".to_string())
         );
-        save_viewer_name(&pool, "Abrar 2").await.unwrap(); // upsert
+        // upsert: saving new identity overwrites the name
+        save_identity(&pool, "v1", "Abrar 2", "org1", "GAM", "gam")
+            .await
+            .unwrap();
         assert_eq!(
             load_viewer_name(&pool).await.unwrap(),
             Some("Abrar 2".to_string())
         );
-        clear_viewer_name(&pool).await.unwrap();
-        assert_eq!(load_viewer_name(&pool).await.unwrap(), None);
     }
 }

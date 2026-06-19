@@ -134,10 +134,7 @@ where
                     .map_err(|_| LinearError::Malformed)?;
             }
             synced += 1;
-            if max_updated
-                .as_deref()
-                .is_none_or(|m| updated.as_str() > m)
-            {
+            if max_updated.as_deref().is_none_or(|m| updated.as_str() > m) {
                 max_updated = Some(updated);
             }
         }

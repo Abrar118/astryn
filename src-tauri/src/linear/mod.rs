@@ -1,7 +1,6 @@
 pub mod issues;
 pub mod sync;
 
-use serde::Deserialize;
 use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
@@ -67,66 +66,6 @@ pub fn http_status_to_error(status: u16) -> Option<LinearError> {
         429 => Some(LinearError::RateLimited(None)), // http_post fills the reset hint from headers
         500..=599 => Some(LinearError::Server),
         _ => None,
-    }
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize, Debug, PartialEq)]
-pub struct Viewer {
-    pub id: String,
-    pub name: String,
-    pub email: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct GraphQLResponse<T> {
-    data: Option<T>,
-    errors: Option<Vec<GraphQLError>>,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct GraphQLError {
-    message: String,
-}
-
-#[allow(dead_code)]
-#[derive(Deserialize)]
-struct ViewerData {
-    viewer: Viewer,
-}
-
-/// Parse a GraphQL response body. GraphQL surfaces errors with HTTP 200, so a
-/// non-empty `errors` array is a failure even when the transport succeeded.
-#[allow(dead_code)]
-pub fn parse_viewer_response(body: &str) -> Result<Viewer, LinearError> {
-    let resp: GraphQLResponse<ViewerData> =
-        serde_json::from_str(body).map_err(|_| LinearError::Malformed)?;
-    if let Some(errors) = resp.errors {
-        if !errors.is_empty() {
-            let joined = errors
-                .into_iter()
-                .map(|e| e.message)
-                .collect::<Vec<_>>()
-                .join("; ");
-            return Err(LinearError::Api(joined));
-        }
-    }
-    resp.data.map(|d| d.viewer).ok_or(LinearError::Malformed)
-}
-
-/// Map an HTTP status + body to a result. Distinguishes auth / rate-limit /
-/// server failures from malformed GraphQL so they are never misclassified.
-#[allow(dead_code)]
-pub fn interpret_response(status: u16, body: &str) -> Result<Viewer, LinearError> {
-    match status {
-        401 | 403 => Err(LinearError::Auth),
-        429 => Err(LinearError::RateLimited(None)),
-        500..=599 => Err(LinearError::Server),
-        // 2xx (and any other status carrying a GraphQL body) go through the parser,
-        // which handles HTTP-200-with-errors.
-        _ => parse_viewer_response(body),
     }
 }
 
@@ -227,94 +166,45 @@ impl LinearClient {
         }
         Ok(text)
     }
-
-    #[allow(dead_code)]
-    pub async fn viewer(&self, authorization: &str) -> Result<Viewer, LinearError> {
-        let body = serde_json::json!({ "query": "query { viewer { id name email } }" });
-        let resp = self
-            .http
-            .post(&self.endpoint)
-            .header("Authorization", authorization)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|_| LinearError::Network)?;
-        let status = resp.status().as_u16();
-        let text = resp.text().await.map_err(|_| LinearError::Network)?;
-        interpret_response(status, &text)
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const OK_BODY: &str = r#"{"data":{"viewer":{"id":"u1","name":"Abrar","email":"a@b.c"}}}"#;
-
     #[test]
-    fn parses_valid_viewer() {
-        let v = parse_viewer_response(OK_BODY).unwrap();
-        assert_eq!(
-            v,
-            Viewer {
-                id: "u1".into(),
-                name: "Abrar".into(),
-                email: "a@b.c".into()
-            }
-        );
+    fn status_401_is_auth() {
+        assert!(matches!(http_status_to_error(401), Some(LinearError::Auth)));
     }
 
     #[test]
-    fn success_status_parses_viewer() {
-        assert_eq!(interpret_response(200, OK_BODY).unwrap().name, "Abrar");
+    fn status_403_is_auth() {
+        assert!(matches!(http_status_to_error(403), Some(LinearError::Auth)));
     }
 
     #[test]
-    fn graphql_errors_are_failures_even_on_http_200() {
-        let body = r#"{"data":null,"errors":[{"message":"Authentication required"}]}"#;
-        match interpret_response(200, body) {
-            Err(LinearError::Api(msg)) => assert!(msg.contains("Authentication required")),
-            other => panic!("expected Api error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn unauthorized_is_auth_error() {
+    fn status_429_is_rate_limited() {
         assert!(matches!(
-            interpret_response(401, "{}"),
-            Err(LinearError::Auth)
+            http_status_to_error(429),
+            Some(LinearError::RateLimited(_))
         ));
     }
 
     #[test]
-    fn too_many_requests_is_rate_limited() {
+    fn status_500_is_server() {
         assert!(matches!(
-            interpret_response(429, ""),
-            Err(LinearError::RateLimited(_))
+            http_status_to_error(500),
+            Some(LinearError::Server)
         ));
     }
 
     #[test]
-    fn server_error_is_server() {
-        assert!(matches!(
-            interpret_response(500, ""),
-            Err(LinearError::Server)
-        ));
+    fn status_200_is_none() {
+        assert!(http_status_to_error(200).is_none());
     }
 
     #[test]
-    fn malformed_200_body_is_error() {
-        assert!(matches!(
-            interpret_response(200, "not json"),
-            Err(LinearError::Malformed)
-        ));
-    }
-
-    #[test]
-    fn missing_data_without_errors_is_malformed() {
-        assert!(matches!(
-            parse_viewer_response("{}"),
-            Err(LinearError::Malformed)
-        ));
+    fn status_400_is_none() {
+        assert!(http_status_to_error(400).is_none());
     }
 }

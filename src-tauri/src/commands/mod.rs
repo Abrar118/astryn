@@ -304,7 +304,9 @@ mod logic_tests {
         let (_dir, pool) = temp_pool().await;
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         store.set(LINEAR_KEY_ACCOUNT, "lin_xyz").unwrap();
-        db::save_viewer_name(&pool, "Abrar").await.unwrap();
+        db::save_identity(&pool, "v1", "Abrar", "orgA", "GAM", "gam")
+            .await
+            .unwrap();
         let status = get_status_logic(store, &pool).await.unwrap();
         assert_eq!(
             status,
