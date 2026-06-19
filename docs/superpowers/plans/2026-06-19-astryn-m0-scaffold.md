@@ -291,7 +291,7 @@ git commit -m "feat: add TanStack Query provider"
 
 Run:
 ```bash
-npm run tauri icon public/icons/icons8-workspace-liquid-glass-310.png
+npm run tauri icon public/icons/icons8-star-liquid-glass-310.png
 ```
 Expected: `src-tauri/icons/` is regenerated from the source. (310px is below the ideal 1024px; a sharper source can be swapped in later — acceptable for M0.)
 
@@ -299,7 +299,7 @@ Expected: `src-tauri/icons/` is regenerated from the source. (310px is below the
 
 In `index.html`, replace the favicon link and title:
 ```html
-<link rel="icon" type="image/png" href="/icons/icons8-workspace-liquid-glass-96.png" />
+<link rel="icon" type="image/png" href="/icons/icons8-star-liquid-glass-96.png" />
 <title>Astryn</title>
 ```
 

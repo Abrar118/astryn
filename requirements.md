@@ -85,7 +85,7 @@ Use the `ui-ux-pro-max` skill to execute this direction; this section is the *in
 
 ### Assets (icons & favicons) `[REQ]`
 
-Canonical asset source is the in-repo folder **`public/icons/`** (the original `/Users/orion-abrar/Downloads/web` folder no longer exists; its assets — the `icons8-workspace-liquid-glass-*` set — were relocated here and are the approved assets). Use what's there before generating or importing new icon sets. For M0: generate the Tauri app/bundle icon from the **310px** file (`icons8-workspace-liquid-glass-310.png`) and wire the web favicon from the **32px/96px** files. If a needed icon is missing from the folder, ask before pulling in an external icon library.
+Canonical asset source is the in-repo folder **`public/icons/`** (the approved assets — currently the `icons8-star-liquid-glass-*` set). Use what's there before generating or importing new icon sets. For M0: generate the Tauri app/bundle icon from the **310px** file (`icons8-star-liquid-glass-310.png`) and wire the web favicon from the **32px/96px** files. If a needed icon is missing from the folder, ask before pulling in an external icon library.
 
 ### Time, locale & clock `[REQ]`
 

@@ -15,7 +15,7 @@ Turn the current vanilla `create-tauri-app` scaffold into the Astryn foundation:
 Current repo is the default `create-tauri-app` React+TS+Vite scaffold:
 - Tauri v2, React 19, Vite 7, TS 5.8 (strict, `noUnusedLocals`/`noUnusedParameters`).
 - Default `greet` command in `src-tauri/src/lib.rs`; default `src/App.tsx`.
-- Tauri's stock bundle icons in `src-tauri/icons/`; approved favicon assets (`icons8-workspace-liquid-glass-*`) in `public/icons/`.
+- Tauri's stock bundle icons in `src-tauri/icons/`; approved favicon assets (`icons8-star-liquid-glass-*`) in `public/icons/`.
 - **Not yet installed:** Tailwind v4, shadcn/ui, sqlx, keyring, reqwest, TanStack Query, gooey/goey-toast.
 
 ## 3. Resolved decisions
@@ -29,8 +29,8 @@ Current repo is the default `create-tauri-app` React+TS+Vite scaffold:
 | Server state | **TanStack Query included now.** "Test connection" uses `useMutation`. |
 | Rust GraphQL client | `reqwest` + hand-written JSON bodies (no codegen for one query). |
 | Secret storage | `keyring` crate behind a `SecretStore` trait; native backend selected per-OS (macOS Keychain / Windows Credential Manager / Linux Secret Service). Cross-platform. |
-| App icon | Regenerate `src-tauri/icons/` from `public/icons/icons8-workspace-liquid-glass-310.png` via `tauri icon`. |
-| Favicon | Wire `public/icons/icons8-workspace-liquid-glass-32.png` / `-96.png` in `index.html`; fix title to "Astryn". |
+| App icon | Regenerate `src-tauri/icons/` from `public/icons/icons8-star-liquid-glass-310.png` via `tauri icon`. |
+| Favicon | Wire `public/icons/icons8-star-liquid-glass-32.png` / `-96.png` in `index.html`; fix title to "Astryn". |
 | Linear auth header | Raw personal API key in `Authorization`, **no `Bearer`** prefix (confirmed against live Linear docs). |
 
 ## 4. Architecture
@@ -100,7 +100,7 @@ All commands return **sanitized** errors — never raw reqwest/keyring/GraphQL d
 
 ## 9. Icons
 
-- **App/bundle icon:** `npm run tauri icon public/icons/icons8-workspace-liquid-glass-310.png` to regenerate `src-tauri/icons/`. (310px is below the ideal 1024px → icon may be slightly soft; a 1024px source can swap in later.)
+- **App/bundle icon:** `npm run tauri icon public/icons/icons8-star-liquid-glass-310.png` to regenerate `src-tauri/icons/`. (310px is below the ideal 1024px → icon may be slightly soft; a 1024px source can swap in later.)
 - **Favicon + title:** point `index.html` at the 32px/96px file; change title `Tauri + React…` → `Astryn`.
 - Bump default window 800×600 → ~1280×800.
 
