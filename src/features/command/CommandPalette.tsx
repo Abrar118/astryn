@@ -19,8 +19,10 @@ import {
   RefreshCw,
   RotateCcw,
   Search,
+  SquareSplitHorizontal,
 } from "lucide-react";
 import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
+import { useWorkspace } from "@/lib/tabs";
 import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
 import { CreateIssueModal } from "./CreateIssueModal";
 import { shouldOpenCreateShortcut } from "./shortcuts";
@@ -117,6 +119,8 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
+  const { openIssueInRightSplit } = useWorkspace();
+  const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -136,13 +140,15 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
   };
 
   const openIssue = (id: string) => {
-    setParams({ issue: id });
+    if (target === "rightSplit") openIssueInRightSplit(id);
+    else setParams({ issue: id });
     onClose();
   };
 
   const commands: Command[] = useMemo(
     () => [
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
       { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", onSelect: () => { navigate(-1); onClose(); } },
       { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", onSelect: () => resync(false) },
       { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", onSelect: () => resync(true) },
@@ -153,9 +159,11 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
   );
 
   const term = q.trim().toLowerCase();
-  const filteredCommands = term
-    ? commands.filter((c) => c.label.toLowerCase().includes(term))
-    : commands;
+  const filteredCommands = target === "rightSplit"
+    ? []
+    : term
+      ? commands.filter((c) => c.label.toLowerCase().includes(term))
+      : commands;
 
   // Issue search: rank identifier-prefix matches first, then any substring.
   const matchedIssues = useMemo(() => {
@@ -209,7 +217,12 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
       activate(sel);
     } else if (e.key === "Escape") {
       e.preventDefault();
-      onClose();
+      if (target === "rightSplit") {
+        setTarget("drawer");
+        setQ("");
+      } else {
+        onClose();
+      }
     }
   };
 
@@ -229,13 +242,27 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
-          <Search className="size-4 shrink-0 text-muted-foreground" />
+          {target === "rightSplit" ? (
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => {
+                setTarget("drawer");
+                setQ("");
+              }}
+              className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+          ) : (
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+          )}
           <input
             ref={inputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Type a command or search…"
+            placeholder={target === "rightSplit" ? "Open in right split — pick an issue…" : "Type a command or search…"}
             className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
