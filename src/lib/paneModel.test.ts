@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parsePersisted, nextPaneId, clampRatio, FALLBACK } from "./paneModel";
 import {
-  addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, swapPanes,
+  addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, moveTab, swapPanes,
   selectTabIn, openIssueTabAcross, openIssueInRightSplit, assertInvariants,
 } from "./paneModel";
 import type { Pane, WorkspaceState } from "./paneModel";
@@ -143,6 +143,38 @@ describe("moveTabToOtherPane", () => {
     expect(s.panes[1].activeTabId).toBe("tab-0");
     expect(s.focusedPaneId).toBe("pane-1");
     assertInvariants(s);
+  });
+});
+
+describe("moveTab", () => {
+  it("reorders within the same pane", () => {
+    const base = single();
+    base.panes[0].tabs = [
+      { id: "tab-0", view: "calendar" },
+      { id: "tab-1", view: "list" },
+      { id: "tab-2", view: "inbox" },
+    ];
+    base.panes[0].activeTabId = "tab-0";
+    const s = moveTab(base, "tab-2", "pane-0", 0); // move tab-2 to the front
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-2", "tab-0", "tab-1"]);
+    expect(s.panes[0].activeTabId).toBe("tab-2");
+    assertInvariants(s);
+  });
+  it("inserts across panes at a precise index", () => {
+    const base = split();
+    base.panes[1].tabs = [{ id: "tab-1", view: "list" }, { id: "tab-2", view: "inbox" }];
+    const s = moveTab(base, "tab-0", "pane-1", 1); // pane-0's only tab → pane-1 index 1
+    // pane-0 emptied → collapses; survivor is pane-1 with tab-0 inserted at index 1
+    expect(s.panes).toHaveLength(1);
+    expect(s.panes[0].id).toBe("pane-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-1", "tab-0", "tab-2"]);
+    expect(s.panes[0].activeTabId).toBe("tab-0");
+    assertInvariants(s);
+  });
+  it("no-ops for an unknown tab or pane", () => {
+    const base = split();
+    expect(moveTab(base, "nope", "pane-1", 0)).toBe(base);
+    expect(moveTab(base, "tab-0", "pane-9", 0)).toBe(base);
   });
 });
 

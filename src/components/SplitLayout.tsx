@@ -1,8 +1,24 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeftRight } from "lucide-react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  pointerWithin,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useWorkspace, type Tab } from "@/lib/tabs";
+import { useIssues } from "@/lib/queries";
 import { clampRatio, MIN_PANE_PX } from "@/lib/paneModel";
-import { PaneTabStrip } from "./PaneTabStrip";
+import { PaneTabStrip, tabIcon, tabLabel } from "./PaneTabStrip";
 import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
 import { InboxView } from "@/features/inbox/InboxView";
@@ -11,7 +27,7 @@ import { IssuePage } from "@/features/drawer/IssuePage";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
-const TAB_DRAG_THRESHOLD = 5;
+const SPLIT_RIGHT_ID = "split-right";
 
 function PaneContent({ tab }: { tab: Tab }) {
   switch (tab.view) {
@@ -28,61 +44,67 @@ function PaneContent({ tab }: { tab: Tab }) {
   }
 }
 
+/** Right-half drop target shown (single pane only) while a tab is being dragged. */
+function SplitRightZone() {
+  const { setNodeRef, isOver } = useDroppable({ id: SPLIT_RIGHT_ID });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`absolute inset-y-0 right-0 z-20 w-1/2 border-l-2 transition-colors ${
+        isOver ? "border-primary bg-primary/15" : "border-primary/50 bg-primary/5"
+      }`}
+    />
+  );
+}
+
 export function SplitLayout() {
-  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane, selectTab, moveTabToOtherPane } =
-    useWorkspace();
+  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane, moveTab } = useWorkspace();
+  const { data: issues } = useIssues({});
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const isSplit = panes.length === 2;
   const [usableWidth, setUsableWidth] = useState(0);
+  const [activeDragTab, setActiveDragTab] = useState<Tab | null>(null);
 
-  // ── Tab drag (pointer-driven) ───────────────────────────────────────────────
-  // HTML5 drag-and-drop `drop` events do not fire in Tauri's WKWebView (same
-  // reason the issue board uses pointer events), so tab moves are driven manually:
-  // capture the pointer on the tab, then resolve the drop target at pointer-up via
-  // elementFromPoint + data attributes. A move below threshold is treated as a
-  // click (tab select).
-  const tabGesture = useRef<{ tabId: string; sourcePaneId: string; x: number; y: number; label: string; started: boolean } | null>(null);
-  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
-  const [tabGhost, setTabGhost] = useState<{ label: string; x: number; y: number } | null>(null);
+  const sensors = useSensors(
+    // distance:5 so a plain click selects the tab instead of starting a drag.
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
-  const onTabPointerDown = (e: ReactPointerEvent, tabId: string, sourcePaneId: string, label: string) => {
-    if (e.button !== 0) return;
-    tabGesture.current = { tabId, sourcePaneId, x: e.clientX, y: e.clientY, label, started: false };
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  // Prefer whatever is under the pointer (split zone / a specific tab), else the
+  // nearest sortable — keeps the large split zone and dense tab rows both reliable.
+  const collisionDetection: CollisionDetection = (args) => {
+    const within = pointerWithin(args);
+    return within.length > 0 ? within : closestCenter(args);
   };
 
-  const onTabPointerMove = (e: ReactPointerEvent) => {
-    const g = tabGesture.current;
-    if (!g) return;
-    if (!g.started) {
-      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) < TAB_DRAG_THRESHOLD) return;
-      g.started = true;
-      setDraggingTabId(g.tabId);
-    }
-    setTabGhost({ label: g.label, x: e.clientX, y: e.clientY });
-  };
+  const tabById = (id: string): Tab | undefined => panes.flatMap((p) => p.tabs).find((t) => t.id === id);
 
-  const onTabPointerUp = (e: ReactPointerEvent) => {
-    const g = tabGesture.current;
-    tabGesture.current = null;
-    setDraggingTabId(null);
-    setTabGhost(null);
-    if (!g) return;
-    if (!g.started) {
-      selectTab(g.tabId); // below threshold → a click, not a drag
+  const onDragStart = (e: DragStartEvent) => setActiveDragTab(tabById(e.active.id as string) ?? null);
+  const onDragCancel = () => setActiveDragTab(null);
+  const onDragEnd = (e: DragEndEvent) => {
+    setActiveDragTab(null);
+    const { active, over } = e;
+    if (!over) return;
+    const activeId = active.id as string;
+    const overId = over.id as string;
+    if (overId === SPLIT_RIGHT_ID) {
+      splitTabRight(activeId);
       return;
     }
-    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
-    if (!el) return;
-    // Single-pane right-half zone → create the split.
-    if (el.closest("[data-split-right]")) {
-      splitTabRight(g.tabId);
+    const overPane = panes.find((p) => p.id === overId);
+    if (overPane) {
+      moveTab(activeId, overPane.id, overPane.tabs.length); // dropped on empty strip area → end
       return;
     }
-    // Dropped over the OTHER pane (its strip or content) → move it there.
-    const targetPaneId = el.closest<HTMLElement>("[data-pane-id]")?.dataset.paneId;
-    if (targetPaneId && targetPaneId !== g.sourcePaneId) moveTabToOtherPane(g.tabId);
+    for (const p of panes) {
+      const idx = p.tabs.findIndex((t) => t.id === overId);
+      if (idx >= 0) {
+        moveTab(activeId, p.id, idx);
+        return;
+      }
+    }
   };
 
   // Re-clamp the ratio when the container width changes so no pane strands below the minimum.
@@ -136,80 +158,78 @@ export function SplitLayout() {
   const minPct = usableWidth > 0 ? Math.min(50, Math.round((MIN_PANE_PX / usableWidth) * 100)) : 0;
 
   return (
-    <div ref={containerRef} className="relative flex min-h-0 flex-1">
-      {panes.map((pane, idx) => {
-        const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? pane.tabs[0];
-        const basis = !isSplit ? 100 : idx === 0 ? ratio * 100 : (1 - ratio) * 100;
-        return (
-          <div
-            key={pane.id}
-            data-pane-id={pane.id}
-            onMouseDown={() => focusPane(pane.id)}
-            className="flex min-w-0 flex-col"
-            style={{ flexBasis: `${basis}%` }}
-          >
-            <PaneTabStrip
-              pane={pane}
-              focused={isSplit && pane.id === focusedPaneId}
-              showClock={idx === panes.length - 1}
-              canClose={pane.tabs.length > 1 || isSplit}
-              isSplit={isSplit}
-              draggingTabId={draggingTabId}
-              onTabPointerDown={onTabPointerDown}
-              onTabPointerMove={onTabPointerMove}
-              onTabPointerUp={onTabPointerUp}
-            />
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <PaneContent key={pane.activeTabId} tab={activeTab} />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={collisionDetection}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={onDragCancel}
+    >
+      <div ref={containerRef} className="relative flex min-h-0 flex-1">
+        {panes.map((pane, idx) => {
+          const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? pane.tabs[0];
+          const basis = !isSplit ? 100 : idx === 0 ? ratio * 100 : (1 - ratio) * 100;
+          return (
+            <div
+              key={pane.id}
+              onMouseDown={() => focusPane(pane.id)}
+              className="flex min-w-0 flex-col"
+              style={{ flexBasis: `${basis}%` }}
+            >
+              <PaneTabStrip
+                pane={pane}
+                focused={isSplit && pane.id === focusedPaneId}
+                showClock={idx === panes.length - 1}
+                canClose={pane.tabs.length > 1 || isSplit}
+                isSplit={isSplit}
+              />
+              <div className="min-h-0 flex-1 overflow-hidden">
+                <PaneContent key={pane.activeTabId} tab={activeTab} />
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
 
-      {isSplit && (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-valuenow={Math.round(ratio * 100)}
-          aria-valuemin={minPct}
-          aria-valuemax={100 - minPct}
-          tabIndex={0}
-          onPointerDown={startResize}
-          onKeyDown={onDividerKey}
-          className="group absolute top-0 bottom-0 z-10 flex w-1.5 -translate-x-1/2 cursor-col-resize items-center justify-center bg-border/60 outline-none hover:bg-primary/40 focus-visible:bg-primary/60"
-          style={{ left: `${ratio * 100}%` }}
-        >
-          <button
-            type="button"
-            aria-label="Swap panes"
-            onClick={(e) => {
-              e.stopPropagation();
-              swapPanes();
-            }}
-            onPointerDown={(e) => e.stopPropagation()}
-            className="pointer-events-auto flex size-6 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground opacity-0 shadow transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+        {isSplit && (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(ratio * 100)}
+            aria-valuemin={minPct}
+            aria-valuemax={100 - minPct}
+            tabIndex={0}
+            onPointerDown={startResize}
+            onKeyDown={onDividerKey}
+            className="group absolute top-0 bottom-0 z-10 flex w-1.5 -translate-x-1/2 cursor-col-resize items-center justify-center bg-border/60 outline-none hover:bg-primary/40 focus-visible:bg-primary/60"
+            style={{ left: `${ratio * 100}%` }}
           >
-            <ArrowLeftRight className="size-3.5" />
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              aria-label="Swap panes"
+              onClick={(e) => {
+                e.stopPropagation();
+                swapPanes();
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="pointer-events-auto flex size-6 items-center justify-center rounded-full border border-border bg-popover text-muted-foreground opacity-0 shadow transition-opacity hover:text-foreground group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100"
+            >
+              <ArrowLeftRight className="size-3.5" />
+            </button>
+          </div>
+        )}
 
-      {/* Drag a tab into the right half to create the split (single-pane only). */}
-      {!isSplit && draggingTabId && (
-        <div
-          data-split-right
-          className="absolute inset-y-0 right-0 z-20 w-1/2 border-l-2 border-primary/60 bg-primary/10"
-        />
-      )}
+        {/* Drag a tab into the right half to create the split (single-pane only). */}
+        {!isSplit && activeDragTab && <SplitRightZone />}
+      </div>
 
-      {tabGhost && (
-        <div
-          className="pointer-events-none fixed z-50 max-w-48 truncate rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-2xl"
-          style={{ left: tabGhost.x + 12, top: tabGhost.y + 12 }}
-        >
-          {tabGhost.label}
-        </div>
-      )}
-    </div>
+      <DragOverlay dropAnimation={null}>
+        {activeDragTab ? (
+          <div className="flex cursor-grabbing items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs text-foreground shadow-lg">
+            <span className="text-muted-foreground">{tabIcon(activeDragTab)}</span>
+            <span className="max-w-[12rem] truncate">{tabLabel(activeDragTab, issues ?? [])}</span>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   );
 }

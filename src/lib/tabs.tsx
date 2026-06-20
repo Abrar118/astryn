@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
-  splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer,
+  splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer, moveTab as moveTabAtReducer,
   swapPanes as swapPanesReducer, openIssueTabAcross, openIssueInRightSplit as openRightReducer,
   type WorkspaceState, type Pane, type Tab, type ViewKind,
 } from "./paneModel";
@@ -23,6 +23,7 @@ type Ctx = {
   openIssueInRightSplit: (issueId: string) => void;
   splitTabRight: (tabId: string) => void;
   moveTabToOtherPane: (tabId: string) => void;
+  moveTab: (tabId: string, targetPaneId: string, targetIndex: number) => void;
   swapPanes: () => void;
   focusPane: (paneId: string) => void;
   setRatio: (n: number) => void;
@@ -81,6 +82,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     openIssueInRightSplit: (issueId) => setState((s) => openRightReducer(s, issueId)),
     splitTabRight: (tabId) => setState((s) => splitTabRightReducer(s, tabId)),
     moveTabToOtherPane: (tabId) => setState((s) => moveTabReducer(s, tabId)),
+    moveTab: (tabId, targetPaneId, targetIndex) => setState((s) => moveTabAtReducer(s, tabId, targetPaneId, targetIndex)),
     swapPanes: () => setState((s) => swapPanesReducer(s)),
     focusPane: (paneId) => setState((s) => (s.focusedPaneId === paneId ? s : { ...s, focusedPaneId: paneId })),
     setRatio: (n) => setState((s) => (s.ratio === n ? s : { ...s, ratio: n })),

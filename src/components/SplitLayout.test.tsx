@@ -23,10 +23,14 @@ const ws = vi.hoisted(() => ({
   focusPane: vi.fn(),
   selectTab: vi.fn(),
   moveTabToOtherPane: vi.fn(),
+  moveTab: vi.fn(),
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
+vi.mock("@/lib/queries", () => ({ useIssues: () => ({ data: [] }) }));
 vi.mock("./PaneTabStrip", () => ({
   PaneTabStrip: ({ pane }: { pane: { id: string } }) => <div data-testid={`strip-${pane.id}`} />,
+  tabIcon: () => null,
+  tabLabel: () => "",
 }));
 vi.mock("@/features/calendar/CalendarPage", () => ({ CalendarPage: () => <div>cal</div> }));
 vi.mock("@/features/issues/IssuesView", () => ({ IssuesView: () => <div>list</div> }));

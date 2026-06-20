@@ -191,6 +191,42 @@ export function moveTabToOtherPane(state: WorkspaceState, tabId: string): Worksp
   return moveTabCore(state, tabId, loc.paneIdx, loc.tabIdx, 1 - loc.paneIdx);
 }
 
+/**
+ * Move `tabId` to `targetPaneId` at `targetIndex` — the general drag-and-drop
+ * reducer. Handles reorder within a pane (same source/target pane) and precise
+ * cross-pane insertion; the moved tab becomes the target pane's active tab and
+ * the target pane is focused. Collapses the source pane if it empties.
+ */
+export function moveTab(state: WorkspaceState, tabId: string, targetPaneId: string, targetIndex: number): WorkspaceState {
+  const loc = findTab(state, tabId);
+  if (!loc) return state;
+  const targetPaneIdx = state.panes.findIndex((p) => p.id === targetPaneId);
+  if (targetPaneIdx < 0) return state;
+  const srcPane = state.panes[loc.paneIdx];
+  const tab = srcPane.tabs[loc.tabIdx];
+
+  if (loc.paneIdx === targetPaneIdx) {
+    const without = srcPane.tabs.filter((t) => t.id !== tabId);
+    const idx = Math.max(0, Math.min(targetIndex, without.length));
+    const tabs = [...without.slice(0, idx), tab, ...without.slice(idx)];
+    const panes = state.panes.map((p, i) => (i === loc.paneIdx ? { ...p, tabs, activeTabId: tabId } : p));
+    return { ...state, panes, focusedPaneId: srcPane.id };
+  }
+
+  const srcRemain = srcPane.tabs.filter((t) => t.id !== tabId);
+  const destPane = state.panes[targetPaneIdx];
+  const idx = Math.max(0, Math.min(targetIndex, destPane.tabs.length));
+  const destTabs = [...destPane.tabs.slice(0, idx), tab, ...destPane.tabs.slice(idx)];
+  const destNew: Pane = { ...destPane, tabs: destTabs, activeTabId: tabId };
+  if (srcRemain.length === 0) {
+    return { ...state, panes: [destNew], focusedPaneId: destNew.id };
+  }
+  const srcActive = srcPane.activeTabId === tabId ? neighborId(loc.tabIdx, srcRemain) : srcPane.activeTabId;
+  const srcNew: Pane = { ...srcPane, tabs: srcRemain, activeTabId: srcActive };
+  const panes = loc.paneIdx < targetPaneIdx ? [srcNew, destNew] : [destNew, srcNew];
+  return { ...state, panes, focusedPaneId: destNew.id };
+}
+
 export function swapPanes(state: WorkspaceState): WorkspaceState {
   if (state.panes.length !== 2) return state;
   // Pure reducer: exact mirror. Live-width clamping is SplitLayout's job.
