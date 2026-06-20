@@ -644,7 +644,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 users={users.data ?? []}
                 onOpenLink={handleLink}
                 resolveMention={resolveMention}
-                onSubmit={(body) => { createComment.mutate({ issueId: id, body }); setComposerKey((k) => k + 1); }}
+                onSubmit={(body) => createComment.mutate({ issueId: id, body }, { onSuccess: () => setComposerKey((k) => k + 1) })}
               />
             </div>
           )}

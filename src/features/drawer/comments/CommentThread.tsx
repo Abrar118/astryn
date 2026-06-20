@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { CornerDownRight } from "lucide-react";
-import { useCreateComment } from "@/lib/queries";
+import { useCreateComment, useUsers } from "@/lib/queries";
 import { CommentCard } from "./CommentCard";
 import { CommentComposer } from "./CommentComposer";
 import type { CommentThreadData } from "./commentThreads";
@@ -17,6 +17,7 @@ export function CommentThread({
   const [replying, setReplying] = useState(false);
   const [replyKey, setReplyKey] = useState(0);
   const create = useCreateComment();
+  const users = useUsers();
   const parentId = thread.comment.id;
 
   return (
@@ -37,14 +38,11 @@ export function CommentThread({
             key={replyKey}
             variant="reply"
             submitting={create.isPending}
+            users={users.data ?? []}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
             onCancel={() => setReplying(false)}
-            onSubmit={(md) => {
-              create.mutate({ issueId, body: md, parentId });
-              setReplying(false);
-              setReplyKey((k) => k + 1);
-            }}
+            onSubmit={(md) => create.mutate({ issueId, body: md, parentId }, { onSuccess: () => { setReplying(false); setReplyKey((k) => k + 1); } })}
           />
         ) : (
           <button

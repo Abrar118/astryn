@@ -33,15 +33,15 @@ class UserMentionView implements PluginView {
   readonly #list: HTMLElement;
   readonly #provider: SlashProvider;
   readonly #ctx: Ctx;
-  readonly #users: User[];
+  readonly #getUsers: () => User[];
   #selectedIndex = 0;
   #filtered: User[] = [];
   #isOpen = false;
   #triggerFrom = -1;
 
-  constructor(ctx: Ctx, view: EditorView, users: User[]) {
+  constructor(ctx: Ctx, view: EditorView, getUsers: () => User[]) {
     this.#ctx = ctx;
-    this.#users = users;
+    this.#getUsers = getUsers;
     const wrapper = document.createElement("div");
     wrapper.className = "md-slash-menu";
     wrapper.setAttribute("data-md-menu", "");
@@ -65,7 +65,7 @@ class UserMentionView implements PluginView {
         if (at < 0) return false;
         const query = text.slice(at + 1);
         if (/\s/.test(query)) return false; // mention token ends at whitespace
-        const filtered = filterUsers(self.#users, query);
+        const filtered = filterUsers(self.#getUsers(), query);
         if (filtered.length === 0) return false;
         const { $from } = v.state.selection;
         // `getContent` returns paragraph-start..cursor text; the `@` sits at
@@ -126,10 +126,10 @@ class UserMentionView implements PluginView {
   destroy = () => { this.#provider.destroy(); this.#content.remove(); };
 }
 
-export function configureUserMention(ctx: Ctx, users: User[]) {
+export function configureUserMention(ctx: Ctx, getUsers: () => User[]) {
   let current: UserMentionView | null = null;
   ctx.set(userMentionSlash.key, {
-    view: (editorView) => { current = new UserMentionView(ctx, editorView, users); return current; },
+    view: (editorView) => { current = new UserMentionView(ctx, editorView, getUsers); return current; },
     props: { handleKeyDown: (_v: EditorView, e: KeyboardEvent) => current?.handleKeyDown(e) ?? false },
   });
 }

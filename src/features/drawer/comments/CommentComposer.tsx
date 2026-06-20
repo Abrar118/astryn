@@ -35,6 +35,8 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
 }) {
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const usersRef = useRef(users);
+  usersRef.current = users;
 
   useEditor(
     (root) =>
@@ -55,7 +57,7 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
           ctx.get(listenerCtx).mounted((c) => c.get(editorViewCtx).focus());
           configureDescriptionSlash(ctx);
           configureDescriptionTooltip(ctx);
-          configureUserMention(ctx, users);
+          configureUserMention(ctx, () => usersRef.current);
         })
         .use(listener)
         .use(descriptionPlugins as MilkdownPlugin[])

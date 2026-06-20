@@ -13,7 +13,10 @@ vi.mock("@/lib/queries", () => ({
   useAddReaction: () => ({ mutate: vi.fn() }),
   useRemoveReaction: () => ({ mutate: vi.fn() }),
   useCreateComment: () => ({ mutate: vi.fn(), isPending: false }),
+  useUsers: () => ({ data: [] }),
 }));
+vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
+import { gooeyToast } from "goey-toast";
 // Read-only render path stubbed to plain text (avoids react-markdown internals here).
 vi.mock("../DescriptionEditor", () => ({ ReadOnlyDescription: ({ markdown }: { markdown: string }) => <div>{markdown}</div> }));
 
@@ -55,7 +58,7 @@ describe("CommentCard", () => {
     expect(screen.getByRole("button", { name: /confirm delete/i })).toBeTruthy();
   });
 
-  it("second click on Confirm delete calls mutate", () => {
+  it("second click on Confirm delete calls mutate with onSuccess callback", () => {
     render(<CommentCard comment={base} issueId="i1" onOpenLink={vi.fn()} />);
 
     // Open menu, click Delete, then Confirm delete
@@ -63,7 +66,24 @@ describe("CommentCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
     fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
     expect(deleteMutate).toHaveBeenCalledOnce();
-    expect(deleteMutate).toHaveBeenCalledWith({ issueId: "i1", id: "c1" });
+    expect(deleteMutate).toHaveBeenCalledWith(
+      { issueId: "i1", id: "c1" },
+      expect.objectContaining({ onSuccess: expect.any(Function) }),
+    );
+  });
+
+  it("success toast is NOT shown synchronously on confirm-delete click", () => {
+    const successMock = vi.mocked(gooeyToast.success);
+    successMock.mockClear();
+
+    render(<CommentCard comment={base} issueId="i1" onOpenLink={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /comment actions/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
+
+    // mutate was called but mocked — it never invokes onSuccess, so toast should not fire
+    expect(successMock).not.toHaveBeenCalled();
   });
 
   it("confirm state resets when AuthorActionsMenu unmounts (popover dismissed)", () => {

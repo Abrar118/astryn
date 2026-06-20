@@ -5,7 +5,7 @@ import { Avatar } from "@/components/Avatar";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { timeAgo } from "../timeAgo";
 import {
-  useMe, useUpdateComment, useDeleteComment, useAddReaction, useRemoveReaction,
+  useMe, useUpdateComment, useDeleteComment, useAddReaction, useRemoveReaction, useUsers,
 } from "@/lib/queries";
 import { ReadOnlyDescription } from "../DescriptionEditor";
 import { CommentComposer } from "./CommentComposer";
@@ -57,6 +57,7 @@ export function CommentCard({
   const [editKey, setEditKey] = useState(0);
   const update = useUpdateComment();
   const del = useDeleteComment();
+  const users = useUsers();
   const add = useAddReaction();
   const remove = useRemoveReaction();
   const isPending = comment.id.startsWith("pending-");
@@ -90,10 +91,7 @@ export function CommentCard({
                 <AuthorActionsMenu
                   close={close}
                   onEdit={() => setEditing(true)}
-                  onDelete={() => {
-                    del.mutate({ issueId, id: comment.id });
-                    gooeyToast.success("Comment deleted");
-                  }}
+                  onDelete={() => del.mutate({ issueId, id: comment.id }, { onSuccess: () => gooeyToast.success("Comment deleted") })}
                 />
               )}
             </Popover>
@@ -108,14 +106,11 @@ export function CommentCard({
             variant="edit"
             initialMarkdown={comment.body}
             submitting={update.isPending}
+            users={users.data ?? []}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
             onCancel={() => setEditing(false)}
-            onSubmit={(md) => {
-              update.mutate({ issueId, id: comment.id, body: md });
-              setEditing(false);
-              setEditKey((k) => k + 1);
-            }}
+            onSubmit={(md) => update.mutate({ issueId, id: comment.id, body: md }, { onSuccess: () => { setEditing(false); setEditKey((k) => k + 1); } })}
           />
         ) : (
           <ReadOnlyDescription markdown={comment.body} onOpenLink={onOpenLink} resolveMention={resolveMention} />
