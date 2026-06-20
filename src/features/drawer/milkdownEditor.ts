@@ -17,6 +17,10 @@ import { gfm, extendListItemSchemaForTask } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
 import type { NodeSchema } from "@milkdown/transformer";
 import { descriptionImageView } from "./milkdownImageNode";
+import {
+  descriptionSlash,
+  descriptionTooltip,
+} from "./milkdownMenus";
 
 /**
  * Plugins shared by the live editor and the headless round-trip helper.
@@ -24,11 +28,17 @@ import { descriptionImageView } from "./milkdownImageNode";
  * the commonmark schema + markdown serializer are unchanged, so the original
  * URL round-trips correctly in `roundtripMarkdown` (which uses commonmark+gfm
  * directly and does not instantiate node views in headless mode).
+ *
+ * `descriptionSlash` and `descriptionTooltip` are UI-only plugins; they have
+ * no effect in headless mode (no DOM, no view instantiation) so they are safe
+ * to include here without affecting `roundtripMarkdown`.
  */
 export const descriptionPlugins: unknown[] = [
   commonmark,
   gfm,
   descriptionImageView,
+  ...descriptionSlash,
+  ...descriptionTooltip,
 ];
 
 /**
