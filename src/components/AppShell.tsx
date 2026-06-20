@@ -1,31 +1,17 @@
 import { useSyncLoop } from "@/lib/queries";
-import { WorkspaceProvider, useWorkspace } from "@/lib/tabs";
-import { TabBar } from "@/components/TabBar";
+import { WorkspaceProvider } from "@/lib/tabs";
+import { SplitLayout } from "@/components/SplitLayout";
 import { Dock } from "@/components/Dock";
-import { CalendarPage } from "@/features/calendar/CalendarPage";
-import { IssuesView } from "@/features/issues/IssuesView";
-import { InboxView } from "@/features/inbox/InboxView";
-import { Settings } from "@/features/settings/Settings";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
-import { IssuePage } from "@/features/drawer/IssuePage";
 import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
 function Shell() {
-  const { active } = useWorkspace();
   const { isSyncing, refresh } = useSyncLoop();
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">
-      <TabBar />
-      {/* Keyed by tab id so each tab gets a fresh view instance. */}
-      <main key={active.id} className="min-h-0 flex-1 overflow-hidden">
-        {active.view === "calendar" && <CalendarPage />}
-        {active.view === "list" && <IssuesView />}
-        {active.view === "inbox" && <InboxView />}
-        {active.view === "settings" && <Settings />}
-        {active.view === "issue" && active.issueId && <IssuePage issueId={active.issueId} tabId={active.id} />}
-      </main>
+      <SplitLayout />
       <Dock isSyncing={isSyncing} refresh={refresh} />
       <IssueDrawer />
     </div>
