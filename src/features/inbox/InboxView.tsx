@@ -1,10 +1,12 @@
 import { useState, type ComponentType } from "react";
 import {
+  AlertCircle,
   AtSign,
   Check,
   Inbox as InboxIcon,
   MessageSquare,
   Plus,
+  RotateCw,
   type LucideProps,
 } from "lucide-react";
 import { useIssueDetail, useNotifications } from "@/lib/queries";
@@ -76,13 +78,36 @@ function NotificationRow({
   );
 }
 
+/** Centered error affordance with a retry action. */
+function InlineError({ message, onRetry }: { message: string; onRetry: () => void }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <AlertCircle className="size-7 text-muted-foreground/50" />
+      <p className="text-sm text-muted-foreground">{message}</p>
+      <button
+        type="button"
+        onClick={onRetry}
+        className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground transition-colors hover:bg-accent"
+      >
+        <RotateCw className="size-3.5" />
+        Retry
+      </button>
+    </div>
+  );
+}
+
 /** Right-pane issue detail for the selected notification — reuses the drawer's
  *  shared IssueDetail composition (description + properties + activity). */
 function NotificationDetail({ issueId, onClose }: { issueId: string; onClose: () => void }) {
-  const { data: result } = useIssueDetail(issueId);
+  const { data: result, isError, isLoading, refetch } = useIssueDetail(issueId);
+  if (isError && !result) {
+    return <InlineError message="Couldn't load this issue." onRetry={() => refetch()} />;
+  }
   if (!result) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">Loading…</div>
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        {isLoading ? "Loading…" : "Issue unavailable."}
+      </div>
     );
   }
   return (
@@ -93,8 +118,9 @@ function NotificationDetail({ issueId, onClose }: { issueId: string; onClose: ()
 }
 
 export function InboxView() {
-  const { data, isLoading } = useNotifications();
-  const list = data ?? [];
+  const { data, isLoading, isError, refetch } = useNotifications();
+  const list = data?.notifications ?? [];
+  const hasMore = data?.hasMore ?? false;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = list.find((n) => n.id === selectedId) ?? null;
   const unread = list.filter((n) => !n.read).length;
@@ -113,7 +139,11 @@ export function InboxView() {
         </header>
 
         <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto">
-          {isLoading && list.length === 0 ? (
+          {isError && list.length === 0 ? (
+            <div className="py-16">
+              <InlineError message="Couldn't load notifications." onRetry={() => refetch()} />
+            </div>
+          ) : isLoading && list.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">Loading…</p>
           ) : list.length === 0 ? (
             <div className="flex flex-col items-center gap-2 px-6 py-16 text-center">
@@ -121,14 +151,21 @@ export function InboxView() {
               <p className="text-sm text-muted-foreground">You're all caught up</p>
             </div>
           ) : (
-            list.map((n) => (
-              <NotificationRow
-                key={n.id}
-                n={n}
-                active={n.id === selectedId}
-                onClick={() => setSelectedId(n.id)}
-              />
-            ))
+            <>
+              {list.map((n) => (
+                <NotificationRow
+                  key={n.id}
+                  n={n}
+                  active={n.id === selectedId}
+                  onClick={() => setSelectedId(n.id)}
+                />
+              ))}
+              {hasMore && (
+                <p className="px-4 py-3 text-center text-[11px] text-muted-foreground/70">
+                  Showing your most recent notifications
+                </p>
+              )}
+            </>
           )}
         </div>
       </aside>

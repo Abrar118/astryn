@@ -86,6 +86,16 @@ pub struct ParsedNotification {
     pub issue_project_name: Option<String>,
 }
 
+/// The inbox is capped at the most recent notifications; `has_more` reports
+/// whether older notifications exist beyond this page so the UI can say so
+/// rather than imply the list is complete.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NotificationsPage {
+    pub notifications: Vec<ParsedNotification>,
+    pub has_more: bool,
+}
+
 // ---- helpers to read nested JSON safely ----
 fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(|x| x.as_str()).map(Into::into)
@@ -247,14 +257,19 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
         .collect())
 }
 
-pub fn parse_notifications(body: &str) -> Result<Vec<ParsedNotification>, LinearError> {
+pub fn parse_notifications(body: &str) -> Result<NotificationsPage, LinearError> {
     let data = extract_data(body)?;
-    let nodes = data
-        .get("notifications")
-        .and_then(|n| n.get("nodes"))
+    let conn = data.get("notifications").ok_or(LinearError::Malformed)?;
+    let has_more = conn
+        .get("pageInfo")
+        .and_then(|p| p.get("hasNextPage"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let nodes = conn
+        .get("nodes")
         .and_then(|n| n.as_array())
         .ok_or(LinearError::Malformed)?;
-    Ok(nodes
+    let notifications = nodes
         .iter()
         .filter_map(|n| {
             // Skip non-issue notifications: the inbox opens the issue drawer on click.
@@ -273,7 +288,11 @@ pub fn parse_notifications(body: &str) -> Result<Vec<ParsedNotification>, Linear
                 issue_project_name: nested(issue, "project", "name"),
             })
         })
-        .collect())
+        .collect();
+    Ok(NotificationsPage {
+        notifications,
+        has_more,
+    })
 }
 
 pub fn parse_labels(body: &str) -> Result<Vec<ParsedLabel>, LinearError> {
@@ -1090,12 +1109,14 @@ fn issue_detail_query() -> String {
 }
 
 const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
-const NOTIFICATIONS_QUERY: &str = "query { notifications(first: 50) { nodes {
-    id type createdAt readAt actor { name }
-    ... on IssueNotification {
-      issue { id identifier title state { type color } project { name } }
-    }
-  } } }";
+const NOTIFICATIONS_QUERY: &str = "query { notifications(first: 50) {
+    pageInfo { hasNextPage }
+    nodes {
+      id type createdAt readAt actor { name }
+      ... on IssueNotification {
+        issue { id identifier title state { type color } project { name } }
+      }
+    } } }";
 const LABELS_QUERY: &str = "query { issueLabels(first: 250) { nodes { id name color } } }";
 const CYCLES_QUERY: &str = "query { cycles(first: 250) { nodes { id number name team { id } } } }";
 const WORKFLOW_STATES_QUERY: &str =
@@ -1179,7 +1200,7 @@ impl LinearClient {
         parse_labels(&self.post(auth, body).await?)
     }
 
-    pub async fn notifications(&self, auth: &str) -> Result<Vec<ParsedNotification>, LinearError> {
+    pub async fn notifications(&self, auth: &str) -> Result<NotificationsPage, LinearError> {
         let body = serde_json::json!({ "query": NOTIFICATIONS_QUERY });
         parse_notifications(&self.post(auth, body).await?)
     }
@@ -1336,7 +1357,7 @@ mod tests {
 
     #[test]
     fn parses_notifications_and_drops_non_issue_nodes() {
-        let body = r##"{"data":{"notifications":{"nodes":[
+        let body = r##"{"data":{"notifications":{"pageInfo":{"hasNextPage":true},"nodes":[
           {"id":"n1","type":"issueMention","createdAt":"2026-06-20T08:00:00Z","readAt":null,
            "actor":{"name":"Jakob Schwarz"},
            "issue":{"id":"i1","identifier":"PSY-410","title":"Product Decision",
@@ -1348,7 +1369,9 @@ mod tests {
           {"id":"n3","type":"projectUpdate","createdAt":"2026-06-18T08:00:00Z","readAt":null,
            "actor":{"name":"Bot"}}
         ]}}}"##;
-        let ns = parse_notifications(body).unwrap();
+        let page = parse_notifications(body).unwrap();
+        assert!(page.has_more);
+        let ns = page.notifications;
         assert_eq!(ns.len(), 2); // the project notification (no issue) is dropped
         assert_eq!(ns[0].issue_identifier, "PSY-410");
         assert!(!ns[0].read);

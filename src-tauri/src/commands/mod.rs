@@ -11,8 +11,8 @@ use crate::db::issues::{
 use crate::linear::issues::{
     create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput,
     DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailReaction,
-    DetailRef, DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue,
-    ParsedNotification, ParsedUser, UpdateIssuePatch, WorkflowState,
+    DetailRef, DetailRelation, DetailState, IssueDetailNode, NotificationsPage, OrgIdentity,
+    ParsedCycle, ParsedIssue, ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -711,9 +711,7 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
 }
 
 #[tauri::command]
-pub async fn list_notifications(
-    state: State<'_, AppState>,
-) -> Result<Vec<ParsedNotification>, CmdError> {
+pub async fn list_notifications(state: State<'_, AppState>) -> Result<NotificationsPage, CmdError> {
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await

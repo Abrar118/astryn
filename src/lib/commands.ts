@@ -186,6 +186,9 @@ export type Notification = {
   issueStateColor: string;
   issueProjectName: string | null;
 };
+
+/** A page of inbox notifications; `hasMore` flags older items beyond the cap. */
+export type NotificationsPage = { notifications: Notification[]; hasMore: boolean };
 export type Me = { viewerId: string; viewerName: string };
 export type SyncResult = { mode: "full" | "incremental"; synced: number };
 
@@ -258,7 +261,7 @@ export const createIssue = (input: CreateIssueInput): Promise<Issue> =>
 
 export const listUsers = (): Promise<User[]> => invoke("list_users");
 
-export const listNotifications = (): Promise<Notification[]> => invoke("list_notifications");
+export const listNotifications = (): Promise<NotificationsPage> => invoke("list_notifications");
 
 export const listLabels = (): Promise<Label[]> => invoke("list_labels");
 
