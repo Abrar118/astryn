@@ -19,7 +19,7 @@ export function issueMentionFromUrl(href: string): string | null {
  * - If the link's href resolves to an issue identifier AND `resolveMention`
  *   can provide the cached issue, render an inline pill:
  *     <span> [ status-dot ] [ contentDOM ] </span>
- *   Click → preventDefault + stopPropagation + openIssue (in-app only).
+ *   Click → preventDefault + stopPropagation + onActivateLink(href).
  *   `title` attr = the issue title.  NOT an anchor, so the webview never
  *   navigates.
  *
@@ -30,7 +30,7 @@ export function issueMentionFromUrl(href: string): string | null {
  */
 function makeLinkMarkView(
   resolveMention: MentionResolver,
-  openIssue: (id: string, identifier: string) => void,
+  onActivateLink: (href: string) => void,
 ): (mark: ProseMirrorMark, view: EditorView, inline: boolean) => MarkView {
   return (mark: ProseMirrorMark, _view: EditorView, _inline: boolean) => {
     const attrs = mark.attrs as { href?: string; title?: string };
@@ -79,7 +79,7 @@ function makeLinkMarkView(
       dom.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openIssue(identifier, identifier);
+        onActivateLink(href);
       });
 
       dom.addEventListener("mouseenter", () => {
@@ -115,15 +115,15 @@ function makeLinkMarkView(
  * unchanged through `roundtripMarkdown`.
  *
  * Designed to be added per-drawer (Task 6): the callbacks `resolveMention` and
- * `openIssue` are closed over at construction time and are not hardcoded into
- * `descriptionPlugins`.
+ * `onActivateLink` are closed over at construction time and are not hardcoded
+ * into `descriptionPlugins`.
  */
 export function descriptionMentionPlugin(
   resolveMention: MentionResolver,
-  openIssue: (id: string, identifier: string) => void,
+  onActivateLink: (href: string) => void,
 ): MilkdownPlugin[] {
   const mentionLinkView = $view(linkSchema.mark, (_ctx) =>
-    makeLinkMarkView(resolveMention, openIssue),
+    makeLinkMarkView(resolveMention, onActivateLink),
   );
   return [mentionLinkView];
 }

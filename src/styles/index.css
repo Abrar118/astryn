@@ -397,6 +397,73 @@
 .description-save-status { position: absolute; right: 0; top: -1.25rem; font-size: 0.6875rem; color: var(--muted-foreground); }
 .description-save-status--error { color: #f87171; }
 
+/* ── Milkdown / ProseMirror editor — dark Linear-style ────────────────────── */
+.milkdown {
+  outline: none;
+}
+
+.milkdown .ProseMirror {
+  min-height: 8rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+.milkdown .ProseMirror:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 55%, transparent);
+  padding-inline: 0.75rem;
+}
+
+.milkdown .ProseMirror p.is-empty:first-child::before {
+  content: "Add description…";
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.milkdown .ProseMirror h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
+.milkdown .ProseMirror h2 { margin: 1rem 0 0.4rem; font-size: 1.25rem; font-weight: 650; }
+.milkdown .ProseMirror h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
+.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; }
+.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; }
+.milkdown .ProseMirror li[data-task-list-item] { list-style: none; display: flex; align-items: flex-start; gap: 0.5rem; padding-left: 0; }
+.milkdown .ProseMirror li[data-task-list-item] input[type="checkbox"] { margin-top: 0.25rem; flex-shrink: 0; accent-color: var(--primary); }
+.milkdown .ProseMirror blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
+.milkdown .ProseMirror pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
+.milkdown .ProseMirror code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; font-size: 0.875em; }
+.milkdown .ProseMirror table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
+.milkdown .ProseMirror th { background: var(--secondary); font-weight: 600; }
+.milkdown .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+.milkdown .ProseMirror a { color: var(--primary); cursor: pointer; }
+.milkdown .ProseMirror a:hover { text-decoration: underline; }
+
+/* Issue-mention pills inside the Milkdown editor */
+.milkdown .ProseMirror [data-mention-pill] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+  padding: 0 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.milkdown .ProseMirror [data-mention-pill]:hover {
+  background: var(--accent);
+}
+
 /* ── Read-only Markdown (description fallback, comments, resource modal) ─────── */
 /* GFM task lists: inline checkbox + text, no bullet (matches Linear). */
 .astryn-prose ul.contains-task-list { list-style: none; padding-left: 0; }

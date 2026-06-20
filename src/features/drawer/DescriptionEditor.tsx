@@ -1,23 +1,29 @@
 import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Editor } from "@tiptap/core";
-import { EditorContent, useEditor } from "@tiptap/react";
-import { BubbleMenu } from "@tiptap/react/menus";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Link2 } from "lucide-react";
+import type { MilkdownPlugin } from "@milkdown/ctx";
+import { Editor } from "@milkdown/kit/core";
+import {
+  defaultValueCtx,
+  rootCtx,
+  editorViewOptionsCtx,
+} from "@milkdown/kit/core";
+import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
+import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
-import { descriptionExtensions, markdownFromEditor } from "./descriptionExtensions";
-import { filterSlashCommands, inlineCommands } from "./descriptionCommands";
+import { descriptionPlugins, applyDescriptionConfig } from "./milkdownEditor";
+import {
+  configureDescriptionSlash,
+  configureDescriptionTooltip,
+} from "./milkdownMenus";
+import { descriptionMentionPlugin } from "./milkdownMention";
 import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
 
 /**
- * Some Linear descriptions contain Markdown that @tiptap/markdown parses into a
- * ProseMirror doc the schema rejects (e.g. a code span that is also a link, an
- * image as a bare list item, or duplicate marks from malformed `**`). Markdown
- * content gets no schema coercion, so the invalid doc only throws
- * ("contentMatchAt … invalid content") when the real editor view mounts. This
- * boundary catches that so the drawer shows the description read-only instead of
- * crashing the whole app.
+ * Some Linear descriptions contain Markdown that ProseMirror rejects (e.g. a
+ * code span that is also a link, an image as a bare list item, or duplicate
+ * marks from malformed `**`). This boundary catches that so the drawer shows
+ * the description read-only instead of crashing the whole app.
  */
 export class EditorErrorBoundary extends Component<
   { fallback: ReactNode; children: ReactNode },
@@ -63,7 +69,83 @@ export function ReadOnlyDescription({
   );
 }
 
-type SlashState = { from: number; query: string; selected: number; left: number; top: number };
+interface MilkdownEditorInnerProps {
+  markdown: string;
+  editable: boolean;
+  autosaveRef: React.RefObject<DescriptionAutosave | null>;
+  onOpenLink: (href: string) => void;
+  resolveMention?: MentionResolver;
+  onBlur: () => void;
+}
+
+/**
+ * Inner Milkdown editor component. Must be rendered inside `MilkdownProvider`.
+ * Separated so the provider wraps before `useEditor` runs.
+ */
+function MilkdownEditorInner({
+  markdown,
+  editable,
+  autosaveRef,
+  onOpenLink,
+  resolveMention,
+  onBlur,
+}: MilkdownEditorInnerProps) {
+  const onOpenLinkRef = useRef(onOpenLink);
+  onOpenLinkRef.current = onOpenLink;
+
+  useEditor(
+    (root) =>
+      Editor.make()
+        .config((ctx) => {
+          ctx.set(rootCtx, root);
+          ctx.set(defaultValueCtx, markdown);
+          ctx.set(editorViewOptionsCtx, {
+            editable: () => editable,
+            handleClickOn: (_view, _pos, _node, _nodePos, event) => {
+              const anchor = (event.target as HTMLElement | null)?.closest("a");
+              const href = anchor?.getAttribute("href");
+              if (href) {
+                event.preventDefault();
+                onOpenLinkRef.current(href);
+                return true;
+              }
+              return false;
+            },
+          });
+          applyDescriptionConfig(ctx);
+          ctx.get(listenerCtx).markdownUpdated((_ctx, md) => {
+            autosaveRef.current?.update(md);
+          });
+          ctx.get(listenerCtx).blur(() => {
+            onBlur();
+          });
+          configureDescriptionSlash(ctx);
+          configureDescriptionTooltip(ctx);
+        })
+        .use(listener)
+        .use(descriptionPlugins as MilkdownPlugin[])
+        .use(
+          resolveMention
+            ? descriptionMentionPlugin(resolveMention, (href) =>
+                onOpenLinkRef.current(href),
+              )
+            : [],
+        ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  return <Milkdown />;
+}
+
+interface DescriptionEditorProps {
+  markdown: string;
+  editable: boolean;
+  onSave: (md: string) => Promise<void>;
+  onOpenLink: (href: string) => void;
+  resolveMention?: MentionResolver;
+  onSaveStateChange?: (s: SaveStatus) => void;
+}
 
 export function DescriptionEditor({
   markdown,
@@ -71,203 +153,99 @@ export function DescriptionEditor({
   onSave,
   onOpenLink,
   resolveMention,
-}: {
-  markdown: string;
-  editable: boolean;
-  onSave: (markdown: string) => Promise<void>;
-  onOpenLink: (href: string) => void;
-  resolveMention?: MentionResolver;
-}) {
-  const saveRef = useRef(onSave);
-  saveRef.current = onSave;
-  const linkRef = useRef(onOpenLink);
-  linkRef.current = onOpenLink;
-  const editorRef = useRef<Editor | null>(null);
-  const queue = useMemo(
-    () => new DescriptionAutosave(markdown, (value) => saveRef.current(value), 750),
-    // One queue per issue/editor mount; external Markdown is reconciled below.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  onSaveStateChange,
+}: DescriptionEditorProps) {
+  const [editing, setEditing] = useState(false);
   const [status, setStatus] = useState<SaveStatus>("idle");
-  const [slash, setSlash] = useState<SlashState | null>(null);
-  const [linkMode, setLinkMode] = useState(false);
-  const [linkValue, setLinkValue] = useState("");
-  const slashRef = useRef<SlashState | null>(null);
-  slashRef.current = slash;
+  const autosaveRef = useRef<DescriptionAutosave | null>(null);
+  const onSaveRef = useRef(onSave);
+  onSaveRef.current = onSave;
 
-  const editor = useEditor({
-    extensions: descriptionExtensions(),
-    content: markdown,
-    contentType: "markdown",
-    editable,
-    editorProps: {
-      attributes: {
-        role: "textbox",
-        "aria-label": "Issue description",
-        class: "astryn-description-editor",
-      },
-      handleKeyDown: (_view, event) => {
-        const current = slashRef.current;
-        const currentEditor = editorRef.current;
-        if (!current || !currentEditor) return false;
-        const choices = filterSlashCommands(current.query);
-        if (event.key === "Escape") { setSlash(null); return true; }
-        if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-          event.preventDefault();
-          const delta = event.key === "ArrowDown" ? 1 : -1;
-          setSlash({ ...current, selected: (current.selected + delta + choices.length) % choices.length });
-          return true;
-        }
-        if (event.key === "Enter" && choices.length) {
-          event.preventDefault();
-          currentEditor.chain().focus().deleteRange({ from: current.from, to: currentEditor.state.selection.from }).run();
-          choices[current.selected]?.run(currentEditor);
-          setSlash(null);
-          return true;
-        }
-        return false;
-      },
-      // Intercept link clicks (editable AND read-only) so the webview never
-      // navigates. The drawer resolves in-app issue links vs. validated
-      // external links via onOpenLink.
-      handleClickOn: (_view, _pos, _node, _nodePos, event) => {
-        const anchor = (event.target as HTMLElement | null)?.closest("a");
-        const href = anchor?.getAttribute("href");
-        if (href) {
-          event.preventDefault();
-          linkRef.current(href);
-          return true;
-        }
-        return false;
-      },
-    },
-    // onBlur is the correct Tiptap hook; editorProps.handleBlur does not exist
-    // in ProseMirror's EditorProps type.
-    onBlur: () => { void queue.flush().catch(() => undefined); },
-    onUpdate: ({ editor: current }) => {
-      const value = markdownFromEditor(current);
-      queue.update(value);
-      const { $from } = current.state.selection;
-      const before = $from.parent.textBetween(0, $from.parentOffset, "\n", "\0");
-      const match = before.match(/(?:^|\s)\/([a-z0-9]*)$/i);
-      if (match) {
-        const coords = current.view.coordsAtPos(current.state.selection.from);
-        const root = current.view.dom.parentElement?.getBoundingClientRect();
-        setSlash({
-          from: current.state.selection.from - match[1].length - 1,
-          query: match[1],
-          selected: 0,
-          left: coords.left - (root?.left ?? 0),
-          top: coords.bottom - (root?.top ?? 0) + 6,
-        });
-      } else setSlash(null);
-    },
-  });
-
-  editorRef.current = editor;
-  useEffect(() => queue.subscribe(setStatus), [queue]);
-  useEffect(() => { editor?.setEditable(editable); }, [editable, editor]);
-  // Seed the autosave baseline from the SERIALIZED form and adopt server
-  // content only when the local editor is clean. Baselining on the serialized
-  // form keeps normalization-only differences from looking like a draft and
-  // prevents post-save churn.
+  // Create autosave on first edit, destroy on exit
   useEffect(() => {
-    if (!editor) return;
-    if (!queue.acceptExternal(markdownFromEditor(editor))) return; // dirty -> keep draft
-    if (markdownFromEditor(editor) !== markdown) {
-      editor.commands.setContent(markdown, { contentType: "markdown", emitUpdate: false });
-      queue.acceptExternal(markdownFromEditor(editor)); // re-baseline on adopted content
-    }
-  }, [editor, markdown, queue]);
-  useEffect(() => () => {
-    void queue.flush().catch(() => undefined);
-    queue.destroy();
-  }, [queue]);
+    if (!editing) return;
+    const queue = new DescriptionAutosave(
+      markdown,
+      (value) => onSaveRef.current(value),
+      750,
+    );
+    autosaveRef.current = queue;
+    const unsub = queue.subscribe((s) => {
+      setStatus(s);
+      onSaveStateChange?.(s);
+    });
+    return () => {
+      unsub();
+      void queue.flush().catch(() => undefined);
+      queue.destroy();
+      autosaveRef.current = null;
+    };
+    // We want this to run only when editing starts, not on markdown prop changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing]);
 
-  const choices = slash ? filterSlashCommands(slash.query) : [];
-
-  const applyLink = () => {
-    if (!editor) return;
-    const href = linkValue.trim();
-    if (href) editor.chain().focus().extendMarkRange("link").setLink({ href }).run();
-    else editor.chain().focus().extendMarkRange("link").unsetLink().run();
-    setLinkMode(false);
+  const handleBlur = () => {
+    void autosaveRef.current?.flush().catch(() => undefined);
+    setEditing(false);
+    setStatus("idle");
   };
 
+  const readOnlyNode = (
+    <ReadOnlyDescription
+      markdown={markdown}
+      onOpenLink={onOpenLink}
+      resolveMention={resolveMention}
+    />
+  );
+
+  if (!editing) {
+    return (
+      <div
+        onDoubleClick={() => {
+          if (editable) setEditing(true);
+        }}
+      >
+        {readOnlyNode}
+      </div>
+    );
+  }
+
   return (
-    <EditorErrorBoundary fallback={<ReadOnlyDescription markdown={markdown} onOpenLink={onOpenLink} resolveMention={resolveMention} />}>
-    <div className="relative">
-      {editor && editable && (
-        <BubbleMenu editor={editor} options={{ placement: "top" }}>
-          <div className="description-bubble-menu" role="toolbar" aria-label="Text formatting">
-            {linkMode ? (
-              <form onSubmit={(event) => { event.preventDefault(); applyLink(); }}>
-                <input
-                  autoFocus
-                  aria-label="Link URL"
-                  value={linkValue}
-                  onChange={(event) => setLinkValue(event.target.value)}
-                  onKeyDown={(event) => { if (event.key === "Escape") setLinkMode(false); }}
-                  placeholder="Paste a link…"
-                />
-              </form>
-            ) : (
-              <>
-                {inlineCommands.map(({ id, label, icon: Icon, active, run }) => (
-                  <button key={id} type="button" aria-label={label} aria-pressed={editor.isActive(active)} onClick={() => run(editor)}>
-                    <Icon className="size-3.5" />
-                  </button>
-                ))}
-                <button
-                  type="button"
-                  aria-label="Link"
-                  aria-pressed={editor.isActive("link")}
-                  onClick={() => {
-                    setLinkValue(editor.getAttributes("link").href ?? "");
-                    setLinkMode(true);
-                  }}
-                >
-                  <Link2 className="size-3.5" />
-                </button>
-              </>
-            )}
-          </div>
-        </BubbleMenu>
-      )}
-      <EditorContent editor={editor} />
-      {slash && choices.length > 0 && (
-        <div
-          className="description-slash-menu"
-          role="listbox"
-          aria-label="Formatting commands"
-          style={{ left: slash.left, top: slash.top }}
-        >
-          {choices.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              role="option"
-              aria-label={item.label}
-              aria-selected={index === slash.selected}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => {
-                editor?.chain().focus().deleteRange({ from: slash.from, to: editor.state.selection.from }).run();
-                if (editor) item.run(editor);
-                setSlash(null);
-              }}
-            >
-              <item.icon className="size-4" /><span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      {editable && status !== "idle" && (
-        <span className={`description-save-status description-save-status--${status}`} aria-live="polite">
-          {status === "dirty" ? "Saving soon…" : status === "saving" ? "Saving…" : status === "saved" ? "Saved" : "Couldn't save"}
-        </span>
-      )}
-    </div>
+    <EditorErrorBoundary fallback={readOnlyNode}>
+      <div
+        className="relative"
+        onBlur={(e) => {
+          // Only blur when focus leaves the entire wrapper div (not internal moves)
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+            handleBlur();
+          }
+        }}
+      >
+        <MilkdownProvider>
+          <MilkdownEditorInner
+            markdown={markdown}
+            editable={editable}
+            autosaveRef={autosaveRef}
+            onOpenLink={onOpenLink}
+            resolveMention={resolveMention}
+            onBlur={handleBlur}
+          />
+        </MilkdownProvider>
+        {editable && status !== "idle" && (
+          <span
+            className={`description-save-status description-save-status--${status}`}
+            aria-live="polite"
+          >
+            {status === "dirty"
+              ? "Saving soon…"
+              : status === "saving"
+                ? "Saving…"
+                : status === "saved"
+                  ? "Saved"
+                  : "Couldn't save"}
+          </span>
+        )}
+      </div>
     </EditorErrorBoundary>
   );
 }

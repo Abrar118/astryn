@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from "vitest";
-import { issueMentionFromUrl } from "./milkdownMention";
+import { describe, expect, it, vi } from "vitest";
+import { issueMentionFromUrl, descriptionMentionPlugin } from "./milkdownMention";
 import { roundtripMarkdown } from "./milkdownEditor";
 
 describe("issueMentionFromUrl", () => {
@@ -30,5 +30,17 @@ describe("mention round-trip", () => {
     expect(r.markdown).toContain(
       "[PRO-153](https://linear.app/gam/issue/PRO-153/x)",
     );
+  });
+});
+
+describe("descriptionMentionPlugin", () => {
+  it("accepts (resolveMention, onActivateLink: (href: string) => void) and returns a plugin array", () => {
+    // Verify the updated signature — second param is now onActivateLink(href: string)
+    const plugins = descriptionMentionPlugin(
+      () => undefined,
+      vi.fn<(href: string) => void>(),
+    );
+    expect(Array.isArray(plugins)).toBe(true);
+    expect(plugins.length).toBeGreaterThan(0);
   });
 });
