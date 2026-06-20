@@ -6,7 +6,9 @@
 
 **Architecture:** A pure state model (`src/lib/paneModel.ts`) holds panes-that-own-tabs and all reducers; `WorkspaceProvider` (`src/lib/tabs.tsx`) wraps it in React context with the existing surface retargeted to the focused pane plus new split methods; `SplitLayout` renders 1–2 panes with a draggable divider, drop overlay, and swap control; per-pane `PaneTabStrip` replaces the global `TabBar`.
 
-**Tech Stack:** React 18 + TypeScript (strict), TanStack Query, Tailwind v4, lucide-react, Vitest + @testing-library/react (jsdom), Tauri v2.
+**Tech Stack:** React 19 + TypeScript (strict), TanStack Query, Tailwind v4, lucide-react, Vitest + @testing-library/react (jsdom), Tauri v2.
+
+> **Note on TDD:** Tasks 1, 2, 4, 5, 6, 8 are test-first (a failing test precedes the implementation). Tasks 3 (provider rewrite) and 7 (add one context-menu row) are refactor/wiring with no new unit boundary — they are guarded by the *existing* suite plus `tsc --noEmit` rather than a new failing test. This is intentional, not an omission.
 
 ## Global Constraints
 
@@ -112,9 +114,9 @@ describe("parsePersisted", () => {
       focusedPaneId: "pane-0", ratio: 0.5, seq: 1,
     });
     const s = parsePersisted(raw);
-    expect(s.panes[0].activeTabId).toBe("tab-0"); // repaired to first tab
-    expect(s.panes[1].tabs).toHaveLength(0 + 0); // duplicate tab-0 removed -> empty -> pane dropped
-    expect(s.panes).toHaveLength(1);
+    expect(s.panes).toHaveLength(1); // pane-1's only tab duped pane-0's -> emptied -> dropped
+    expect(s.panes[0].id).toBe("pane-0");
+    expect(s.panes[0].activeTabId).toBe("tab-0"); // out-of-pane active repaired to first tab
   });
   it("raises seq past the highest persisted tab id", () => {
     const raw = JSON.stringify({ panes: [{ id: "pane-0", tabs: [{ id: "tab-7", view: "calendar" }], activeTabId: "tab-7" }], focusedPaneId: "pane-0", ratio: 0.5, seq: 1 });
@@ -416,11 +418,37 @@ describe("openIssueInRightSplit / openIssueTabAcross", () => {
     expect(s.panes[1].tabs.map((t) => t.view)).toEqual(["list", "issue"]);
     assertInvariants(s);
   });
-  it("focuses an already-open issue tab instead of duplicating", () => {
+  it("focuses an already-open issue tab in the right pane instead of duplicating", () => {
     const base = openIssueInRightSplit(single(), "iss-9");
     const again = openIssueInRightSplit(base, "iss-9");
     expect(again.panes[1].tabs).toHaveLength(1);
     expect(again.focusedPaneId).toBe("pane-1");
+  });
+  it("moves an issue open in the left pane into a NEW right pane (single)", () => {
+    const s0: WorkspaceState = {
+      panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" }],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 2,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes).toHaveLength(2);
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[1].tabs.map((t) => t.id)).toEqual(["tab-1"]);
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("moves an issue open in the left pane into the EXISTING right pane (split)", () => {
+    const s0: WorkspaceState = {
+      panes: [
+        { id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" },
+        { id: "pane-1", tabs: [{ id: "tab-2", view: "list" }], activeTabId: "tab-2" },
+      ],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 3,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[1].tabs.map((t) => t.id)).toEqual(["tab-2", "tab-1"]);
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
   });
   it("openIssueTabAcross adds to the focused pane when not open anywhere", () => {
     const s = openIssueTabAcross(split(), "iss-3");
@@ -526,7 +554,8 @@ export function moveTabToOtherPane(state: WorkspaceState, tabId: string): Worksp
 
 export function swapPanes(state: WorkspaceState): WorkspaceState {
   if (state.panes.length !== 2) return state;
-  return { ...state, panes: [state.panes[1], state.panes[0]], ratio: clampRatio(1 - state.ratio, 1000) };
+  // Pure reducer: exact mirror. Live-width clamping is SplitLayout's job.
+  return { ...state, panes: [state.panes[1], state.panes[0]], ratio: 1 - state.ratio };
 }
 
 export function selectTabIn(state: WorkspaceState, tabId: string): WorkspaceState {
@@ -565,9 +594,15 @@ export function openIssueTabAcross(state: WorkspaceState, issueId: string): Work
 export function openIssueInRightSplit(state: WorkspaceState, issueId: string): WorkspaceState {
   const found = findIssueTab(state, issueId);
   if (found) {
-    const panes = state.panes.map((p, i) => (i === found.paneIdx ? { ...p, activeTabId: found.tabId } : p));
-    return { ...state, panes, focusedPaneId: state.panes[found.paneIdx].id };
+    // Already in the right pane → just focus/activate it there.
+    if (state.panes.length === 2 && found.paneIdx === 1) {
+      const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: found.tabId } : p));
+      return { ...state, panes, focusedPaneId: state.panes[1].id };
+    }
+    // Found in the left pane → send that very tab to the right (splits/clones as needed).
+    return splitTabRight(state, found.tabId);
   }
+  // Not open anywhere → open a fresh issue tab in the right pane, leaving the left untouched.
   if (state.panes.length === 2) return addIssueTabIn(state, state.panes[1].id, issueId);
   const id = `tab-${state.seq}`;
   const right: Pane = { id: nextPaneId(state.panes), tabs: [{ id, view: "issue", issueId }], activeTabId: id };
@@ -901,7 +936,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Produces:
   - `const TAB_DND_TYPE = "application/x-astryn-tab"` (exported from `PaneTabStrip.tsx`)
   - `PaneTabStrip({ pane, focused, showClock, canClose, isSplit }: { pane: Pane; focused: boolean; showClock: boolean; canClose: boolean; isSplit: boolean })`
-  - `TabContextMenu({ tabId, isSplit, x, y, onClose }: { tabId: string; isSplit: boolean; x: number; y: number; onClose: () => void })`
+  - `TabContextMenu({ tabId, isSplit, canClose, x, y, onClose }: { tabId: string; isSplit: boolean; canClose: boolean; x: number; y: number; onClose: () => void })`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -992,12 +1027,14 @@ function Row({ icon, label, onClick }: { icon: ReactNode; label: string; onClick
 export function TabContextMenu({
   tabId,
   isSplit,
+  canClose,
   x,
   y,
   onClose,
 }: {
   tabId: string;
   isSplit: boolean;
+  canClose: boolean;
   x: number;
   y: number;
   onClose: () => void;
@@ -1041,8 +1078,12 @@ export function TabContextMenu({
           <Row icon={<ArrowLeftRight className="size-4" />} label="Swap panes" onClick={act(() => swapPanes())} />
         </>
       )}
-      <div className="my-1 border-t border-border/60" />
-      <Row icon={<X className="size-4" />} label="Close" onClick={act(() => closeTab(tabId))} />
+      {canClose && (
+        <>
+          <div className="my-1 border-t border-border/60" />
+          <Row icon={<X className="size-4" />} label="Close" onClick={act(() => closeTab(tabId))} />
+        </>
+      )}
     </div>
   );
 }
@@ -1162,7 +1203,7 @@ export function PaneTabStrip({
           <DualClock compact />
         </div>
       )}
-      {menu && <TabContextMenu tabId={menu.tabId} isSplit={isSplit} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
+      {menu && <TabContextMenu tabId={menu.tabId} isSplit={isSplit} canClose={canClose} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
     </div>
   );
 }
@@ -1263,6 +1304,25 @@ describe("SplitLayout", () => {
     fireEvent.keyDown(screen.getByRole("separator"), { key: "ArrowRight" });
     expect(ws.setRatio).toHaveBeenCalled();
   });
+
+  it("pointer-drag updates the ratio and removes listeners on pointer up", () => {
+    render(<SplitLayout />);
+    fireEvent.pointerDown(screen.getByRole("separator"));
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 100 }));
+    expect(ws.setRatio).toHaveBeenCalled();
+    ws.setRatio.mockReset();
+    window.dispatchEvent(new MouseEvent("pointerup"));
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 200 }));
+    expect(ws.setRatio).not.toHaveBeenCalled(); // listener torn down
+  });
+
+  it("removes drag listeners when unmounted mid-drag", () => {
+    const { unmount } = render(<SplitLayout />);
+    fireEvent.pointerDown(screen.getByRole("separator"));
+    unmount();
+    window.dispatchEvent(new MouseEvent("pointermove", { clientX: 100 }));
+    expect(ws.setRatio).not.toHaveBeenCalled();
+  });
 });
 ```
 
@@ -1306,8 +1366,9 @@ function PaneContent({ tab }: { tab: Tab }) {
 }
 
 export function SplitLayout() {
-  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio } = useWorkspace();
+  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane } = useWorkspace();
   const containerRef = useRef<HTMLDivElement>(null);
+  const resizeCleanup = useRef<(() => void) | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const isSplit = panes.length === 2;
 
@@ -1340,6 +1401,9 @@ export function SplitLayout() {
     return () => ro.disconnect();
   }, [isSplit, ratio, setRatio]);
 
+  // Tear down any in-flight resize drag if the component unmounts mid-drag.
+  useEffect(() => () => resizeCleanup.current?.(), []);
+
   const startResize = (e: PointerEvent) => {
     e.preventDefault();
     const move = (ev: globalThis.PointerEvent) => {
@@ -1348,14 +1412,16 @@ export function SplitLayout() {
       const usable = rect.width - DIVIDER_PX;
       setRatio(clampRatio((ev.clientX - rect.left) / usable, usable, MIN_PANE_PX));
     };
-    const up = () => {
+    const stop = () => {
       window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      resizeCleanup.current = null;
     };
+    resizeCleanup.current = stop;
     window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
   };
 
   const onDividerKey = (e: KeyboardEvent) => {
@@ -1382,7 +1448,12 @@ export function SplitLayout() {
         const activeTab = pane.tabs.find((t) => t.id === pane.activeTabId) ?? pane.tabs[0];
         const basis = !isSplit ? 100 : idx === 0 ? ratio * 100 : (1 - ratio) * 100;
         return (
-          <div key={pane.id} className="flex min-w-0 flex-col" style={{ flexBasis: `${basis}%` }}>
+          <div
+            key={pane.id}
+            onMouseDown={() => focusPane(pane.id)}
+            className="flex min-w-0 flex-col"
+            style={{ flexBasis: `${basis}%` }}
+          >
             <PaneTabStrip
               pane={pane}
               focused={isSplit && pane.id === focusedPaneId}
@@ -1651,6 +1722,21 @@ describe("CommandPalette right-split sub-mode", () => {
     fireEvent.keyDown(input, { key: "Escape" });
     expect(screen.getByPlaceholderText(/type a command/i)).toBeTruthy(); // back to normal mode
   });
+
+  it("the visible Back control exits the sub-mode", () => {
+    openPalette();
+    fireEvent.click(screen.getByText("Open issue in right split"));
+    fireEvent.click(screen.getByLabelText("Back"));
+    expect(screen.getByPlaceholderText(/type a command/i)).toBeTruthy();
+  });
+
+  it("a second Escape closes the palette", () => {
+    openPalette();
+    fireEvent.click(screen.getByText("Open issue in right split"));
+    fireEvent.keyDown(screen.getByPlaceholderText(/pick an issue/i), { key: "Escape" }); // -> normal mode
+    fireEvent.keyDown(screen.getByPlaceholderText(/type a command/i), { key: "Escape" }); // -> closed
+    expect(screen.queryByPlaceholderText(/type a command/i)).toBeNull();
+  });
 });
 ```
 
@@ -1710,7 +1796,7 @@ import { useWorkspace } from "@/lib/tabs";
             placeholder={target === "rightSplit" ? "Open in right split — pick an issue…" : "Type a command or search…"}
 ```
 
-(h) First Escape exits sub-mode. In `onKey`, replace the `Escape` branch:
+(h) First Escape exits sub-mode; a second closes. In `onKey`, replace the `Escape` branch:
 
 ```tsx
     } else if (e.key === "Escape") {
@@ -1723,6 +1809,28 @@ import { useWorkspace } from "@/lib/tabs";
       }
     }
 ```
+
+(i) Add a visible Back control for the sub-mode (the spec says "Esc/**back**"). In the header, replace `<Search className="size-4 shrink-0 text-muted-foreground" />` with:
+
+```tsx
+          {target === "rightSplit" ? (
+            <button
+              type="button"
+              aria-label="Back"
+              onClick={() => {
+                setTarget("drawer");
+                setQ("");
+              }}
+              className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <ArrowLeft className="size-4" />
+            </button>
+          ) : (
+            <Search className="size-4 shrink-0 text-muted-foreground" />
+          )}
+```
+
+(`ArrowLeft` is already imported for the "Go back" command.)
 
 - [ ] **Step 4: Run test to verify it passes**
 
