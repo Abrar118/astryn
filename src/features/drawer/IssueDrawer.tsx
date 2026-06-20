@@ -7,8 +7,10 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { safeExternalUrl } from "@/lib/links";
 import { gooeyToast } from "goey-toast";
 import {
+  AlertCircle,
   Box,
   CalendarDays,
+  Check,
   ChevronDown,
   CircleDot,
   Copy,
@@ -17,12 +19,14 @@ import {
   GitPullRequest,
   IterationCcw,
   Link2,
+  Loader2,
   Maximize2,
   MoreHorizontal,
   Tag,
   Trash2,
   X,
 } from "lucide-react";
+import type { SaveStatus } from "./descriptionAutosave";
 import {
   useCycles,
   useDeleteIssue,
@@ -270,7 +274,17 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const detailDesc = "description" in d ? d.description ?? "" : "";
   const [title, setTitle] = useState(detailTitle);
   const [expandedResource, setExpandedResource] = useState<DetailAttachment | null>(null);
+  const [saveState, setSaveState] = useState<SaveStatus>("idle");
   const titleRef = useRef<HTMLTextAreaElement>(null);
+
+  // Fire a single error toast when the save state transitions into "error".
+  const prevSaveStateRef = useRef<SaveStatus>("idle");
+  useEffect(() => {
+    if (saveState === "error" && prevSaveStateRef.current !== "error") {
+      gooeyToast.error("Couldn't save description");
+    }
+    prevSaveStateRef.current = saveState;
+  }, [saveState]);
 
   useEffect(() => {
     setTitle(detailTitle);
@@ -345,7 +359,26 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
         <span className="text-border">›</span>
         <span className="shrink-0 font-medium text-foreground">{identifier}</span>
         <span className="min-w-0 truncate text-muted-foreground">{detailTitle}</span>
-        <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {saveState === "saving" && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Loader2 className="size-3 animate-spin" />
+              Saving…
+            </span>
+          )}
+          {saveState === "saved" && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Check className="size-3" />
+              Saved
+            </span>
+          )}
+          {saveState === "error" && (
+            <span className="flex items-center gap-1 text-xs text-destructive">
+              <AlertCircle className="size-3" />
+              Save failed
+            </span>
+          )}
+          <div className="flex items-center gap-0.5">
           <IconBtn title="Copy link" onClick={() => copyText(url ?? identifier, "Link")}>
             <Link2 className="size-4" />
           </IconBtn>
@@ -389,6 +422,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           <IconBtn title="Close" onClick={onClose}>
             <X className="size-4" />
           </IconBtn>
+          </div>
         </div>
       </header>
 
@@ -430,6 +464,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               onSave={saveDescription}
               onOpenLink={handleLink}
               resolveMention={resolveMention}
+              onSaveStateChange={setSaveState}
             />
           </section>
 

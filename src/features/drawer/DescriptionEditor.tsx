@@ -156,7 +156,6 @@ export function DescriptionEditor({
   onSaveStateChange,
 }: DescriptionEditorProps) {
   const [editing, setEditing] = useState(false);
-  const [status, setStatus] = useState<SaveStatus>("idle");
   const autosaveRef = useRef<DescriptionAutosave | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
@@ -171,7 +170,6 @@ export function DescriptionEditor({
     );
     autosaveRef.current = queue;
     const unsub = queue.subscribe((s) => {
-      setStatus(s);
       onSaveStateChange?.(s);
     });
     return () => {
@@ -187,7 +185,7 @@ export function DescriptionEditor({
   const handleBlur = () => {
     void autosaveRef.current?.flush().catch(() => undefined);
     setEditing(false);
-    setStatus("idle");
+    onSaveStateChange?.("idle");
   };
 
   const readOnlyNode = (
@@ -231,20 +229,6 @@ export function DescriptionEditor({
             onBlur={handleBlur}
           />
         </MilkdownProvider>
-        {editable && status !== "idle" && (
-          <span
-            className={`description-save-status description-save-status--${status}`}
-            aria-live="polite"
-          >
-            {status === "dirty"
-              ? "Saving soon…"
-              : status === "saving"
-                ? "Saving…"
-                : status === "saved"
-                  ? "Saved"
-                  : "Couldn't save"}
-          </span>
-        )}
       </div>
     </EditorErrorBoundary>
   );
