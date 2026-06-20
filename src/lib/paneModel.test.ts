@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { parsePersisted, nextPaneId, clampRatio, FALLBACK } from "./paneModel";
-import type { Pane } from "./paneModel";
+import {
+  addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, swapPanes,
+  selectTabIn, openIssueTabAcross, openIssueInRightSplit, assertInvariants,
+} from "./paneModel";
+import type { Pane, WorkspaceState } from "./paneModel";
 
 describe("clampRatio", () => {
   it("keeps both panes >= min when wide", () => {
@@ -79,5 +83,173 @@ describe("parsePersisted", () => {
     expect(s.seq).toBe(1); // max(0, maxTabSeq 0 + 1)
     expect(parsePersisted("{not json").panes[0].tabs[0].view).toBe("calendar");
     expect(parsePersisted(null)).toEqual(FALLBACK);
+  });
+});
+
+const single = (): WorkspaceState => ({
+  panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }], activeTabId: "tab-0" }],
+  focusedPaneId: "pane-0", ratio: 0.5, seq: 1,
+});
+const multiTab = (): WorkspaceState => ({
+  panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "list" }], activeTabId: "tab-1" }],
+  focusedPaneId: "pane-0", ratio: 0.5, seq: 2,
+});
+const split = (): WorkspaceState => ({
+  panes: [
+    { id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }], activeTabId: "tab-0" },
+    { id: "pane-1", tabs: [{ id: "tab-1", view: "list" }], activeTabId: "tab-1" },
+  ],
+  focusedPaneId: "pane-0", ratio: 0.5, seq: 2,
+});
+
+describe("splitTabRight", () => {
+  it("clones the sole tab into a new right pane (left unchanged)", () => {
+    const s = splitTabRight(single(), "tab-0");
+    expect(s.panes).toHaveLength(2);
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[1].id).toBe("pane-1");
+    expect(s.panes[1].tabs[0]).toEqual({ id: "tab-1", view: "calendar" });
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("moves a non-sole tab into a new right pane, leaving the source active sane", () => {
+    const s = splitTabRight(multiTab(), "tab-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[0].activeTabId).toBe("tab-0");
+    expect(s.panes[1].tabs.map((t) => t.id)).toEqual(["tab-1"]);
+    assertInvariants(s);
+  });
+  it("is a no-op when the tab is already in the right pane", () => {
+    const s0 = split();
+    expect(splitTabRight(s0, "tab-1")).toBe(s0);
+  });
+  it("moves a left-pane tab into the existing right pane", () => {
+    const s = splitTabRight(split(), "tab-0");
+    expect(s.panes).toHaveLength(1); // left emptied -> collapse
+    expect(s.panes[0].id).toBe("pane-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-1", "tab-0"]);
+    assertInvariants(s);
+  });
+});
+
+describe("moveTabToOtherPane", () => {
+  it("moves between panes and selects a source neighbor", () => {
+    const base = split();
+    base.panes[0].tabs.push({ id: "tab-2", view: "inbox" });
+    base.panes[0].activeTabId = "tab-0";
+    const s = moveTabToOtherPane(base, "tab-0");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-2"]);
+    expect(s.panes[0].activeTabId).toBe("tab-2");
+    expect(s.panes[1].activeTabId).toBe("tab-0");
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+});
+
+describe("closeTabIn", () => {
+  it("no-ops on the last tab of a single pane", () => {
+    const s0 = single();
+    expect(closeTabIn(s0, "tab-0")).toBe(s0);
+  });
+  it("selects a neighbor when closing the active tab", () => {
+    const s = closeTabIn(multiTab(), "tab-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[0].activeTabId).toBe("tab-0");
+    assertInvariants(s);
+  });
+  it("collapses an emptied pane and focuses the survivor", () => {
+    const s = closeTabIn(split(), "tab-1");
+    expect(s.panes).toHaveLength(1);
+    expect(s.panes[0].id).toBe("pane-0");
+    expect(s.focusedPaneId).toBe("pane-0");
+    assertInvariants(s);
+  });
+});
+
+describe("addTabIn / selectTabIn / swapPanes", () => {
+  it("adds a tab to the named pane and focuses it", () => {
+    const s = addTabIn(split(), "pane-1", "inbox");
+    expect(s.panes[1].tabs.map((t) => t.view)).toEqual(["list", "inbox"]);
+    expect(s.panes[1].activeTabId).toBe("tab-2");
+    expect(s.focusedPaneId).toBe("pane-1");
+    expect(s.seq).toBe(3);
+    assertInvariants(s);
+  });
+  it("selectTabIn activates the tab and focuses its owning pane", () => {
+    const s = selectTabIn(split(), "tab-1");
+    expect(s.focusedPaneId).toBe("pane-1");
+    expect(s.panes[1].activeTabId).toBe("tab-1");
+  });
+  it("swapPanes reverses panes and flips the ratio", () => {
+    const s = swapPanes({ ...split(), ratio: 0.3 });
+    expect(s.panes.map((p) => p.id)).toEqual(["pane-1", "pane-0"]);
+    expect(s.ratio).toBeCloseTo(0.7, 5);
+    assertInvariants(s);
+  });
+});
+
+describe("openIssueInRightSplit / openIssueTabAcross", () => {
+  it("creates a right pane with only the issue tab, leaving the left untouched", () => {
+    const s = openIssueInRightSplit(single(), "iss-9");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]); // left unchanged
+    expect(s.panes[1].tabs[0]).toEqual({ id: "tab-1", view: "issue", issueId: "iss-9" });
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("opens into the existing right pane when already split", () => {
+    const s = openIssueInRightSplit(split(), "iss-9");
+    expect(s.panes[1].tabs.map((t) => t.view)).toEqual(["list", "issue"]);
+    assertInvariants(s);
+  });
+  it("focuses an already-open issue tab in the right pane instead of duplicating", () => {
+    const base = openIssueInRightSplit(single(), "iss-9");
+    const again = openIssueInRightSplit(base, "iss-9");
+    expect(again.panes[1].tabs).toHaveLength(1);
+    expect(again.focusedPaneId).toBe("pane-1");
+  });
+  it("preserves dedup for a sole issue tab: replaces left with calendar, moves issue right", () => {
+    const s0: WorkspaceState = {
+      panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" }],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 1,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes).toHaveLength(2);
+    expect(s.panes[0].tabs).toEqual([{ id: "tab-1", view: "calendar" }]); // fresh replacement left
+    expect(s.panes[1].tabs).toEqual([{ id: "tab-0", view: "issue", issueId: "iss-1" }]); // same tab, NOT cloned
+    expect(s.focusedPaneId).toBe("pane-1");
+    expect(s.panes.flatMap((p) => p.tabs).filter((t) => t.issueId === "iss-1")).toHaveLength(1); // dedup held
+    assertInvariants(s);
+  });
+  it("moves an issue open in the left pane into a NEW right pane (single)", () => {
+    const s0: WorkspaceState = {
+      panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" }],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 2,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes).toHaveLength(2);
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[1].tabs.map((t) => t.id)).toEqual(["tab-1"]);
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("moves an issue open in the left pane into the EXISTING right pane (split)", () => {
+    const s0: WorkspaceState = {
+      panes: [
+        { id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" },
+        { id: "pane-1", tabs: [{ id: "tab-2", view: "list" }], activeTabId: "tab-2" },
+      ],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 3,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]);
+    expect(s.panes[1].tabs.map((t) => t.id)).toEqual(["tab-2", "tab-1"]);
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("openIssueTabAcross adds to the focused pane when not open anywhere", () => {
+    const s = openIssueTabAcross(split(), "iss-3");
+    expect(s.panes[0].tabs.map((t) => t.view)).toEqual(["calendar", "issue"]);
+    expect(s.focusedPaneId).toBe("pane-0");
+    assertInvariants(s);
   });
 });

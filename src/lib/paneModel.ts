@@ -107,3 +107,172 @@ export function parsePersisted(raw: string | null): WorkspaceState {
   }
   return FALLBACK;
 }
+
+function findTab(state: WorkspaceState, tabId: string): { paneIdx: number; tabIdx: number } | null {
+  for (let pi = 0; pi < state.panes.length; pi++) {
+    const ti = state.panes[pi].tabs.findIndex((t) => t.id === tabId);
+    if (ti >= 0) return { paneIdx: pi, tabIdx: ti };
+  }
+  return null;
+}
+
+/** After removing the tab at `originalIdx`, pick the new active id from the remaining tabs. */
+function neighborId(originalIdx: number, rem: Tab[]): string {
+  return (rem[originalIdx] ?? rem[originalIdx - 1] ?? rem[0]).id;
+}
+
+/** Move `tabId` from pane `srcIdx` to pane `destIdx`; collapse the source if it empties. */
+function moveTabCore(state: WorkspaceState, tabId: string, srcIdx: number, tabIdx: number, destIdx: number): WorkspaceState {
+  const src = state.panes[srcIdx];
+  const dest = state.panes[destIdx];
+  const tab = src.tabs[tabIdx];
+  const remain = src.tabs.filter((t) => t.id !== tabId);
+  const destPane: Pane = { ...dest, tabs: [...dest.tabs, tab], activeTabId: tabId };
+  if (remain.length === 0) {
+    return { ...state, panes: [destPane], focusedPaneId: destPane.id };
+  }
+  const srcActive = src.activeTabId === tabId ? neighborId(tabIdx, remain) : src.activeTabId;
+  const srcPane: Pane = { ...src, tabs: remain, activeTabId: srcActive };
+  const panes = srcIdx < destIdx ? [srcPane, destPane] : [destPane, srcPane];
+  return { ...state, panes, focusedPaneId: destPane.id };
+}
+
+export function addTabIn(state: WorkspaceState, paneId: string, view: ViewKind = "calendar"): WorkspaceState {
+  const idx = state.panes.findIndex((p) => p.id === paneId);
+  if (idx < 0) return state;
+  const id = `tab-${state.seq}`;
+  const tab: Tab = { id, view };
+  const panes = state.panes.map((p, i) => (i === idx ? { ...p, tabs: [...p.tabs, tab], activeTabId: id } : p));
+  return { ...state, panes, focusedPaneId: paneId, seq: state.seq + 1 };
+}
+
+export function closeTabIn(state: WorkspaceState, tabId: string): WorkspaceState {
+  const loc = findTab(state, tabId);
+  if (!loc) return state;
+  const { paneIdx, tabIdx } = loc;
+  const pane = state.panes[paneIdx];
+  if (state.panes.length === 1 && pane.tabs.length === 1) return state; // keep >= 1 tab
+  const rem = pane.tabs.filter((t) => t.id !== tabId);
+  if (rem.length === 0) {
+    const survivor = state.panes[1 - paneIdx];
+    return { ...state, panes: [survivor], focusedPaneId: survivor.id };
+  }
+  const activeTabId = pane.activeTabId === tabId ? neighborId(tabIdx, rem) : pane.activeTabId;
+  const panes = state.panes.map((p, i) => (i === paneIdx ? { ...p, tabs: rem, activeTabId } : p));
+  return { ...state, panes };
+}
+
+export function splitTabRight(state: WorkspaceState, tabId: string): WorkspaceState {
+  const loc = findTab(state, tabId);
+  if (!loc) return state;
+  const { paneIdx, tabIdx } = loc;
+  if (state.panes.length === 2) {
+    if (paneIdx === 1) return state; // already on the right
+    return moveTabCore(state, tabId, 0, tabIdx, 1);
+  }
+  const src = state.panes[0];
+  const tab = src.tabs[tabIdx];
+  if (src.tabs.length === 1) {
+    const cloneId = `tab-${state.seq}`;
+    const clone: Tab = tab.issueId ? { id: cloneId, view: tab.view, issueId: tab.issueId } : { id: cloneId, view: tab.view };
+    const right: Pane = { id: nextPaneId(state.panes), tabs: [clone], activeTabId: cloneId };
+    return { ...state, panes: [src, right], focusedPaneId: right.id, seq: state.seq + 1 };
+  }
+  const remain = src.tabs.filter((t) => t.id !== tabId);
+  const left: Pane = { ...src, tabs: remain, activeTabId: src.activeTabId === tabId ? neighborId(tabIdx, remain) : src.activeTabId };
+  const right: Pane = { id: nextPaneId(state.panes), tabs: [tab], activeTabId: tabId };
+  return { ...state, panes: [left, right], focusedPaneId: right.id };
+}
+
+export function moveTabToOtherPane(state: WorkspaceState, tabId: string): WorkspaceState {
+  if (state.panes.length !== 2) return state;
+  const loc = findTab(state, tabId);
+  if (!loc) return state;
+  return moveTabCore(state, tabId, loc.paneIdx, loc.tabIdx, 1 - loc.paneIdx);
+}
+
+export function swapPanes(state: WorkspaceState): WorkspaceState {
+  if (state.panes.length !== 2) return state;
+  // Pure reducer: exact mirror. Live-width clamping is SplitLayout's job.
+  return { ...state, panes: [state.panes[1], state.panes[0]], ratio: 1 - state.ratio };
+}
+
+export function selectTabIn(state: WorkspaceState, tabId: string): WorkspaceState {
+  const loc = findTab(state, tabId);
+  if (!loc) return state;
+  const panes = state.panes.map((p, i) => (i === loc.paneIdx ? { ...p, activeTabId: tabId } : p));
+  return { ...state, panes, focusedPaneId: state.panes[loc.paneIdx].id };
+}
+
+function findIssueTab(state: WorkspaceState, issueId: string): { paneIdx: number; tabId: string } | null {
+  for (let pi = 0; pi < state.panes.length; pi++) {
+    const t = state.panes[pi].tabs.find((x) => x.view === "issue" && x.issueId === issueId);
+    if (t) return { paneIdx: pi, tabId: t.id };
+  }
+  return null;
+}
+
+function addIssueTabIn(state: WorkspaceState, paneId: string, issueId: string): WorkspaceState {
+  const idx = state.panes.findIndex((p) => p.id === paneId);
+  if (idx < 0) return state;
+  const id = `tab-${state.seq}`;
+  const tab: Tab = { id, view: "issue", issueId };
+  const panes = state.panes.map((p, i) => (i === idx ? { ...p, tabs: [...p.tabs, tab], activeTabId: id } : p));
+  return { ...state, panes, focusedPaneId: paneId, seq: state.seq + 1 };
+}
+
+export function openIssueTabAcross(state: WorkspaceState, issueId: string): WorkspaceState {
+  const found = findIssueTab(state, issueId);
+  if (found) {
+    const panes = state.panes.map((p, i) => (i === found.paneIdx ? { ...p, activeTabId: found.tabId } : p));
+    return { ...state, panes, focusedPaneId: state.panes[found.paneIdx].id };
+  }
+  return addIssueTabIn(state, state.focusedPaneId, issueId);
+}
+
+export function openIssueInRightSplit(state: WorkspaceState, issueId: string): WorkspaceState {
+  const found = findIssueTab(state, issueId);
+  if (found) {
+    // Already in the right pane → just focus/activate it there.
+    if (state.panes.length === 2 && found.paneIdx === 1) {
+      const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: found.tabId } : p));
+      return { ...state, panes, focusedPaneId: state.panes[1].id };
+    }
+    // Sole issue tab in the only pane: cloning (splitTabRight) would duplicate the
+    // issue and break workspace-wide dedup. Instead replace the left with a fresh
+    // calendar tab and move the issue itself to a new right pane.
+    const leftPane = state.panes[found.paneIdx];
+    if (state.panes.length === 1 && leftPane.tabs.length === 1) {
+      const issueTab = leftPane.tabs[0];
+      const calId = `tab-${state.seq}`;
+      const left: Pane = { ...leftPane, tabs: [{ id: calId, view: "calendar" }], activeTabId: calId };
+      const right: Pane = { id: nextPaneId(state.panes), tabs: [issueTab], activeTabId: issueTab.id };
+      return { ...state, panes: [left, right], focusedPaneId: right.id, seq: state.seq + 1 };
+    }
+    // Otherwise found in the left pane alongside other tabs → move it to the right.
+    return splitTabRight(state, found.tabId);
+  }
+  // Not open anywhere → open a fresh issue tab in the right pane, leaving the left untouched.
+  if (state.panes.length === 2) return addIssueTabIn(state, state.panes[1].id, issueId);
+  const id = `tab-${state.seq}`;
+  const right: Pane = { id: nextPaneId(state.panes), tabs: [{ id, view: "issue", issueId }], activeTabId: id };
+  return { ...state, panes: [state.panes[0], right], focusedPaneId: right.id, seq: state.seq + 1 };
+}
+
+/** Throws if any global invariant is violated. Test-only guard. */
+export function assertInvariants(state: WorkspaceState): void {
+  if (state.panes.length < 1 || state.panes.length > 2) throw new Error("panes length out of range");
+  const tabIds = new Set<string>();
+  const paneIds = new Set<string>();
+  for (const p of state.panes) {
+    if (paneIds.has(p.id)) throw new Error(`duplicate pane id ${p.id}`);
+    paneIds.add(p.id);
+    if (p.tabs.length < 1) throw new Error(`empty pane ${p.id}`);
+    if (!p.tabs.some((t) => t.id === p.activeTabId)) throw new Error(`active tab not in pane ${p.id}`);
+    for (const t of p.tabs) {
+      if (tabIds.has(t.id)) throw new Error(`duplicate tab id ${t.id}`);
+      tabIds.add(t.id);
+    }
+  }
+  if (!state.panes.some((p) => p.id === state.focusedPaneId)) throw new Error("focusedPaneId not a pane");
+}
