@@ -7,7 +7,7 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn() }));
+const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn() }));
 const setParams = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
 vi.mock("@/lib/queries", () => ({
@@ -26,7 +26,13 @@ function Opener() {
   return <button onClick={openPalette}>open</button>;
 }
 
-afterEach(() => { cleanup(); ws.openIssueInRightSplit.mockReset(); setParams.mockReset(); });
+afterEach(() => {
+  cleanup();
+  ws.openIssueInRightSplit.mockReset();
+  ws.setActiveView.mockReset();
+  ws.addTab.mockReset();
+  setParams.mockReset();
+});
 
 function openPalette() {
   render(
@@ -67,5 +73,24 @@ describe("CommandPalette right-split sub-mode", () => {
     fireEvent.keyDown(screen.getByPlaceholderText(/pick an issue/i), { key: "Escape" }); // -> normal mode
     fireEvent.keyDown(screen.getByPlaceholderText(/type a command/i), { key: "Escape" }); // -> closed
     expect(screen.queryByPlaceholderText(/type a command/i)).toBeNull();
+  });
+});
+
+describe("CommandPalette navigation + shortcuts", () => {
+  it("the 'Go to Inbox' command switches the view and closes", () => {
+    openPalette();
+    fireEvent.click(screen.getByText("Go to Inbox"));
+    expect(ws.setActiveView).toHaveBeenCalledWith("inbox");
+    expect(screen.queryByPlaceholderText(/type a command/i)).toBeNull(); // closed
+  });
+
+  it("Cmd/Ctrl+T opens a new calendar tab from anywhere", () => {
+    render(
+      <CommandPaletteProvider>
+        <div>app</div>
+      </CommandPaletteProvider>,
+    );
+    fireEvent.keyDown(document, { key: "t", ctrlKey: true });
+    expect(ws.addTab).toHaveBeenCalledWith("calendar");
   });
 });

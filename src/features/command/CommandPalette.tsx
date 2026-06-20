@@ -1,5 +1,6 @@
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,19 +14,32 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
   ArrowLeft,
+  Calendar,
   Copy,
   ExternalLink,
+  Inbox,
+  List,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
+  Settings as SettingsIcon,
   SquareSplitHorizontal,
 } from "lucide-react";
 import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
-import { useWorkspace } from "@/lib/tabs";
+import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
 import { CreateIssueModal } from "./CreateIssueModal";
 import { shouldOpenCreateShortcut } from "./shortcuts";
+
+// Platform-aware shortcut hints shown in the palette (must match the global bindings below).
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent || "");
+const HINT = {
+  newTab: IS_MAC ? "⌘T" : "Ctrl+T",
+  back: IS_MAC ? "⌘[" : "Ctrl+[",
+  sync: IS_MAC ? "⌘R" : "Ctrl+R",
+  fullSync: IS_MAC ? "⇧⌘R" : "Ctrl+Shift+R",
+};
 
 async function copyText(text: string, label: string) {
   try {
@@ -63,20 +77,58 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<null | "palette" | "create">(null);
+  const { addTab } = useWorkspace();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+
+  const resync = useCallback(
+    (full: boolean) => {
+      gooeyToast.info(full ? "Full resync started…" : "Syncing…");
+      syncIssues(full)
+        .then(() => gooeyToast.success(full ? "Full resync complete" : "Synced"))
+        .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }))
+        .finally(() => invalidateWorkspaceQueries(qc));
+    },
+    [qc],
+  );
+
+  // A single stable keydown listener reads the latest handlers via this ref, so
+  // the global shortcuts never re-subscribe on every render.
+  const handlers = useRef({ mode, addTab, navigate, resync });
+  handlers.current = { mode, addTab, navigate, resync };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
       // Cmd/Ctrl+K toggles the palette from anywhere.
-      if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) {
+      if (mod && (e.key === "k" || e.key === "K")) {
         e.preventDefault();
         setMode((m) => (m === "palette" ? null : "palette"));
+        return;
+      }
+      // Cmd/Ctrl+T opens a new tab (defaults to calendar).
+      if (mod && !e.altKey && (e.key === "t" || e.key === "T")) {
+        e.preventDefault();
+        handlers.current.addTab("calendar");
+        return;
+      }
+      // Cmd/Ctrl+[ navigates back.
+      if (mod && e.key === "[") {
+        e.preventDefault();
+        handlers.current.navigate(-1);
+        return;
+      }
+      // Cmd/Ctrl+R resyncs the workspace; add Shift for a full resync.
+      if (mod && (e.key === "r" || e.key === "R")) {
+        e.preventDefault();
+        handlers.current.resync(e.shiftKey);
         return;
       }
       // Bare "c" opens the create modal, unless typing or an overlay is open.
       if (shouldOpenCreateShortcut({
         key: e.key,
         editable: isEditableTarget(e.target),
-        overlayOpen: !!mode || !!document.querySelector("[data-command-shortcut-blocker], [data-popover-open]"),
+        overlayOpen: !!handlers.current.mode || !!document.querySelector("[data-command-shortcut-blocker], [data-popover-open]"),
         metaKey: e.metaKey,
         ctrlKey: e.ctrlKey,
         altKey: e.altKey,
@@ -87,7 +139,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [mode]);
+  }, []);
 
   const value = useMemo<Ctx>(
     () => ({ openPalette: () => setMode("palette"), openCreate: () => setMode("create") }),
@@ -98,7 +150,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     <PaletteCtx.Provider value={value}>
       {children}
       {mode === "palette" && (
-        <Palette onClose={() => setMode(null)} onCreate={() => setMode("create")} />
+        <Palette onClose={() => setMode(null)} onCreate={() => setMode("create")} resync={resync} />
       )}
       {mode === "create" && <CreateIssueModal onClose={() => setMode(null)} />}
     </PaletteCtx.Provider>
@@ -114,12 +166,11 @@ type Command = {
   onSelect: () => void;
 };
 
-function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => void }) {
+function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate: () => void; resync: (full: boolean) => void }) {
   const { data: issues } = useIssues({});
-  const qc = useQueryClient();
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
-  const { openIssueInRightSplit } = useWorkspace();
+  const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
   const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -128,32 +179,31 @@ function Palette({ onClose, onCreate }: { onClose: () => void; onCreate: () => v
 
   useEffect(() => inputRef.current?.focus(), []);
 
-  const resync = (full: boolean) => {
-    onClose();
-    gooeyToast.info(full ? "Full resync started…" : "Syncing…");
-    syncIssues(full)
-      .then(() => {
-        gooeyToast.success(full ? "Full resync complete" : "Synced");
-      })
-      .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }))
-      .finally(() => invalidateWorkspaceQueries(qc));
-  };
-
   const openIssue = (id: string) => {
     if (target === "rightSplit") openIssueInRightSplit(id);
     else setParams({ issue: id });
     onClose();
   };
 
+  const goTo = (view: ViewKind) => {
+    setActiveView(view);
+    onClose();
+  };
+
   const commands: Command[] = useMemo(
     () => [
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      { key: "go-calendar", section: "Go to", icon: <Calendar className="size-4" />, label: "Go to Calendar", onSelect: () => goTo("calendar") },
+      { key: "go-issues", section: "Go to", icon: <List className="size-4" />, label: "Go to Issues", onSelect: () => goTo("list") },
+      { key: "go-inbox", section: "Go to", icon: <Inbox className="size-4" />, label: "Go to Inbox", onSelect: () => goTo("inbox") },
+      { key: "go-settings", section: "Go to", icon: <SettingsIcon className="size-4" />, label: "Go to Settings", onSelect: () => goTo("settings") },
+      { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab("calendar"); onClose(); } },
+      { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", hint: HINT.back, onSelect: () => { navigate(-1); onClose(); } },
       { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
-      { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", onSelect: () => { navigate(-1); onClose(); } },
-      { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", onSelect: () => resync(false) },
-      { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", onSelect: () => resync(true) },
+      { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", hint: HINT.sync, onSelect: () => { onClose(); resync(false); } },
+      { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", hint: HINT.fullSync, onSelect: () => { onClose(); resync(true); } },
     ],
-    // resync/onCreate are stable enough for this overlay's lifetime
+    // handlers are stable enough for this overlay's lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
