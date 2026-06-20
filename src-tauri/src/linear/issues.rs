@@ -551,6 +551,8 @@ pub struct DetailHistory {
     pub actor_name: Option<String>,
     pub from_state_name: Option<String>,
     pub to_state_name: Option<String>,
+    pub to_state_type: Option<String>,
+    pub to_state_color: Option<String>,
     pub from_assignee_name: Option<String>,
     pub to_assignee_name: Option<String>,
     pub from_priority: Option<f64>,
@@ -770,6 +772,8 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                     actor_name: nested(event, "actor", "name"),
                     from_state_name: nested(event, "fromState", "name"),
                     to_state_name: nested(event, "toState", "name"),
+                    to_state_type: nested(event, "toState", "type"),
+                    to_state_color: nested(event, "toState", "color"),
                     from_assignee_name: nested(event, "fromAssignee", "name"),
                     to_assignee_name: nested(event, "toAssignee", "name"),
                     from_priority: event.get("fromPriority").and_then(Value::as_f64),
@@ -1024,7 +1028,7 @@ fn issue_detail_query() -> String {
              }} }}
              relations(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ type relatedIssue {{ id identifier title state {{ type color }} }} }} }}
              history(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{
-               id createdAt actor {{ name }} fromState {{ name }} toState {{ name }}
+               id createdAt actor {{ name }} fromState {{ name }} toState {{ name type color }}
                fromAssignee {{ name }} toAssignee {{ name }} fromPriority toPriority fromTitle toTitle
                updatedDescription relationChanges {{ type identifier }}
                attachment {{ id title subtitle url sourceType createdAt }}
@@ -1310,7 +1314,7 @@ mod tests {
              "parent":{"id":"cm1"},"user":{"id":"u2","name":"Jakob"},"reactions":[]}]},
           "history":{"pageInfo":{"hasNextPage":false},"nodes":[
             {"id":"h1","createdAt":"2026-06-19T09:00:00Z","actor":{"name":"Abrar"},
-             "fromState":{"name":"Todo"},"toState":{"name":"In Progress"},"updatedDescription":false,
+             "fromState":{"name":"Todo"},"toState":{"name":"In Progress","type":"started","color":"#eab308"},"updatedDescription":false,
              "relationChanges":[{"type":"related","identifier":"AST-9"}],"attachment":null}]}
         }}}"##;
 
@@ -1340,6 +1344,7 @@ mod tests {
             detail.history[0].to_state_name.as_deref(),
             Some("In Progress")
         );
+        assert_eq!(detail.history[0].to_state_type.as_deref(), Some("started"));
         assert_eq!(detail.history[0].relation_changes[0].identifier, "AST-9");
         assert!(!detail.has_more_history);
         assert_eq!(detail.comments[0].user_id.as_deref(), Some("u1"));

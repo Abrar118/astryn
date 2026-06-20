@@ -15,6 +15,7 @@ import {
   CircleDot,
   Copy,
   ExternalLink,
+  FileText,
   Gauge,
   GitPullRequest,
   IterationCcw,
@@ -22,10 +23,13 @@ import {
   Loader2,
   Maximize2,
   MoreHorizontal,
+  Paperclip,
+  Pencil,
   Plus,
   SlidersHorizontal,
   Tag,
   Trash2,
+  User,
   X,
 } from "lucide-react";
 import { StatusIcon, PRIORITIES } from "./issueGlyphs";
@@ -55,7 +59,7 @@ import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { pickLabelColor } from "./labelColors";
-import { buildActivity, mergeActivityTimeline } from "./drawerActivity";
+import { buildActivity, mergeActivityTimeline, type ActivityItem } from "./drawerActivity";
 import { buildCommentThreads } from "./comments/commentThreads";
 import { CommentComposer } from "./comments/CommentComposer";
 import { CommentThread } from "./comments/CommentThread";
@@ -236,6 +240,32 @@ function FallbackChildRow({
       </div>
     </div>
   );
+}
+
+function eventIcon(event: ActivityItem): ReactNode {
+  if (event.kind === "created") return <CircleDot className="size-4 text-muted-foreground" />;
+  switch (event.category) {
+    case "status":
+      return event.toStateType
+        ? <StatusIcon type={event.toStateType} color={event.toStateColor ?? ""} />
+        : <IterationCcw className="size-3.5 text-muted-foreground" />;
+    case "assignee":
+      return event.toAssigneeName
+        ? <Avatar name={event.toAssigneeName} size={20} />
+        : <User className="size-3.5 text-muted-foreground" />;
+    case "priority":
+      return (
+        <span
+          className="size-2.5 rounded-full"
+          style={{ backgroundColor: PRIORITIES.find((p) => p.value === event.toPriority)?.color ?? "#6b7280" }}
+        />
+      );
+    case "title": return <Pencil className="size-3.5 text-muted-foreground" />;
+    case "description": return <FileText className="size-3.5 text-muted-foreground" />;
+    case "relation": return <Link2 className="size-3.5 text-muted-foreground" />;
+    case "attachment": return <Paperclip className="size-3.5 text-muted-foreground" />;
+    default: return <IterationCcw className="size-3.5 text-muted-foreground" />;
+  }
 }
 
 export function IssueDrawer() {
@@ -736,8 +766,8 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                   {timeline.map((entry) =>
                     entry.kind === "event" ? (
                       <div key={entry.key} className="flex gap-3">
-                        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
-                          {entry.event.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
+                        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                          {eventIcon(entry.event)}
                         </span>
                         <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
                           <span className="font-medium text-foreground">{entry.event.actorName ?? "Linear"}</span>{" "}

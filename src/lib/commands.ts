@@ -129,6 +129,8 @@ export type DetailHistory = {
   actorName: string | null;
   fromStateName: string | null;
   toStateName: string | null;
+  toStateType: string | null;
+  toStateColor: string | null;
   fromAssigneeName: string | null;
   toAssigneeName: string | null;
   fromPriority: number | null;

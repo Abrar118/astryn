@@ -1,9 +1,28 @@
 import type { DetailHistory } from "@/lib/commands";
 import type { CommentThreadData } from "./comments/commentThreads";
 
+export type HistoryCategory =
+  | "status" | "assignee" | "priority" | "title" | "description" | "relation" | "attachment" | "update";
+
+export function historyCategory(event: DetailHistory): HistoryCategory {
+  if (event.attachment) return "attachment";
+  if (event.relationChanges.length > 0) return "relation";
+  if (event.fromStateName || event.toStateName) return "status";
+  if (event.fromAssigneeName || event.toAssigneeName) return "assignee";
+  if (event.fromPriority != null || event.toPriority != null) return "priority";
+  if (event.fromTitle != null || event.toTitle != null) return "title";
+  if (event.updatedDescription) return "description";
+  return "update";
+}
+
 export type ActivityItem =
   | { kind: "created"; id: string; createdAt: string; actorName: string | null; summary: string }
-  | { kind: "history"; id: string; createdAt: string; actorName: string | null; summary: string };
+  | {
+      kind: "history"; id: string; createdAt: string; actorName: string | null; summary: string;
+      category: HistoryCategory;
+      toStateType: string | null; toStateColor: string | null;
+      toAssigneeName: string | null; toPriority: number | null;
+    };
 
 const PRIORITY_NAMES = ["No priority", "Urgent", "High", "Medium", "Low"];
 
@@ -77,6 +96,11 @@ export function buildActivity(input: {
       createdAt: event.createdAt,
       actorName: event.actorName,
       summary: historySummary(event),
+      category: historyCategory(event),
+      toStateType: event.toStateType,
+      toStateColor: event.toStateColor,
+      toAssigneeName: event.toAssigneeName,
+      toPriority: event.toPriority,
     })),
   );
   return items.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
