@@ -286,6 +286,13 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
     prevSaveStateRef.current = saveState;
   }, [saveState]);
 
+  // Reset the save indicator when switching to a different issue (DrawerContent
+  // is re-rendered, not re-mounted, on id change).
+  useEffect(() => {
+    setSaveState("idle");
+    prevSaveStateRef.current = "idle";
+  }, [id]);
+
   useEffect(() => {
     setTitle(detailTitle);
     setExpandedResource(null);
