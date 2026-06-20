@@ -401,6 +401,35 @@ pub fn parse_comment_update(body: &str) -> Result<DetailComment, LinearError> {
     ))
 }
 
+pub fn parse_reaction_create(body: &str) -> Result<DetailReaction, LinearError> {
+    let data = extract_data(body)?;
+    let created = data.get("reactionCreate").ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "reactionCreate returned success=false".into(),
+        ));
+    }
+    Ok(parse_reaction_node(
+        created.get("reaction").ok_or(LinearError::Malformed)?,
+    ))
+}
+
+pub fn parse_reaction_delete(body: &str) -> Result<(), LinearError> {
+    let data = extract_data(body)?;
+    if data
+        .get("reactionDelete")
+        .and_then(|d| d.get("success"))
+        .and_then(|b| b.as_bool())
+        == Some(true)
+    {
+        Ok(())
+    } else {
+        Err(LinearError::Api(
+            "reactionDelete returned success=false".into(),
+        ))
+    }
+}
+
 pub fn parse_comment_delete(body: &str) -> Result<(), LinearError> {
     let data = extract_data(body)?;
     if data
@@ -998,6 +1027,12 @@ const WORKFLOW_STATES_QUERY: &str =
 const ISSUE_DELETE_MUTATION: &str = "mutation D($id: String!) { issueDelete(id: $id) { success } }";
 const COMMENT_DELETE_MUTATION: &str =
     "mutation D($id: String!) { commentDelete(id: $id) { success } }";
+const REACTION_DELETE_MUTATION: &str =
+    "mutation D($id: String!) { reactionDelete(id: $id) { success } }";
+
+fn reaction_create_mutation() -> String {
+    "mutation R($input: ReactionCreateInput!) { reactionCreate(input: $input) { success reaction { id emoji user { id name } } } }".to_string()
+}
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
 
 fn issue_update_mutation() -> String {
@@ -1111,6 +1146,25 @@ impl LinearClient {
         let req =
             serde_json::json!({ "query": COMMENT_DELETE_MUTATION, "variables": { "id": id } });
         parse_comment_delete(&self.post(auth, req).await?)
+    }
+
+    pub async fn add_reaction(
+        &self,
+        auth: &str,
+        comment_id: &str,
+        emoji: &str,
+    ) -> Result<DetailReaction, LinearError> {
+        let req = serde_json::json!({
+            "query": reaction_create_mutation(),
+            "variables": { "input": { "commentId": comment_id, "emoji": emoji } }
+        });
+        parse_reaction_create(&self.post(auth, req).await?)
+    }
+
+    pub async fn remove_reaction(&self, auth: &str, id: &str) -> Result<(), LinearError> {
+        let req =
+            serde_json::json!({ "query": REACTION_DELETE_MUTATION, "variables": { "id": id } });
+        parse_reaction_delete(&self.post(auth, req).await?)
     }
 
     pub async fn viewer_with_org(&self, auth: &str) -> Result<OrgIdentity, LinearError> {
@@ -1424,6 +1478,17 @@ mod tests {
         assert_eq!(c.id, "cm9");
         assert_eq!(c.body, "Hi");
         assert!(parse_comment_create(r#"{"data":{"commentCreate":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn parses_reaction_create_and_delete() {
+        let body = r##"{"data":{"reactionCreate":{"success":true,"reaction":{
+          "id":"re9","emoji":"🎉","user":{"id":"u1","name":"Abrar"}}}}}"##;
+        let r = parse_reaction_create(body).unwrap();
+        assert_eq!(r.emoji, "🎉");
+        assert_eq!(r.user_id.as_deref(), Some("u1"));
+        assert!(parse_reaction_delete(r#"{"data":{"reactionDelete":{"success":true}}}"#).is_ok());
+        assert!(parse_reaction_create(r#"{"data":{"reactionCreate":{"success":false}}}"#).is_err());
     }
 
     #[test]

@@ -10,8 +10,8 @@ use crate::db::issues::{
 };
 use crate::linear::issues::{
     create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput,
-    DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailRef,
-    DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue,
+    DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailReaction,
+    DetailRef, DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue,
     ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
@@ -826,6 +826,30 @@ pub async fn delete_comment(state: State<'_, AppState>, id: String) -> Result<()
     state
         .linear
         .delete_comment(&auth, &id)
+        .await
+        .map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn add_reaction(
+    state: State<'_, AppState>,
+    comment_id: String,
+    emoji: String,
+) -> Result<DetailReaction, CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .add_reaction(&auth, &comment_id, &emoji)
+        .await
+        .map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn remove_reaction(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .remove_reaction(&auth, &id)
         .await
         .map_err(CmdError::from)
 }
