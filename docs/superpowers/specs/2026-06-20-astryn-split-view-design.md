@@ -120,6 +120,10 @@ that creates a pane uses `nextPaneId`:
     move/focus it instead of duplicating); the left pane is untouched.
   - **already split** → open-or-focus the issue tab in the existing right pane
     (dedupe within the whole workspace).
+  - **sole-issue edge case** → if the requested issue is itself the *only* tab in the
+    *only* pane, cloning would create a second tab with the same `issueId` and break
+    dedup. Instead, a fresh `calendar` tab replaces it on the left and the issue tab
+    moves to the new right pane — exactly one tab per issue is preserved.
 
   In both cases the issue tab becomes the right pane's active tab and the right pane
   is focused.

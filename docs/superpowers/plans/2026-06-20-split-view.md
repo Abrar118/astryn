@@ -424,6 +424,19 @@ describe("openIssueInRightSplit / openIssueTabAcross", () => {
     expect(again.panes[1].tabs).toHaveLength(1);
     expect(again.focusedPaneId).toBe("pane-1");
   });
+  it("preserves dedup for a sole issue tab: replaces left with calendar, moves issue right", () => {
+    const s0: WorkspaceState = {
+      panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" }],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 1,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes).toHaveLength(2);
+    expect(s.panes[0].tabs).toEqual([{ id: "tab-1", view: "calendar" }]); // fresh replacement left
+    expect(s.panes[1].tabs).toEqual([{ id: "tab-0", view: "issue", issueId: "iss-1" }]); // same tab, NOT cloned
+    expect(s.focusedPaneId).toBe("pane-1");
+    expect(s.panes.flatMap((p) => p.tabs).filter((t) => t.issueId === "iss-1")).toHaveLength(1); // dedup held
+    assertInvariants(s);
+  });
   it("moves an issue open in the left pane into a NEW right pane (single)", () => {
     const s0: WorkspaceState = {
       panes: [{ id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" }],
@@ -599,7 +612,18 @@ export function openIssueInRightSplit(state: WorkspaceState, issueId: string): W
       const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: found.tabId } : p));
       return { ...state, panes, focusedPaneId: state.panes[1].id };
     }
-    // Found in the left pane → send that very tab to the right (splits/clones as needed).
+    // Sole issue tab in the only pane: cloning (splitTabRight) would duplicate the
+    // issue and break workspace-wide dedup. Instead replace the left with a fresh
+    // calendar tab and move the issue itself to a new right pane.
+    const leftPane = state.panes[found.paneIdx];
+    if (state.panes.length === 1 && leftPane.tabs.length === 1) {
+      const issueTab = leftPane.tabs[0];
+      const calId = `tab-${state.seq}`;
+      const left: Pane = { ...leftPane, tabs: [{ id: calId, view: "calendar" }], activeTabId: calId };
+      const right: Pane = { id: nextPaneId(state.panes), tabs: [issueTab], activeTabId: issueTab.id };
+      return { ...state, panes: [left, right], focusedPaneId: right.id, seq: state.seq + 1 };
+    }
+    // Otherwise found in the left pane alongside other tabs → move it to the right.
     return splitTabRight(state, found.tabId);
   }
   // Not open anywhere → open a fresh issue tab in the right pane, leaving the left untouched.
