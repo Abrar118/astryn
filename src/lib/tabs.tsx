@@ -1,130 +1,92 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
+  splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer,
+  swapPanes as swapPanesReducer, openIssueTabAcross, openIssueInRightSplit as openRightReducer,
+  type WorkspaceState, type Pane, type Tab, type ViewKind,
+} from "./paneModel";
 
-export type ViewKind = "calendar" | "list" | "inbox" | "settings" | "issue";
-export type Tab = { id: string; view: ViewKind; issueId?: string };
+export type { ViewKind, Tab, Pane } from "./paneModel";
 
 type Ctx = {
+  panes: Pane[];
+  focusedPaneId: string;
+  ratio: number;
   tabs: Tab[];
   active: Tab;
   setActiveView: (view: ViewKind) => void;
-  openIssueTab: (issueId: string) => void;
   addTab: (view?: ViewKind) => void;
+  addTabIn: (paneId: string, view?: ViewKind) => void;
   closeTab: (id: string) => void;
   selectTab: (id: string) => void;
+  openIssueTab: (issueId: string) => void;
+  openIssueInRightSplit: (issueId: string) => void;
+  splitTabRight: (tabId: string) => void;
+  moveTabToOtherPane: (tabId: string) => void;
+  swapPanes: () => void;
+  focusPane: (paneId: string) => void;
+  setRatio: (n: number) => void;
 };
 
 const WorkspaceCtx = createContext<Ctx | null>(null);
-
-// ── Persistence ────────────────────────────────────────────────────────────────
-// The open tabs + active tab survive reloads via localStorage. This is UI state
-// only (which views are open) — it never touches issue data or secrets.
-type Persisted = { tabs: Tab[]; activeId: string; seq: number };
 const STORAGE_KEY = "astryn.workspace";
-const FALLBACK: Persisted = { tabs: [{ id: "tab-0", view: "calendar" }], activeId: "tab-0", seq: 1 };
-const VIEWS: ViewKind[] = ["calendar", "list", "inbox", "settings", "issue"];
 
-/** Pure: validate persisted workspace JSON. Drops malformed tabs and any
- *  "issue" tab missing an issueId; falls back when nothing valid remains. */
-export function parsePersisted(raw: string | null): Persisted {
-  if (!raw) return FALLBACK;
-  try {
-    const p = JSON.parse(raw) as Partial<Persisted>;
-    const tabs = Array.isArray(p.tabs)
-      ? p.tabs.filter(
-          (t): t is Tab =>
-            !!t &&
-            typeof t.id === "string" &&
-            VIEWS.includes(t.view as ViewKind) &&
-            (t.view !== "issue" || (typeof t.issueId === "string" && t.issueId.length > 0)),
-        )
-      : [];
-    if (tabs.length === 0) return FALLBACK;
-    const activeId = tabs.some((t) => t.id === p.activeId) ? (p.activeId as string) : tabs[0].id;
-    const seq = typeof p.seq === "number" ? p.seq : tabs.length;
-    return { tabs, activeId, seq };
-  } catch {
-    return FALLBACK;
-  }
-}
-
-function load(): Persisted {
+function load(): WorkspaceState {
   try {
     return parsePersisted(localStorage.getItem(STORAGE_KEY));
   } catch {
-    return FALLBACK;
+    return parsePersisted(null);
   }
 }
 
-/** Pure: open (or focus) a tab for an issue. Dedupes by issueId. */
-export function upsertIssueTab(
-  tabs: Tab[],
-  issueId: string,
-  seq: number,
-): { tabs: Tab[]; activeId: string; seq: number } {
-  const existing = tabs.find((t) => t.view === "issue" && t.issueId === issueId);
-  if (existing) return { tabs, activeId: existing.id, seq };
-  const id = `tab-${seq}`;
-  return { tabs: [...tabs, { id, view: "issue", issueId }], activeId: id, seq: seq + 1 };
-}
-
-/**
- * Browser-style tabbed workspace. Each tab holds one view (calendar / list /
- * settings); the dock switches the active tab's view, "+" opens a new tab.
- * Open tabs and the active tab persist across reloads (localStorage).
- */
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const initial = useRef<Persisted | null>(null);
+  const initial = useRef<WorkspaceState | null>(null);
   if (!initial.current) initial.current = load();
-
-  const [tabs, setTabs] = useState<Tab[]>(initial.current.tabs);
-  const [activeId, setActiveId] = useState(initial.current.activeId);
-  const seq = useRef(initial.current.seq);
-  const nextId = () => `tab-${seq.current++}`;
-  const active = tabs.find((t) => t.id === activeId) ?? tabs[0];
+  const [state, setState] = useState<WorkspaceState>(initial.current);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tabs, activeId, seq: seq.current }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // Storage unavailable / quota — fall back to in-memory state silently.
+      // Storage unavailable / quota — keep in-memory state silently.
     }
-  }, [tabs, activeId]);
+  }, [state]);
+
+  const focusedPane = state.panes.find((p) => p.id === state.focusedPaneId) ?? state.panes[0];
+  const active = focusedPane.tabs.find((t) => t.id === focusedPane.activeTabId) ?? focusedPane.tabs[0];
 
   const setActiveView = (view: ViewKind) =>
-    setTabs((ts) => ts.map((t) => (t.id === active.id ? { id: t.id, view } : t)));
+    setState((s) => {
+      const fp = s.panes.find((p) => p.id === s.focusedPaneId) ?? s.panes[0];
+      const panes = s.panes.map((p) =>
+        p.id === fp.id
+          ? { ...p, tabs: p.tabs.map((t) => (t.id === fp.activeTabId ? { id: t.id, view } : t)) }
+          : p,
+      );
+      return { ...s, panes };
+    });
 
-  const addTab = (view: ViewKind = "calendar") => {
-    const id = nextId();
-    setTabs((ts) => [...ts, { id, view }]);
-    setActiveId(id);
+  const value: Ctx = {
+    panes: state.panes,
+    focusedPaneId: state.focusedPaneId,
+    ratio: state.ratio,
+    tabs: focusedPane.tabs,
+    active,
+    setActiveView,
+    addTab: (view: ViewKind = "calendar") => setState((s) => addTabInReducer(s, s.focusedPaneId, view)),
+    addTabIn: (paneId, view = "calendar") => setState((s) => addTabInReducer(s, paneId, view)),
+    closeTab: (id) => setState((s) => closeTabIn(s, id)),
+    selectTab: (id) => setState((s) => selectTabIn(s, id)),
+    openIssueTab: (issueId) => setState((s) => openIssueTabAcross(s, issueId)),
+    openIssueInRightSplit: (issueId) => setState((s) => openRightReducer(s, issueId)),
+    splitTabRight: (tabId) => setState((s) => splitTabRightReducer(s, tabId)),
+    moveTabToOtherPane: (tabId) => setState((s) => moveTabReducer(s, tabId)),
+    swapPanes: () => setState((s) => swapPanesReducer(s)),
+    focusPane: (paneId) => setState((s) => (s.focusedPaneId === paneId ? s : { ...s, focusedPaneId: paneId })),
+    setRatio: (n) => setState((s) => (s.ratio === n ? s : { ...s, ratio: n })),
   };
 
-  const closeTab = (id: string) => {
-    if (tabs.length === 1) return; // always keep one tab open
-    const idx = tabs.findIndex((t) => t.id === id);
-    const remaining = tabs.filter((t) => t.id !== id);
-    setTabs(remaining);
-    if (id === activeId) {
-      setActiveId((remaining[idx] ?? remaining[remaining.length - 1]).id);
-    }
-  };
-
-  const selectTab = (id: string) => setActiveId(id);
-
-  const openIssueTab = (issueId: string) => {
-    const next = upsertIssueTab(tabs, issueId, seq.current);
-    seq.current = next.seq;
-    setTabs(next.tabs);
-    setActiveId(next.activeId);
-  };
-
-  return (
-    <WorkspaceCtx.Provider
-      value={{ tabs, active, setActiveView, openIssueTab, addTab, closeTab, selectTab }}
-    >
-      {children}
-    </WorkspaceCtx.Provider>
-  );
+  return <WorkspaceCtx.Provider value={value}>{children}</WorkspaceCtx.Provider>;
 }
 
 export function useWorkspace(): Ctx {
