@@ -71,19 +71,35 @@ state rather than trusting the blob —
 - `seq` must be a finite integer **and** `≥ maxExistingTabSeq + 1`; it is raised to
   that floor so a future `tab-${seq}` can never collide with a persisted id.
 
+### ID allocation
+
+- **Tab ids** use the existing `tab-${seq}` counter (`seq` persisted, raised past
+  any persisted id on load — see Migration).
+- **Pane ids** are allocated separately and collision-free: `nextPaneId(panes)`
+  returns the **first unused `pane-${n}`** scanning `n = 0, 1, 2, …` against the
+  current pane ids. Since panes max out at 2, this is trivially cheap and can never
+  collide with a persisted pane id (e.g. if `pane-0` survived migration, a new pane
+  becomes `pane-1`). Tested against arbitrary persisted ids to uphold the global
+  uniqueness invariant.
+
 ### Pure reducers (unit-tested, mirroring today's `upsertIssueTab`)
 
-All take state + args and return new state; no React, fully testable:
+All take state + args and return new state; no React, fully testable. Any reducer
+that creates a pane uses `nextPaneId`:
 
-- `splitTabRight(state, tabId)` — ensure a **right pane** and place the tab's
-  content there. Default behavior is **move** the tab into the (new or existing)
-  right pane. **Exception (resolves the sole-tab case):** if moving would leave the
-  source pane empty — i.e. the tab is the only tab in the only pane — **clone**
-  instead: the original stays on the left and a fresh tab (new id from `seq`, same
-  `view`/`issueId`) opens on the right. This matches VSCode's "Split Right"
-  (duplicate into a new group) and guarantees both interactions always do something
-  from the default single-calendar-tab start. The right tab becomes active and the
-  right pane focused (see Invariants).
+- `splitTabRight(state, tabId)` — the **universal "send to the right pane"** op;
+  the right-half drop and the tab menu/command all call exactly this, so routing is
+  encoded in one place. It resolves by the tab's **source pane**:
+  - **tab in the right pane already** → **no-op** (it's already on the right).
+  - **tab in the left pane, and a right pane exists** → **move** it into the right
+    pane (collapsing the left pane if it was the tab's only tab).
+  - **single pane** → ensure a right pane. If the tab is the only tab in the only
+    pane, **clone** it (original stays left; a fresh tab — new id from `seq`, same
+    `view`/`issueId` — opens right), matching VSCode's "Split Right". Otherwise the
+    tab **moves** into a newly created right pane.
+
+  In every non-no-op case the moved/cloned tab becomes the right pane's active tab
+  and the right pane is focused (see Invariants).
 - `moveTabToOtherPane(state, tabId)` — move a tab from its current pane to the
   other existing pane (used when dropping onto the other pane's strip).
 - `swapPanes(state)` — reverse `panes`, set `ratio = 1 - ratio`.
@@ -96,9 +112,17 @@ All take state + args and return new state; no React, fully testable:
   clamp `ratio` to `[minFraction, 1 - minFraction]`. When `usableWidth < 2*minPanePx`
   the formula caps at `0.5` (equal panes, both below 320 — symmetric, not broken).
   `usableWidth` = container width minus the divider width. Non-finite inputs → `0.5`.
-- `openIssueInRightSplit(state, issueId)` — ensure a right pane exists (split if
-  single), open-or-focus the issue tab in the **right** pane (dedupe within it),
-  focus the right pane.
+- `openIssueInRightSplit(state, issueId)` — opens the issue as a tab in the right
+  pane **without disturbing the left pane**. It does **not** call `splitTabRight`
+  (which would move/clone the active left tab). Precisely:
+  - **single pane** → create a new right pane (fresh `pane-${n}`) containing **only**
+    a new issue tab (deduped: if an issue tab for `issueId` already exists anywhere,
+    move/focus it instead of duplicating); the left pane is untouched.
+  - **already split** → open-or-focus the issue tab in the existing right pane
+    (dedupe within the whole workspace).
+
+  In both cases the issue tab becomes the right pane's active tab and the right pane
+  is focused.
 
 ### Invariants & postconditions (tested)
 
@@ -110,7 +134,7 @@ Per-operation postconditions:
 
 | Op | active | focused | source-pane fate |
 | --- | --- | --- | --- |
-| `splitTabRight` | moved/cloned tab is right pane's active | right pane | left keeps original (clone) or its remaining tabs (move) |
+| `splitTabRight` | moved/cloned tab is right pane's active (no-op if tab already in right pane) | right pane (unchanged on no-op) | left keeps original (clone) or its remaining tabs (move); collapses if it was the tab's only tab |
 | `moveTabToOtherPane` | moved tab is destination's active | destination pane | if moved tab was source's active, source selects **neighbor** (same index clamped, else previous); if source empties → collapse pane |
 | `closeTabIn` | if closed tab was active, **neighbor** becomes active | unchanged, unless its pane collapsed → focus survivor | if pane empties & 2 panes → drop pane; single pane's last tab → no-op |
 | `addTabIn` | new tab | that pane | n/a |
@@ -204,10 +228,11 @@ Reuses the fixed-position popover + click-outside/Esc dismiss pattern from
 
 Tabs carry `draggable`. On `dragstart`, `dataTransfer` holds `{ tabId, sourcePaneId }`
 and a drag-active flag is set in workspace/local state. While a drag is active, the
-content body shows a **drop overlay highlighting the right half**; dropping there →
-`splitTabRight(tabId)` (or `moveTabToOtherPane` if already split). Dropping a tab
-onto the **other pane's strip** → `moveTabToOtherPane`. Dragging the last tab of
-the right pane back to the left collapses the split.
+content body shows a **drop overlay highlighting the right half**; dropping there
+**always calls `splitTabRight(tabId)`** — which is a no-op for a tab already in the
+right pane, so dragging a right-pane tab onto the right half can never move it left.
+Dropping a tab onto the **other pane's strip** → `moveTabToOtherPane`. Dragging the
+last tab of the right pane back to the left collapses the split.
 
 ## Open a specific issue into the right split
 
@@ -246,11 +271,15 @@ Third way to fill the right pane — by issue, not by existing tab — both rout
   malformed → fallback; plus one test per validation invariant above (empty panes,
   >2 panes, duplicate pane/tab ids, invalid active id, invalid focused pane,
   non-finite ratio/seq, seq-below-floor).
-- `splitTabRight` (move case **and** clone-the-sole-tab case),
-  `moveTabToOtherPane` (incl. source neighbor-selection and source collapse),
+- `splitTabRight` — clone-the-sole-tab, move-from-left, **no-op when tab already in
+  right pane**, and move-collapses-source.
+- `nextPaneId` — returns the first unused `pane-${n}` against arbitrary persisted
+  pane ids (uniqueness invariant).
+- `moveTabToOtherPane` (incl. source neighbor-selection and source collapse),
   `swapPanes`, `closeTabIn` (active→neighbor, pane collapse, last-tab no-op),
-  `clampRatio` (wide, exactly-2×min, narrower-than-2×min, non-finite),
-  `openIssueInRightSplit` (single→split, already-split, dedupe).
+  `clampRatio` (wide, exactly-2×min, narrower-than-2×min, non-finite).
+- `openIssueInRightSplit` — single→new-right-pane with the **left pane unchanged**,
+  already-split, and dedupe across the workspace.
 - Every reducer test also asserts the **global invariants** hold on the result.
 
 **Focused component tests (`@testing-library/react` + jsdom — already in deps):**
