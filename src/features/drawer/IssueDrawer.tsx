@@ -40,6 +40,7 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
+import { useWorkspace } from "@/lib/tabs";
 import type { CalendarIssue, DetailAttachment, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
@@ -215,13 +216,13 @@ function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose
           title="Drag to resize"
           className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary/40"
         />
-        {result ? <DrawerContent id={id} result={result} onClose={onClose} /> : null}
+        {result ? <IssueDetail id={id} result={result} mode="drawer" onClose={onClose} /> : null}
       </aside>
     </div>
   );
 }
 
-function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetailResult; onClose: () => void }) {
+export function IssueDetail({ id, result, mode, onClose }: { id: string; result: IssueDetailResult; mode: "drawer" | "page"; onClose: () => void }) {
   const [, setParams] = useSearchParams();
   const update = useUpdateIssue();
   const del = useDeleteIssue();
@@ -233,6 +234,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const { data: filterOpts } = useFilterOptions();
   const { data: issues } = useIssues({});
   const { openMenu } = useIssueMenu();
+  const { openIssueTab } = useWorkspace();
 
   const live = result.source === "live" ? (result.detail as LiveDetail) : null;
   const editable = result.source === "live";
@@ -380,6 +382,11 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             </span>
           )}
           <div className="flex items-center gap-0.5">
+          {mode === "drawer" && (
+            <IconBtn title="Open in full page" onClick={() => { openIssueTab(id); onClose(); }}>
+              <Maximize2 className="size-4" />
+            </IconBtn>
+          )}
           <IconBtn title="Copy link" onClick={() => copyText(url ?? identifier, "Link")}>
             <Link2 className="size-4" />
           </IconBtn>
@@ -420,9 +427,11 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               </>
             )}
           </Popover>
-          <IconBtn title="Close" onClick={onClose}>
-            <X className="size-4" />
-          </IconBtn>
+          {mode === "drawer" && (
+            <IconBtn title="Close" onClick={onClose}>
+              <X className="size-4" />
+            </IconBtn>
+          )}
           </div>
         </div>
       </header>
