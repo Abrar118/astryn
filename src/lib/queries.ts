@@ -47,6 +47,7 @@ import {
   removeCommentDeep,
   removeReactionFrom,
   replaceComment,
+  replaceReaction,
 } from "@/features/drawer/comments/commentCache";
 import {
   applyPatchToCalendarIssue,
@@ -449,6 +450,10 @@ export function useAddReaction() {
     onError: (err, _vars, ctx) => {
       if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
       gooeyToast.error("Couldn't add reaction", { description: errorText(err) });
+    },
+    onSuccess: (server, { issueId, commentId }, ctx) => {
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur && ctx) qc.setQueryData(["issue", issueId], replaceReaction(cur, commentId, ctx.tempId, server));
     },
     onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
   });

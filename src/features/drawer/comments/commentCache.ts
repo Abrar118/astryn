@@ -60,6 +60,17 @@ export function removeReactionFrom(
   return withReactions(result, commentId, (rs) => rs.filter((r) => r.id !== reactionId));
 }
 
+export function replaceReaction(
+  result: IssueDetailResult,
+  commentId: string,
+  tempReactionId: string,
+  reaction: DetailReaction,
+): IssueDetailResult {
+  return withReactions(result, commentId, (rs) =>
+    rs.map((r) => (r.id === tempReactionId ? reaction : r)),
+  );
+}
+
 export function makePendingComment(
   id: string,
   _issueId: string,

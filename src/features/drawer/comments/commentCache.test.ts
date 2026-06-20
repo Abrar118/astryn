@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addComment, replaceComment, editComment, removeCommentDeep,
-  addReactionTo, removeReactionFrom, makePendingComment, makePendingReaction,
+  addReactionTo, removeReactionFrom, replaceReaction, makePendingComment, makePendingReaction,
 } from "./commentCache";
 import type { DetailComment, IssueDetailResult, LiveDetail } from "@/lib/commands";
 
@@ -42,6 +42,14 @@ describe("commentCache", () => {
     expect((added.detail as LiveDetail).comments[0].reactions[0].emoji).toBe("👍");
     const removed = removeReactionFrom(added, "a", "re1");
     expect((removed.detail as LiveDetail).comments[0].reactions).toEqual([]);
+  });
+
+  it("replaceReaction swaps the temp reaction id for the server reaction", () => {
+    const tempReaction = makePendingReaction("temp-re", "👍", { viewerId: "u1", viewerName: "U" });
+    const commentWithReaction: DetailComment = { ...comment("c1"), reactions: [tempReaction] };
+    const serverReaction = { id: "server-re", emoji: "👍", userId: "u1", userName: "U" };
+    const r = replaceReaction(live([commentWithReaction]), "c1", "temp-re", serverReaction);
+    expect((r.detail as LiveDetail).comments[0].reactions[0].id).toBe("server-re");
   });
 
   it("makePendingComment attributes to me", () => {
