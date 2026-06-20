@@ -266,8 +266,11 @@ export function applyDescriptionConfig(ctx: Ctx): void {
     (prev) => patchTaskListItemRunner(prev),
   );
 
-  // --- Fix spread serialization: orderedList and taskListItem use `=== "true"`
-  //     which fails when spread is stored as boolean true. Patch to use Boolean(). ---
+  // --- Fix spread serialization + DOM parsing for ordered/task lists.
+  //     toMarkdown: treat spread loose only when `=== true || === "true"` (NOT
+  //     Boolean(), since Boolean("false") is true → would force loose).
+  //     parseDOM: ordered_list stores a raw string spread; normalize to boolean
+  //     so a pasted tight list passes doc.check() and stays tight. ---
   ctx.update(orderedListSchema.key, (prev) => patchOrderedListToMarkdown(prev));
   ctx.update(
     extendListItemSchemaForTask.key,
