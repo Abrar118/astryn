@@ -25,9 +25,11 @@ import {
   TooltipProvider,
   tooltipFactory,
 } from "@milkdown/kit/plugin/tooltip";
-import type { PluginView } from "@milkdown/kit/prose/state";
+import type { EditorState, PluginView } from "@milkdown/kit/prose/state";
 import { TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
+import { editorViewCtx } from "@milkdown/kit/core";
+import { findParentNode } from "@milkdown/prose";
 
 // ---------------------------------------------------------------------------
 // Slash command catalog
@@ -39,6 +41,25 @@ export type SlashCommand = {
   keywords: string;
   run: (ctx: Ctx) => void;
 };
+
+/**
+ * After wrapping in a bullet list, find the enclosing list_item node and set
+ * its `checked` attribute to `false` so GFM serializes it as `- [ ]`.
+ */
+function applyTaskListChecked(ctx: Ctx): void {
+  const view = ctx.get(editorViewCtx);
+  const { state } = view;
+  const found = findParentNode(
+    (node) => node.type.name === "list_item",
+  )(state.selection);
+  if (!found) return;
+  const { pos, node } = found;
+  const tr = state.tr.setNodeMarkup(pos, undefined, {
+    ...node.attrs,
+    checked: false,
+  });
+  view.dispatch(tr);
+}
 
 export const slashCommands: SlashCommand[] = [
   {
@@ -94,11 +115,10 @@ export const slashCommands: SlashCommand[] = [
     label: "Task List",
     keywords: "todo checklist checkbox task",
     run: (ctx) => {
-      // GFM task lists use the bullet list command + the input-rule trigger.
-      // There is no standalone insertTaskListCommand in the preset; the standard
-      // approach is to wrap in a bullet list then let the user apply the
-      // checkbox via input rule. For slash-menu purposes we wrap in bullet list.
+      // Create a bullet list first, then set checked: false on the list_item
+      // so GFM serializes it as `- [ ] …` (a real task-list item).
       callCommand(wrapInBulletListCommand.key)(ctx);
+      applyTaskListChecked(ctx);
     },
   },
   {
@@ -208,6 +228,7 @@ class SlashView implements PluginView {
   #selectedIndex = 0;
   #filtered: SlashCommand[] = [];
   #query = "";
+  #isOpen = false;
 
   constructor(ctx: Ctx, view: EditorView) {
     this.#ctx = ctx;
@@ -248,14 +269,47 @@ class SlashView implements PluginView {
     });
 
     this.#provider.onShow = () => {
+      this.#isOpen = true;
       this.#content.style.display = "block";
     };
     this.#provider.onHide = () => {
+      this.#isOpen = false;
       this.#content.style.display = "none";
     };
 
-    wrapper.addEventListener("keydown", this.#onKeyDown);
     this.update(view);
+  }
+
+  /**
+   * Called from the plugin's `props.handleKeyDown` while the slash menu is
+   * open. Returns `true` when the key is consumed (preventing ProseMirror
+   * from handling it), `false` otherwise.
+   */
+  handleKeyDown(e: KeyboardEvent): boolean {
+    if (!this.#isOpen || this.#filtered.length === 0) return false;
+    if (e.key === "ArrowDown") {
+      this.#selectedIndex = Math.min(
+        this.#selectedIndex + 1,
+        this.#filtered.length - 1,
+      );
+      this.#render();
+      return true;
+    }
+    if (e.key === "ArrowUp") {
+      this.#selectedIndex = Math.max(this.#selectedIndex - 1, 0);
+      this.#render();
+      return true;
+    }
+    if (e.key === "Enter") {
+      const cmd = this.#filtered[this.#selectedIndex];
+      if (cmd) this.#run(cmd);
+      return true;
+    }
+    if (e.key === "Escape") {
+      this.#provider.hide();
+      return true;
+    }
+    return false;
   }
 
   #render() {
@@ -284,35 +338,12 @@ class SlashView implements PluginView {
     this.#provider.hide();
   }
 
-  #onKeyDown = (e: KeyboardEvent) => {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      this.#selectedIndex = Math.min(
-        this.#selectedIndex + 1,
-        this.#filtered.length - 1,
-      );
-      this.#render();
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      this.#selectedIndex = Math.max(this.#selectedIndex - 1, 0);
-      this.#render();
-    } else if (e.key === "Enter") {
-      e.preventDefault();
-      const cmd = this.#filtered[this.#selectedIndex];
-      if (cmd) this.#run(cmd);
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      this.#provider.hide();
-    }
-  };
-
-  update = (view: EditorView) => {
-    this.#provider.update(view);
+  update = (view: EditorView, prevState?: EditorState) => {
+    this.#provider.update(view, prevState);
   };
 
   destroy = () => {
     this.#provider.destroy();
-    this.#content.removeEventListener("keydown", this.#onKeyDown);
     this.#content.remove();
   };
 }
@@ -321,8 +352,21 @@ class SlashView implements PluginView {
 // Consumers must call `ctx.set(descriptionSlash.key, { view: (view) => new SlashView(ctx, view) })`
 // via an `editor.config(...)` callback. We export a helper that does this.
 export function configureDescriptionSlash(ctx: Ctx) {
+  // Keep a reference to the current SlashView instance so the plugin's
+  // handleKeyDown prop can delegate to it. The view is created/replaced on
+  // each call to the view factory.
+  let currentSlashView: SlashView | null = null;
+
   ctx.set(descriptionSlash.key, {
-    view: (view) => new SlashView(ctx, view),
+    view: (editorView) => {
+      currentSlashView = new SlashView(ctx, editorView);
+      return currentSlashView;
+    },
+    props: {
+      handleKeyDown(_editorView: EditorView, event: KeyboardEvent): boolean {
+        return currentSlashView?.handleKeyDown(event) ?? false;
+      },
+    },
   });
 }
 
@@ -389,7 +433,7 @@ class TooltipView implements PluginView {
     this.update(view);
   }
 
-  update = (view: EditorView, prevState?: Parameters<PluginView["update"] extends undefined ? never : NonNullable<PluginView["update"]>>[1]) => {
+  update = (view: EditorView, prevState?: EditorState) => {
     this.#provider.update(view, prevState);
   };
 
