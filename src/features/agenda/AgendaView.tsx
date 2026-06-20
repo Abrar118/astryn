@@ -88,7 +88,7 @@ export function AgendaView() {
   // Week-number label: use Thursday of the Sun-started week for ISO week number
   const thursday = addDays(win.weekStart, 4);
   const { week: weekNum, year: weekYear } = isoWeek(thursday);
-  const currentYear = new Date().getFullYear();
+  const currentYear = Number(dhakaToday().slice(0, 4));
   const weekLabel = weekYear !== currentYear ? `Week ${weekNum} · ${weekYear}` : `Week ${weekNum}`;
   const rangeLabel = `${shortDate(win.weekStart)} – ${shortDate(addDays(win.weekStart, 6))}`;
 
