@@ -97,6 +97,78 @@ function patchTaskListItemRunner(
 }
 
 /**
+ * Patch the orderedListSchema toMarkdown runner so that the boolean `spread`
+ * attr (stored by patchSpreadRunner) is correctly converted to a remark boolean.
+ *
+ * Milkdown's orderedListSchema.toMarkdown does `spread: node.attrs.spread === "true"`
+ * (a string compare). When our parseMarkdown runner correctly stores a boolean
+ * (true/false), this check always yields false — so loose ordered lists are
+ * silently collapsed to tight on save.
+ *
+ * Fix: use `Boolean(node.attrs.spread)` so both boolean true and the legacy
+ * string "true" both produce remark's expected boolean.
+ */
+function patchOrderedListToMarkdown(
+  prev: (ctx: Ctx) => NodeSchema,
+): (ctx: Ctx) => NodeSchema {
+  return (ctx) => {
+    const spec = prev(ctx);
+    return {
+      ...spec,
+      toMarkdown: {
+        ...spec.toMarkdown,
+        runner: (state, node) => {
+          state
+            .openNode("list", undefined, {
+              ordered: true,
+              start: (node.attrs.order as number | undefined) ?? 1,
+              spread: Boolean(node.attrs.spread),
+            })
+            .next(node.content as never)
+            .closeNode();
+        },
+      },
+    };
+  };
+}
+
+/**
+ * Patch the task-list-item toMarkdown runner so that the boolean `spread`
+ * attr (stored by patchTaskListItemRunner) is correctly passed to remark
+ * instead of using the broken `=== "true"` string compare in the default.
+ */
+function patchTaskListItemToMarkdown(
+  prev: (ctx: Ctx) => NodeSchema,
+): (ctx: Ctx) => NodeSchema {
+  return (ctx) => {
+    const spec = prev(ctx);
+    const baseToMarkdown = spec.toMarkdown;
+    return {
+      ...spec,
+      toMarkdown: {
+        ...baseToMarkdown,
+        runner: (state, node) => {
+          if ((node.attrs.checked as boolean | null) == null) {
+            // Non-task items: delegate to the underlying listItem toMarkdown runner
+            baseToMarkdown.runner(state, node);
+            return;
+          }
+          state
+            .openNode("listItem", undefined, {
+              label: node.attrs.label as string,
+              listType: node.attrs.listType as string,
+              spread: Boolean(node.attrs.spread),
+              checked: node.attrs.checked as boolean | null,
+            })
+            .next(node.content as never)
+            .closeNode();
+        },
+      },
+    };
+  };
+}
+
+/**
  * Apply remark stringify options + node-attr fixes to the editor context.
  *
  * Stringify options: bullet "-", emphasis "*", strong "*" (= double-asterisk),
@@ -109,6 +181,9 @@ function patchTaskListItemRunner(
  * - bullet_list.spread, ordered_list.spread, list_item.spread,
  *   task list item spread: parsers stringify the boolean to "true"/"false"
  *   before storing it; patch their parseMarkdown runners to coerce to boolean.
+ * - ordered_list.toMarkdown, task list_item.toMarkdown: the default serializer
+ *   uses `spread === "true"` (string compare) which fails for our stored boolean;
+ *   patch to use Boolean(spread) instead so loose lists stay loose on save.
  */
 export function applyDescriptionConfig(ctx: Ctx): void {
   // --- Remark stringify options ---
@@ -145,6 +220,14 @@ export function applyDescriptionConfig(ctx: Ctx): void {
   ctx.update(
     extendListItemSchemaForTask.key,
     (prev) => patchTaskListItemRunner(prev),
+  );
+
+  // --- Fix spread serialization: orderedList and taskListItem use `=== "true"`
+  //     which fails when spread is stored as boolean true. Patch to use Boolean(). ---
+  ctx.update(orderedListSchema.key, (prev) => patchOrderedListToMarkdown(prev));
+  ctx.update(
+    extendListItemSchemaForTask.key,
+    (prev) => patchTaskListItemToMarkdown(prev),
   );
 }
 

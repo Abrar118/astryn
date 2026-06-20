@@ -10,6 +10,7 @@ import {
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleLinkCommand,
+  updateLinkCommand,
 } from "@milkdown/kit/preset/commonmark";
 import {
   insertTableCommand,
@@ -227,8 +228,9 @@ class SlashView implements PluginView {
   readonly #ctx: Ctx;
   #selectedIndex = 0;
   #filtered: SlashCommand[] = [];
-  #query = "";
   #isOpen = false;
+  /** Absolute document position of the leading `/` character. -1 when unknown. */
+  #triggerFrom = -1;
 
   constructor(ctx: Ctx, view: EditorView) {
     this.#ctx = ctx;
@@ -259,11 +261,18 @@ class SlashView implements PluginView {
         );
         if (text == null) return false;
         if (!text.startsWith("/")) return false;
-        self.#query = text.slice(1);
-        self.#filtered = filterSlashCommands(self.#query);
+        const query = text.slice(1);
+        const filtered = filterSlashCommands(query);
+        if (filtered.length === 0) return false;
+        // Record the absolute position of the `/` trigger character.
+        // getContent returns the text from paragraph start up to the cursor,
+        // so the `/` sits at (cursor pos) - (text length).
+        const { $from } = v.state.selection;
+        self.#triggerFrom = $from.pos - text.length;
+        self.#filtered = filtered;
         self.#selectedIndex = 0;
         self.#render();
-        return self.#filtered.length > 0;
+        return true;
       },
       offset: 8,
     });
@@ -275,6 +284,7 @@ class SlashView implements PluginView {
     this.#provider.onHide = () => {
       this.#isOpen = false;
       this.#content.style.display = "none";
+      this.#triggerFrom = -1;
     };
 
     this.update(view);
@@ -333,7 +343,21 @@ class SlashView implements PluginView {
     });
   }
 
+  /**
+   * Delete the `/query` trigger text from the document then execute the
+   * command. The trigger range is from `#triggerFrom` (the `/`) to the
+   * current cursor position, which covers `/` + whatever query the user typed.
+   */
   #run(cmd: SlashCommand) {
+    const view = this.#ctx.get(editorViewCtx);
+    const { state } = view;
+    const cursorPos = state.selection.from;
+    // Delete from the `/` position to the cursor before running the command
+    // so the trigger text doesn't end up in the document (e.g. `- [ ] /task`).
+    if (this.#triggerFrom >= 0 && this.#triggerFrom < cursorPos) {
+      const tr = state.tr.delete(this.#triggerFrom, cursorPos);
+      view.dispatch(tr);
+    }
     cmd.run(this.#ctx);
     this.#provider.hide();
   }
@@ -378,6 +402,8 @@ export const descriptionTooltip = tooltipFactory("DESCRIPTION_TOOLTIP");
 
 class TooltipView implements PluginView {
   readonly #content: HTMLElement;
+  readonly #buttons: HTMLElement;
+  readonly #linkInput: HTMLInputElement;
   readonly #provider: TooltipProvider;
   readonly #ctx: Ctx;
 
@@ -391,6 +417,10 @@ class TooltipView implements PluginView {
       "border-radius:6px;padding:2px 4px;gap:2px;z-index:9999;" +
       "box-shadow:0 2px 8px rgba(0,0,0,.5);flex-direction:row;align-items:center;";
 
+    // Button row
+    const buttons = document.createElement("div");
+    buttons.style.cssText = "display:flex;flex-direction:row;align-items:center;gap:2px;";
+
     for (const cmd of inlineCommands) {
       const btn = document.createElement("button");
       btn.type = "button";
@@ -400,12 +430,44 @@ class TooltipView implements PluginView {
       btn.style.cssText =
         "background:none;border:none;color:#e0e0ff;cursor:pointer;" +
         "padding:4px 8px;border-radius:4px;font-size:12px;";
-      btn.addEventListener("mousedown", (e) => {
-        e.preventDefault();
-        cmd.run(this.#ctx);
-      });
-      wrapper.appendChild(btn);
+      if (cmd.id === "link") {
+        btn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          this.#showLinkInput();
+        });
+      } else {
+        btn.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          cmd.run(this.#ctx);
+        });
+      }
+      buttons.appendChild(btn);
     }
+
+    wrapper.appendChild(buttons);
+    this.#buttons = buttons;
+
+    // Link URL input (hidden by default)
+    const input = document.createElement("input");
+    input.type = "text";
+    input.placeholder = "Paste or type a URL…";
+    input.style.cssText =
+      "display:none;width:200px;background:transparent;border:none;" +
+      "border-bottom:1px solid #3b3b5c;padding:4px 6px;font-size:12px;" +
+      "color:#e0e0ff;outline:none;";
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        this.#applyLink(input.value.trim());
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        this.#hideLinkInput();
+      }
+    });
+    // Prevent tooltip from hiding when input is focused
+    input.addEventListener("mousedown", (e) => e.stopPropagation());
+    wrapper.appendChild(input);
+    this.#linkInput = input;
 
     this.#content = wrapper;
     document.body.appendChild(wrapper);
@@ -428,9 +490,33 @@ class TooltipView implements PluginView {
     };
     this.#provider.onHide = () => {
       this.#content.style.display = "none";
+      this.#hideLinkInput();
     };
 
     this.update(view);
+  }
+
+  #showLinkInput() {
+    this.#buttons.style.display = "none";
+    this.#linkInput.value = "";
+    this.#linkInput.style.display = "block";
+    this.#linkInput.focus();
+  }
+
+  #hideLinkInput() {
+    this.#linkInput.style.display = "none";
+    this.#buttons.style.display = "flex";
+  }
+
+  #applyLink(href: string) {
+    if (href) {
+      callCommand(toggleLinkCommand.key, { href })(this.#ctx);
+    } else {
+      // Empty URL: remove any existing link from the selection
+      callCommand(updateLinkCommand.key, { href: "" })(this.#ctx);
+    }
+    this.#hideLinkInput();
+    this.#provider.hide();
   }
 
   update = (view: EditorView, prevState?: EditorState) => {

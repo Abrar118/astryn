@@ -7,6 +7,7 @@ import {
   defaultValueCtx,
   rootCtx,
   editorViewOptionsCtx,
+  editorViewCtx,
 } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
@@ -116,6 +117,12 @@ function MilkdownEditorInner({
           ctx.get(listenerCtx).markdownUpdated((_ctx, md) => {
             autosaveRef.current?.update(md);
           });
+          ctx.get(listenerCtx).mounted((mountedCtx) => {
+            // Focus the ProseMirror view once the editor is fully mounted so
+            // the user can start typing immediately after double-clicking.
+            const editorView = mountedCtx.get(editorViewCtx);
+            editorView.focus();
+          });
           ctx.get(listenerCtx).blur(() => {
             onBlur();
           });
@@ -159,6 +166,8 @@ export function DescriptionEditor({
   const autosaveRef = useRef<DescriptionAutosave | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  /** Guard against duplicate blur invocations while an async flush is in flight. */
+  const blurInFlightRef = useRef(false);
 
   // Create autosave on first edit, destroy on exit
   useEffect(() => {
@@ -174,7 +183,9 @@ export function DescriptionEditor({
     });
     return () => {
       unsub();
-      void queue.flush().catch(() => undefined);
+      // The queue is destroyed on cleanup. Any in-progress flush that was
+      // awaited in handleBlur is the authoritative final flush — do not
+      // call flush() again here as the queue may already be destroyed.
       queue.destroy();
       autosaveRef.current = null;
     };
@@ -183,9 +194,32 @@ export function DescriptionEditor({
   }, [editing]);
 
   const handleBlur = () => {
-    void autosaveRef.current?.flush().catch(() => undefined);
-    setEditing(false);
-    onSaveStateChange?.("idle");
+    // Guard against duplicate invocations (e.g. both the blur listener and the
+    // wrapper's onBlur firing for the same focus-leave event).
+    if (blurInFlightRef.current) return;
+    blurInFlightRef.current = true;
+    const queue = autosaveRef.current;
+    if (!queue) {
+      setEditing(false);
+      blurInFlightRef.current = false;
+      return;
+    }
+    // Await the flush while still subscribed so status propagates correctly.
+    // Only exit edit mode and reset the flag after the flush settles.
+    queue.flush().then(
+      () => {
+        setEditing(false);
+        onSaveStateChange?.("idle");
+        blurInFlightRef.current = false;
+      },
+      () => {
+        // On failure: keep the error status (already dispatched by the queue's
+        // subscriber) and exit edit mode. The one-shot toast in the drawer
+        // breadcrumb effect will surface the error.
+        setEditing(false);
+        blurInFlightRef.current = false;
+      },
+    );
   };
 
   const readOnlyNode = (

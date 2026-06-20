@@ -386,16 +386,75 @@
 .astryn-description-editor code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; }
 .astryn-description-editor table { width: 100%; border-collapse: collapse; }
 .astryn-description-editor th, .astryn-description-editor td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
-.description-bubble-menu, .description-slash-menu { border: 1px solid var(--border); background: var(--popover); box-shadow: 0 12px 36px rgb(0 0 0 / 35%); }
-.description-bubble-menu { display: flex; gap: 0.125rem; border-radius: 0.5rem; padding: 0.25rem; }
-.description-bubble-menu button { border-radius: 0.3rem; padding: 0.35rem; color: var(--muted-foreground); }
-.description-bubble-menu button:hover, .description-bubble-menu button[aria-pressed="true"] { background: var(--accent); color: var(--foreground); }
-.description-bubble-menu input { width: 14rem; border-radius: 0.3rem; background: transparent; padding: 0.3rem 0.45rem; color: var(--foreground); outline: none; }
-.description-slash-menu { position: absolute; z-index: 70; width: 15rem; border-radius: 0.6rem; padding: 0.3rem; }
-.description-slash-menu button { display: flex; width: 100%; align-items: center; gap: 0.6rem; border-radius: 0.4rem; padding: 0.5rem 0.6rem; color: var(--foreground); }
-.description-slash-menu button[aria-selected="true"], .description-slash-menu button:hover { background: var(--accent); }
-.description-save-status { position: absolute; right: 0; top: -1.25rem; font-size: 0.6875rem; color: var(--muted-foreground); }
-.description-save-status--error { color: #f87171; }
+/* ── Milkdown slash command menu ─────────────────────────────────────────── */
+.md-slash-menu {
+  position: absolute;
+  z-index: 9999;
+  min-width: 180px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+}
+.md-slash-menu li {
+  list-style: none;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  border-radius: 0.3rem;
+}
+.md-slash-menu li:hover,
+.md-slash-menu li[data-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* ── Milkdown inline tooltip ──────────────────────────────────────────────── */
+.md-tooltip {
+  position: absolute;
+  z-index: 9999;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.2rem 0.3rem;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.125rem;
+}
+.md-tooltip button {
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.md-tooltip button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+/* Link URL input shown when "Link" is clicked in the tooltip */
+.md-tooltip input[type="text"] {
+  width: 14rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.25rem 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  outline: none;
+}
+.md-tooltip input[type="text"]::placeholder {
+  color: var(--muted-foreground);
+}
 
 /* ── Milkdown / ProseMirror editor — dark Linear-style ────────────────────── */
 .milkdown {

@@ -21,9 +21,36 @@ describe("Milkdown markdown round-trip", () => {
       expect(first.error ?? "ok").toBe("ok");
       expect(first.valid).toBe(true);
       const second = await roundtripMarkdown(first.markdown);
+      expect(second.valid).toBe(true);
       expect(second.markdown).toBe(first.markdown);
     });
   }
+});
+
+describe("Loose list preservation", () => {
+  it("loose ordered list: schema-valid and retains blank line between items", async () => {
+    const md = "1. one\n\n2. two";
+    const first = await roundtripMarkdown(md);
+    expect(first.error ?? "ok").toBe("ok");
+    expect(first.valid).toBe(true);
+    // The serialized output must contain a blank line — loose list must stay loose
+    expect(first.markdown).toContain("\n\n");
+    const second = await roundtripMarkdown(first.markdown);
+    expect(second.valid).toBe(true);
+    expect(second.markdown).toBe(first.markdown);
+  });
+
+  it("loose bullet list: schema-valid and retains blank line between items", async () => {
+    const md = "- one\n\n- two";
+    const first = await roundtripMarkdown(md);
+    expect(first.error ?? "ok").toBe("ok");
+    expect(first.valid).toBe(true);
+    // The serialized output must contain a blank line — loose list must stay loose
+    expect(first.markdown).toContain("\n\n");
+    const second = await roundtripMarkdown(first.markdown);
+    expect(second.valid).toBe(true);
+    expect(second.markdown).toBe(first.markdown);
+  });
 });
 
 describe("Milkdown image node", () => {
