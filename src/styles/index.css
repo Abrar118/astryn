@@ -597,3 +597,30 @@
 .astryn-description-editor a[href*="/issue/"]:hover {
   background: var(--accent);
 }
+
+/* Comment composer: reset outline and ensure minimum height for the ProseMirror
+   editable region, and show a placeholder when the composer is empty. */
+.comment-composer-prose .ProseMirror { outline: none; min-height: 1.5rem; }
+.comment-composer-prose .ProseMirror p.is-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted-foreground);
+  position: absolute;
+  pointer-events: none;
+}
+
+/* User-mention pills in the comment composer match the issue-mention pill style. */
+.comment-composer-prose a[href*="/user/"] {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+  padding: 0 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--foreground);
+  text-decoration: none;
+}
+.comment-composer-prose a[href*="/user/"]:hover {
+  background: var(--accent);
+}

@@ -1,9 +1,8 @@
-import type { DetailComment, DetailHistory } from "@/lib/commands";
+import type { DetailHistory } from "@/lib/commands";
 
 export type ActivityItem =
   | { kind: "created"; id: string; createdAt: string; actorName: string | null; summary: string }
-  | { kind: "history"; id: string; createdAt: string; actorName: string | null; summary: string }
-  | { kind: "comment"; id: string; createdAt: string; actorName: string | null; summary: string; body: string };
+  | { kind: "history"; id: string; createdAt: string; actorName: string | null; summary: string };
 
 const PRIORITY_NAMES = ["No priority", "Urgent", "High", "Medium", "Low"];
 
@@ -40,7 +39,6 @@ export function buildActivity(input: {
   createdAt: string;
   creatorName: string | null;
   history: DetailHistory[];
-  comments: DetailComment[];
 }): ActivityItem[] {
   const items: ActivityItem[] = [];
   if (input.createdAt) {
@@ -59,14 +57,6 @@ export function buildActivity(input: {
       createdAt: event.createdAt,
       actorName: event.actorName,
       summary: historySummary(event),
-    })),
-    ...input.comments.map((comment): ActivityItem => ({
-      kind: "comment",
-      id: `comment-${comment.id}`,
-      createdAt: comment.createdAt,
-      actorName: comment.userName,
-      summary: "commented",
-      body: comment.body,
     })),
   );
   return items.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));

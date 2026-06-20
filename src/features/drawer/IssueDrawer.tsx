@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { SaveStatus } from "./descriptionAutosave";
 import {
+  useCreateComment,
   useCycles,
   useDeleteIssue,
   useFilterOptions,
@@ -44,6 +45,9 @@ import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { buildActivity } from "./drawerActivity";
+import { buildCommentThreads } from "./comments/commentThreads";
+import { CommentComposer } from "./comments/CommentComposer";
+import { CommentThread } from "./comments/CommentThread";
 import { DescriptionEditor } from "./DescriptionEditor";
 import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
 import { timeAgo } from "./timeAgo";
@@ -252,6 +256,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
   const [, setParams] = useSearchParams();
   const update = useUpdateIssue();
   const del = useDeleteIssue();
+  const createComment = useCreateComment();
+  const [composerKey, setComposerKey] = useState(0);
   const users = useUsers();
   const { data: labels } = useLabels();
   const { data: cycles } = useCycles();
@@ -279,7 +285,6 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           createdAt: live.createdAt,
           creatorName: live.creatorName,
           history: live.history,
-          comments: live.comments,
         })
       : [],
     [live],
@@ -455,8 +460,9 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* Main column */}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
+        {/* Main column: scrollable content + pinned composer footer */}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
           <textarea
             ref={titleRef}
             rows={1}
@@ -590,42 +596,57 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
 
           {live && (
             <DrawerSection title="Activity" className="border-t border-border pt-6">
-              <div className="relative space-y-4 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
-                {activity.map((item) => (
-                  <div key={item.id} className="relative flex gap-3">
-                    <div className="relative z-10 mt-0.5 shrink-0 rounded-full bg-background">
-                      {item.kind === "comment" ? (
-                        <Avatar name={item.actorName ?? "?"} size={24} />
-                      ) : (
-                        <span className="flex size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
-                          {item.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
-                        </span>
-                      )}
-                    </div>
-                    {item.kind === "comment" ? (
-                      <article className="min-w-0 flex-1 rounded-xl border border-border bg-card px-3 py-2.5">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className="text-sm font-medium text-foreground">{item.actorName ?? "Unknown"}</span>
-                          <span className="text-xs text-muted-foreground">{timeAgo(item.createdAt)}</span>
+              <div className="space-y-4">
+                {activity.length > 0 && (
+                  <div className="relative space-y-4 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
+                    {activity.map((item) => (
+                      <div key={item.id} className="relative flex gap-3">
+                        <div className="relative z-10 mt-0.5 shrink-0 rounded-full bg-background">
+                          <span className="flex size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+                            {item.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
+                          </span>
                         </div>
-                        <div className="astryn-prose prose prose-sm prose-invert mt-1 max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={md}>{item.body}</ReactMarkdown>
-                        </div>
-                      </article>
-                    ) : (
-                      <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
-                        <span className="font-medium text-foreground">{item.actorName ?? "Linear"}</span>{" "}
-                        {item.summary} · {timeAgo(item.createdAt)}
-                      </p>
-                    )}
+                        <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
+                          <span className="font-medium text-foreground">{item.actorName ?? "Linear"}</span>{" "}
+                          {item.summary} · {timeAgo(item.createdAt)}
+                        </p>
+                      </div>
+                    ))}
                   </div>
-                ))}
-                {activity.length === 0 && <p className="text-sm text-muted-foreground">No activity yet.</p>}
+                )}
+                <div className="space-y-3">
+                  {buildCommentThreads(live.comments).map((thread) => (
+                    <CommentThread
+                      key={thread.comment.id}
+                      thread={thread}
+                      issueId={id}
+                      onOpenLink={handleLink}
+                      resolveMention={resolveMention}
+                    />
+                  ))}
+                </div>
+                {live.comments.length === 0 && activity.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No activity yet.</p>
+                )}
                 {(live.hasMoreHistory || live.hasMoreComments) && (
-                  <p className="pl-9 text-xs text-muted-foreground">Showing the first 50 history events and comments.</p>
+                  <p className="text-xs text-muted-foreground">Showing the first 50 history events and comments.</p>
                 )}
               </div>
             </DrawerSection>
+          )}
+          </div>
+          {editable && (
+            <div className="shrink-0 border-t border-border px-7 py-3">
+              <CommentComposer
+                key={`composer-${id}-${composerKey}`}
+                variant="pinned"
+                submitting={createComment.isPending}
+                users={users.data ?? []}
+                onOpenLink={handleLink}
+                resolveMention={resolveMention}
+                onSubmit={(md) => { createComment.mutate({ issueId: id, body: md }); setComposerKey((k) => k + 1); }}
+              />
+            </div>
           )}
         </div>
 

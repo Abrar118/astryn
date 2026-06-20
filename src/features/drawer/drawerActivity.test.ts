@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildActivity } from "./drawerActivity";
 
 describe("buildActivity", () => {
-  it("merges creation, history, and comments in chronological order", () => {
+  it("merges creation and history in chronological order", () => {
     const items = buildActivity({
       createdAt: "2026-06-19T08:00:00Z",
       creatorName: "Abrar",
@@ -24,12 +24,9 @@ describe("buildActivity", () => {
           relationChanges: [],
         },
       ],
-      comments: [
-        { id: "c1", body: "Ready for review", userId: null, userName: "Mahir", createdAt: "2026-06-19T10:00:00Z", editedAt: null, parentId: null, reactions: [] },
-      ],
     });
 
-    expect(items.map((item) => item.kind)).toEqual(["created", "history", "comment"]);
+    expect(items.map((item) => item.kind)).toEqual(["created", "history"]);
     expect(items[1]).toMatchObject({ summary: "moved from Todo to In Progress" });
   });
 
@@ -53,7 +50,6 @@ describe("buildActivity", () => {
     const items = buildActivity({
       createdAt: "",
       creatorName: null,
-      comments: [],
       history: [
         { ...base, id: "attachment", attachment: { id: "a1", title: "PR #324", subtitle: null, url: "https://github.com/o/r/pull/324", sourceType: "github", createdAt: "2026-06-19T09:00:00Z", body: null } },
         { ...base, id: "relation", relationChanges: [{ type: "related", identifier: "AST-9" }] },
