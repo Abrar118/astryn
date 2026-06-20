@@ -25,7 +25,7 @@ describe("buildActivity", () => {
         },
       ],
       comments: [
-        { id: "c1", body: "Ready for review", userName: "Mahir", createdAt: "2026-06-19T10:00:00Z" },
+        { id: "c1", body: "Ready for review", userId: null, userName: "Mahir", createdAt: "2026-06-19T10:00:00Z", editedAt: null, parentId: null, reactions: [] },
       ],
     });
 

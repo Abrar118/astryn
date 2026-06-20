@@ -102,7 +102,17 @@ export type DetailChild = {
   cycleNumber: number | null;
 };
 export type DetailRelation = { type: string; issue: DetailRef };
-export type DetailComment = { id: string; body: string; userName: string | null; createdAt: string };
+export type DetailReaction = { id: string; emoji: string; userId: string | null; userName: string | null };
+export type DetailComment = {
+  id: string;
+  body: string;
+  userId: string | null;
+  userName: string | null;
+  createdAt: string;
+  editedAt: string | null;
+  parentId: string | null;
+  reactions: DetailReaction[];
+};
 export type DetailAttachment = {
   id: string;
   title: string;
@@ -239,3 +249,19 @@ export const listWorkflowStates = (): Promise<WorkflowState[]> => invoke("list_w
 export const deleteIssue = (id: string): Promise<void> => invoke("delete_issue", { id });
 
 export const getMe = (): Promise<Me | null> => invoke("get_me");
+
+export const createComment = (
+  issueId: string,
+  body: string,
+  parentId?: string | null,
+): Promise<DetailComment> => invoke("create_comment", { issueId, body, parentId: parentId ?? null });
+
+export const updateComment = (id: string, body: string): Promise<DetailComment> =>
+  invoke("update_comment", { id, body });
+
+export const deleteComment = (id: string): Promise<void> => invoke("delete_comment", { id });
+
+export const addReaction = (commentId: string, emoji: string): Promise<DetailReaction> =>
+  invoke("add_reaction", { commentId, emoji });
+
+export const removeReaction = (id: string): Promise<void> => invoke("remove_reaction", { id });
