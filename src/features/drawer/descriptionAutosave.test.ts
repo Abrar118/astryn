@@ -42,6 +42,23 @@ describe("DescriptionAutosave", () => {
     expect(save).toHaveBeenLastCalledWith("draft again");
   });
 
+  it("retries a previously-failed save when flushed with force, but not on a plain flush", async () => {
+    const save = vi.fn().mockRejectedValueOnce(new Error("offline")).mockResolvedValue(undefined);
+    const queue = new DescriptionAutosave("old", save, 0);
+    queue.update("draft");
+    await expect(queue.flush()).rejects.toThrow("offline");
+    expect(queue.status).toBe("error");
+    // A plain flush (e.g. a debounce tick) must NOT retry — it would hammer the API.
+    await queue.flush();
+    expect(save).toHaveBeenCalledTimes(1);
+    // A forced flush (an explicit user blur) retries the same draft and persists it,
+    // so leaving the field after a failure can't silently discard the draft.
+    await queue.flush(true);
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith("draft");
+    expect(queue.status).toBe("saved");
+  });
+
   it("accepts external content only when no local draft is pending", async () => {
     const queue = new DescriptionAutosave("one", vi.fn().mockResolvedValue(undefined), 750);
     expect(queue.acceptExternal("two")).toBe(true);

@@ -17,6 +17,7 @@ import { gfm, extendListItemSchemaForTask } from "@milkdown/kit/preset/gfm";
 import type { Ctx } from "@milkdown/ctx";
 import type { NodeSchema } from "@milkdown/transformer";
 import { descriptionImageView } from "./milkdownImageNode";
+import { descriptionCodeBlockView } from "./milkdownCodeBlock";
 import {
   descriptionSlash,
   descriptionTooltip,
@@ -32,11 +33,16 @@ import {
  * `descriptionSlash` and `descriptionTooltip` are UI-only plugins; they have
  * no effect in headless mode (no DOM, no view instantiation) so they are safe
  * to include here without affecting `roundtripMarkdown`.
+ *
+ * `descriptionCodeBlockView` renders a read-only `mermaid` block as a diagram
+ * (and leaves the editable `<pre><code>` untouched otherwise); like the image
+ * view it overrides only DOM rendering, so the markdown round-trips unchanged.
  */
 export const descriptionPlugins: unknown[] = [
   commonmark,
   gfm,
   descriptionImageView,
+  descriptionCodeBlockView,
   ...descriptionSlash,
   ...descriptionTooltip,
 ];

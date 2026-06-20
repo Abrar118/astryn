@@ -1,5 +1,7 @@
+import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 /** Extract a Linear issue identifier (e.g. "PRO-153") from a link href, if any. */
 export function issueIdentifierFromHref(href: string): string | null {
@@ -60,5 +62,19 @@ export function createMarkdownComponents(opts: {
       );
     },
     img: ({ src, alt }) => <LinearMarkdownImage src={src ?? ""} alt={alt ?? ""} />,
+    // A ```mermaid fenced block renders as <pre><code class="language-mermaid">.
+    // Detect it here and swap the whole <pre> for a rendered diagram; every other
+    // code block falls through to a normal <pre>. Overriding `pre` (not `code`)
+    // keeps the diagram out of a nested, bordered code box.
+    pre: ({ children }) => {
+      const child = Array.isArray(children) ? children[0] : children;
+      const props = isValidElement(child)
+        ? (child.props as { className?: string; children?: ReactNode })
+        : null;
+      if (props && /\blanguage-mermaid\b/.test(props.className ?? "")) {
+        return <MermaidDiagram code={String(props.children ?? "").replace(/\n$/, "")} />;
+      }
+      return <pre>{children}</pre>;
+    },
   };
 }

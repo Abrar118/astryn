@@ -39,12 +39,21 @@ export class DescriptionAutosave {
     }, this.delay);
   }
 
-  async flush(): Promise<void> {
+  /**
+   * Persist the current draft. `force` clears the failed-latch so an explicit
+   * user action (e.g. blurring the editor) retries a previously-failed save
+   * instead of resolving as a no-op — otherwise leaving the field after a
+   * failure would let the caller exit edit mode and discard the unsaved draft.
+   * A plain (non-forced) flush from the debounce timer still no-ops while
+   * failed, so a persistent error can't hammer the API.
+   */
+  async flush(force = false): Promise<void> {
     if (this.timer) {
       clearTimeout(this.timer);
       this.timer = null;
     }
     if (this.inFlight) return this.inFlight;
+    if (force) this.failed = false;
     if (this.failed || this.draft === this.acknowledged) return;
     const saving = this.draft;
     this.setStatus("saving");

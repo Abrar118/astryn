@@ -27,7 +27,7 @@ import { createMarkdownComponents, type MentionResolver } from "./markdownCompon
  * the description read-only instead of crashing the whole app.
  */
 export class EditorErrorBoundary extends Component<
-  { fallback: ReactNode; children: ReactNode },
+  { fallback: ReactNode; children: ReactNode; onError?: () => void },
   { hasError: boolean }
 > {
   state = { hasError: false };
@@ -37,6 +37,9 @@ export class EditorErrorBoundary extends Component<
   componentDidCatch(error: unknown) {
     // eslint-disable-next-line no-console
     console.warn("[astryn] description editor could not render; showing read-only view", error);
+    // Let the owner react (e.g. drop back out of edit mode) so it isn't left in
+    // an editing state that only renders the read-only fallback.
+    this.props.onError?.();
   }
   render() {
     return this.state.hasError ? this.props.fallback : this.props.children;
@@ -117,7 +120,10 @@ function MilkdownEditorInner({
           });
           ctx.get(listenerCtx).mounted((mountedCtx) => {
             // Focus the ProseMirror view once the editor is fully mounted so
-            // the user can start typing immediately after double-clicking.
+            // the user can start typing immediately after double-clicking. Only
+            // in edit mode — the read-only display instance must not steal focus
+            // or scroll the drawer.
+            if (!editable) return;
             const editorView = mountedCtx.get(editorViewCtx);
             editorView.focus();
           });
@@ -153,6 +159,12 @@ interface DescriptionEditorProps {
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
   onSaveStateChange?: (s: SaveStatus) => void;
+  /**
+   * Fired when a save fails on unmount (e.g. the user switches issues, which
+   * remounts the key={id} editor) — by then the save-state subscription is torn
+   * down, so this is the only signal left to surface the failure.
+   */
+  onSaveError?: () => void;
 }
 
 export function DescriptionEditor({
@@ -162,11 +174,14 @@ export function DescriptionEditor({
   onOpenLink,
   resolveMention,
   onSaveStateChange,
+  onSaveError,
 }: DescriptionEditorProps) {
   const [editing, setEditing] = useState(false);
   const autosaveRef = useRef<DescriptionAutosave | null>(null);
   const onSaveRef = useRef(onSave);
   onSaveRef.current = onSave;
+  const onSaveErrorRef = useRef(onSaveError);
+  onSaveErrorRef.current = onSaveError;
   /** Guard against duplicate blur invocations while an async flush is in flight. */
   const blurInFlightRef = useRef(false);
 
@@ -189,8 +204,12 @@ export function DescriptionEditor({
       // in-editor issue mention which remounts the key={id} editor). flush()
       // is idempotent: it early-returns when nothing is pending or when an
       // in-flight save is already underway, so double-flushing with handleBlur
-      // is harmless.
-      void queue.flush().catch(() => undefined);
+      // is harmless. force=true so a prior debounce failure (which latches the
+      // failed flag) still gets a terminal retry instead of no-op'ing — otherwise
+      // switching issues would silently discard the failed draft. We've already
+      // unsubscribed, so a failure here can't reach onSaveStateChange — surface
+      // it via onSaveError instead of swallowing it.
+      void queue.flush(true).catch(() => onSaveErrorRef.current?.());
       queue.destroy();
       autosaveRef.current = null;
     };
@@ -210,8 +229,10 @@ export function DescriptionEditor({
       return;
     }
     // Await the flush while still subscribed so status propagates correctly.
-    // Only exit edit mode and reset the flag after the flush settles.
-    queue.flush().then(
+    // Only exit edit mode and reset the flag after the flush settles. force=true
+    // so a blur after a prior failure retries the save instead of resolving as a
+    // no-op (which would exit edit mode and discard the unsaved draft).
+    queue.flush(true).then(
       () => {
         setEditing(false);
         onSaveStateChange?.("idle");
@@ -237,23 +258,55 @@ export function DescriptionEditor({
     />
   );
 
-  if (!editing) {
+  // Empty description: a muted, double-clickable affordance (no point mounting a
+  // ProseMirror instance to render nothing). Editing starts an empty editor.
+  if (!editing && !markdown.trim()) {
     return (
       <div
         onDoubleClick={() => {
           if (editable) setEditing(true);
         }}
       >
-        {readOnlyNode}
+        <p className="text-sm italic text-muted-foreground">No description</p>
       </div>
     );
   }
 
+  // Render the description with Milkdown in BOTH modes — read-only (non-editable)
+  // for display, editable while editing — so the two never diverge. The
+  // react-markdown `readOnlyNode` remains only as the EditorErrorBoundary
+  // fallback for the rare markdown that ProseMirror refuses to parse.
+  //
+  // `editorKey` remounts the boundary (and the editor) when toggling edit and —
+  // in display mode — whenever the saved markdown changes, so background syncs
+  // stay live AND a corrected description re-engages the editor instead of being
+  // stuck on the latched fallback. While editing the key is constant so an
+  // in-flight edit is never clobbered. onError drops back out of edit mode if the
+  // editor throws, so we never sit editing-but-showing-fallback (which would also
+  // freeze the content-change reset, since the key is constant while editing).
+  const editorKey = editing ? "edit" : `view:${markdown}`;
   return (
-    <EditorErrorBoundary fallback={readOnlyNode}>
+    <EditorErrorBoundary
+      key={editorKey}
+      onError={() => setEditing(false)}
+      fallback={
+        <div
+          onDoubleClick={() => {
+            if (editable && !editing) setEditing(true);
+          }}
+        >
+          {readOnlyNode}
+        </div>
+      }
+    >
       <div
         className="relative"
+        data-editing={editing}
+        onDoubleClick={() => {
+          if (editable && !editing) setEditing(true);
+        }}
         onBlur={(e) => {
+          if (!editing) return;
           const relatedTarget = e.relatedTarget as Element | null;
           // 1. Internal focus moves within the wrapper: ignore.
           if (e.currentTarget.contains(relatedTarget)) return;
@@ -264,10 +317,10 @@ export function DescriptionEditor({
           handleBlur();
         }}
       >
-        <MilkdownProvider>
+        <MilkdownProvider key={editorKey}>
           <MilkdownEditorInner
             markdown={markdown}
-            editable={editable}
+            editable={editing}
             autosaveRef={autosaveRef}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}

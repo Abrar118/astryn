@@ -1,11 +1,19 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { createMarkdownComponents, issueIdentifierFromHref } from "./markdownComponents";
 
-afterEach(cleanup);
+const mermaidRender = vi.fn();
+vi.mock("mermaid", () => ({
+  default: { initialize: vi.fn(), render: (...args: unknown[]) => mermaidRender(...args) },
+}));
+
+afterEach(() => {
+  cleanup();
+  mermaidRender.mockReset();
+});
 
 describe("issueIdentifierFromHref", () => {
   it("extracts the identifier from a Linear issue URL", () => {
@@ -47,6 +55,27 @@ describe("createMarkdownComponents", () => {
     expect(screen.queryByRole("button")).toBeNull();
     screen.getByText("PRO-999").click();
     expect(onActivateLink).toHaveBeenCalledWith("https://linear.app/gam/issue/PRO-999/x");
+  });
+
+  it("renders a ```mermaid fenced block as a diagram, not a code block", async () => {
+    mermaidRender.mockResolvedValue({ svg: "<svg data-testid='diagram'/>" });
+    renderMarkdown("```mermaid\ngraph TD; A-->B\n```", {
+      onActivateLink: vi.fn(),
+      resolveMention: () => undefined,
+    });
+    await waitFor(() => expect(screen.getByTestId("diagram")).toBeTruthy());
+    expect(mermaidRender).toHaveBeenCalledWith(expect.any(String), "graph TD; A-->B");
+    // It must NOT have fallen through to a plain code block.
+    expect(document.querySelector("code.language-mermaid")).toBeNull();
+  });
+
+  it("leaves a non-mermaid code block as a normal <pre><code>", () => {
+    renderMarkdown("```ts\nconst x = 1;\n```", {
+      onActivateLink: vi.fn(),
+      resolveMention: () => undefined,
+    });
+    expect(document.querySelector("pre code")?.textContent).toContain("const x = 1;");
+    expect(mermaidRender).not.toHaveBeenCalled();
   });
 
   it("routes a normal external link through onActivateLink (never the webview)", () => {

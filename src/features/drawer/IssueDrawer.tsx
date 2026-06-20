@@ -472,6 +472,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               onOpenLink={handleLink}
               resolveMention={resolveMention}
               onSaveStateChange={setSaveState}
+              onSaveError={() => gooeyToast.error("Couldn't save description")}
             />
           </section>
 
