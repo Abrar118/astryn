@@ -9,6 +9,7 @@ import { gooeyToast } from "goey-toast";
 import {
   AlertCircle,
   Box,
+  CalendarDays,
   Check,
   ChevronDown,
   CircleDot,
@@ -45,7 +46,8 @@ import { DisplayOptions } from "@/features/issues/DisplayOptions";
 import { DEFAULT_DISPLAY, type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
 import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
-import type { CalendarIssue, DetailAttachment, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
@@ -132,6 +134,43 @@ function relationGroupLabel(type: string): string {
     default:
       return type.charAt(0).toUpperCase() + type.slice(1);
   }
+}
+
+function FallbackChildRow({
+  child,
+  onOpen,
+  onContextMenu,
+}: {
+  child: DetailChild;
+  onOpen: (id: string) => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <div
+      onClick={() => onOpen(child.id)}
+      onContextMenu={onContextMenu}
+      className="group flex cursor-pointer items-center gap-3 border-b border-border/40 px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50"
+    >
+      <StatusIcon type={child.stateType} color={child.stateColor} />
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{child.identifier}</span>
+      <span className="min-w-0 flex-1 truncate text-foreground">{child.title}</span>
+      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+        {child.priority > 0 && (
+          <span className="flex items-center gap-1">
+            {priorityDot(child.priority)}
+            {PRIORITIES.find((p) => p.value === child.priority)?.label}
+          </span>
+        )}
+        {child.dueDate && (
+          <span className="flex items-center gap-1">
+            <CalendarDays className="size-3" />
+            {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "Asia/Dhaka" }).format(new Date(`${child.dueDate}T00:00:00Z`))}
+          </span>
+        )}
+        {child.assigneeName && <Avatar name={child.assigneeName} size={20} />}
+      </div>
+    </div>
+  );
 }
 
 export function IssueDrawer() {
@@ -529,25 +568,40 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               </div>
               {(() => {
                 const today = dhakaToday();
-                const rows = live.children
-                  .map((c) => issuesById.get(c.id))
-                  .filter((i): i is NonNullable<typeof i> => !!i)
-                  .filter((i) => (subCompleted === "active" ? i.stateType !== "completed" && i.stateType !== "canceled" : true))
-                  .sort((a, b) => compareIssues(a, b, subOrdering));
+                const entries = live.children
+                  .map((child) => ({ child, cached: issuesById.get(child.id) ?? null }))
+                  .filter(({ child, cached }) => {
+                    const stateType = cached?.stateType ?? child.stateType;
+                    return subCompleted === "active" ? stateType !== "completed" && stateType !== "canceled" : true;
+                  });
+                const cachedEntries = entries
+                  .filter((e) => e.cached !== null)
+                  .sort((a, b) => compareIssues(a.cached!, b.cached!, subOrdering));
+                const uncachedEntries = entries.filter((e) => e.cached === null);
+                const ordered = [...cachedEntries, ...uncachedEntries];
                 return (
                   <div>
-                    {rows.map((sub) => (
-                      <IssueRow
-                        key={sub.id}
-                        issue={sub}
-                        display={subDisplay}
-                        avatar={sub.assigneeName ? { name: sub.assigneeName } : null}
-                        today={today}
-                        onOpen={openIssue}
-                        onContextMenu={(e) => openMenu(e, sub.id)}
-                      />
-                    ))}
-                    {rows.length === 0 && (
+                    {ordered.map(({ child, cached }) =>
+                      cached ? (
+                        <IssueRow
+                          key={cached.id}
+                          issue={cached}
+                          display={subDisplay}
+                          avatar={cached.assigneeName ? { name: cached.assigneeName } : null}
+                          today={today}
+                          onOpen={openIssue}
+                          onContextMenu={(e) => openMenu(e, cached.id)}
+                        />
+                      ) : (
+                        <FallbackChildRow
+                          key={child.id}
+                          child={child}
+                          onOpen={openIssue}
+                          onContextMenu={(e) => openMenu(e, child.id)}
+                        />
+                      )
+                    )}
+                    {ordered.length === 0 && (
                       <p className="px-2 py-1 text-xs text-muted-foreground">No sub-issues match the current filter.</p>
                     )}
                     {live.hasMoreChildren && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 sub-issues.</p>}
