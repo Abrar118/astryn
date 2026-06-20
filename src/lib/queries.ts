@@ -10,6 +10,7 @@ import { gooeyToast } from "goey-toast";
 import {
   createComment,
   createIssue,
+  createLabel,
   deleteComment,
   deleteIssue,
   addReaction,
@@ -169,6 +170,16 @@ export function useLabels() {
 
 export function useCycles() {
   return useQuery({ queryKey: ["cycles"], queryFn: listCycles, staleTime: 5 * 60_000 });
+}
+
+export function useCreateLabel() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ name, teamId, color }: { name: string; teamId: string | null; color: string }) =>
+      createLabel(name, teamId, color),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["labels"] }),
+    onError: (err) => gooeyToast.error("Couldn't create label", { description: errorText(err) }),
+  });
 }
 
 export function useWorkflowStates() {

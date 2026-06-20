@@ -22,6 +22,7 @@ import {
   Loader2,
   Maximize2,
   MoreHorizontal,
+  Plus,
   SlidersHorizontal,
   Tag,
   Trash2,
@@ -31,6 +32,7 @@ import { StatusIcon, PRIORITIES } from "./issueGlyphs";
 import type { SaveStatus } from "./descriptionAutosave";
 import {
   useCreateComment,
+  useCreateLabel,
   useCycles,
   useDeleteIssue,
   useFilterOptions,
@@ -46,11 +48,12 @@ import { DisplayOptions } from "@/features/issues/DisplayOptions";
 import { DEFAULT_DISPLAY, type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
 import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
-import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
+import { pickLabelColor } from "./labelColors";
 import { buildActivity, mergeActivityTimeline } from "./drawerActivity";
 import { buildCommentThreads } from "./comments/commentThreads";
 import { CommentComposer } from "./comments/CommentComposer";
@@ -60,6 +63,67 @@ import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolve
 import { timeAgo } from "./timeAgo";
 
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
+
+function LabelDropdown({
+  allLabels,
+  appliedIds,
+  teamId,
+  onToggle,
+  onCreated,
+}: {
+  allLabels: Label[];
+  appliedIds: Set<string>;
+  teamId: string | null;
+  onToggle: (id: string) => void;
+  onCreated: (id: string) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const createLabelMut = useCreateLabel();
+  const q = query.trim().toLowerCase();
+  const filtered = q ? allLabels.filter((l) => (l.name ?? "").toLowerCase().includes(q)) : allLabels;
+  const exact = allLabels.some((l) => (l.name ?? "").toLowerCase() === q);
+
+  const create = () => {
+    const name = query.trim();
+    if (!name) return;
+    createLabelMut.mutate(
+      { name, teamId, color: pickLabelColor(allLabels) },
+      { onSuccess: (lbl) => { onCreated(lbl.id); setQuery(""); } },
+    );
+  };
+
+  return (
+    <div className="w-64">
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Change or add labels…"
+        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+      />
+      <div className="max-h-64 overflow-y-auto">
+        {filtered.map((l) => (
+          <button key={l.id} type="button" onClick={() => onToggle(l.id)}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent">
+            <span className={`flex size-3.5 items-center justify-center rounded border ${appliedIds.has(l.id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+              {appliedIds.has(l.id) && <Check className="size-2.5" />}
+            </span>
+            <span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
+            <span className="flex-1 truncate">{l.name ?? "label"}</span>
+          </button>
+        ))}
+        {q && !exact && (
+          <button type="button" onClick={create} disabled={createLabelMut.isPending}
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-60">
+            <Plus className="size-3.5 text-muted-foreground" />
+            <span>Create label "{query.trim()}"</span>
+          </button>
+        )}
+        {filtered.length === 0 && !q && <div className="px-2 py-1.5 text-[12px] text-muted-foreground">No labels</div>}
+      </div>
+    </div>
+  );
+}
 
 const WIDTH_KEY = "astryn.drawer-width";
 const DEFAULT_WIDTH = 920;
@@ -775,28 +839,27 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                   buttonTitle="Add label"
                   buttonClassName="flex size-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   button={<Tag className="size-3" />}
-                  panelClassName="max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl"
+                  panelClassName="rounded-lg border border-border bg-popover p-1 shadow-2xl"
                 >
-                  {() => (
-                    <>
-                      {(labels ?? []).length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No labels</div>}
-                      {(labels ?? []).map((l) => {
-                        const has = live?.labels.some((x) => x.id === l.id) ?? false;
-                        return (
-                          <PopoverItem
-                            key={l.id}
-                            icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />}
-                            label={l.name ?? "label"}
-                            active={has}
-                            onClick={() => {
-                              const ids = live?.labels.map((x) => x.id) ?? [];
-                              patch({ labelIds: has ? ids.filter((x) => x !== l.id) : [...ids, l.id] });
-                            }}
-                          />
-                        );
-                      })}
-                    </>
-                  )}
+                  {() => {
+                    const appliedIds = new Set(live?.labels.map((x) => x.id) ?? []);
+                    const toggle = (labelId: string) => {
+                      const ids = live?.labels.map((x) => x.id) ?? [];
+                      patch({ labelIds: appliedIds.has(labelId) ? ids.filter((x) => x !== labelId) : [...ids, labelId] });
+                    };
+                    const handleCreated = (newId: string) => {
+                      patch({ labelIds: [...(live?.labels.map((x) => x.id) ?? []), newId] });
+                    };
+                    return (
+                      <LabelDropdown
+                        allLabels={labels ?? []}
+                        appliedIds={appliedIds}
+                        teamId={d.teamId}
+                        onToggle={toggle}
+                        onCreated={handleCreated}
+                      />
+                    );
+                  }}
                 </Popover>
               ) : undefined
             }
