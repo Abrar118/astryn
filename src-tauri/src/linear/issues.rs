@@ -305,6 +305,36 @@ pub fn parse_cycles(body: &str) -> Result<Vec<ParsedCycle>, LinearError> {
         .collect())
 }
 
+const COMMENT_NODE_FIELDS: &str =
+    "id body createdAt editedAt parent { id } user { id name } reactions { id emoji user { id name } }";
+
+fn parse_reaction_node(r: &Value) -> DetailReaction {
+    DetailReaction {
+        id: s(r, "id").unwrap_or_default(),
+        emoji: s(r, "emoji").unwrap_or_default(),
+        user_id: nested(r, "user", "id"),
+        user_name: nested(r, "user", "name"),
+    }
+}
+
+fn parse_comment_node(c: &Value) -> DetailComment {
+    let reactions = c
+        .get("reactions")
+        .and_then(Value::as_array)
+        .map(|arr| arr.iter().map(parse_reaction_node).collect())
+        .unwrap_or_default();
+    DetailComment {
+        id: s(c, "id").unwrap_or_default(),
+        body: s(c, "body").unwrap_or_default(),
+        user_id: nested(c, "user", "id"),
+        user_name: nested(c, "user", "name"),
+        created_at: s(c, "createdAt").unwrap_or_default(),
+        edited_at: s(c, "editedAt"),
+        parent_id: nested(c, "parent", "id"),
+        reactions,
+    }
+}
+
 pub fn parse_issue_delete(body: &str) -> Result<(), LinearError> {
     let data = extract_data(body)?;
     let ok = data
@@ -387,11 +417,24 @@ pub struct DetailRelation {
 
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DetailReaction {
+    pub id: String,
+    pub emoji: String,
+    pub user_id: Option<String>,
+    pub user_name: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DetailComment {
     pub id: String,
     pub body: String,
+    pub user_id: Option<String>,
     pub user_name: Option<String>,
     pub created_at: String,
+    pub edited_at: Option<String>,
+    pub parent_id: Option<String>,
+    pub reactions: Vec<DetailReaction>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -619,16 +662,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         .get("comments")
         .and_then(|c| c.get("nodes"))
         .and_then(|x| x.as_array())
-        .map(|arr| {
-            arr.iter()
-                .map(|c| DetailComment {
-                    id: s(c, "id").unwrap_or_default(),
-                    body: s(c, "body").unwrap_or_default(),
-                    user_name: nested(c, "user", "name"),
-                    created_at: s(c, "createdAt").unwrap_or_default(),
-                })
-                .collect()
-        })
+        .map(|arr| arr.iter().map(parse_comment_node).collect())
         .unwrap_or_default();
     let attachments = n
         .get("attachments")
@@ -908,7 +942,7 @@ fn issue_detail_query() -> String {
                updatedDescription relationChanges {{ type identifier }}
                attachment {{ id title subtitle url sourceType createdAt }}
              }} }}
-             comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ id body createdAt user {{ name }} }} }}
+             comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ {COMMENT_NODE_FIELDS} }} }}
            }}
          }}"
     )
@@ -1089,7 +1123,12 @@ mod tests {
           "relations":{"pageInfo":{"hasNextPage":false},"nodes":[
             {"type":"blocks","relatedIssue":{"id":"r1","identifier":"AST-7","title":"Blocked work",
              "state":{"type":"started","color":"#eab308"}}}]},
-          "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+          "comments":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"cm1","body":"Looks good","createdAt":"2026-06-19T10:00:00Z","editedAt":"2026-06-19T10:05:00Z",
+             "parent":null,"user":{"id":"u1","name":"Abrar"},
+             "reactions":[{"id":"re1","emoji":"👍","user":{"id":"u2","name":"Jakob"}}]},
+            {"id":"cm2","body":"Agreed","createdAt":"2026-06-19T11:00:00Z","editedAt":null,
+             "parent":{"id":"cm1"},"user":{"id":"u2","name":"Jakob"},"reactions":[]}]},
           "history":{"pageInfo":{"hasNextPage":false},"nodes":[
             {"id":"h1","createdAt":"2026-06-19T09:00:00Z","actor":{"name":"Abrar"},
              "fromState":{"name":"Todo"},"toState":{"name":"In Progress"},"updatedDescription":false,
@@ -1124,6 +1163,17 @@ mod tests {
         );
         assert_eq!(detail.history[0].relation_changes[0].identifier, "AST-9");
         assert!(!detail.has_more_history);
+        assert_eq!(detail.comments[0].user_id.as_deref(), Some("u1"));
+        assert_eq!(
+            detail.comments[0].edited_at.as_deref(),
+            Some("2026-06-19T10:05:00Z")
+        );
+        assert_eq!(detail.comments[0].reactions[0].emoji, "👍");
+        assert_eq!(
+            detail.comments[0].reactions[0].user_id.as_deref(),
+            Some("u2")
+        );
+        assert_eq!(detail.comments[1].parent_id.as_deref(), Some("cm1"));
     }
 
     #[test]
