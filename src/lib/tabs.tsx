@@ -1,12 +1,13 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-export type ViewKind = "calendar" | "list" | "settings";
-export type Tab = { id: string; view: ViewKind };
+export type ViewKind = "calendar" | "list" | "settings" | "issue";
+export type Tab = { id: string; view: ViewKind; issueId?: string };
 
 type Ctx = {
   tabs: Tab[];
   active: Tab;
   setActiveView: (view: ViewKind) => void;
+  openIssueTab: (issueId: string) => void;
   addTab: (view?: ViewKind) => void;
   closeTab: (id: string) => void;
   selectTab: (id: string) => void;
@@ -20,15 +21,22 @@ const WorkspaceCtx = createContext<Ctx | null>(null);
 type Persisted = { tabs: Tab[]; activeId: string; seq: number };
 const STORAGE_KEY = "astryn.workspace";
 const FALLBACK: Persisted = { tabs: [{ id: "tab-0", view: "calendar" }], activeId: "tab-0", seq: 1 };
-const VIEWS: ViewKind[] = ["calendar", "list", "settings"];
+const VIEWS: ViewKind[] = ["calendar", "list", "settings", "issue"];
 
-function load(): Persisted {
+/** Pure: validate persisted workspace JSON. Drops malformed tabs and any
+ *  "issue" tab missing an issueId; falls back when nothing valid remains. */
+export function parsePersisted(raw: string | null): Persisted {
+  if (!raw) return FALLBACK;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return FALLBACK;
     const p = JSON.parse(raw) as Partial<Persisted>;
     const tabs = Array.isArray(p.tabs)
-      ? p.tabs.filter((t): t is Tab => !!t && typeof t.id === "string" && VIEWS.includes(t.view))
+      ? p.tabs.filter(
+          (t): t is Tab =>
+            !!t &&
+            typeof t.id === "string" &&
+            VIEWS.includes(t.view as ViewKind) &&
+            (t.view !== "issue" || (typeof t.issueId === "string" && t.issueId.length > 0)),
+        )
       : [];
     if (tabs.length === 0) return FALLBACK;
     const activeId = tabs.some((t) => t.id === p.activeId) ? (p.activeId as string) : tabs[0].id;
@@ -37,6 +45,26 @@ function load(): Persisted {
   } catch {
     return FALLBACK;
   }
+}
+
+function load(): Persisted {
+  try {
+    return parsePersisted(localStorage.getItem(STORAGE_KEY));
+  } catch {
+    return FALLBACK;
+  }
+}
+
+/** Pure: open (or focus) a tab for an issue. Dedupes by issueId. */
+export function upsertIssueTab(
+  tabs: Tab[],
+  issueId: string,
+  seq: number,
+): { tabs: Tab[]; activeId: string; seq: number } {
+  const existing = tabs.find((t) => t.view === "issue" && t.issueId === issueId);
+  if (existing) return { tabs, activeId: existing.id, seq };
+  const id = `tab-${seq}`;
+  return { tabs: [...tabs, { id, view: "issue", issueId }], activeId: id, seq: seq + 1 };
 }
 
 /**
@@ -63,7 +91,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   }, [tabs, activeId]);
 
   const setActiveView = (view: ViewKind) =>
-    setTabs((ts) => ts.map((t) => (t.id === active.id ? { ...t, view } : t)));
+    setTabs((ts) => ts.map((t) => (t.id === active.id ? { id: t.id, view } : t)));
 
   const addTab = (view: ViewKind = "calendar") => {
     const id = nextId();
@@ -83,9 +111,16 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
 
   const selectTab = (id: string) => setActiveId(id);
 
+  const openIssueTab = (issueId: string) => {
+    const next = upsertIssueTab(tabs, issueId, seq.current);
+    seq.current = next.seq;
+    setTabs(next.tabs);
+    setActiveId(next.activeId);
+  };
+
   return (
     <WorkspaceCtx.Provider
-      value={{ tabs, active, setActiveView, addTab, closeTab, selectTab }}
+      value={{ tabs, active, setActiveView, openIssueTab, addTab, closeTab, selectTab }}
     >
       {children}
     </WorkspaceCtx.Provider>

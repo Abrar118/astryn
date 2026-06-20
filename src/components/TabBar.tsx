@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { Calendar, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { Calendar, FileText, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { useIssues } from "@/lib/queries";
 import { DualClock } from "@/features/home/DualClock";
 
-const META: Record<ViewKind, { label: string; icon: ReactNode }> = {
+const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
   calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
   list: { label: "Issues", icon: <List className="size-3.5" /> },
   settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
@@ -11,11 +12,14 @@ const META: Record<ViewKind, { label: string; icon: ReactNode }> = {
 
 export function TabBar() {
   const { tabs, active, selectTab, closeTab, addTab } = useWorkspace();
+  const { data: issues } = useIssues({});
   return (
     <div className="flex items-center gap-1 border-b border-border bg-background px-2 py-1.5">
       {tabs.map((t) => {
-        const m = META[t.view];
         const isActive = t.id === active.id;
+        const issue = t.view === "issue" ? (issues ?? []).find((i) => i.id === t.issueId) : undefined;
+        const label = t.view === "issue" ? (issue?.identifier ?? "Issue") : META[t.view].label;
+        const icon = t.view === "issue" ? <FileText className="size-3.5" /> : META[t.view].icon;
         return (
           <div
             key={t.id}
@@ -26,8 +30,8 @@ export function TabBar() {
                 : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
             }`}
           >
-            <span className="text-muted-foreground">{m.icon}</span>
-            <span>{m.label}</span>
+            <span className="text-muted-foreground">{icon}</span>
+            <span>{label}</span>
             {tabs.length > 1 && (
               <button
                 type="button"

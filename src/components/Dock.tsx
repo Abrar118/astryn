@@ -35,17 +35,17 @@ function DockButton({
   );
 }
 
-const NAV: { view: ViewKind; label: string; icon: ReactNode }[] = [
+const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[] = [
   { view: "calendar", label: "Calendar", icon: <Calendar className="size-5" /> },
   { view: "list", label: "Issues", icon: <List className="size-5" /> },
   { view: "settings", label: "Settings", icon: <SettingsIcon className="size-5" /> },
 ];
 
-const META: Record<ViewKind, string> = { calendar: "Calendar", list: "Issues", settings: "Settings" };
+const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", settings: "Settings" };
 
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();
-  const [menu, setMenu] = useState<{ view: ViewKind; x: number; y: number } | null>(null);
+  const [menu, setMenu] = useState<{ view: Exclude<ViewKind, "issue">; x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!menu) return;
