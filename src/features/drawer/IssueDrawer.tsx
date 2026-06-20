@@ -38,7 +38,7 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
-import type { CalendarIssue, DetailAttachment, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import type { CalendarIssue, DetailAttachment, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
@@ -141,6 +141,34 @@ const priorityDot = (value: number) => {
   const p = PRIORITIES.find((x) => x.value === value) ?? PRIORITIES[0];
   return <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />;
 };
+
+/** Group relations by type, preserving first-seen order (Blocking before Related, etc.). */
+function groupRelations(relations: DetailRelation[]): [string, DetailRelation[]][] {
+  const groups = new Map<string, DetailRelation[]>();
+  for (const relation of relations) {
+    const existing = groups.get(relation.type);
+    if (existing) existing.push(relation);
+    else groups.set(relation.type, [relation]);
+  }
+  return [...groups.entries()];
+}
+
+/** Humanize a Linear relation type ("blocks" → "Blocking") for a subgroup heading. */
+function relationGroupLabel(type: string): string {
+  switch (type) {
+    case "blocks":
+      return "Blocking";
+    case "blocked_by":
+    case "blockedBy":
+      return "Blocked by";
+    case "duplicate":
+      return "Duplicate";
+    case "related":
+      return "Related";
+    default:
+      return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+}
 
 export function IssueDrawer() {
   const [params, setParams] = useSearchParams();
@@ -523,26 +551,6 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
             </DrawerSection>
           )}
 
-          {live && live.relations.length > 0 && (
-            <DrawerSection title="Relations">
-              <div className="space-y-1">
-                {live.relations.map((relation, index) => (
-                  <button
-                    key={`${relation.type}-${relation.issue.id}-${index}`}
-                    type="button"
-                    onClick={() => openIssue(relation.issue.id)}
-                    className="flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="shrink-0 text-muted-foreground">{relation.type}</span>
-                    <span className="shrink-0 font-medium text-foreground">{relation.issue.identifier}</span>
-                    <span className="truncate text-muted-foreground">{relation.issue.title}</span>
-                  </button>
-                ))}
-                {live.hasMoreRelations && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 relations.</p>}
-              </div>
-            </DrawerSection>
-          )}
 
           {live && live.attachments.length > 0 && (
             <DrawerSection title="Resources">
@@ -641,12 +649,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
         >
           <RailCard title="Properties">
             <Field
-              value={
-                <>
-                  <StatusIcon type={stateType} color={stateColor} />
-                  {stateName}
-                </>
-              }
+              icon={<StatusIcon type={stateType} color={stateColor} />}
+              label={stateName}
               disabled={!editable}
               menu={(close) =>
                 (live?.teamStates ?? []).map((s) => (
@@ -655,12 +659,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               }
             />
             <Field
-              value={
-                <>
-                  {priorityDot(priority)}
-                  {PRIORITIES.find((p) => p.value === priority)?.label ?? "No priority"}
-                </>
-              }
+              icon={priorityDot(priority)}
+              label={PRIORITIES.find((p) => p.value === priority)?.label ?? "No priority"}
               disabled={!editable}
               menu={(close) =>
                 PRIORITIES.map((p) => (
@@ -672,12 +672,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               <AssigneeSelect value={d.assigneeId ?? null} onChange={(uid) => patch({ assigneeId: uid })} users={users.data ?? []} emptyLabel="Unassigned" disabled={!editable} />
             </div>
             <Field
-              value={
-                <>
-                  <Gauge className="size-3.5 text-muted-foreground" />
-                  {estimate != null ? `${estimate} ${estimate === 1 ? "Point" : "Points"}` : "No estimate"}
-                </>
-              }
+              icon={<Gauge className="size-3.5 text-muted-foreground" />}
+              label={estimate != null ? `${estimate} ${estimate === 1 ? "Point" : "Points"}` : "No estimate"}
               disabled={!editable}
               menu={(close) => (
                 <>
@@ -689,12 +685,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               )}
             />
             <Field
-              value={
-                <>
-                  <IterationCcw className="size-3.5 text-muted-foreground" />
-                  {cycleLabel ?? "No cycle"}
-                </>
-              }
+              icon={<IterationCcw className="size-3.5 text-muted-foreground" />}
+              label={cycleLabel ?? "No cycle"}
               disabled={!editable}
               menu={(close) => (
                 <>
@@ -706,9 +698,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 </>
               )}
             />
-            <div className="px-1.5">
-              <DatePicker value={dueDate} onChange={(v) => patch({ dueDate: v })} disabled={!editable} />
-            </div>
+            <DatePicker value={dueDate} onChange={(v) => patch({ dueDate: v })} disabled={!editable} />
+
           </RailCard>
 
           <RailCard
@@ -759,12 +750,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
 
           <RailCard title="Project">
             <Field
-              value={
-                <>
-                  <Box className="size-3.5 text-muted-foreground" />
-                  {projectName ?? "No project"}
-                </>
-              }
+              icon={<Box className="size-3.5 text-muted-foreground" />}
+              label={projectName ?? "No project"}
               disabled={!editable}
               menu={(close) => (
                 <>
@@ -776,6 +763,37 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
               )}
             />
           </RailCard>
+
+          {live && live.relations.length > 0 && (
+            <RailCard title="Relations">
+              <div className="flex flex-col gap-3 px-1.5 pb-1">
+                {groupRelations(live.relations).map(([type, items]) => (
+                  <div key={type} className="flex flex-col gap-0.5">
+                    <span className="px-0.5 text-xs text-muted-foreground">{relationGroupLabel(type)}</span>
+                    {items.map((relation, index) => (
+                      <button
+                        key={`${relation.issue.id}-${index}`}
+                        type="button"
+                        onClick={() => openIssue(relation.issue.id)}
+                        title={`${relation.issue.identifier} ${relation.issue.title}`}
+                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-0.5 py-1 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <span className="flex size-3.5 shrink-0 items-center justify-center">
+                          {relation.issue.stateType ? (
+                            <StatusIcon type={relation.issue.stateType} color={relation.issue.stateColor ?? ""} />
+                          ) : (
+                            <Link2 className="size-3.5 text-muted-foreground" />
+                          )}
+                        </span>
+                        <span className="truncate">{relation.issue.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                {live.hasMoreRelations && <p className="px-0.5 pt-1 text-xs text-muted-foreground">Showing the first 50 relations.</p>}
+              </div>
+            </RailCard>
+          )}
 
         </aside>
       </div>
@@ -900,15 +918,24 @@ function RailCard({ title, children, action }: { title: string; children: ReactN
 }
 
 /** A clickable property row that opens a portal dropdown (read-only when disabled). */
-function Field({ value, menu, disabled }: { value: ReactNode; menu: (close: () => void) => ReactNode; disabled?: boolean }) {
+function Field({ icon, label, menu, disabled }: { icon: ReactNode; label: ReactNode; menu: (close: () => void) => ReactNode; disabled?: boolean }) {
+  // Fixed-width, centered icon slot so every row's label starts at the same x
+  // regardless of the leading icon's intrinsic size (e.g. the 10px priority dot
+  // vs the 14px status icon) — keeps the rail's labels in one clean column.
+  const content = (
+    <>
+      <span className="flex size-3.5 shrink-0 items-center justify-center">{icon}</span>
+      <span className="truncate">{label}</span>
+    </>
+  );
   if (disabled) {
-    return <div className="flex items-center gap-2 px-1.5 py-1.5 text-sm text-foreground">{value}</div>;
+    return <div className="flex min-w-0 items-center gap-2 px-1.5 py-1.5 text-sm text-foreground">{content}</div>;
   }
   return (
     <Popover
       align="end"
-      buttonClassName="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
-      button={<span className="flex items-center gap-2">{value}</span>}
+      buttonClassName="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
+      button={<span className="flex min-w-0 items-center gap-2">{content}</span>}
     >
       {menu}
     </Popover>

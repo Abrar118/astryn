@@ -78,7 +78,14 @@ export type Label = { id: string; name: string | null; color: string | null };
 export type IssueListItem = Issue & { labels: Label[] };
 export type DetailState = { id: string; name: string; type: string; color: string };
 export type DetailCycle = { id: string; number: number | null; name: string | null };
-export type DetailRef = { id: string; identifier: string; title: string };
+export type DetailRef = {
+  id: string;
+  identifier: string;
+  title: string;
+  /** Workflow-state of the referenced issue; present on relations, absent on parent. */
+  stateType?: string;
+  stateColor?: string;
+};
 export type DetailChild = {
   id: string;
   identifier: string;

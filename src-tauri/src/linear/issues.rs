@@ -352,6 +352,12 @@ pub struct DetailRef {
     pub id: String,
     pub identifier: String,
     pub title: String,
+    /// Workflow-state type/color of the referenced issue, when fetched (relations
+    /// carry it so the rail can show a status icon; `parent` leaves them None).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_type: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub state_color: Option<String>,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -557,6 +563,8 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         id: s(p, "id").unwrap_or_default(),
         identifier: s(p, "identifier").unwrap_or_default(),
         title: s(p, "title").unwrap_or_default(),
+        state_type: None,
+        state_color: None,
     });
     let children = n
         .get("children")
@@ -599,6 +607,8 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                             id: s(ri, "id").unwrap_or_default(),
                             identifier: s(ri, "identifier").unwrap_or_default(),
                             title: s(ri, "title").unwrap_or_default(),
+                            state_type: nested(ri, "state", "type"),
+                            state_color: nested(ri, "state", "color"),
                         },
                     })
                 })
@@ -891,7 +901,7 @@ fn issue_detail_query() -> String {
                id identifier title priority dueDate estimate
                state {{ name type color }} assignee {{ name }} project {{ name }} cycle {{ name number }}
              }} }}
-             relations(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ type relatedIssue {{ id identifier title }} }} }}
+             relations(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ type relatedIssue {{ id identifier title state {{ type color }} }} }} }}
              history(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{
                id createdAt actor {{ name }} fromState {{ name }} toState {{ name }}
                fromAssignee {{ name }} toAssignee {{ name }} fromPriority toPriority fromTitle toTitle
@@ -1076,7 +1086,9 @@ mod tests {
             {"id":"c1","identifier":"AST-2","title":"Child","priority":1,"dueDate":"2026-06-25","estimate":3,
              "state":{"name":"In Progress","type":"started","color":"#eab308"},"assignee":{"name":"Abrar"},
              "project":{"name":"M1"},"cycle":{"number":4,"name":"Cycle 4"}}]},
-          "relations":{"pageInfo":{"hasNextPage":false},"nodes":[]},
+          "relations":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"type":"blocks","relatedIssue":{"id":"r1","identifier":"AST-7","title":"Blocked work",
+             "state":{"type":"started","color":"#eab308"}}}]},
           "comments":{"pageInfo":{"hasNextPage":false},"nodes":[]},
           "history":{"pageInfo":{"hasNextPage":false},"nodes":[
             {"id":"h1","createdAt":"2026-06-19T09:00:00Z","actor":{"name":"Abrar"},
@@ -1088,6 +1100,16 @@ mod tests {
         assert_eq!(detail.creator_name.as_deref(), Some("Abrar"));
         assert_eq!(detail.children[0].state_name, "In Progress");
         assert_eq!(detail.children[0].priority, 1);
+        assert_eq!(detail.relations[0].r#type, "blocks");
+        assert_eq!(detail.relations[0].issue.identifier, "AST-7");
+        assert_eq!(
+            detail.relations[0].issue.state_type.as_deref(),
+            Some("started")
+        );
+        assert_eq!(
+            detail.relations[0].issue.state_color.as_deref(),
+            Some("#eab308")
+        );
         assert_eq!(detail.children[0].due_date.as_deref(), Some("2026-06-25"));
         assert_eq!(detail.attachments[0].title, "Message from Abrar");
         assert_eq!(detail.attachments[0].source_type.as_deref(), Some("slack"));
