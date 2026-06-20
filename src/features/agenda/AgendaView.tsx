@@ -7,10 +7,8 @@ import { buildAgenda, type AgendaItem } from "./agenda";
 import { IssueRow } from "../issues/IssueRow";
 import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
-import { buildHeatmap, statusBreakdown, priorityBreakdown } from "./agendaStats";
+import { buildHeatmap } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
-import { StatusDonut } from "./StatusDonut";
-import { PriorityBar } from "./PriorityBar";
 import { DependencyGraph } from "./DependencyGraph";
 
 const RELATION_LABEL: Record<string, string> = {
@@ -96,7 +94,6 @@ export function AgendaView() {
   const heatmapWeeks = viewerId
     ? buildHeatmap(issues ?? [], viewerId, { now: new Date(), weeksBack: 8, weeksForward: 1 })
     : [];
-  const weekIssues = groups.flatMap((g) => g.items).map((it) => it.issue);
 
   const renderItem = (item: AgendaItem) => (
     <div key={item.issue.id}>
@@ -197,23 +194,6 @@ export function AgendaView() {
               currentOffset={weekOffset}
               onSelectWeek={setWeekOffset}
             />
-          </div>
-
-          {/* Overview charts */}
-          <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Overview
-            </p>
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <div className="rounded-lg border border-border bg-card p-3">
-                <p className="mb-2 text-[11px] text-muted-foreground">Status</p>
-                <StatusDonut data={statusBreakdown(weekIssues)} />
-              </div>
-              <div className="rounded-lg border border-border bg-card p-3">
-                <p className="mb-2 text-[11px] text-muted-foreground">Priority</p>
-                <PriorityBar data={priorityBreakdown(weekIssues)} />
-              </div>
-            </div>
           </div>
 
           {/* Dependency graph */}
