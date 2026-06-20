@@ -782,6 +782,54 @@ pub async fn get_me(state: State<'_, AppState>) -> Result<Option<Me>, CmdError> 
         }))
 }
 
+async fn authed(state: &State<'_, AppState>) -> Result<String, CmdError> {
+    let c = state.credentials.clone();
+    tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)
+}
+
+#[tauri::command]
+pub async fn create_comment(
+    state: State<'_, AppState>,
+    issue_id: String,
+    body: String,
+    parent_id: Option<String>,
+) -> Result<DetailComment, CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .create_comment(&auth, &issue_id, &body, parent_id.as_deref())
+        .await
+        .map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn update_comment(
+    state: State<'_, AppState>,
+    id: String,
+    body: String,
+) -> Result<DetailComment, CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .update_comment(&auth, &id, &body)
+        .await
+        .map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn delete_comment(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .delete_comment(&auth, &id)
+        .await
+        .map_err(CmdError::from)
+}
+
 #[cfg(test)]
 mod status_tests {
     use super::*;

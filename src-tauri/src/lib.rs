@@ -65,7 +65,10 @@ pub fn run() {
             commands::list_cycles,
             commands::list_workflow_states,
             commands::delete_issue,
-            commands::get_me
+            commands::get_me,
+            commands::create_comment,
+            commands::update_comment,
+            commands::delete_comment
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

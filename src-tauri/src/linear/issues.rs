@@ -375,6 +375,48 @@ pub fn parse_issue_create(body: &str) -> Result<ParsedIssue, LinearError> {
     Ok(node_to_issue(issue))
 }
 
+pub fn parse_comment_create(body: &str) -> Result<DetailComment, LinearError> {
+    let data = extract_data(body)?;
+    let created = data.get("commentCreate").ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "commentCreate returned success=false".into(),
+        ));
+    }
+    Ok(parse_comment_node(
+        created.get("comment").ok_or(LinearError::Malformed)?,
+    ))
+}
+
+pub fn parse_comment_update(body: &str) -> Result<DetailComment, LinearError> {
+    let data = extract_data(body)?;
+    let upd = data.get("commentUpdate").ok_or(LinearError::Malformed)?;
+    if upd.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "commentUpdate returned success=false".into(),
+        ));
+    }
+    Ok(parse_comment_node(
+        upd.get("comment").ok_or(LinearError::Malformed)?,
+    ))
+}
+
+pub fn parse_comment_delete(body: &str) -> Result<(), LinearError> {
+    let data = extract_data(body)?;
+    if data
+        .get("commentDelete")
+        .and_then(|d| d.get("success"))
+        .and_then(|b| b.as_bool())
+        == Some(true)
+    {
+        Ok(())
+    } else {
+        Err(LinearError::Api(
+            "commentDelete returned success=false".into(),
+        ))
+    }
+}
+
 // ---- issue detail (drawer) ----
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -954,6 +996,8 @@ const CYCLES_QUERY: &str = "query { cycles(first: 250) { nodes { id number name 
 const WORKFLOW_STATES_QUERY: &str =
     "query { workflowStates(first: 250) { nodes { id name type color team { id } } } }";
 const ISSUE_DELETE_MUTATION: &str = "mutation D($id: String!) { issueDelete(id: $id) { success } }";
+const COMMENT_DELETE_MUTATION: &str =
+    "mutation D($id: String!) { commentDelete(id: $id) { success } }";
 const VIEWER_ORG_QUERY: &str = "query { viewer { id name organization { id name urlKey } } }";
 
 fn issue_update_mutation() -> String {
@@ -969,6 +1013,18 @@ fn issue_create_mutation() -> String {
         "mutation C($input: IssueCreateInput!) {{
            issueCreate(input: $input) {{ success issue {{ {ISSUE_NODE_FIELDS} }} }}
          }}"
+    )
+}
+
+fn comment_create_mutation() -> String {
+    format!(
+        "mutation C($input: CommentCreateInput!) {{ commentCreate(input: $input) {{ success comment {{ {COMMENT_NODE_FIELDS} }} }} }}"
+    )
+}
+
+fn comment_update_mutation() -> String {
+    format!(
+        "mutation U($id: String!, $input: CommentUpdateInput!) {{ commentUpdate(id: $id, input: $input) {{ success comment {{ {COMMENT_NODE_FIELDS} }} }} }}"
     )
 }
 
@@ -1021,6 +1077,40 @@ impl LinearClient {
     pub async fn delete_issue(&self, auth: &str, id: &str) -> Result<(), LinearError> {
         let body = serde_json::json!({ "query": ISSUE_DELETE_MUTATION, "variables": { "id": id } });
         parse_issue_delete(&self.post(auth, body).await?)
+    }
+
+    pub async fn create_comment(
+        &self,
+        auth: &str,
+        issue_id: &str,
+        body: &str,
+        parent_id: Option<&str>,
+    ) -> Result<DetailComment, LinearError> {
+        let mut input = serde_json::json!({ "issueId": issue_id, "body": body });
+        if let Some(pid) = parent_id {
+            input["parentId"] = serde_json::Value::String(pid.to_string());
+        }
+        let req = serde_json::json!({ "query": comment_create_mutation(), "variables": { "input": input } });
+        parse_comment_create(&self.post(auth, req).await?)
+    }
+
+    pub async fn update_comment(
+        &self,
+        auth: &str,
+        id: &str,
+        body: &str,
+    ) -> Result<DetailComment, LinearError> {
+        let req = serde_json::json!({
+            "query": comment_update_mutation(),
+            "variables": { "id": id, "input": { "body": body } }
+        });
+        parse_comment_update(&self.post(auth, req).await?)
+    }
+
+    pub async fn delete_comment(&self, auth: &str, id: &str) -> Result<(), LinearError> {
+        let req =
+            serde_json::json!({ "query": COMMENT_DELETE_MUTATION, "variables": { "id": id } });
+        parse_comment_delete(&self.post(auth, req).await?)
     }
 
     pub async fn viewer_with_org(&self, auth: &str) -> Result<OrgIdentity, LinearError> {
@@ -1323,5 +1413,26 @@ mod tests {
         assert_eq!(i.id, "i1");
         assert_eq!(i.updated_at, "u2");
         assert_eq!(i.assignee_id, None);
+    }
+
+    #[test]
+    fn parses_comment_create() {
+        let body = r##"{"data":{"commentCreate":{"success":true,"comment":{
+          "id":"cm9","body":"Hi","createdAt":"2026-06-20T09:00:00Z","editedAt":null,
+          "parent":null,"user":{"id":"u1","name":"Abrar"},"reactions":[]}}}}"##;
+        let c = parse_comment_create(body).unwrap();
+        assert_eq!(c.id, "cm9");
+        assert_eq!(c.body, "Hi");
+        assert!(parse_comment_create(r#"{"data":{"commentCreate":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn parses_comment_update_and_delete() {
+        let upd = r##"{"data":{"commentUpdate":{"success":true,"comment":{
+          "id":"cm9","body":"Edited","createdAt":"2026-06-20T09:00:00Z","editedAt":"2026-06-20T09:30:00Z",
+          "parent":null,"user":{"id":"u1","name":"Abrar"},"reactions":[]}}}}"##;
+        assert_eq!(parse_comment_update(upd).unwrap().body, "Edited");
+        assert!(parse_comment_delete(r#"{"data":{"commentDelete":{"success":true}}}"#).is_ok());
+        assert!(parse_comment_delete(r#"{"data":{"commentDelete":{"success":false}}}"#).is_err());
     }
 }
