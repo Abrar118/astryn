@@ -145,8 +145,11 @@ function MilkdownEditorInner({
               )
             : [],
         ),
+    // Rebuild the read-only editor when the issue cache changes so links that
+    // initially missed `resolveMention` are upgraded to pills. While editing,
+    // keep the resolver dependency stable to avoid replacing an unsaved draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [editable, editable ? null : resolveMention],
   );
 
   return <Milkdown />;

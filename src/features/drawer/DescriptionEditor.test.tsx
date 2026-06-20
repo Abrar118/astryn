@@ -6,6 +6,7 @@ import { DescriptionEditor, EditorErrorBoundary, ReadOnlyDescription } from "./D
 // Lets a test make the Milkdown subtree throw on render (simulating markdown
 // ProseMirror refuses to parse) so the EditorErrorBoundary fallback engages.
 const { milkdownThrows } = vi.hoisted(() => ({ milkdownThrows: { value: false } }));
+const { useEditorMock } = vi.hoisted(() => ({ useEditorMock: vi.fn() }));
 
 // Stub DescriptionAutosave so we can assert how the editor drives it without a
 // real ProseMirror instance feeding markdownUpdated.
@@ -30,7 +31,10 @@ vi.mock("@milkdown/react", () => ({
     if (milkdownThrows.value) throw new Error("contentMatchAt on a node with invalid content");
     return <div contentEditable="true" role="textbox" aria-label="Issue description" />;
   },
-  useEditor: () => ({ loading: false, get: () => undefined }),
+  useEditor: (...args: unknown[]) => {
+    useEditorMock(...args);
+    return { loading: false, get: () => undefined };
+  },
 }));
 
 // Mock the kit packages to avoid ESM issues in test
@@ -69,6 +73,7 @@ afterEach(() => {
   autosave.flush.mockReset().mockResolvedValue(undefined);
   autosave.destroy.mockReset();
   autosave.update.mockReset();
+  useEditorMock.mockClear();
 });
 
 describe("DescriptionEditor", () => {
@@ -103,6 +108,25 @@ describe("DescriptionEditor", () => {
     expect(
       (container.querySelector("[data-editing]") as HTMLElement).getAttribute("data-editing"),
     ).toBe("false");
+  });
+
+  it("rebuilds the display editor when the mention resolver changes", () => {
+    const firstResolver = vi.fn(() => undefined);
+    const nextResolver = vi.fn(() => undefined);
+    const props = {
+      markdown: "[PSY-427](https://linear.app/psy/issue/PSY-427/x)",
+      editable: true,
+      onSave: vi.fn(),
+      onOpenLink: vi.fn(),
+    };
+    const { rerender } = render(
+      <DescriptionEditor {...props} resolveMention={firstResolver} />,
+    );
+
+    rerender(<DescriptionEditor {...props} resolveMention={nextResolver} />);
+
+    const lastCall = useEditorMock.mock.calls[useEditorMock.mock.calls.length - 1];
+    expect(lastCall?.[1]).toEqual([false, nextResolver]);
   });
 
   it("shows a muted 'No description' affordance when empty", () => {

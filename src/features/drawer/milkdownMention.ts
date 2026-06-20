@@ -8,6 +8,7 @@ import {
   type MentionResolver,
 } from "./markdownComponents";
 import { userMentionFromHref } from "./comments/milkdownUserMention";
+import { mountIssueMentionHoverCard } from "./comments/IssueMentionPill";
 
 /** Re-export of `issueIdentifierFromHref` under the module-public name. */
 export function issueMentionFromUrl(href: string): string | null {
@@ -60,7 +61,7 @@ function makePillDom(dataMentionPill: string): { dom: HTMLSpanElement; contentDO
  *
  * The link mark's markdown is never touched — this is rendering-only.
  */
-function makeLinkMarkView(
+export function makeLinkMarkView(
   resolveMention: MentionResolver,
   onActivateLink: (href: string) => void,
 ): (mark: ProseMirrorMark, view: EditorView, inline: boolean) => MarkView {
@@ -84,7 +85,8 @@ function makeLinkMarkView(
 
     if (identifier && target) {
       const { dom, contentDOM } = makePillDom("issue");
-      dom.title = `${target.identifier} ${target.title}`;
+      dom.tabIndex = 0;
+      dom.setAttribute("role", "button");
 
       // Status dot
       const dot = document.createElement("span");
@@ -127,7 +129,27 @@ function makeLinkMarkView(
         dom.style.background = "var(--secondary,#1e2025)";
       });
 
-      return { dom, contentDOM };
+      let openTimer: ReturnType<typeof setTimeout> | null = null;
+      let closeHoverCard: (() => void) | null = null;
+      const scheduleHoverCard = () => {
+        if (openTimer || closeHoverCard) return;
+        openTimer = setTimeout(() => {
+          openTimer = null;
+          closeHoverCard = mountIssueMentionHoverCard(target, dom.getBoundingClientRect());
+        }, 150);
+      };
+      const hideHoverCard = () => {
+        if (openTimer) clearTimeout(openTimer);
+        openTimer = null;
+        closeHoverCard?.();
+        closeHoverCard = null;
+      };
+      dom.addEventListener("mouseenter", scheduleHoverCard);
+      dom.addEventListener("mouseleave", hideHoverCard);
+      dom.addEventListener("focus", scheduleHoverCard);
+      dom.addEventListener("blur", hideHoverCard);
+
+      return { dom, contentDOM, destroy: hideHoverCard };
     }
 
     // ── Plain link fallback ───────────────────────────────────────────────

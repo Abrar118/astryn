@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { createRoot } from "react-dom/client";
 import { Box } from "lucide-react";
 import { Avatar } from "@/components/Avatar";
 import { StatusIcon, PRIORITIES } from "../issueGlyphs";
@@ -99,6 +100,21 @@ function HoverCard({
       </div>
     </div>
   );
+}
+
+/** Mount the shared rich preview for non-React hosts such as Milkdown mark views. */
+export function mountIssueMentionHoverCard(
+  target: MentionTarget,
+  anchorRect: DOMRect,
+): () => void {
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  const root = createRoot(host);
+  root.render(<HoverCard target={target} anchorRect={anchorRect} />);
+  return () => {
+    root.unmount();
+    host.remove();
+  };
 }
 
 export function IssueMentionPill({

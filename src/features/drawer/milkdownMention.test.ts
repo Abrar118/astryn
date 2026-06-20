@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from "vitest";
-import { issueMentionFromUrl, descriptionMentionPlugin } from "./milkdownMention";
+import { act } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { issueMentionFromUrl, descriptionMentionPlugin, makeLinkMarkView } from "./milkdownMention";
 import { roundtripMarkdown } from "./milkdownEditor";
+
+afterEach(() => {
+  document.body.innerHTML = "";
+  vi.useRealTimers();
+});
 
 describe("issueMentionFromUrl", () => {
   it("extracts the identifier from a Linear issue URL", () => {
@@ -42,5 +48,35 @@ describe("descriptionMentionPlugin", () => {
     );
     expect(Array.isArray(plugins)).toBe(true);
     expect(plugins.length).toBeGreaterThan(0);
+  });
+
+  it("shows the rich issue hover card instead of a native title tooltip", async () => {
+    vi.useFakeTimers();
+    const target = {
+      identifier: "PSY-427",
+      title: "Rethink comment field activation",
+      stateType: "started",
+      stateColor: "#6366f1",
+      stateName: "In Progress",
+      projectName: "Psycloud",
+      priority: 2,
+      assigneeName: "Jakob Schwarz",
+    };
+    const markView = makeLinkMarkView(
+      () => target,
+      vi.fn(),
+    )(
+      { attrs: { href: "https://linear.app/psy/issue/PSY-427/x" } } as never,
+      {} as never,
+      true,
+    );
+    document.body.appendChild(markView.dom);
+
+    expect((markView.dom as HTMLElement).getAttribute("title")).toBeNull();
+    markView.dom.dispatchEvent(new MouseEvent("mouseenter"));
+    await act(async () => { vi.advanceTimersByTime(200); });
+
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toContain("In Progress");
+    markView.destroy?.();
   });
 });
