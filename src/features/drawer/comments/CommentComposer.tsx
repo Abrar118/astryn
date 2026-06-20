@@ -9,6 +9,8 @@ import { configureDescriptionSlash, configureDescriptionTooltip } from "../milkd
 import { descriptionMentionPlugin } from "../milkdownMention";
 import { type MentionResolver } from "../markdownComponents";
 import { EditorErrorBoundary } from "../DescriptionEditor";
+import { configureUserMention, userMentionTypeahead } from "./milkdownUserMention";
+import type { User } from "@/lib/commands";
 
 type Variant = "pinned" | "reply" | "edit";
 
@@ -21,13 +23,15 @@ interface Props {
   onCancel?: () => void;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
 }
 
-function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMention }: {
+function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMention, users = [] }: {
   markdownRef: React.MutableRefObject<string>;
   initialMarkdown: string;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
 }) {
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
@@ -51,10 +55,12 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
           ctx.get(listenerCtx).mounted((c) => c.get(editorViewCtx).focus());
           configureDescriptionSlash(ctx);
           configureDescriptionTooltip(ctx);
+          configureUserMention(ctx, users);
         })
         .use(listener)
         .use(descriptionPlugins as MilkdownPlugin[])
-        .use(resolveMention ? descriptionMentionPlugin(resolveMention, (h) => onOpenLinkRef.current(h)) : []),
+        .use(resolveMention ? descriptionMentionPlugin(resolveMention, (h) => onOpenLinkRef.current(h)) : [])
+        .use(userMentionTypeahead()),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [],
   );
@@ -64,7 +70,7 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
 
 /** Milkdown comment composer. Clears by remounting (parent bumps `key` on success). */
 export function CommentComposer({
-  variant, initialMarkdown = "", placeholder, submitting, onSubmit, onCancel, onOpenLink, resolveMention,
+  variant, initialMarkdown = "", placeholder, submitting, onSubmit, onCancel, onOpenLink, resolveMention, users = [],
 }: Props) {
   const markdownRef = useRef(initialMarkdown);
 
@@ -94,6 +100,7 @@ export function CommentComposer({
               initialMarkdown={initialMarkdown}
               onOpenLink={onOpenLink}
               resolveMention={resolveMention}
+              users={users}
             />
           </MilkdownProvider>
         </div>
