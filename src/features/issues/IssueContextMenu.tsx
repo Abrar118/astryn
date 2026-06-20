@@ -2,6 +2,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -250,8 +251,15 @@ function Menu({
 
   const today = dhakaToday();
   const left = Math.min(x, window.innerWidth - 236);
-  const top = Math.min(y, window.innerHeight - 320);
   const flip = left > window.innerWidth - 236 - 232;
+  // Clamp vertically using the menu's MEASURED height (row count varies, so a
+  // fixed offset cut the menu off near the bottom). useLayoutEffect runs before
+  // paint, so the menu never visibly jumps; flips up when it would overflow.
+  const [top, setTop] = useState(y);
+  useLayoutEffect(() => {
+    const h = ref.current?.offsetHeight ?? 0;
+    setTop(Math.max(8, Math.min(y, window.innerHeight - h - 8)));
+  }, [y]);
 
   return (
     <div
