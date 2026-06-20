@@ -648,7 +648,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                 const uncachedEntries = entries.filter((e) => e.cached === null);
                 const ordered = [...cachedEntries, ...uncachedEntries];
                 return (
-                  <div className="overflow-hidden">
+                  <div className="drawer-scrollbar overflow-x-auto">
                     {ordered.map(({ child, cached }) =>
                       cached ? (
                         <IssueRow
