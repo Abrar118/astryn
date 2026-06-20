@@ -4,9 +4,21 @@ import {
   useRef,
   useState,
   type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  PointerSensor,
+  closestCorners,
+  useDraggable,
+  useDroppable,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { useSearchParams } from "react-router-dom";
 import {
   Box,
@@ -126,44 +138,22 @@ function groupIssues(
 
 type AvatarInfo = { name: string } | null;
 
-function BoardCard({
+/** Pure visual for a board card (used both in columns and the drag overlay). */
+function BoardCardView({
   issue,
   display,
   avatar,
   today,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp,
-  onPointerCancel,
-  onContextMenu,
-  dragging,
 }: {
   issue: IssueListItem;
   display: DisplayProps;
   avatar: AvatarInfo;
   today: string;
-  onPointerDown: (e: ReactPointerEvent) => void;
-  onPointerMove: (e: ReactPointerEvent) => void;
-  onPointerUp: (e: ReactPointerEvent) => void;
-  onPointerCancel: () => void;
-  onContextMenu: (e: ReactMouseEvent) => void;
-  dragging?: boolean;
 }) {
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
   const cycle = cycleText(issue);
   return (
-    <div
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={onPointerCancel}
-      onLostPointerCapture={onPointerCancel}
-      onContextMenu={onContextMenu}
-      style={{ touchAction: "none" }}
-      className={`cursor-grab touch-none select-none rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25 active:cursor-grabbing ${
-        dragging ? "opacity-40" : ""
-      }`}
-    >
+    <>
       <div className="mb-1.5 flex items-center justify-between">
         <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
         {display.assignee &&
@@ -227,6 +217,62 @@ function BoardCard({
       {display.created && (
         <div className="mt-2 text-[11px] text-muted-foreground">Created {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}</div>
       )}
+    </>
+  );
+}
+
+const CARD_CLASS = "rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25";
+
+/** A draggable board card (@dnd-kit). Disabled groupings render it click-only. */
+function BoardCard({
+  issue,
+  display,
+  avatar,
+  today,
+  disabled,
+  onOpen,
+  onContextMenu,
+}: {
+  issue: IssueListItem;
+  display: DisplayProps;
+  avatar: AvatarInfo;
+  today: string;
+  disabled: boolean;
+  onOpen: (id: string) => void;
+  onContextMenu: (e: ReactMouseEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: issue.id, disabled });
+  return (
+    <div
+      ref={setNodeRef}
+      {...attributes}
+      {...listeners}
+      onClick={() => onOpen(issue.id)}
+      onContextMenu={onContextMenu}
+      style={{ touchAction: "none" }}
+      className={`select-none ${disabled ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} ${CARD_CLASS} ${
+        isDragging ? "opacity-40" : ""
+      }`}
+    >
+      <BoardCardView issue={issue} display={display} avatar={avatar} today={today} />
+    </div>
+  );
+}
+
+/** A droppable board column. */
+function BoardColumn({ group, children }: { group: Group; children: ReactNode }) {
+  const { setNodeRef, isOver } = useDroppable({ id: group.key });
+  return (
+    <div
+      ref={setNodeRef}
+      className={`flex w-80 shrink-0 flex-col border-r border-border/50 transition-colors last:border-r-0 ${
+        isOver ? "bg-accent/25" : ""
+      }`}
+    >
+      <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
+        <GroupHeading group={group} />
+      </div>
+      <div className="flex flex-col gap-2.5 overflow-y-auto px-2.5 pb-20">{children}</div>
     </div>
   );
 }
@@ -323,10 +369,12 @@ export function IssuesView() {
   const [showSubIssues, setShowSubIssues] = useState(cfg.current.showSubIssues);
   const [display, setDisplay] = useState<DisplayProps>(cfg.current.display);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
-  const [ghost, setGhost] = useState<{ title: string; x: number; y: number } | null>(null);
-  const gesture = useRef<{ id: string; title: string; x: number; y: number; started: boolean } | null>(null);
+  const [activeCardId, setActiveCardId] = useState<string | null>(null);
+  // distance:5 so a plain click opens the drawer instead of starting a drag.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor),
+  );
 
   // Persist the view config (filters + display options) across reloads/launches.
   useEffect(() => {
@@ -397,61 +445,23 @@ export function IssuesView() {
     return null;
   };
 
-  // Pointer-event dragging. Native HTML5 drag-and-drop does not deliver `drop`
-  // events in WKWebView (Tauri), so we drive the gesture manually — the same
-  // reason FullCalendar uses pointer events. A small movement threshold keeps a
-  // plain click opening the drawer.
-  const DRAG_THRESHOLD = 6;
+  // Card drag via @dnd-kit: dropping a card on another column applies the patch
+  // implied by the current grouping. Cards are non-draggable when the grouping
+  // doesn't map to a mutation (project / none); a click always opens the drawer.
+  const activeCard = activeCardId ? (issues ?? []).find((i) => i.id === activeCardId) ?? null : null;
 
-  const groupKeyAt = (x: number, y: number): string | null => {
-    const el = document.elementFromPoint(x, y) as HTMLElement | null;
-    return el?.closest<HTMLElement>("[data-group-key]")?.dataset.groupKey ?? null;
-  };
+  const onBoardDragStart = (e: DragStartEvent) => setActiveCardId(e.active.id as string);
 
-  const onCardPointerDown = (e: ReactPointerEvent, issue: IssueListItem) => {
-    if (e.button !== 0) return;
-    gesture.current = { id: issue.id, title: issue.title, x: e.clientX, y: e.clientY, started: false };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-
-  const onCardPointerMove = (e: ReactPointerEvent) => {
-    const g = gesture.current;
-    if (!g) return;
-    if (!g.started) {
-      if (!dndEnabled) return;
-      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) < DRAG_THRESHOLD) return;
-      g.started = true;
-      setDraggingId(g.id);
-    }
-    setGhost({ title: g.title, x: e.clientX, y: e.clientY });
-    setDragOverKey(groupKeyAt(e.clientX, e.clientY));
-  };
-
-  const onCardPointerUp = (e: ReactPointerEvent) => {
-    const g = gesture.current;
-    gesture.current = null;
-    setDraggingId(null);
-    setDragOverKey(null);
-    setGhost(null);
-    if (!g) return;
-    if (!g.started) {
-      open(g.id); // below threshold => treat as a click
-      return;
-    }
-    const key = groupKeyAt(e.clientX, e.clientY);
-    const target = key ? groups.find((gr) => gr.key === key) : null;
+  const onBoardDragEnd = (e: DragEndEvent) => {
+    setActiveCardId(null);
+    const { active, over } = e;
+    if (!over) return;
+    const target = groups.find((g) => g.key === over.id);
     if (!target) return;
-    const issue = (issues ?? []).find((i) => i.id === g.id);
+    const issue = (issues ?? []).find((i) => i.id === active.id);
     if (!issue) return;
     const patch = patchForDrop(issue, target);
-    if (patch) update.mutate({ id: g.id, patch });
-  };
-
-  const cancelCardGesture = () => {
-    gesture.current = null;
-    setDraggingId(null);
-    setDragOverKey(null);
-    setGhost(null);
+    if (patch) update.mutate({ id: active.id as string, patch });
   };
 
   const reset = () => {
@@ -611,19 +621,16 @@ export function IssuesView() {
         ) : (
           // Darker board surface so the (bg-card) cards pop; columns separated by
           // a single hairline divider rather than a heavy gap.
-          <div className="flex h-full overflow-x-auto bg-background">
-            {groups.map((g) => (
-              <div
-                key={g.key}
-                data-group-key={g.key}
-                className={`flex w-80 shrink-0 flex-col border-r border-border/50 transition-colors last:border-r-0 ${
-                  draggingId && dragOverKey === g.key ? "bg-accent/25" : ""
-                }`}
-              >
-                <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
-                  <GroupHeading group={g} />
-                </div>
-                <div className="flex flex-col gap-2.5 overflow-y-auto px-2.5 pb-20">
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCorners}
+            onDragStart={onBoardDragStart}
+            onDragEnd={onBoardDragEnd}
+            onDragCancel={() => setActiveCardId(null)}
+          >
+            <div className="flex h-full overflow-x-auto bg-background">
+              {groups.map((g) => (
+                <BoardColumn key={g.key} group={g}>
                   {g.issues.map((i) => (
                     <BoardCard
                       key={i.id}
@@ -631,29 +638,24 @@ export function IssuesView() {
                       display={display}
                       avatar={avatarOf(i.assigneeId)}
                       today={today}
-                      onPointerDown={(e) => onCardPointerDown(e, i)}
-                      onPointerMove={onCardPointerMove}
-                      onPointerUp={onCardPointerUp}
-                      onPointerCancel={cancelCardGesture}
+                      disabled={!dndEnabled}
+                      onOpen={open}
                       onContextMenu={(e) => openMenu(e, i.id)}
-                      dragging={draggingId === i.id}
                     />
                   ))}
+                </BoardColumn>
+              ))}
+            </div>
+            <DragOverlay dropAnimation={null}>
+              {activeCard ? (
+                <div className={`${CARD_CLASS} w-72 cursor-grabbing shadow-2xl`}>
+                  <BoardCardView issue={activeCard} display={display} avatar={avatarOf(activeCard.assigneeId)} today={today} />
                 </div>
-              </div>
-            ))}
-          </div>
+              ) : null}
+            </DragOverlay>
+          </DndContext>
         )}
       </div>
-
-      {ghost && (
-        <div
-          className="pointer-events-none fixed z-50 max-w-64 truncate rounded-lg border border-border bg-card px-3 py-2 text-[13px] font-medium text-foreground shadow-2xl"
-          style={{ left: ghost.x + 14, top: ghost.y + 14 }}
-        >
-          {ghost.title}
-        </div>
-      )}
     </div>
   );
 }
