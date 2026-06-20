@@ -335,6 +335,22 @@ fn parse_comment_node(c: &Value) -> DetailComment {
     }
 }
 
+pub fn parse_label_create(body: &str) -> Result<ParsedLabel, LinearError> {
+    let data = extract_data(body)?;
+    let created = data.get("issueLabelCreate").ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "issueLabelCreate returned success=false".into(),
+        ));
+    }
+    let l = created.get("issueLabel").ok_or(LinearError::Malformed)?;
+    Ok(ParsedLabel {
+        id: s(l, "id").unwrap_or_default(),
+        name: s(l, "name"),
+        color: s(l, "color"),
+    })
+}
+
 pub fn parse_issue_delete(body: &str) -> Result<(), LinearError> {
     let data = extract_data(body)?;
     let ok = data
@@ -1063,6 +1079,10 @@ fn comment_update_mutation() -> String {
     )
 }
 
+fn label_create_mutation() -> String {
+    "mutation L($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id name color } } }".to_string()
+}
+
 impl LinearClient {
     async fn post(&self, auth: &str, body: serde_json::Value) -> Result<String, LinearError> {
         self.http_post(auth, body).await
@@ -1195,6 +1215,21 @@ impl LinearClient {
             "variables": { "input": input }
         });
         parse_issue_create(&self.post(auth, body).await?)
+    }
+
+    pub async fn create_label(
+        &self,
+        auth: &str,
+        name: &str,
+        color: &str,
+        team_id: Option<&str>,
+    ) -> Result<ParsedLabel, LinearError> {
+        let mut input = serde_json::json!({ "name": name, "color": color });
+        if let Some(t) = team_id {
+            input["teamId"] = serde_json::Value::String(t.to_string());
+        }
+        let req = serde_json::json!({ "query": label_create_mutation(), "variables": { "input": input } });
+        parse_label_create(&self.post(auth, req).await?)
     }
 }
 
@@ -1489,6 +1524,16 @@ mod tests {
         assert_eq!(r.user_id.as_deref(), Some("u1"));
         assert!(parse_reaction_delete(r#"{"data":{"reactionDelete":{"success":true}}}"#).is_ok());
         assert!(parse_reaction_create(r#"{"data":{"reactionCreate":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn parses_label_create() {
+        let body = r##"{"data":{"issueLabelCreate":{"success":true,"issueLabel":{
+          "id":"l9","name":"infra","color":"#8b5cf6"}}}}"##;
+        let l = parse_label_create(body).unwrap();
+        assert_eq!(l.id, "l9");
+        assert_eq!(l.name.as_deref(), Some("infra"));
+        assert!(parse_label_create(r#"{"data":{"issueLabelCreate":{"success":false}}}"#).is_err());
     }
 
     #[test]

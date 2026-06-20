@@ -265,3 +265,6 @@ export const addReaction = (commentId: string, emoji: string): Promise<DetailRea
   invoke("add_reaction", { commentId, emoji });
 
 export const removeReaction = (id: string): Promise<void> => invoke("remove_reaction", { id });
+
+export const createLabel = (name: string, teamId: string | null, color: string): Promise<Label> =>
+  invoke("create_label", { name, teamId, color });

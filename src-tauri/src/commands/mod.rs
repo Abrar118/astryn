@@ -854,6 +854,26 @@ pub async fn remove_reaction(state: State<'_, AppState>, id: String) -> Result<(
         .map_err(CmdError::from)
 }
 
+#[tauri::command]
+pub async fn create_label(
+    state: State<'_, AppState>,
+    name: String,
+    team_id: Option<String>,
+    color: String,
+) -> Result<LabelOut, CmdError> {
+    let auth = authed(&state).await?;
+    let l = state
+        .linear
+        .create_label(&auth, &name, &color, team_id.as_deref())
+        .await
+        .map_err(CmdError::from)?;
+    Ok(LabelOut {
+        id: l.id,
+        name: l.name,
+        color: l.color,
+    })
+}
+
 #[cfg(test)]
 mod status_tests {
     use super::*;
