@@ -635,6 +635,15 @@ pub async fn list_issues(
 }
 
 #[tauri::command]
+pub async fn list_relations(
+    state: State<'_, AppState>,
+) -> Result<Vec<issues::RelationItem>, CmdError> {
+    issues::load_relations(&state.pool)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
 pub async fn list_filter_options(state: State<'_, AppState>) -> Result<FilterOptions, CmdError> {
     issues::list_filter_options(&state.pool)
         .await
