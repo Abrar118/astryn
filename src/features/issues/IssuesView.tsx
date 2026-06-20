@@ -9,7 +9,6 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  ArrowDownUp,
   Box,
   CalendarDays,
   ChevronDown,
@@ -34,7 +33,6 @@ import {
   VIEW_KEY,
   parseViewConfig,
   type Completed,
-  type DisplayKey,
   type DisplayProps,
   type GroupBy,
   type Ordering,
@@ -56,23 +54,7 @@ import {
   STATE_RANK,
 } from "./IssueRow";
 import { StatusIcon } from "../drawer/issueGlyphs";
-
-const DISPLAY_LABELS: Record<DisplayKey, string> = {
-  id: "ID",
-  status: "Status",
-  priority: "Priority",
-  assignee: "Assignee",
-  dueDate: "Due date",
-  project: "Project",
-  labels: "Labels",
-  estimate: "Estimate",
-  cycle: "Cycle",
-  milestone: "Milestone",
-  links: "Links",
-  pullRequests: "Pull requests",
-  created: "Created",
-  updated: "Updated",
-};
+import { DisplayOptions, miniSelect } from "./DisplayOptions";
 
 function loadConfig(): ViewConfig {
   return parseViewConfig(localStorage.getItem(VIEW_KEY));
@@ -300,9 +282,6 @@ function Popover({
     </div>
   );
 }
-
-const miniSelect =
-  "cursor-pointer rounded-md border border-border bg-secondary/40 px-2 py-1 text-xs text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 function ToggleRow({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
   return (
@@ -568,47 +547,15 @@ export function IssuesView() {
                       <option value="none">None</option>
                     </select>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1.5 text-muted-foreground">
-                      <ArrowDownUp className="size-3" /> Ordering
-                    </span>
-                    <select className={miniSelect} value={ordering} onChange={(e) => setOrdering(e.target.value as Ordering)}>
-                      <option value="status">Status</option>
-                      <option value="priority">Priority</option>
-                      <option value="dueDate">Due date</option>
-                      <option value="title">Title</option>
-                      <option value="created">Created</option>
-                      <option value="updated">Updated</option>
-                    </select>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">Completed issues</span>
-                    <select className={miniSelect} value={completed} onChange={(e) => setCompleted(e.target.value as Completed)}>
-                      <option value="all">All</option>
-                      <option value="active">Active only</option>
-                    </select>
-                  </div>
+                  <DisplayOptions
+                    ordering={ordering}
+                    onOrdering={setOrdering}
+                    completed={completed}
+                    onCompleted={setCompleted}
+                    display={display}
+                    onToggleDisplay={(k) => setDisplay((d) => ({ ...d, [k]: !d[k] }))}
+                  />
                   <ToggleRow label="Show sub-issues" on={showSubIssues} onClick={() => setShowSubIssues((v) => !v)} />
-                </div>
-
-                <div className="border-t border-border/60 pt-3">
-                  <div className="mb-1.5 text-muted-foreground">Display properties</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {(Object.keys(DEFAULT_DISPLAY) as DisplayKey[]).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setDisplay((d) => ({ ...d, [k]: !d[k] }))}
-                        className={`cursor-pointer rounded-full border px-2 py-0.5 transition-colors ${
-                          display[k]
-                            ? "border-transparent bg-accent text-foreground"
-                            : "border-border text-muted-foreground hover:text-foreground"
-                        }`}
-                      >
-                        {DISPLAY_LABELS[k]}
-                      </button>
-                    ))}
-                  </div>
                 </div>
 
                 <div className="flex justify-end border-t border-border/60 pt-2.5">
