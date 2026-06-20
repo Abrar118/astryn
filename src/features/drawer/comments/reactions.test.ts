@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { aggregateReactions, REACTION_EMOJI } from "./reactions";
+import { aggregateReactions } from "./reactions";
+import { QUICK_REACTIONS } from "./reactionEmoji";
 import type { DetailReaction } from "@/lib/commands";
 
 const r = (id: string, emoji: string, userId: string, userName: string): DetailReaction => ({
@@ -24,6 +25,6 @@ describe("aggregateReactions", () => {
   });
 
   it("exposes 8 quick-set emoji", () => {
-    expect(REACTION_EMOJI).toHaveLength(8);
+    expect(QUICK_REACTIONS).toHaveLength(8);
   });
 });

@@ -1,7 +1,5 @@
 import type { DetailReaction } from "@/lib/commands";
 
-export const REACTION_EMOJI = ["👍", "🎉", "❤️", "😄", "😕", "👀", "🚀", "👎"] as const;
-
 export type AggregatedReaction = {
   emoji: string;
   count: number;

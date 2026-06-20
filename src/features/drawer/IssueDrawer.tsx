@@ -460,9 +460,8 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* Main column: scrollable content + pinned composer footer */}
-        <div className="flex min-w-0 flex-1 flex-col">
-          <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
+        {/* Main column */}
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
           <textarea
             ref={titleRef}
             rows={1}
@@ -631,22 +630,21 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 {(live.hasMoreHistory || live.hasMoreComments) && (
                   <p className="text-xs text-muted-foreground">Showing the first 50 history events and comments.</p>
                 )}
+                {editable && (
+                  <div className="mt-4">
+                    <CommentComposer
+                      key={`composer-${id}-${composerKey}`}
+                      variant="pinned"
+                      submitting={createComment.isPending}
+                      users={users.data ?? []}
+                      onOpenLink={handleLink}
+                      resolveMention={resolveMention}
+                      onSubmit={(body) => createComment.mutate({ issueId: id, body }, { onSuccess: () => setComposerKey((k) => k + 1) })}
+                    />
+                  </div>
+                )}
               </div>
             </DrawerSection>
-          )}
-          </div>
-          {editable && (
-            <div className="shrink-0 border-t border-border px-7 py-3">
-              <CommentComposer
-                key={`composer-${id}-${composerKey}`}
-                variant="pinned"
-                submitting={createComment.isPending}
-                users={users.data ?? []}
-                onOpenLink={handleLink}
-                resolveMention={resolveMention}
-                onSubmit={(body) => createComment.mutate({ issueId: id, body }, { onSuccess: () => setComposerKey((k) => k + 1) })}
-              />
-            </div>
           )}
         </div>
 

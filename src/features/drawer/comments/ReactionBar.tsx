@@ -1,6 +1,7 @@
 import { SmilePlus } from "lucide-react";
 import { Popover } from "@/components/Popover";
-import { aggregateReactions, REACTION_EMOJI, type AggregatedReaction } from "./reactions";
+import { aggregateReactions, type AggregatedReaction } from "./reactions";
+import { emojiGlyph, QUICK_REACTIONS } from "./reactionEmoji";
 import type { DetailReaction } from "@/lib/commands";
 
 export function ReactionBar({
@@ -24,7 +25,7 @@ export function ReactionBar({
             agg.reactedByMe ? "border-primary/50 bg-primary/15 text-foreground" : "border-border text-muted-foreground hover:bg-accent"
           }`}
         >
-          <span>{agg.emoji}</span>
+          <span>{emojiGlyph(agg.emoji)}</span>
           <span className="tabular-nums">{agg.count}</span>
         </button>
       ))}
@@ -37,10 +38,10 @@ export function ReactionBar({
       >
         {(close) => (
           <>
-            {REACTION_EMOJI.map((emoji) => (
-              <button key={emoji} type="button" onClick={() => { onAdd(emoji); close(); }}
+            {QUICK_REACTIONS.map((r) => (
+              <button key={r.name} type="button" onClick={() => { onAdd(r.name); close(); }}
                 className="rounded-md px-1.5 py-1 text-base hover:bg-accent">
-                {emoji}
+                {r.glyph}
               </button>
             ))}
           </>

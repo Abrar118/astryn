@@ -608,3 +608,15 @@
   pointer-events: none;
 }
 
+/* Kill the blue ring from the global `* { outline-ring/50 }` rule on the
+   composer wrapper and its ProseMirror contenteditable. Focus is still
+   indicated by the `focus-within:border-foreground/25` border on the wrapper. */
+.comment-composer-prose .ProseMirror:focus,
+.comment-composer-prose .ProseMirror:focus-visible {
+  outline: none !important;
+  box-shadow: none;
+}
+[data-comment-composer]:focus-within {
+  outline: none;
+}
+
