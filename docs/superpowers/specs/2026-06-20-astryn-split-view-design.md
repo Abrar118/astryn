@@ -115,6 +115,11 @@ that creates a pane uses `nextPaneId`:
 - `openIssueInRightSplit(state, issueId)` — opens the issue as a tab in the right
   pane **without disturbing the left pane**. It does **not** call `splitTabRight`
   (which would move/clone the active left tab). Precisely:
+  - **right-pane-first:** when split, if a copy of the issue is **already in the
+    right pane**, just focus/activate it there and leave the left pane untouched —
+    never move a left copy when a right copy exists. (Without this, an issue present
+    in both panes — e.g. after a clone-on-split of a sole issue tab — would move the
+    left copy right and collapse the split.)
   - **single pane** → create a new right pane (fresh `pane-${n}`) containing **only**
     a new issue tab (deduped: if an issue tab for `issueId` already exists anywhere,
     move/focus it instead of duplicating); the left pane is untouched.
