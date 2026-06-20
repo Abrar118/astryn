@@ -9,7 +9,6 @@ import { gooeyToast } from "goey-toast";
 import {
   AlertCircle,
   Box,
-  CalendarDays,
   Check,
   ChevronDown,
   CircleDot,
@@ -22,6 +21,7 @@ import {
   Loader2,
   Maximize2,
   MoreHorizontal,
+  SlidersHorizontal,
   Tag,
   Trash2,
   X,
@@ -40,10 +40,13 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
+import { IssueRow, compareIssues } from "@/features/issues/IssueRow";
+import { DisplayOptions } from "@/features/issues/DisplayOptions";
+import { DEFAULT_DISPLAY, type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
+import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
 import type { CalendarIssue, DetailAttachment, DetailRelation, IssueDetailResult, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
-import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
 import { buildActivity, mergeActivityTimeline } from "./drawerActivity";
@@ -305,6 +308,21 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
   const openIssue = useCallback((next: string) => setParams({ issue: next }), [setParams]);
 
+  // Sub-issue display state (ordering / completed filter / display columns).
+  const [subOrdering, setSubOrdering] = useState<Ordering>("priority");
+  const [subCompleted, setSubCompleted] = useState<Completed>("all");
+  const [subDisplay, setSubDisplay] = useState<DisplayProps>(() => ({
+    ...DEFAULT_DISPLAY,
+    id: false, created: false, updated: false,
+  }));
+  const toggleSubDisplay = (k: DisplayKey) => setSubDisplay((d) => ({ ...d, [k]: !d[k] }));
+
+  // Map id -> cached IssueListItem for sub-issue row resolution.
+  const issuesById = useMemo(
+    () => new Map((issues ?? []).map((i) => [i.id, i])),
+    [issues],
+  );
+
   // Map identifier -> cached issue so Linear issue links/mentions resolve: they
   // open the in-app drawer (and render as highlighted pills); every other link
   // opens in the system browser (never the webview).
@@ -487,45 +505,55 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               title="Sub-issues"
               meta={`${live.children.filter((child) => child.stateType === "completed").length}/${live.children.length}`}
             >
-              <div className="space-y-1">
-                {live.children.map((child) => (
-                  <button
-                    key={child.id}
-                    type="button"
-                    onClick={() => openIssue(child.id)}
-                    className="group flex w-full min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <StatusIcon type={child.stateType} color={child.stateColor} />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-                      {child.title}
-                    </span>
-                    <div className="flex min-w-0 shrink items-center justify-end gap-1.5 overflow-hidden text-xs text-muted-foreground">
-                      {child.priority > 0 && (
-                        <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5">
-                          {priorityDot(child.priority)}
-                          {PRIORITIES.find((item) => item.value === child.priority)?.label}
-                        </span>
-                      )}
-                      {child.projectName && <MetaPill>{child.projectName}</MetaPill>}
-                      {(child.cycleName || child.cycleNumber != null) && (
-                        <MetaPill>
-                          <IterationCcw className="size-3" />
-                          {child.cycleName ?? `Cycle ${child.cycleNumber}`}
-                        </MetaPill>
-                      )}
-                      {child.dueDate && (
-                        <MetaPill>
-                          <CalendarDays className="size-3" />
-                          {new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", timeZone: "Asia/Dhaka" }).format(new Date(`${child.dueDate}T00:00:00Z`))}
-                        </MetaPill>
-                      )}
-                      {child.estimate != null && <MetaPill>{child.estimate} pt</MetaPill>}
-                      {child.assigneeName && <Avatar name={child.assigneeName} size={22} />}
+              <div className="mb-1 flex justify-end">
+                <Popover
+                  align="end"
+                  buttonTitle="Display options"
+                  buttonClassName="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  button={<SlidersHorizontal className="size-3.5" />}
+                  panelClassName="w-72 rounded-lg border border-border bg-popover p-3 shadow-2xl"
+                >
+                  {() => (
+                    <div className="space-y-3">
+                      <DisplayOptions
+                        ordering={subOrdering}
+                        onOrdering={setSubOrdering}
+                        completed={subCompleted}
+                        onCompleted={setSubCompleted}
+                        display={subDisplay}
+                        onToggleDisplay={toggleSubDisplay}
+                      />
                     </div>
-                  </button>
-                ))}
-                {live.hasMoreChildren && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 sub-issues.</p>}
+                  )}
+                </Popover>
               </div>
+              {(() => {
+                const today = dhakaToday();
+                const rows = live.children
+                  .map((c) => issuesById.get(c.id))
+                  .filter((i): i is NonNullable<typeof i> => !!i)
+                  .filter((i) => (subCompleted === "active" ? i.stateType !== "completed" && i.stateType !== "canceled" : true))
+                  .sort((a, b) => compareIssues(a, b, subOrdering));
+                return (
+                  <div>
+                    {rows.map((sub) => (
+                      <IssueRow
+                        key={sub.id}
+                        issue={sub}
+                        display={subDisplay}
+                        avatar={sub.assigneeName ? { name: sub.assigneeName } : null}
+                        today={today}
+                        onOpen={openIssue}
+                        onContextMenu={(e) => openMenu(e, sub.id)}
+                      />
+                    ))}
+                    {rows.length === 0 && (
+                      <p className="px-2 py-1 text-xs text-muted-foreground">No sub-issues match the current filter.</p>
+                    )}
+                    {live.hasMoreChildren && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 sub-issues.</p>}
+                  </div>
+                );
+              })()}
             </DrawerSection>
           )}
 
@@ -868,10 +896,6 @@ function DrawerSection({ title, meta, className = "", children }: { title: strin
       {open && children}
     </section>
   );
-}
-
-function MetaPill({ children }: { children: ReactNode }) {
-  return <span className="flex shrink-0 items-center gap-1 rounded-full border border-border px-2 py-0.5">{children}</span>;
 }
 
 function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
