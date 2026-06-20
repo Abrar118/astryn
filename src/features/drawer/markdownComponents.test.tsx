@@ -15,6 +15,19 @@ afterEach(() => {
   mermaidRender.mockReset();
 });
 
+describe("mentionAwareUrlTransform", () => {
+  it("passes through mention://user/<id> URLs unchanged", () => {
+    expect(mentionAwareUrlTransform("mention://user/u1")).toBe("mention://user/u1");
+  });
+  it("blocks javascript: scheme by delegating to defaultUrlTransform", () => {
+    const result = mentionAwareUrlTransform("javascript:alert(1)");
+    expect(result).toBe("");
+  });
+  it("passes through normal https:// URLs unchanged", () => {
+    expect(mentionAwareUrlTransform("https://example.com/x")).toBe("https://example.com/x");
+  });
+});
+
 describe("issueIdentifierFromHref", () => {
   it("extracts the identifier from a Linear issue URL", () => {
     expect(issueIdentifierFromHref("https://linear.app/gam/issue/PRO-153/slug")).toBe("PRO-153");
