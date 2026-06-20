@@ -210,6 +210,7 @@ mod tests {
                 name: Some("bug".into()),
                 color: None,
             }],
+            relations: vec![],
             raw_json: "{}".into(),
         }
     }

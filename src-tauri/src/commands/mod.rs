@@ -1088,6 +1088,7 @@ mod logic_tests {
             updated_at: updated.into(),
             archived_at: None,
             labels: vec![],
+            relations: vec![],
             raw_json: "{}".into(),
         }
     }
