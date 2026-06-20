@@ -17,8 +17,8 @@ function formatDate(date: string): string {
 }
 
 /** Compute an indigo-based background color for a given count and maxCount. */
-function cellBg(count: number, maxCount: number): string {
-  if (count === 0 || maxCount === 0) return undefined as unknown as string;
+function cellBg(count: number, maxCount: number): string | undefined {
+  if (count === 0 || maxCount === 0) return undefined;
   // 5 buckets: 1-20%, 21-40%, 41-60%, 61-80%, 81-100%
   const ratio = count / maxCount;
   const opacity = ratio <= 0.2 ? 0.2 : ratio <= 0.4 ? 0.4 : ratio <= 0.6 ? 0.6 : ratio <= 0.8 ? 0.8 : 1;
@@ -53,8 +53,12 @@ export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
         </div>
 
         {/* Week columns */}
-        {weeks.map((week) => {
+        {weeks.map((week, weekIdx) => {
           const isSelected = week.offset === currentOffset;
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          const thisMonth = months[new Date(`${week.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "";
+          const prevMonth = weekIdx === 0 ? null : (months[new Date(`${weeks[weekIdx - 1]?.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "");
+          const showMonth = weekIdx === 0 || thisMonth !== prevMonth;
           return (
             <div
               key={week.offset}
@@ -63,13 +67,9 @@ export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
                 isSelected ? "ring-1 ring-ring" : "",
               ].join(" ")}
             >
-              {/* Month label for the first cell of the week */}
+              {/* Month label — only on first column or when month changes */}
               <span className="h-[14px] text-center text-[9px] leading-none text-muted-foreground">
-                {(() => {
-                  const d = new Date(`${week.cells[0]?.date ?? ""}T00:00:00Z`);
-                  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                  return months[d.getUTCMonth()] ?? "";
-                })()}
+                {showMonth ? thisMonth : ""}
               </span>
               {week.cells.map((cell: HeatCell, dayIdx) => {
                 const bg = cellBg(cell.count, maxCount);
