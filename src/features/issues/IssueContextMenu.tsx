@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useSearchParams } from "react-router-dom";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { useWorkspace } from "@/lib/tabs";
 import { gooeyToast } from "goey-toast";
 import {
   Box,
@@ -21,6 +22,7 @@ import {
   Gauge,
   IterationCcw,
   ListChecks,
+  Maximize2,
   PanelRight,
   SignalHigh,
   Tag,
@@ -185,6 +187,7 @@ function Menu({
   const { data: cycles } = useCycles();
   const { data: filterOpts } = useFilterOptions();
   const [params, setParams] = useSearchParams();
+  const { openIssueTab } = useWorkspace();
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<string | null>(null);
 
@@ -472,6 +475,17 @@ function Menu({
         onMouseEnter={() => setSub(null)}
         onClick={() => {
           setParams({ issue: issue.id });
+          onClose();
+        }}
+      />
+
+      {/* Open in full page (workspace tab) */}
+      <Row
+        icon={<Maximize2 className="size-4" />}
+        label="Open in full page"
+        onMouseEnter={() => setSub(null)}
+        onClick={() => {
+          openIssueTab(issue.id);
           onClose();
         }}
       />
