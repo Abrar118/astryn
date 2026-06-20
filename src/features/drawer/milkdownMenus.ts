@@ -10,7 +10,6 @@ import {
   toggleEmphasisCommand,
   toggleInlineCodeCommand,
   toggleLinkCommand,
-  updateLinkCommand,
 } from "@milkdown/kit/preset/commonmark";
 import {
   insertTableCommand,
@@ -237,10 +236,7 @@ class SlashView implements PluginView {
 
     const wrapper = document.createElement("div");
     wrapper.className = "md-slash-menu";
-    wrapper.style.cssText =
-      "background:#1e1e2e;border:1px solid #3b3b5c;border-radius:6px;" +
-      "padding:4px 0;min-width:180px;max-height:280px;overflow-y:auto;" +
-      "box-shadow:0 4px 12px rgba(0,0,0,.5);z-index:9999;display:none;";
+    wrapper.style.display = "none";
 
     const list = document.createElement("ul");
     list.style.cssText = "list-style:none;margin:0;padding:0;";
@@ -327,9 +323,9 @@ class SlashView implements PluginView {
     this.#filtered.forEach((cmd, i) => {
       const li = document.createElement("li");
       li.setAttribute("data-id", cmd.id);
-      li.style.cssText =
-        "padding:6px 12px;cursor:pointer;font-size:13px;color:#e0e0ff;" +
-        (i === this.#selectedIndex ? "background:#2d2d50;" : "");
+      if (i === this.#selectedIndex) {
+        li.setAttribute("data-selected", "true");
+      }
       li.textContent = cmd.label;
       li.addEventListener("mouseenter", () => {
         this.#selectedIndex = i;
@@ -412,10 +408,7 @@ class TooltipView implements PluginView {
 
     const wrapper = document.createElement("div");
     wrapper.className = "md-tooltip";
-    wrapper.style.cssText =
-      "display:none;background:#1e1e2e;border:1px solid #3b3b5c;" +
-      "border-radius:6px;padding:2px 4px;gap:2px;z-index:9999;" +
-      "box-shadow:0 2px 8px rgba(0,0,0,.5);flex-direction:row;align-items:center;";
+    wrapper.style.display = "none";
 
     // Button row
     const buttons = document.createElement("div");
@@ -427,9 +420,6 @@ class TooltipView implements PluginView {
       btn.setAttribute("aria-label", cmd.label);
       btn.title = cmd.label;
       btn.textContent = cmd.label.slice(0, 1);
-      btn.style.cssText =
-        "background:none;border:none;color:#e0e0ff;cursor:pointer;" +
-        "padding:4px 8px;border-radius:4px;font-size:12px;";
       if (cmd.id === "link") {
         btn.addEventListener("mousedown", (e) => {
           e.preventDefault();
@@ -451,10 +441,7 @@ class TooltipView implements PluginView {
     const input = document.createElement("input");
     input.type = "text";
     input.placeholder = "Paste or type a URL…";
-    input.style.cssText =
-      "display:none;width:200px;background:transparent;border:none;" +
-      "border-bottom:1px solid #3b3b5c;padding:4px 6px;font-size:12px;" +
-      "color:#e0e0ff;outline:none;";
+    input.style.display = "none";
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -512,8 +499,8 @@ class TooltipView implements PluginView {
     if (href) {
       callCommand(toggleLinkCommand.key, { href })(this.#ctx);
     } else {
-      // Empty URL: remove any existing link from the selection
-      callCommand(updateLinkCommand.key, { href: "" })(this.#ctx);
+      // Empty URL: toggle off the existing link mark (removeMark via toggleMark)
+      callCommand(toggleLinkCommand.key)(this.#ctx);
     }
     this.#hideLinkInput();
     this.#provider.hide();
