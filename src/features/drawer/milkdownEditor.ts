@@ -97,16 +97,18 @@ function patchTaskListItemRunner(
 }
 
 /**
- * Patch the orderedListSchema toMarkdown runner so that the boolean `spread`
- * attr (stored by patchSpreadRunner) is correctly converted to a remark boolean.
+ * Patch the orderedListSchema parseDOM + toMarkdown runner.
  *
- * Milkdown's orderedListSchema.toMarkdown does `spread: node.attrs.spread === "true"`
- * (a string compare). When our parseMarkdown runner correctly stores a boolean
- * (true/false), this check always yields false — so loose ordered lists are
- * silently collapsed to tight on save.
+ * parseDOM bug: the native Milkdown orderedListSchema.parseDOM returns
+ * `{ spread: dom.dataset.spread }` — a raw string ("true", "false", or
+ * undefined) — but the schema attr has `validate: "boolean"`, so
+ * doc.check() throws for DOM-parsed (pasted) content.
+ * Fix: normalize to `dom.dataset.spread === "true"` (boolean) here.
  *
- * Fix: use `Boolean(node.attrs.spread)` so both boolean true and the legacy
- * string "true" both produce remark's expected boolean.
+ * toMarkdown bug: the native runner does `spread: node.attrs.spread === "true"`
+ * (string compare). When our parseMarkdown runner correctly stores a real
+ * boolean, this always yields false — loose ordered lists collapse to tight.
+ * Fix: use `spread === true || spread === "true"` to accept both forms.
  */
 function patchOrderedListToMarkdown(
   prev: (ctx: Ctx) => NodeSchema,
@@ -115,14 +117,30 @@ function patchOrderedListToMarkdown(
     const spec = prev(ctx);
     return {
       ...spec,
+      parseDOM: spec.parseDOM?.map((rule) => ({
+        ...rule,
+        getAttrs: (dom: HTMLElement | string): false | Record<string, unknown> | null => {
+          const base = rule.getAttrs?.(dom as never);
+          // false = reject this rule; null = accept with no attrs; undefined = no getAttrs
+          if (base === false) return false;
+          if (base == null || typeof base !== "object") return null;
+          const raw = (base as Record<string, unknown>).spread;
+          return {
+            ...(base as Record<string, unknown>),
+            spread: raw === true || raw === "true",
+          };
+        },
+      })),
       toMarkdown: {
         ...spec.toMarkdown,
         runner: (state, node) => {
+          const spread =
+            node.attrs.spread === true || node.attrs.spread === "true";
           state
             .openNode("list", undefined, {
               ordered: true,
               start: (node.attrs.order as number | undefined) ?? 1,
-              spread: Boolean(node.attrs.spread),
+              spread,
             })
             .next(node.content as never)
             .closeNode();
@@ -133,9 +151,17 @@ function patchOrderedListToMarkdown(
 }
 
 /**
- * Patch the task-list-item toMarkdown runner so that the boolean `spread`
- * attr (stored by patchTaskListItemRunner) is correctly passed to remark
- * instead of using the broken `=== "true"` string compare in the default.
+ * Patch the task-list-item parseDOM + toMarkdown runner.
+ *
+ * parseDOM bug: the GFM extendListItemSchemaForTask parseDOM entry for
+ * `<li data-item-type="task">` returns `{ spread: dom.dataset.spread }` — a
+ * raw string — but the schema attr has `validate: "boolean"`, so doc.check()
+ * throws for DOM-parsed (pasted) task list items.
+ * Fix: normalize spread to a boolean in every parseDOM rule.
+ *
+ * toMarkdown bug: the native task-item runner uses `spread === "true"` (string
+ * compare) and our stored value is a real boolean after the parseMarkdown fix,
+ * so it always yields false. Fix: accept both true and "true".
  */
 function patchTaskListItemToMarkdown(
   prev: (ctx: Ctx) => NodeSchema,
@@ -145,6 +171,19 @@ function patchTaskListItemToMarkdown(
     const baseToMarkdown = spec.toMarkdown;
     return {
       ...spec,
+      parseDOM: spec.parseDOM?.map((rule) => ({
+        ...rule,
+        getAttrs: (dom: HTMLElement | string): false | Record<string, unknown> | null => {
+          const base = rule.getAttrs?.(dom as never);
+          if (base === false) return false;
+          if (base == null || typeof base !== "object") return null;
+          const raw = (base as Record<string, unknown>).spread;
+          return {
+            ...(base as Record<string, unknown>),
+            spread: raw === true || raw === "true",
+          };
+        },
+      })),
       toMarkdown: {
         ...baseToMarkdown,
         runner: (state, node) => {
@@ -153,11 +192,13 @@ function patchTaskListItemToMarkdown(
             baseToMarkdown.runner(state, node);
             return;
           }
+          const spread =
+            node.attrs.spread === true || node.attrs.spread === "true";
           state
             .openNode("listItem", undefined, {
               label: node.attrs.label as string,
               listType: node.attrs.listType as string,
-              spread: Boolean(node.attrs.spread),
+              spread,
               checked: node.attrs.checked as boolean | null,
             })
             .next(node.content as never)
@@ -181,9 +222,12 @@ function patchTaskListItemToMarkdown(
  * - bullet_list.spread, ordered_list.spread, list_item.spread,
  *   task list item spread: parsers stringify the boolean to "true"/"false"
  *   before storing it; patch their parseMarkdown runners to coerce to boolean.
+ * - ordered_list.parseDOM, task list_item.parseDOM: the native Milkdown rules
+ *   return raw `dom.dataset.spread` (a string) instead of a boolean; patch to
+ *   normalize to boolean so doc.check() passes for DOM-parsed (pasted) content.
  * - ordered_list.toMarkdown, task list_item.toMarkdown: the default serializer
  *   uses `spread === "true"` (string compare) which fails for our stored boolean;
- *   patch to use Boolean(spread) instead so loose lists stay loose on save.
+ *   patch to accept `=== true || === "true"` so loose lists stay loose on save.
  */
 export function applyDescriptionConfig(ctx: Ctx): void {
   // --- Remark stringify options ---

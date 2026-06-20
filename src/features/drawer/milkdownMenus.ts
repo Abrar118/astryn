@@ -236,6 +236,7 @@ class SlashView implements PluginView {
 
     const wrapper = document.createElement("div");
     wrapper.className = "md-slash-menu";
+    wrapper.setAttribute("data-md-menu", "");
     wrapper.style.display = "none";
 
     const list = document.createElement("ul");
@@ -408,6 +409,7 @@ class TooltipView implements PluginView {
 
     const wrapper = document.createElement("div");
     wrapper.className = "md-tooltip";
+    wrapper.setAttribute("data-md-menu", "");
     wrapper.style.display = "none";
 
     // Button row
@@ -449,6 +451,9 @@ class TooltipView implements PluginView {
       } else if (e.key === "Escape") {
         e.preventDefault();
         this.#hideLinkInput();
+        this.#provider.hide();
+        // Return focus to the editor so the edit session continues normally.
+        this.#refocusEditor();
       }
     });
     // Prevent tooltip from hiding when input is focused
@@ -495,6 +500,15 @@ class TooltipView implements PluginView {
     this.#buttons.style.display = "flex";
   }
 
+  /** Refocus the ProseMirror editor so a real subsequent blur behaves normally. */
+  #refocusEditor() {
+    try {
+      this.#ctx.get(editorViewCtx).focus();
+    } catch {
+      // Editor may have been destroyed; silently ignore.
+    }
+  }
+
   #applyLink(href: string) {
     if (href) {
       callCommand(toggleLinkCommand.key, { href })(this.#ctx);
@@ -504,6 +518,9 @@ class TooltipView implements PluginView {
     }
     this.#hideLinkInput();
     this.#provider.hide();
+    // Return focus to the editor so a subsequent real blur triggers handleBlur
+    // correctly instead of leaving focus orphaned in the (now-hidden) input.
+    this.#refocusEditor();
   }
 
   update = (view: EditorView, prevState?: EditorState) => {

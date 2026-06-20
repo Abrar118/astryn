@@ -76,7 +76,6 @@ interface MilkdownEditorInnerProps {
   autosaveRef: React.RefObject<DescriptionAutosave | null>;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
-  onBlur: () => void;
 }
 
 /**
@@ -89,7 +88,6 @@ function MilkdownEditorInner({
   autosaveRef,
   onOpenLink,
   resolveMention,
-  onBlur,
 }: MilkdownEditorInnerProps) {
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
@@ -123,9 +121,12 @@ function MilkdownEditorInner({
             const editorView = mountedCtx.get(editorViewCtx);
             editorView.focus();
           });
-          ctx.get(listenerCtx).blur(() => {
-            onBlur();
-          });
+          // NOTE: We do NOT register a listenerCtx.blur() here.
+          // The slash/tooltip menus are appended to document.body (outside the
+          // wrapper div), so focusing the URL input blurs ProseMirror and would
+          // fire blur → onBlur() → close the edit session before the user can
+          // type. Blur is handled exclusively via the wrapper div's onBlur with
+          // a containment + data-md-menu check (see DescriptionEditor render).
           configureDescriptionSlash(ctx);
           configureDescriptionTooltip(ctx);
         })
@@ -183,9 +184,13 @@ export function DescriptionEditor({
     });
     return () => {
       unsub();
-      // The queue is destroyed on cleanup. Any in-progress flush that was
-      // awaited in handleBlur is the authoritative final flush — do not
-      // call flush() again here as the queue may already be destroyed.
+      // Flush before destroying so any pending draft is saved when the
+      // component unmounts without a prior blur (e.g. the user clicks an
+      // in-editor issue mention which remounts the key={id} editor). flush()
+      // is idempotent: it early-returns when nothing is pending or when an
+      // in-flight save is already underway, so double-flushing with handleBlur
+      // is harmless.
+      void queue.flush().catch(() => undefined);
       queue.destroy();
       autosaveRef.current = null;
     };
@@ -213,10 +218,12 @@ export function DescriptionEditor({
         blurInFlightRef.current = false;
       },
       () => {
-        // On failure: keep the error status (already dispatched by the queue's
-        // subscriber) and exit edit mode. The one-shot toast in the drawer
-        // breadcrumb effect will surface the error.
-        setEditing(false);
+        // On failure: do NOT exit edit mode. Staying in editing=true means the
+        // Milkdown editor (and its draft) remain visible so the user can retry.
+        // The error status is already dispatched by the queue's subscriber, and
+        // the one-shot toast in the drawer breadcrumb effect will surface it.
+        // Reset the re-entrancy guard so a subsequent blur can trigger another
+        // flush attempt.
         blurInFlightRef.current = false;
       },
     );
@@ -247,10 +254,14 @@ export function DescriptionEditor({
       <div
         className="relative"
         onBlur={(e) => {
-          // Only blur when focus leaves the entire wrapper div (not internal moves)
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-            handleBlur();
-          }
+          const relatedTarget = e.relatedTarget as Element | null;
+          // 1. Internal focus moves within the wrapper: ignore.
+          if (e.currentTarget.contains(relatedTarget)) return;
+          // 2. Focus moving into a body-portalled menu (slash / tooltip):
+          //    ignore so the URL input or slash list stays usable without
+          //    closing the edit session.
+          if (relatedTarget?.closest?.("[data-md-menu]")) return;
+          handleBlur();
         }}
       >
         <MilkdownProvider>
@@ -260,7 +271,6 @@ export function DescriptionEditor({
             autosaveRef={autosaveRef}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
-            onBlur={handleBlur}
           />
         </MilkdownProvider>
       </div>
