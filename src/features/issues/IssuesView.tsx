@@ -580,9 +580,9 @@ export function IssuesView() {
             No issues. Sync to populate, or relax the filters.
           </div>
         ) : viewMode === "list" ? (
-          // overflow-auto (not just -y): in a narrow pane (split view) the row's
-          // meta cluster exceeds the width, so allow horizontal scroll rather than clipping.
-          <div className="h-full overflow-auto pb-20">
+          // Vertical scroll only; each IssueRow scrolls horizontally on its own
+          // (so a narrow split pane never shifts the whole list / clips the left).
+          <div className="h-full overflow-y-auto pb-20">
             {groups.map((g) => (
               <div key={g.key}>
                 <button

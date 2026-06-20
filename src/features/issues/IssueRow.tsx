@@ -224,18 +224,22 @@ export function IssueRow({
     <div
       onClick={() => onOpen(issue.id)}
       onContextMenu={onContextMenu}
-      className="group flex cursor-pointer items-center gap-3 border-b border-border/40 px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50"
+      className="group cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-accent/50"
     >
-      <span title={`Status: ${issue.stateName || issue.stateType || "No status"}`} className="flex">
-        <StatusIcon type={issue.stateType} color={issue.stateColor} />
-      </span>
-      {display.id && (
-        <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground" title={issue.identifier}>
-          {issue.identifier}
+      {/* Per-row horizontal scroll: in a narrow (split) pane the dense meta
+          cluster overflows this row alone, instead of shifting the whole list. */}
+      <div className="no-scrollbar flex items-center gap-3 overflow-x-auto px-4 py-2 text-sm">
+        <span title={`Status: ${issue.stateName || issue.stateType || "No status"}`} className="flex shrink-0">
+          <StatusIcon type={issue.stateType} color={issue.stateColor} />
         </span>
-      )}
-      <span className="min-w-0 flex-1 truncate text-foreground">{issue.title}</span>
-      <MetaCluster issue={issue} display={display} avatar={avatar} today={today} />
+        {display.id && (
+          <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground" title={issue.identifier}>
+            {issue.identifier}
+          </span>
+        )}
+        <span className="min-w-[10rem] flex-1 truncate text-foreground">{issue.title}</span>
+        <MetaCluster issue={issue} display={display} avatar={avatar} today={today} />
+      </div>
     </div>
   );
 }

@@ -130,6 +130,16 @@
 }
 
 @layer utilities {
+  /* Scrollable but with no visible scrollbar — used for per-row horizontal
+     overflow (e.g. dense issue rows in a narrow split pane). */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
   .drawer-scrollbar {
     scrollbar-color: color-mix(in oklab, var(--muted-foreground) 72%, transparent) var(--background);
     scrollbar-width: thin;
