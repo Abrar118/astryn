@@ -53,7 +53,7 @@ describe("commentCache", () => {
   });
 
   it("makePendingComment attributes to me", () => {
-    const p = makePendingComment("temp1", "issue1", "hi", null, { viewerId: "u1", viewerName: "Abrar" });
+    const p = makePendingComment("temp1", "hi", null, { viewerId: "u1", viewerName: "Abrar" });
     expect(p).toMatchObject({ id: "temp1", body: "hi", parentId: null, userId: "u1", userName: "Abrar" });
   });
 });

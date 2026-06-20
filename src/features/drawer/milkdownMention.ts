@@ -45,8 +45,8 @@ function makePillDom(dataMentionPill: string): { dom: HTMLSpanElement; contentDO
 /**
  * Build a ProseMirror MarkView for a `link` mark.
  *
- * - If the link's href resolves to a user mention AND `resolveUser` can provide
- *   the user name, render a non-navigating user pill.
+ * - If the link's href resolves to a user mention, render a non-navigating
+ *   user pill. The contentDOM holds the link's `@Name` text from the markdown.
  *
  * - If the link's href resolves to an issue identifier AND `resolveMention`
  *   can provide the cached issue, render an inline issue pill:
@@ -63,7 +63,6 @@ function makePillDom(dataMentionPill: string): { dom: HTMLSpanElement; contentDO
 function makeLinkMarkView(
   resolveMention: MentionResolver,
   onActivateLink: (href: string) => void,
-  resolveUser?: (id: string) => { name: string } | undefined,
 ): (mark: ProseMirrorMark, view: EditorView, inline: boolean) => MarkView {
   return (mark: ProseMirrorMark, _view: EditorView, _inline: boolean) => {
     const attrs = mark.attrs as { href?: string; title?: string };
@@ -71,10 +70,8 @@ function makeLinkMarkView(
 
     // ── User-mention pill ───────────────────────────────────────────────────
     const userId = userMentionFromHref(href);
-    const user = userId && resolveUser ? resolveUser(userId) : undefined;
-    if (userId && user) {
+    if (userId) {
       const { dom, contentDOM } = makePillDom("user");
-      dom.title = user.name;
       dom.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
       dom.addEventListener("mouseenter", () => { dom.style.background = "var(--accent,#2a2d35)"; });
       dom.addEventListener("mouseleave", () => { dom.style.background = "var(--secondary,#1e2025)"; });
@@ -139,17 +136,16 @@ function makeLinkMarkView(
  * the commonmark schema + serializer are untouched, so `[ID](url)` round-trips
  * unchanged through `roundtripMarkdown`.
  *
- * Designed to be added per-drawer (Task 6): the callbacks `resolveMention`,
- * `onActivateLink`, and optional `resolveUser` are closed over at construction
- * time and are not hardcoded into `descriptionPlugins`.
+ * Designed to be added per-drawer (Task 6): the callbacks `resolveMention`
+ * and `onActivateLink` are closed over at construction time and are not
+ * hardcoded into `descriptionPlugins`.
  */
 export function descriptionMentionPlugin(
   resolveMention: MentionResolver,
   onActivateLink: (href: string) => void,
-  resolveUser?: (id: string) => { name: string } | undefined,
 ): MilkdownPlugin[] {
   const mentionLinkView = $view(linkSchema.mark, (_ctx) =>
-    makeLinkMarkView(resolveMention, onActivateLink, resolveUser),
+    makeLinkMarkView(resolveMention, onActivateLink),
   );
   return [mentionLinkView];
 }

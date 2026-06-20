@@ -1,8 +1,22 @@
 import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
+import { defaultUrlTransform } from "react-markdown";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
-import { userMentionFromHref } from "./comments/milkdownUserMention";
+import { USER_MENTION_PREFIX, userMentionFromHref } from "./comments/milkdownUserMention";
+
+/**
+ * `urlTransform` for ReactMarkdown that preserves `mention://user/…` hrefs
+ * (which react-markdown's default transform would strip as an unsafe scheme)
+ * while delegating all other URLs to the default safe-protocol check.
+ *
+ * Pass this as `urlTransform={mentionAwareUrlTransform}` on every ReactMarkdown
+ * instance that may render user-mention pills.
+ */
+export function mentionAwareUrlTransform(url: string): string {
+  if (url.startsWith(USER_MENTION_PREFIX)) return url;
+  return defaultUrlTransform(url);
+}
 
 /** Extract a Linear issue identifier (e.g. "PRO-153") from a link href, if any. */
 export function issueIdentifierFromHref(href: string): string | null {
@@ -29,20 +43,18 @@ export type MentionResolver = (identifier: string) => MentionTarget | undefined;
 export function createMarkdownComponents(opts: {
   onActivateLink: (href: string) => void;
   resolveMention: MentionResolver;
-  resolveUser?: (id: string) => { name: string } | undefined;
 }): Components {
   return {
     a: ({ href, children }) => {
       // ── User-mention pill ─────────────────────────────────────────────────
       const userId = href ? userMentionFromHref(href) : null;
-      const userTarget = userId && opts.resolveUser ? opts.resolveUser(userId) : undefined;
-      if (href && userId && userTarget) {
+      if (href && userId) {
         return (
           <span
             data-mention-pill="user"
             className="mx-px inline-flex items-center rounded-md border border-border bg-secondary/70 px-1.5 py-0.5 align-baseline text-[0.85em] font-medium text-foreground"
           >
-            @{userTarget.name}
+            {children}
           </span>
         );
       }

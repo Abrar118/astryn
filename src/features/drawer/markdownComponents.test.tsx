@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { createMarkdownComponents, issueIdentifierFromHref } from "./markdownComponents";
+import { createMarkdownComponents, issueIdentifierFromHref, mentionAwareUrlTransform } from "./markdownComponents";
 
 const mermaidRender = vi.fn();
 vi.mock("mermaid", () => ({
@@ -26,7 +26,7 @@ describe("issueIdentifierFromHref", () => {
 
 function renderMarkdown(md: string, opts: Parameters<typeof createMarkdownComponents>[0]) {
   return render(
-    <ReactMarkdown remarkPlugins={[remarkGfm]} components={createMarkdownComponents(opts)}>
+    <ReactMarkdown remarkPlugins={[remarkGfm]} components={createMarkdownComponents(opts)} urlTransform={mentionAwareUrlTransform}>
       {md}
     </ReactMarkdown>,
   );
@@ -86,5 +86,20 @@ describe("createMarkdownComponents", () => {
     });
     screen.getByText("docs").click();
     expect(onActivateLink).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("renders a user mention as a non-navigating pill (not an <a>), never calling onActivateLink", () => {
+    const onActivateLink = vi.fn();
+    renderMarkdown("cc [@Jakob](mention://user/u2)", {
+      onActivateLink,
+      resolveMention: () => undefined,
+    });
+    const pill = document.querySelector("[data-mention-pill='user']");
+    expect(pill).not.toBeNull();
+    expect(pill?.tagName.toLowerCase()).not.toBe("a");
+    expect(pill?.textContent).toContain("@Jakob");
+    // Clicking a non-<a> span cannot reach onActivateLink.
+    (pill as HTMLElement)?.click();
+    expect(onActivateLink).not.toHaveBeenCalled();
   });
 });

@@ -374,7 +374,7 @@ export function useCreateComment() {
       const snap = snapshotDetail(qc, issueId);
       const me = qc.getQueryData<Me | null>(["me"]) ?? null;
       const tempId = `pending-${crypto.randomUUID()}`;
-      const pending = makePendingComment(tempId, issueId, body, parentId ?? null, me);
+      const pending = makePendingComment(tempId, body, parentId ?? null, me);
       const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
       if (cur) qc.setQueryData(["issue", issueId], addComment(cur, pending));
       return { snap, tempId };

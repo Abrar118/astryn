@@ -73,7 +73,6 @@ export function replaceReaction(
 
 export function makePendingComment(
   id: string,
-  _issueId: string,
   body: string,
   parentId: string | null,
   me: Me | null,

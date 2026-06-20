@@ -49,7 +49,7 @@ import { buildCommentThreads } from "./comments/commentThreads";
 import { CommentComposer } from "./comments/CommentComposer";
 import { CommentThread } from "./comments/CommentThread";
 import { DescriptionEditor } from "./DescriptionEditor";
-import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
+import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 import { timeAgo } from "./timeAgo";
 
 const PRIORITIES = [
@@ -644,7 +644,7 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
                 users={users.data ?? []}
                 onOpenLink={handleLink}
                 resolveMention={resolveMention}
-                onSubmit={(md) => { createComment.mutate({ issueId: id, body: md }); setComposerKey((k) => k + 1); }}
+                onSubmit={(body) => { createComment.mutate({ issueId: id, body }); setComposerKey((k) => k + 1); }}
               />
             </div>
           )}
@@ -863,7 +863,7 @@ function ResourceModal({
         <div className="drawer-scrollbar min-h-0 overflow-y-auto px-6 py-5">
           {attachment.body ? (
             <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{attachment.body}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={mentionAwareUrlTransform}>{attachment.body}</ReactMarkdown>
             </div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">

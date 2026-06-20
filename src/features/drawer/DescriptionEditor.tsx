@@ -18,7 +18,7 @@ import {
   configureDescriptionTooltip,
 } from "./milkdownMenus";
 import { descriptionMentionPlugin } from "./milkdownMention";
-import { createMarkdownComponents, type MentionResolver } from "./markdownComponents";
+import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 
 /**
  * Some Linear descriptions contain Markdown that ProseMirror rejects (e.g. a
@@ -66,7 +66,7 @@ export function ReadOnlyDescription({
   );
   return (
     <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={mentionAwareUrlTransform}>
         {markdown || "_No description_"}
       </ReactMarkdown>
     </div>
