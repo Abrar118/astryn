@@ -219,7 +219,9 @@ function repair(input: Partial<WorkspaceState>): WorkspaceState {
   }
   if (panes.length === 0) return FALLBACK;
   const focusedPaneId = panes.some((p) => p.id === input.focusedPaneId) ? (input.focusedPaneId as string) : panes[0].id;
-  const ratio = clampRatio(input.ratio as number, 1000);
+  // Sanitize only (finite, within [0,1]); the PIXEL floor is applied at layout time
+  // by SplitLayout's clampRatio against the real width — never at parse time.
+  const ratio = Number.isFinite(input.ratio) ? Math.min(1, Math.max(0, input.ratio as number)) : 0.5;
   const seq = Math.max(Number.isFinite(input.seq) ? Math.floor(input.seq as number) : 0, maxTabSeq(panes) + 1);
   return { panes, focusedPaneId, ratio, seq };
 }
