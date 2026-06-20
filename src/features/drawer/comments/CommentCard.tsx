@@ -14,6 +14,34 @@ import type { AggregatedReaction } from "./reactions";
 import type { DetailComment } from "@/lib/commands";
 import type { MentionResolver } from "../markdownComponents";
 
+export function AuthorActionsMenu({ close, onEdit, onDelete }: {
+  close: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <>
+      <PopoverItem icon={<Pencil className="size-4" />} label="Edit" onClick={() => { onEdit(); close(); }} />
+      {confirming ? (
+        <PopoverItem
+          icon={<Trash2 className="size-4" />}
+          label="Confirm delete"
+          danger
+          onClick={() => { onDelete(); close(); }}
+        />
+      ) : (
+        <PopoverItem
+          icon={<Trash2 className="size-4" />}
+          label="Delete"
+          danger
+          onClick={() => setConfirming(true)}
+        />
+      )}
+    </>
+  );
+}
+
 export function CommentCard({
   comment, issueId, onOpenLink, resolveMention,
 }: {
@@ -32,7 +60,6 @@ export function CommentCard({
   const add = useAddReaction();
   const remove = useRemoveReaction();
   const isPending = comment.id.startsWith("pending-");
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const toggleReaction = (agg: AggregatedReaction) => {
     if (agg.reactedByMe && agg.reactionIdByMe) {
@@ -59,33 +86,16 @@ export function CommentCard({
               button={<MoreHorizontal className="size-4" />}
               panelClassName="w-40 rounded-lg border border-border bg-popover p-1 shadow-2xl"
             >
-              {(close) => {
-                const closeAndReset = () => { setConfirmingDelete(false); close(); };
-                return (
-                  <>
-                    <PopoverItem icon={<Pencil className="size-4" />} label="Edit" onClick={() => { setEditing(true); closeAndReset(); }} />
-                    {confirmingDelete ? (
-                      <PopoverItem
-                        icon={<Trash2 className="size-4" />}
-                        label="Confirm delete"
-                        danger
-                        onClick={() => {
-                          del.mutate({ issueId, id: comment.id });
-                          closeAndReset();
-                          gooeyToast.success("Comment deleted");
-                        }}
-                      />
-                    ) : (
-                      <PopoverItem
-                        icon={<Trash2 className="size-4" />}
-                        label="Delete"
-                        danger
-                        onClick={() => setConfirmingDelete(true)}
-                      />
-                    )}
-                  </>
-                );
-              }}
+              {(close) => (
+                <AuthorActionsMenu
+                  close={close}
+                  onEdit={() => setEditing(true)}
+                  onDelete={() => {
+                    del.mutate({ issueId, id: comment.id });
+                    gooeyToast.success("Comment deleted");
+                  }}
+                />
+              )}
             </Popover>
           </div>
         )}

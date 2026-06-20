@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { AuthorActionsMenu } from "./CommentCard";
 import type { DetailComment } from "@/lib/commands";
 
 const { meId } = vi.hoisted(() => ({ meId: { value: "u1" } }));
@@ -63,5 +64,32 @@ describe("CommentCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
     expect(deleteMutate).toHaveBeenCalledOnce();
     expect(deleteMutate).toHaveBeenCalledWith({ issueId: "i1", id: "c1" });
+  });
+
+  it("confirm state resets when AuthorActionsMenu unmounts (popover dismissed)", () => {
+    // Simulate the Popover unmount-on-close: mount AuthorActionsMenu fresh (as the
+    // Popover does each time it opens), arm it, unmount, remount — must start at "Delete".
+    const onEdit = vi.fn();
+    const onDelete = vi.fn();
+    const close = vi.fn();
+
+    const { unmount } = render(
+      <AuthorActionsMenu close={close} onEdit={onEdit} onDelete={onDelete} />,
+    );
+    // Arm the confirm state
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    expect(screen.getByRole("button", { name: /confirm delete/i })).toBeTruthy();
+    expect(onDelete).not.toHaveBeenCalled();
+
+    // Simulate Popover closing: unmount the component
+    unmount();
+
+    // Simulate Popover reopening: render a fresh AuthorActionsMenu in a new root
+    render(<AuthorActionsMenu close={close} onEdit={onEdit} onDelete={onDelete} />);
+
+    // Must show "Delete", not "Confirm delete", and mutate must still not have been called
+    expect(screen.getByRole("button", { name: /^delete$/i })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /confirm delete/i })).toBeNull();
+    expect(onDelete).not.toHaveBeenCalled();
   });
 });
