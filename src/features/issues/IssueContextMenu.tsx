@@ -26,6 +26,7 @@ import {
   Maximize2,
   PanelRight,
   SignalHigh,
+  SquareSplitHorizontal,
   Tag,
   Trash2,
   User as UserIcon,
@@ -188,7 +189,7 @@ function Menu({
   const { data: cycles } = useCycles();
   const { data: filterOpts } = useFilterOptions();
   const [params, setParams] = useSearchParams();
-  const { openIssueTab } = useWorkspace();
+  const { openIssueTab, openIssueInRightSplit } = useWorkspace();
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<string | null>(null);
 
@@ -494,6 +495,17 @@ function Menu({
         onMouseEnter={() => setSub(null)}
         onClick={() => {
           openIssueTab(issue.id);
+          onClose();
+        }}
+      />
+
+      {/* Open in the right split pane */}
+      <Row
+        icon={<SquareSplitHorizontal className="size-4" />}
+        label="Open in right split"
+        onMouseEnter={() => setSub(null)}
+        onClick={() => {
+          openIssueInRightSplit(issue.id);
           onClose();
         }}
       />
