@@ -15,7 +15,6 @@ export function CommentThread({
   resolveMention?: MentionResolver;
 }) {
   const [replying, setReplying] = useState(false);
-  const [replyKey, setReplyKey] = useState(0);
   const create = useCreateComment();
   const users = useUsers();
   const parentId = thread.comment.id;
@@ -35,14 +34,13 @@ export function CommentThread({
       <div className="mt-2 pl-3">
         {replying ? (
           <CommentComposer
-            key={replyKey}
             variant="reply"
             submitting={create.isPending}
             users={users.data ?? []}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
             onCancel={() => setReplying(false)}
-            onSubmit={(md) => create.mutate({ issueId, body: md, parentId }, { onSuccess: () => { setReplying(false); setReplyKey((k) => k + 1); } })}
+            onSubmit={(md) => create.mutate({ issueId, body: md, parentId }, { onSuccess: () => setReplying(false) })}
           />
         ) : (
           <button

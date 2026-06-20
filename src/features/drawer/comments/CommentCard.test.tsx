@@ -86,6 +86,25 @@ describe("CommentCard", () => {
     expect(successMock).not.toHaveBeenCalled();
   });
 
+  it("success toast is shown after delete mutation succeeds", () => {
+    const successMock = vi.mocked(gooeyToast.success);
+    successMock.mockClear();
+
+    render(<CommentCard comment={base} issueId="i1" onOpenLink={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /comment actions/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    fireEvent.click(screen.getByRole("button", { name: /confirm delete/i }));
+
+    // Extract and invoke the onSuccess callback
+    const onSuccessCallback = deleteMutate.mock.calls[0][1].onSuccess;
+    onSuccessCallback();
+
+    // Toast should now be called with the success message
+    expect(successMock).toHaveBeenCalledOnce();
+    expect(successMock).toHaveBeenCalledWith("Comment deleted");
+  });
+
   it("confirm state resets when AuthorActionsMenu unmounts (popover dismissed)", () => {
     // Simulate the Popover unmount-on-close: mount AuthorActionsMenu fresh (as the
     // Popover does each time it opens), arm it, unmount, remount — must start at "Delete".

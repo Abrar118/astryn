@@ -54,7 +54,6 @@ export function CommentCard({
   const meId = me?.viewerId ?? null;
   const isAuthor = comment.userId != null && comment.userId === meId;
   const [editing, setEditing] = useState(false);
-  const [editKey, setEditKey] = useState(0);
   const update = useUpdateComment();
   const del = useDeleteComment();
   const users = useUsers();
@@ -102,7 +101,6 @@ export function CommentCard({
       <div className="mt-1">
         {editing ? (
           <CommentComposer
-            key={editKey}
             variant="edit"
             initialMarkdown={comment.body}
             submitting={update.isPending}
@@ -110,7 +108,7 @@ export function CommentCard({
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
             onCancel={() => setEditing(false)}
-            onSubmit={(md) => update.mutate({ issueId, id: comment.id, body: md }, { onSuccess: () => { setEditing(false); setEditKey((k) => k + 1); } })}
+            onSubmit={(md) => update.mutate({ issueId, id: comment.id, body: md }, { onSuccess: () => setEditing(false) })}
           />
         ) : (
           <ReadOnlyDescription markdown={comment.body} onOpenLink={onOpenLink} resolveMention={resolveMention} />
