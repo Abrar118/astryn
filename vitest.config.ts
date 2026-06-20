@@ -9,6 +9,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
+    setupFiles: ["src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     // Stub Tauri runtime modules — they are not available in the Node/jsdom test environment.
     // Tests only exercise the Markdown parse/serialize layer, not the Tauri IPC.
