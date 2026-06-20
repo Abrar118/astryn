@@ -45,7 +45,8 @@ import {
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { IssueRow, compareIssues } from "@/features/issues/IssueRow";
 import { DisplayOptions } from "@/features/issues/DisplayOptions";
-import { DEFAULT_DISPLAY, type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
+import { type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
+import { loadSubIssueDisplay, saveSubIssueDisplay, type SubIssueDisplay } from "./subIssueDisplay";
 import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
 import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
@@ -411,14 +412,17 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
   const openIssue = useCallback((next: string) => setParams({ issue: next }), [setParams]);
 
-  // Sub-issue display state (ordering / completed filter / display columns).
-  const [subOrdering, setSubOrdering] = useState<Ordering>("priority");
-  const [subCompleted, setSubCompleted] = useState<Completed>("all");
-  const [subDisplay, setSubDisplay] = useState<DisplayProps>(() => ({
-    ...DEFAULT_DISPLAY,
-    id: false, created: false, updated: false,
-  }));
+  // Sub-issue display state (ordering / completed filter / display columns),
+  // loaded from + persisted to localStorage so funnel choices survive reopens.
+  const subInit = useRef<SubIssueDisplay | null>(null);
+  if (!subInit.current) subInit.current = loadSubIssueDisplay();
+  const [subOrdering, setSubOrdering] = useState<Ordering>(subInit.current.ordering);
+  const [subCompleted, setSubCompleted] = useState<Completed>(subInit.current.completed);
+  const [subDisplay, setSubDisplay] = useState<DisplayProps>(subInit.current.display);
   const toggleSubDisplay = (k: DisplayKey) => setSubDisplay((d) => ({ ...d, [k]: !d[k] }));
+  useEffect(() => {
+    saveSubIssueDisplay({ ordering: subOrdering, completed: subCompleted, display: subDisplay });
+  }, [subOrdering, subCompleted, subDisplay]);
 
   // Map id -> cached IssueListItem for sub-issue row resolution.
   const issuesById = useMemo(
@@ -644,7 +648,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                 const uncachedEntries = entries.filter((e) => e.cached === null);
                 const ordered = [...cachedEntries, ...uncachedEntries];
                 return (
-                  <div>
+                  <div className="overflow-hidden">
                     {ordered.map(({ child, cached }) =>
                       cached ? (
                         <IssueRow
