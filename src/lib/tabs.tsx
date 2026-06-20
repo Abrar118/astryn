@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 
-export type ViewKind = "calendar" | "list" | "settings" | "issue";
+export type ViewKind = "calendar" | "list" | "inbox" | "settings" | "issue";
 export type Tab = { id: string; view: ViewKind; issueId?: string };
 
 type Ctx = {
@@ -21,7 +21,7 @@ const WorkspaceCtx = createContext<Ctx | null>(null);
 type Persisted = { tabs: Tab[]; activeId: string; seq: number };
 const STORAGE_KEY = "astryn.workspace";
 const FALLBACK: Persisted = { tabs: [{ id: "tab-0", view: "calendar" }], activeId: "tab-0", seq: 1 };
-const VIEWS: ViewKind[] = ["calendar", "list", "settings", "issue"];
+const VIEWS: ViewKind[] = ["calendar", "list", "inbox", "settings", "issue"];
 
 /** Pure: validate persisted workspace JSON. Drops malformed tabs and any
  *  "issue" tab missing an issueId; falls back when nothing valid remains. */

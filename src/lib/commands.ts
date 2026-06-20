@@ -170,6 +170,22 @@ export type FilterOptions = {
   projects: { id: string; name: string }[];
 };
 export type User = { id: string; name: string };
+
+/** An inbox notification, flattened to the issue it points at. */
+export type Notification = {
+  id: string;
+  /** Linear notification `type` (drives the human subtitle). */
+  kind: string;
+  createdAt: string;
+  read: boolean;
+  actorName: string | null;
+  issueId: string;
+  issueIdentifier: string;
+  issueTitle: string;
+  issueStateType: string;
+  issueStateColor: string;
+  issueProjectName: string | null;
+};
 export type Me = { viewerId: string; viewerName: string };
 export type SyncResult = { mode: "full" | "incremental"; synced: number };
 
@@ -241,6 +257,8 @@ export const createIssue = (input: CreateIssueInput): Promise<Issue> =>
   invoke("create_issue", { input });
 
 export const listUsers = (): Promise<User[]> => invoke("list_users");
+
+export const listNotifications = (): Promise<Notification[]> => invoke("list_notifications");
 
 export const listLabels = (): Promise<Label[]> => invoke("list_labels");
 

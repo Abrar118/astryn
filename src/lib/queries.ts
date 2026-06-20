@@ -22,6 +22,7 @@ import {
   listFilterOptions,
   listIssues,
   listLabels,
+  listNotifications,
   listUnscheduled,
   listUsers,
   listWorkflowStates,
@@ -133,7 +134,7 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
  */
 const WORKSPACE_KEYS = [
   ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["labels"], ["cycles"],
-  ["filter-options"], ["workflow-states"], ["me"],
+  ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {
@@ -162,6 +163,11 @@ export function useFilterOptions() {
 
 export function useUsers() {
   return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000 });
+}
+
+/** Inbox notifications (live fetch, refreshed alongside the sync loop). */
+export function useNotifications() {
+  return useQuery({ queryKey: ["notifications"], queryFn: listNotifications, staleTime: 60_000 });
 }
 
 export function useLabels() {
@@ -501,6 +507,7 @@ export function useSyncLoop() {
       qc.invalidateQueries({ queryKey: ["issues"] });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
       qc.invalidateQueries({ queryKey: ["me"] });
+      qc.invalidateQueries({ queryKey: ["notifications"] });
     },
     onError: (err) => gooeyToast.error("Sync failed", { description: errorText(err) }),
   });

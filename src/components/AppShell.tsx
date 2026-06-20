@@ -4,6 +4,7 @@ import { TabBar } from "@/components/TabBar";
 import { Dock } from "@/components/Dock";
 import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
+import { InboxView } from "@/features/inbox/InboxView";
 import { Settings } from "@/features/settings/Settings";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
 import { IssuePage } from "@/features/drawer/IssuePage";
@@ -21,6 +22,7 @@ function Shell() {
       <main key={active.id} className="min-h-0 flex-1 overflow-hidden">
         {active.view === "calendar" && <CalendarPage />}
         {active.view === "list" && <IssuesView />}
+        {active.view === "inbox" && <InboxView />}
         {active.view === "settings" && <Settings />}
         {active.view === "issue" && active.issueId && <IssuePage issueId={active.issueId} />}
       </main>

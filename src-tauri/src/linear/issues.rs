@@ -65,6 +65,27 @@ pub struct ParsedUser {
     pub name: String,
 }
 
+/// One inbox notification, flattened to the issue it points at. Only
+/// issue-bearing notifications are surfaced (the inbox reuses the issue drawer),
+/// so non-issue notifications are dropped during parsing.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ParsedNotification {
+    pub id: String,
+    /// Linear notification `type` (e.g. `issueMention`, `issueNewComment`); the
+    /// frontend turns this into the human subtitle, so unknown values still render.
+    pub kind: String,
+    pub created_at: String,
+    pub read: bool,
+    pub actor_name: Option<String>,
+    pub issue_id: String,
+    pub issue_identifier: String,
+    pub issue_title: String,
+    pub issue_state_type: String,
+    pub issue_state_color: String,
+    pub issue_project_name: Option<String>,
+}
+
 // ---- helpers to read nested JSON safely ----
 fn s(v: &Value, k: &str) -> Option<String> {
     v.get(k).and_then(|x| x.as_str()).map(Into::into)
@@ -221,6 +242,35 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
             Some(ParsedUser {
                 id: s(u, "id")?,
                 name: s(u, "name").unwrap_or_default(),
+            })
+        })
+        .collect())
+}
+
+pub fn parse_notifications(body: &str) -> Result<Vec<ParsedNotification>, LinearError> {
+    let data = extract_data(body)?;
+    let nodes = data
+        .get("notifications")
+        .and_then(|n| n.get("nodes"))
+        .and_then(|n| n.as_array())
+        .ok_or(LinearError::Malformed)?;
+    Ok(nodes
+        .iter()
+        .filter_map(|n| {
+            // Skip non-issue notifications: the inbox opens the issue drawer on click.
+            let issue = n.get("issue").filter(|i| i.is_object())?;
+            Some(ParsedNotification {
+                id: s(n, "id")?,
+                kind: s(n, "type").unwrap_or_default(),
+                created_at: s(n, "createdAt").unwrap_or_default(),
+                read: n.get("readAt").map(|r| !r.is_null()).unwrap_or(false),
+                actor_name: nested(n, "actor", "name"),
+                issue_id: s(issue, "id")?,
+                issue_identifier: s(issue, "identifier").unwrap_or_default(),
+                issue_title: s(issue, "title").unwrap_or_default(),
+                issue_state_type: nested(issue, "state", "type").unwrap_or_default(),
+                issue_state_color: nested(issue, "state", "color").unwrap_or_default(),
+                issue_project_name: nested(issue, "project", "name"),
             })
         })
         .collect())
@@ -1040,6 +1090,12 @@ fn issue_detail_query() -> String {
 }
 
 const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
+const NOTIFICATIONS_QUERY: &str = "query { notifications(first: 50) { nodes {
+    id type createdAt readAt actor { name }
+    ... on IssueNotification {
+      issue { id identifier title state { type color } project { name } }
+    }
+  } } }";
 const LABELS_QUERY: &str = "query { issueLabels(first: 250) { nodes { id name color } } }";
 const CYCLES_QUERY: &str = "query { cycles(first: 250) { nodes { id number name team { id } } } }";
 const WORKFLOW_STATES_QUERY: &str =
@@ -1121,6 +1177,11 @@ impl LinearClient {
     pub async fn labels(&self, auth: &str) -> Result<Vec<ParsedLabel>, LinearError> {
         let body = serde_json::json!({ "query": LABELS_QUERY });
         parse_labels(&self.post(auth, body).await?)
+    }
+
+    pub async fn notifications(&self, auth: &str) -> Result<Vec<ParsedNotification>, LinearError> {
+        let body = serde_json::json!({ "query": NOTIFICATIONS_QUERY });
+        parse_notifications(&self.post(auth, body).await?)
     }
 
     pub async fn cycles(&self, auth: &str) -> Result<Vec<ParsedCycle>, LinearError> {
@@ -1271,6 +1332,31 @@ mod tests {
         assert_eq!(i.labels.len(), 1);
         assert_eq!(i.archived_at, None);
         assert!(!i.raw_json.is_empty());
+    }
+
+    #[test]
+    fn parses_notifications_and_drops_non_issue_nodes() {
+        let body = r##"{"data":{"notifications":{"nodes":[
+          {"id":"n1","type":"issueMention","createdAt":"2026-06-20T08:00:00Z","readAt":null,
+           "actor":{"name":"Jakob Schwarz"},
+           "issue":{"id":"i1","identifier":"PSY-410","title":"Product Decision",
+             "state":{"type":"unstarted","color":"#aaa"},"project":{"name":"Psycloud"}}},
+          {"id":"n2","type":"issueAddedToView","createdAt":"2026-06-19T08:00:00Z","readAt":"2026-06-19T09:00:00Z",
+           "actor":{"name":"Jakob Schwarz"},
+           "issue":{"id":"i2","identifier":"PSY-372","title":"Webhooks",
+             "state":{"type":"completed","color":"#5b5"},"project":null}},
+          {"id":"n3","type":"projectUpdate","createdAt":"2026-06-18T08:00:00Z","readAt":null,
+           "actor":{"name":"Bot"}}
+        ]}}}"##;
+        let ns = parse_notifications(body).unwrap();
+        assert_eq!(ns.len(), 2); // the project notification (no issue) is dropped
+        assert_eq!(ns[0].issue_identifier, "PSY-410");
+        assert!(!ns[0].read);
+        assert_eq!(ns[0].actor_name.as_deref(), Some("Jakob Schwarz"));
+        assert_eq!(ns[0].issue_project_name.as_deref(), Some("Psycloud"));
+        assert!(ns[1].read);
+        assert_eq!(ns[1].issue_state_type, "completed");
+        assert_eq!(ns[1].issue_project_name, None);
     }
 
     #[test]

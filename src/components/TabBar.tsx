@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Calendar, FileText, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { Calendar, FileText, Inbox, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { useIssues } from "@/lib/queries";
 import { DualClock } from "@/features/home/DualClock";
@@ -7,6 +7,7 @@ import { DualClock } from "@/features/home/DualClock";
 const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
   calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
   list: { label: "Issues", icon: <List className="size-3.5" /> },
+  inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
   settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
 };
 

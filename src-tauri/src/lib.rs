@@ -61,6 +61,7 @@ pub fn run() {
             commands::update_issue,
             commands::create_issue,
             commands::list_users,
+            commands::list_notifications,
             commands::list_labels,
             commands::list_cycles,
             commands::list_workflow_states,

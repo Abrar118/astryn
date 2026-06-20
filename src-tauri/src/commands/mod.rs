@@ -12,7 +12,7 @@ use crate::linear::issues::{
     create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput,
     DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailReaction,
     DetailRef, DetailRelation, DetailState, IssueDetailNode, OrgIdentity, ParsedCycle, ParsedIssue,
-    ParsedUser, UpdateIssuePatch, WorkflowState,
+    ParsedNotification, ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
@@ -708,6 +708,23 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::NotConfigured)?;
     state.linear.users(&auth).await.map_err(CmdError::from)
+}
+
+#[tauri::command]
+pub async fn list_notifications(
+    state: State<'_, AppState>,
+) -> Result<Vec<ParsedNotification>, CmdError> {
+    let c = state.credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::NotConfigured)?;
+    state
+        .linear
+        .notifications(&auth)
+        .await
+        .map_err(CmdError::from)
 }
 
 #[tauri::command]
