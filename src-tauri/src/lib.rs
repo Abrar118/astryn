@@ -27,6 +27,8 @@ pub fn run() {
             let db_path = data_dir.join("astryn.db");
             let pool = tauri::async_runtime::block_on(db::init_pool(&db_path))
                 .expect("failed to initialize database (directory or migrations)");
+            tauri::async_runtime::block_on(db::issues::recover_pending_deletes(&pool))
+                .expect("failed to recover pending issue deletions");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -38,7 +40,9 @@ pub fn run() {
                 secret_store: store,
                 credentials,
                 linear,
-                op_lock: tokio::sync::Mutex::new(()),
+                workspace_lock: tokio::sync::Mutex::new(()),
+                workspace_generation: std::sync::atomic::AtomicU64::new(0),
+                rate_limited_until: std::sync::atomic::AtomicU64::new(0),
             });
             Ok(())
         })
@@ -46,7 +50,29 @@ pub fn run() {
             commands::set_linear_key,
             commands::clear_linear_key,
             commands::get_connection_status,
-            commands::test_linear_connection
+            commands::test_linear_connection,
+            commands::sync_issues,
+            commands::list_calendar_issues,
+            commands::list_unscheduled,
+            commands::list_issues,
+            commands::list_filter_options,
+            commands::get_issue_detail,
+            commands::load_linear_image,
+            commands::update_issue,
+            commands::create_issue,
+            commands::list_users,
+            commands::list_notifications,
+            commands::list_labels,
+            commands::list_cycles,
+            commands::list_workflow_states,
+            commands::delete_issue,
+            commands::get_me,
+            commands::create_comment,
+            commands::update_comment,
+            commands::delete_comment,
+            commands::add_reaction,
+            commands::remove_reaction,
+            commands::create_label
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

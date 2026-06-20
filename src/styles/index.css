@@ -83,11 +83,12 @@
 }
 
 .dark {
-    --background: oklch(0.16 0.005 285);
+    /* Surface elevation ladder (darkest → lightest): sidebar < background < card < popover */
+    --background: oklch(0.185 0.006 285);
     --foreground: oklch(0.92 0.004 285);
-    --card: oklch(0.18 0.005 285);
+    --card: oklch(0.215 0.006 285);
     --card-foreground: oklch(0.92 0.004 285);
-    --popover: oklch(0.205 0 0);
+    --popover: oklch(0.225 0.006 285);
     --popover-foreground: oklch(0.985 0 0);
     --primary: oklch(0.62 0.19 277);
     --primary-foreground: oklch(0.98 0.003 285);
@@ -106,7 +107,7 @@
     --chart-3: oklch(0.439 0 0);
     --chart-4: oklch(0.371 0 0);
     --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
+    --sidebar: oklch(0.15 0.006 285);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.488 0.243 264.376);
     --sidebar-primary-foreground: oklch(0.985 0 0);
@@ -127,3 +128,501 @@
     @apply font-sans;
     }
 }
+
+@layer utilities {
+  /* Scrollable but with no visible scrollbar — used for per-row horizontal
+     overflow (e.g. dense issue rows in a narrow split pane). */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .drawer-scrollbar {
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 72%, transparent) var(--background);
+    scrollbar-width: thin;
+  }
+
+  .drawer-scrollbar::-webkit-scrollbar {
+    width: 10px;
+  }
+
+  .drawer-scrollbar::-webkit-scrollbar-track {
+    background: var(--background);
+  }
+
+  .drawer-scrollbar::-webkit-scrollbar-thumb {
+    min-height: 36px;
+    border: 3px solid var(--background);
+    border-radius: 999px;
+    background: color-mix(in oklab, var(--muted-foreground) 72%, transparent);
+  }
+
+  .drawer-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+}
+
+/* ── FullCalendar — Astryn dark, Linear-style ──────────────────────────── */
+.fc {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: var(--secondary);
+  --fc-neutral-text-color: var(--muted-foreground);
+  --fc-today-bg-color: color-mix(in oklch, var(--primary) 7%, transparent);
+  --fc-event-bg-color: transparent;
+  --fc-event-border-color: transparent;
+  --fc-event-text-color: var(--foreground);
+  --fc-highlight-color: color-mix(in oklch, var(--primary) 12%, transparent);
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+}
+
+/* Toolbar */
+.fc .fc-toolbar.fc-header-toolbar {
+  margin-bottom: 0.75rem;
+}
+.fc .fc-toolbar-title {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Buttons — flat ghost, Linear-ish */
+.fc .fc-button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  border-radius: var(--radius-md);
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-transform: capitalize;
+  box-shadow: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+.fc .fc-button:hover {
+  background: var(--accent);
+}
+.fc .fc-button:focus,
+.fc .fc-button:focus-visible {
+  box-shadow: none;
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+.fc .fc-button:disabled {
+  opacity: 0.4;
+}
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+  background: var(--accent);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+.fc .fc-button-group > .fc-button:not(:first-child) {
+  margin-left: -1px;
+}
+
+/* Column headers (day names) */
+.fc .fc-col-header-cell {
+  background: transparent;
+}
+.fc .fc-col-header-cell-cushion {
+  padding: 0.5rem 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Day cells + day numbers */
+.fc .fc-daygrid-day-number {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.fc .fc-day-other .fc-daygrid-day-number {
+  opacity: 0.45;
+}
+.fc .fc-day-today {
+  background: var(--fc-today-bg-color);
+}
+.fc .fc-day-today .fc-daygrid-day-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.4rem;
+  height: 1.4rem;
+  margin: 0.15rem;
+  padding: 0;
+  border-radius: 9999px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+
+/* Events */
+.fc .fc-daygrid-event {
+  margin-top: 2px;
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+.fc .fc-event {
+  cursor: pointer;
+}
+.fc .fc-event:hover {
+  filter: brightness(1.18);
+}
+.fc .fc-daygrid-event:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  border-radius: var(--radius-md);
+}
+
+/* "+N more" link + overflow popover */
+.fc .fc-daygrid-more-link {
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+  padding: 1px 4px;
+  border-radius: var(--radius-sm);
+}
+.fc .fc-daygrid-more-link:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+.fc .fc-popover {
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.fc .fc-popover-header {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+/* Week (timeGrid) labels */
+.fc .fc-timegrid-slot-label-cushion,
+.fc .fc-timegrid-axis-cushion {
+  color: var(--muted-foreground);
+  font-size: 0.6875rem;
+}
+/* ── react-day-picker (DatePicker) — dark Linear-style theme ───────────────── */
+.rdp-root {
+  --rdp-accent-color: var(--primary);
+  --rdp-accent-background-color: color-mix(in oklab, var(--primary) 22%, transparent);
+  --rdp-today-color: var(--primary);
+  --rdp-day-width: 2rem;
+  --rdp-day-height: 2rem;
+  --rdp-day_button-width: 2rem;
+  --rdp-day_button-height: 2rem;
+  --rdp-day_button-border-radius: var(--radius-sm);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  margin: 0;
+}
+.rdp-month_caption {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  padding: 0 0.25rem 0.25rem;
+}
+.rdp-weekday {
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+}
+.rdp-day_button {
+  color: var(--foreground);
+  border: none;
+}
+.rdp-day_button:hover {
+  background: var(--accent);
+}
+.rdp-outside .rdp-day_button {
+  color: var(--muted-foreground);
+  opacity: 0.5;
+}
+.rdp-selected .rdp-day_button {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+.rdp-today:not(.rdp-selected) .rdp-day_button {
+  color: var(--primary);
+  font-weight: 600;
+}
+.rdp-chevron {
+  fill: var(--muted-foreground);
+}
+.rdp-button_previous:hover .rdp-chevron,
+.rdp-button_next:hover .rdp-chevron {
+  fill: var(--foreground);
+}
+
+.astryn-description-editor {
+  min-height: 8rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  outline: none;
+}
+.astryn-description-editor[contenteditable="true"]:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 55%, transparent);
+  padding-inline: 0.75rem;
+}
+.astryn-description-editor p.is-editor-empty:first-child::before {
+  content: "Add description…";
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+.astryn-description-editor h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
+.astryn-description-editor h2 { margin: 1rem 0 0.4rem; font-size: 1.25rem; font-weight: 650; }
+.astryn-description-editor h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
+.astryn-description-editor ul { list-style: disc; padding-left: 1.4rem; }
+.astryn-description-editor ol { list-style: decimal; padding-left: 1.4rem; }
+.astryn-description-editor ul[data-type="taskList"] { list-style: none; padding-left: 0; }
+.astryn-description-editor li[data-type="taskItem"] { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-description-editor li[data-type="taskItem"] > label { margin-top: 0.2rem; }
+.astryn-description-editor blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); }
+.astryn-description-editor pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
+.astryn-description-editor code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; }
+.astryn-description-editor table { width: 100%; border-collapse: collapse; }
+.astryn-description-editor th, .astryn-description-editor td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
+/* ── Milkdown slash command menu ─────────────────────────────────────────── */
+.md-slash-menu {
+  position: absolute;
+  z-index: 9999;
+  min-width: 180px;
+  max-height: 280px;
+  overflow-y: auto;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.25rem 0;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+}
+.md-slash-menu li {
+  list-style: none;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  border-radius: 0.3rem;
+}
+.md-slash-menu li:hover,
+.md-slash-menu li[data-selected="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+/* ── Milkdown inline tooltip ──────────────────────────────────────────────── */
+.md-tooltip {
+  position: absolute;
+  z-index: 9999;
+  background: var(--popover);
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.2rem 0.3rem;
+  box-shadow: 0 2px 10px rgb(0 0 0 / 35%);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.125rem;
+}
+.md-tooltip button {
+  background: none;
+  border: none;
+  border-radius: 0.3rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.md-tooltip button:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+/* Link URL input shown when "Link" is clicked in the tooltip */
+.md-tooltip input[type="text"] {
+  width: 14rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  padding: 0.25rem 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  outline: none;
+}
+.md-tooltip input[type="text"]::placeholder {
+  color: var(--muted-foreground);
+}
+
+/* ── Milkdown / ProseMirror editor — dark Linear-style ────────────────────── */
+.milkdown {
+  outline: none;
+}
+
+.milkdown .ProseMirror {
+  min-height: 8rem;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0;
+  color: var(--foreground);
+  font-size: 0.875rem;
+  line-height: 1.65;
+  outline: none;
+  font-family: var(--font-sans);
+}
+
+/* Read-only display instance: no editor min-height (don't pad short
+   descriptions with empty space) and no caret. */
+.milkdown .ProseMirror[contenteditable="false"] {
+  min-height: 0;
+}
+
+.milkdown .ProseMirror:focus {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ring) 55%, transparent);
+  padding-inline: 0.75rem;
+}
+
+/* The "Add description…" placeholder is an edit affordance — show it only in
+   the editable instance, never in read-only display. */
+.milkdown .ProseMirror[contenteditable="true"] p.is-empty:first-child::before {
+  content: var(--milkdown-placeholder, "Add description…");
+  float: left;
+  height: 0;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.milkdown .ProseMirror h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
+.milkdown .ProseMirror h2 { margin: 1rem 0 0.4rem; font-size: 1.25rem; font-weight: 650; }
+.milkdown .ProseMirror h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
+.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; }
+.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; }
+.milkdown .ProseMirror li[data-task-list-item] { list-style: none; display: flex; align-items: flex-start; gap: 0.5rem; padding-left: 0; }
+.milkdown .ProseMirror li[data-task-list-item] input[type="checkbox"] { margin-top: 0.25rem; flex-shrink: 0; accent-color: var(--primary); }
+.milkdown .ProseMirror blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
+.milkdown .ProseMirror pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
+.milkdown .ProseMirror code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; font-size: 0.875em; }
+.milkdown .ProseMirror table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
+.milkdown .ProseMirror th { background: var(--secondary); font-weight: 600; }
+.milkdown .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+.milkdown .ProseMirror a { color: var(--primary); cursor: pointer; }
+.milkdown .ProseMirror a:hover { text-decoration: underline; }
+
+/* Issue-mention pills inside the Milkdown editor */
+.milkdown .ProseMirror [data-mention-pill] {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+  padding: 0 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--foreground);
+  cursor: pointer;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.milkdown .ProseMirror [data-mention-pill]:hover {
+  background: var(--accent);
+}
+
+/* ── Read-only Markdown (description fallback, comments, resource modal) ─────── */
+/* The `prose` utility classes on these wrappers are inert (no typography plugin
+   is installed), so Preflight would otherwise flatten headings and strip list
+   markers. Mirror the Milkdown editor's element styling so the read-only view
+   matches the editor exactly. */
+.astryn-prose { color: var(--foreground); font-size: 0.875rem; line-height: 1.65; }
+.astryn-prose p { margin: 0.5rem 0; }
+.astryn-prose strong { font-weight: 650; }
+.astryn-prose h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
+.astryn-prose h2 { margin: 1rem 0 0.4rem; font-size: 1.25rem; font-weight: 650; }
+.astryn-prose h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
+.astryn-prose h4 { margin: 0.75rem 0 0.3rem; font-size: 0.95rem; font-weight: 650; }
+.astryn-prose ul { list-style: disc; padding-left: 1.4rem; margin: 0.5rem 0; }
+.astryn-prose ol { list-style: decimal; padding-left: 1.4rem; margin: 0.5rem 0; }
+.astryn-prose li { margin: 0.15rem 0; }
+.astryn-prose blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
+.astryn-prose pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; margin: 0.75rem 0; }
+.astryn-prose code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; font-size: 0.875em; }
+.astryn-prose table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+.astryn-prose th, .astryn-prose td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
+.astryn-prose th { background: var(--secondary); font-weight: 600; }
+.astryn-prose hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
+
+/* GFM task lists: inline checkbox + text, no bullet (matches Linear). */
+.astryn-prose ul.contains-task-list { list-style: none; padding-left: 0; }
+.astryn-prose li.task-list-item { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-prose li.task-list-item::marker { content: none; }
+.astryn-prose li.task-list-item > input[type="checkbox"] {
+  margin: 0.3rem 0 0;
+  flex-shrink: 0;
+  accent-color: var(--primary);
+}
+.astryn-prose li.task-list-item > p { margin: 0; }
+
+/* Rendered Mermaid diagrams (read-only). Center, and let wide diagrams scroll
+   horizontally instead of overflowing the drawer. */
+.astryn-mermaid {
+  margin: 0.75rem 0;
+  overflow-x: auto;
+  text-align: center;
+}
+.astryn-mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+.astryn-mermaid--loading {
+  min-height: 2rem;
+}
+
+/* Issue-mention links inside the rich editor render as highlighted pills.
+   (The read-only fallback renders richer pills with a status dot in JSX.) */
+.astryn-description-editor a[href*="/issue/"] {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: color-mix(in oklab, var(--secondary) 70%, transparent);
+  padding: 0 0.35rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: var(--foreground);
+  text-decoration: none;
+}
+.astryn-description-editor a[href*="/issue/"]:hover {
+  background: var(--accent);
+}
+
+/* Comment composer: reset outline and ensure minimum height for the ProseMirror
+   editable region. The placeholder text is supplied via the --milkdown-placeholder
+   CSS custom property set inline on .comment-composer-prose, which inherits down
+   to the empty <p> where the shared ::before rule reads it. */
+.comment-composer-prose .ProseMirror { outline: none; min-height: 1.5rem; }
+
+/* Kill the blue ring from the global `* { outline-ring/50 }` rule on the
+   composer wrapper and its ProseMirror contenteditable. Focus is still
+   indicated by the `focus-within:border-foreground/25` border on the wrapper. */
+.comment-composer-prose .ProseMirror:focus,
+.comment-composer-prose .ProseMirror:focus-visible {
+  outline: none !important;
+  box-shadow: none;
+}
+[data-comment-composer]:focus-within {
+  outline: none;
+}
+
