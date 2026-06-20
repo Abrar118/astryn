@@ -3,8 +3,29 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Ready to build, Phase 1 (Linear only)
-**Last updated:** 2026-06-18
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) shipped, with several workspace extensions beyond the original plan; F5–F9 remain.
+**Last updated:** 2026-06-21
+
+---
+
+## Implementation status
+
+**Shipped**
+
+- **M0 — Scaffold.** Tauri v2 + React 19 + Tailwind v4 + shadcn/ui, SQLite migrations, OS-keychain secret storage, the Rust Linear GraphQL proxy, the Home dual clock (Dhaka + Germany), and the Settings key-entry/connection flow.
+- **M1 — Calendar + Drawer + Drag (F1–F3).** Month/week calendar with filters and the unscheduled rail, drag-to-reschedule, the shared issue detail (drawer **and** full-page tab) with inline editing, and a Milkdown markdown editor (GFM, Mermaid, code blocks, proxied images, issue mentions).
+- **F4 — Activity timeline.** Per-issue chronological activity with semantic, color-coded event icons.
+
+**Delivered beyond the original M0/M1 scope**
+
+- **Issue list & board views** — grouping, persisted display options, and `@dnd-kit` board drag (cards → columns).
+- **Linear-style comments** — threads, reactions, `@`-mentions, and mention hover-cards (reused on calendar chips).
+- **Sub-issue parity** and a **label search/create** dropdown.
+- **Two-pane split view** — independent tab groups, resizable divider (pointer + keyboard), pane swap, drag-to-split, and `@dnd-kit` tab drag (reorder + cross-pane move); persisted layout with migration.
+- **Inbox** — Linear notifications in the dock with a master-detail layout.
+- **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
+
+**Not yet built:** F5 (standup), F6 (weekly review), F7 (GitHub PR tracking), F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
 
 ---
 
@@ -422,13 +443,13 @@ src/                 # React frontend
 
 ## 11. Milestones (ship in this order)
 
-- **M0 — Scaffold.** Tauri v2 + React + Tailwind v4 + shadcn/ui + SQLite migrations + keychain + Linear GraphQL proxy in Rust. App shell/home view with the Dhaka + Germany dual clock (no issue data needed). Favicon/app icon wired from `/Users/orion-abrar/Downloads/web`. Smoke test: `viewer` query returns the user's name in the UI. Settings screen to enter/store the Linear key.
-- **M1 — Calendar + Drawer + Drag (F1–F3).** The core loop: see issues, open details, edit, reschedule. This alone is more than LinCal does.
-- **M2 — Activity timeline (F4).**
-- **M3 — Standup + Weekly generators (F5, F6).**
-- **M4 — GitHub PR tracking (F7).**
-- **M5 — Hierarchy/web viz (F8).**
-- **M6 — Doc links (F9).**
+- **M0 — Scaffold. ✅ Done.** Tauri v2 + React + Tailwind v4 + shadcn/ui + SQLite migrations + keychain + Linear GraphQL proxy in Rust. App shell/home view with the Dhaka + Germany dual clock. App/web icons wired from `public/icons/`. Smoke test: `viewer` query returns the user's name in the UI. Settings screen to enter/store the Linear key.
+- **M1 — Calendar + Drawer + Drag (F1–F3). ✅ Done.** The core loop: see issues, open details, edit, reschedule. Shipped with extensions: list/board views, the full-page issue tab, the two-pane split workspace, the command palette + shortcuts, the inbox, sub-issues, and label create (see *Implementation status* near the top).
+- **M2 — Activity timeline (F4). ✅ Done.**
+- **M3 — Standup + Weekly generators (F5, F6).** Not started.
+- **M4 — GitHub PR tracking (F7).** Not started.
+- **M5 — Hierarchy/web viz (F8).** Not started.
+- **M6 — Doc links (F9).** Not started.
 
 Each milestone must be independently runnable and demoable. Don't start a milestone until the previous one builds and runs.
 
@@ -455,9 +476,9 @@ Resolved (locked):
 5. **Standup/weekly output:** titles only (`IDENTIFIER — Title`) for now; richer formatting and counts are `[EXT]`. ✅
 6. **Local LLM polish:** deferred to the next phase — not Phase 1. Only the no-op `polish` seam exists now. ✅
 
-Still open (resolve at build time):
+Resolved during build:
 
-7. **Linear key header format:** confirm the current expected `Authorization` header form against live Linear docs before wiring auth.
+7. **Linear key header format:** the personal API key is sent **raw** in the `Authorization` header (no `Bearer` prefix). ✅
 
 ---
 

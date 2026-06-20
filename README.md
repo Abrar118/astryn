@@ -16,16 +16,51 @@ Astryn is the first phase of a broader personal command center. Today it focuses
 
 ## Features
 
-- **Calendar planning** with month, week, and day views, due-date scheduling, filters, and drag-to-reschedule.
-- **Issue workspace** with list and board views, display controls, and cached search/filter data.
-- **Rich issue details** in a side drawer or full-page tab, including inline properties, descriptions, comments, reactions, relations, sub-issues, attachments, and activity.
-- **Two-pane split view** with independent tab groups, drag-to-split, pane swapping, keyboard resizing, and persisted layout state.
-- **Command palette** for navigation, issue search, creation, sync actions, and opening a selected issue directly in the right split.
-- **Inbox** for issue-related notifications with inline detail viewing.
-- **Local-first data layer** backed by SQLite for fast cache reads and resilient workspace state.
-- **Secure authentication** with Linear credentials stored in the operating system keychain, never in the webview or SQLite.
-- **Markdown editing** with GitHub-flavored Markdown, Mermaid diagrams, code blocks, images, and issue mentions.
-- **Optimistic updates and background sync** with rollback handling and visible sync status.
+### Calendar & scheduling
+
+- **Month and week views** (FullCalendar) computed in `Asia/Dhaka` with weeks starting Sunday.
+- **Drag-to-reschedule** — drag an event to another day to update its due date, with optimistic updates and rollback on failure.
+- **Unscheduled rail** — issues without a due date sit in a side rail; drag one onto a day to schedule it.
+- **Color by state or priority**, filters for team / assignee (defaults to you) / project, and clear overdue flagging.
+- **Rich issue hover-card** on event chips and a full **right-click issue menu** for inline edits.
+
+### Issue workspace
+
+- **List view** grouped by status, assignee, priority, or project, with display controls (ordering, completed-issue handling, sub-issue visibility, per-column toggles) that persist across launches.
+- **Board view** — a Kanban grouped by status / assignee / priority; drag cards between columns to apply the implied change.
+- **Create issues** from a modal or the command palette, with team, state, priority, due date, assignee, labels, project, cycle, and estimate.
+- **Right-click context menu** on any issue for fast edits, copy actions, "open in Linear", "open in full page", and "open in right split".
+
+### Issue details
+
+- **Shared detail view** rendered either as a side drawer (non-modal — the calendar stays interactive) or as a full-page workspace tab.
+- **Inline-editable properties**: state, assignee, priority, due date, title, labels, project, cycle, estimate, and team.
+- **Markdown description editor** (Milkdown) with GitHub-flavored Markdown, Mermaid diagrams, fenced code blocks, images (proxied through Rust), and issue mentions with hover previews.
+- **Comments** — Linear-style threads with replies, emoji reactions, `@`-mentions, and mention hover-cards; create, edit, and delete.
+- **Sub-issues, relations, attachments**, and a per-issue **activity timeline** with semantic, color-coded event icons.
+
+### Workspace & navigation
+
+- **Browser-style tabs** — calendar, issues, inbox, settings, or a pinned issue, each in its own tab; layout persists across reloads.
+- **Two-pane split view** — split the workspace into two independent tab groups with a resizable divider (pointer and keyboard), pane swapping, and drag-to-split.
+- **Three ways to fill the right pane**: drag a tab across, right-click a tab to split, or pick an issue from the issue context menu / command palette.
+- **Drag-and-drop on @dnd-kit** for both tabs (reorder, move across panes, drag-to-split) and board cards — pointer **and** keyboard accessible.
+- **Command palette** (`⌘/Ctrl + K`) for issue search, creation, go-to navigation (Calendar / Issues / Inbox / Settings), resync actions, and opening a selected issue directly in the right split.
+- **Keyboard shortcuts**: `⌘/Ctrl + T` new tab, `⌘/Ctrl + [` back, `⌘/Ctrl + R` resync, `⌘/Ctrl + Shift + R` full resync, and `C` to create an issue.
+
+### Inbox
+
+- **Linear notifications** in the dock, in a master-detail layout that reuses the shared issue detail for inline viewing, with explicit error and "all caught up" states.
+
+### Foundation
+
+- **Local-first data layer** backed by SQLite for fast cache reads and resilient, persisted workspace state.
+- **Secure authentication** — Linear credentials stored in the operating-system keychain, never in the webview or SQLite.
+- **All external API calls run in Rust**, exposed to the renderer as typed Tauri commands; the webview never receives a token.
+- **Optimistic updates and background sync** with rollback handling, and all sync / error / rate-limit feedback through `goey-toast`.
+- **Home dual clock** showing your local Dhaka time alongside Germany (`Europe/Berlin`, DST-aware).
+
+> **Roadmap (not yet built):** standup and weekly-review generators, GitHub pull-request tracking, an issue relationship/hierarchy graph, and per-issue reference link storage. See [`requirements.md`](requirements.md) for the full plan.
 
 ## Premise
 
@@ -50,7 +85,7 @@ All outbound Linear requests run in Rust. Tokens are stored through the OS keych
 - Node.js 20 or newer
 - Rust stable toolchain
 - [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
-- A Linear personal API key
+- A Linear personal API key (added in the app's Settings on first run)
 
 ## Development
 
@@ -59,21 +94,38 @@ npm install
 npm run tauri dev
 ```
 
-Useful checks:
+`npm run tauri dev` is the primary loop: it launches the desktop app and runs Vite for you, so the Rust commands, SQLite cache, and keychain integration are all available. (`npm run dev` starts only the web frontend and cannot reach the Rust backend.)
+
+## Building installers
+
+Astryn packages to native installers for each platform via Tauri.
 
 ```bash
-npm test
-npm run build
-cargo test --manifest-path src-tauri/Cargo.toml
-cargo clippy --manifest-path src-tauri/Cargo.toml
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+# Production desktop build for the current OS
+npm run tauri build
 ```
 
-Run only the web frontend with `npm run dev`. The full application requires `npm run tauri dev` so the Rust commands, SQLite cache, and keychain integration are available.
+Output lands in `src-tauri/target/release/bundle/`. The window's `targets` is set to `all`, so each OS produces its native formats:
 
-## Current Scope
+- **macOS** — `.app` and `.dmg`
+- **Windows** — `.msi` and NSIS `.exe` (requires WebView2 + the MSVC toolchain)
+- **Linux** — `.deb` and `.AppImage` (requires `libwebkit2gtk-4.1-dev`, `build-essential`, `libssl-dev`, `libayatana-appindicator3-dev`, `librsvg2-dev`, and a running Secret Service daemon such as `gnome-keyring`)
 
-Astryn currently targets a single-user Linear workflow. Planned directions include generated standup and weekly-review views, GitHub pull-request context, issue relationship visualization, local reference links, and additional activity sources.
+Tauri does not cross-compile desktop bundles — build each target on its own operating system.
+
+## Quality checks
+
+```bash
+npm test                                                  # frontend tests (Vitest)
+npm run build                                             # tsc typecheck + Vite build (frontend only)
+cargo test  --manifest-path src-tauri/Cargo.toml          # Rust unit tests
+cargo clippy --manifest-path src-tauri/Cargo.toml         # Rust lints
+cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check # Rust formatting
+```
+
+## Current scope
+
+Astryn currently targets a single-user Linear workflow and delivers the calendar, issue workspace, detail editing, activity timeline, inbox, command palette, and the two-pane split workspace. Planned directions include generated standup and weekly-review views, GitHub pull-request context, issue relationship visualization, local reference links, and additional activity sources.
 
 ## License
 
