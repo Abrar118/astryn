@@ -2,6 +2,7 @@ import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
+import { userMentionFromHref } from "./comments/milkdownUserMention";
 
 /** Extract a Linear issue identifier (e.g. "PRO-153") from a link href, if any. */
 export function issueIdentifierFromHref(href: string): string | null {
@@ -18,6 +19,7 @@ export type MentionResolver = (identifier: string) => MentionTarget | undefined;
 /**
  * `react-markdown` overrides shared by the read-only description fallback and the
  * activity comments / resource modal:
+ * - A link to a *cached* Linear user mention renders as a non-navigating @Name pill.
  * - A link to a *cached* Linear issue renders as a highlighted, clickable pill.
  * - All link activation goes through `onActivateLink` (the drawer's `handleLink`):
  *   an in-app issue link opens the drawer; other links open in the system
@@ -27,9 +29,25 @@ export type MentionResolver = (identifier: string) => MentionTarget | undefined;
 export function createMarkdownComponents(opts: {
   onActivateLink: (href: string) => void;
   resolveMention: MentionResolver;
+  resolveUser?: (id: string) => { name: string } | undefined;
 }): Components {
   return {
     a: ({ href, children }) => {
+      // ── User-mention pill ─────────────────────────────────────────────────
+      const userId = href ? userMentionFromHref(href) : null;
+      const userTarget = userId && opts.resolveUser ? opts.resolveUser(userId) : undefined;
+      if (href && userId && userTarget) {
+        return (
+          <span
+            data-mention-pill="user"
+            className="mx-px inline-flex items-center rounded-md border border-border bg-secondary/70 px-1.5 py-0.5 align-baseline text-[0.85em] font-medium text-foreground"
+          >
+            @{userTarget.name}
+          </span>
+        );
+      }
+
+      // ── Issue-mention pill ────────────────────────────────────────────────
       const ident = href ? issueIdentifierFromHref(href) : null;
       const target = ident ? opts.resolveMention(ident) : undefined;
       if (href && ident && target) {
