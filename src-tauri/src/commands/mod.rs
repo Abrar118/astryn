@@ -165,7 +165,8 @@ fn parsed_to_issue(p: &ParsedIssue) -> Issue {
 }
 
 fn parsed_to_record(p: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
-    crate::linear::sync::to_record(p)
+    let (rec, labels, _relations) = crate::linear::sync::to_record(p);
+    (rec, labels)
 }
 
 fn now_epoch() -> u64 {
