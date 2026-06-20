@@ -80,7 +80,7 @@ export function AgendaView() {
 
   const viewerId = me.data?.viewerId;
   const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: win })
+    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: win, includeOverdue: weekOffset === 0 })
     : [];
 
   const isEmpty = groups.every((g) => g.items.length === 0);

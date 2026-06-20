@@ -118,13 +118,13 @@ function IssueNode({ data }: { data: IssueNodeData }) {
           data.onOpen(data.issueId);
         }
       }}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs font-mono text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
     >
       <span
         className="size-2 shrink-0 rounded-full"
         style={{ backgroundColor: data.stateColor }}
       />
-      <span className="max-w-[120px] truncate">{data.identifier}</span>
+      <span className="max-w-[120px] truncate font-mono">{data.identifier}</span>
     </div>
   );
 }
@@ -313,8 +313,8 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     return { nodes: builtNodes, edges: builtEdges };
   }, [items, allIssuesById, onOpen]);
 
-  // Empty state: no items at all, or items exist but no edges
-  if (items.length === 0 || edges.length === 0) {
+  // Empty state: no edges (subsumes the no-items case)
+  if (edges.length === 0) {
     return (
       <div className="flex h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
         No dependencies this week

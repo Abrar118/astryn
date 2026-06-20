@@ -120,4 +120,16 @@ describe("buildAgenda", () => {
       "ENG-1", "ENG-2", "ENG-3",
     ]);
   });
+
+  it("omits Overdue group when includeOverdue is false, even with past-due open issues", () => {
+    const issues = [
+      iss({ id: "1", dueDate: "2026-06-10", stateType: "started" }), // past-due open issue
+      iss({ id: "2", dueDate: "2026-06-22" }), // normal weekday issue
+    ];
+    const gs = buildAgenda({ issues, relations: [], viewerId: "me", window: WINDOW, includeOverdue: false });
+    expect(find(gs, "overdue")).toBeUndefined();
+    // Weekday groups still present
+    expect(gs.filter((g) => g.date).map((g) => g.key)).toEqual(WINDOW.weekdays);
+    expect(find(gs, "2026-06-22")!.items.map((i) => i.issue.id)).toEqual(["2"]);
+  });
 });

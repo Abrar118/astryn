@@ -34,8 +34,9 @@ export function buildAgenda(args: {
   relations: Relation[];
   viewerId: string;
   window: WeekWindow;
+  includeOverdue?: boolean;
 }): AgendaGroup[] {
-  const { issues, relations, viewerId, window } = args;
+  const { issues, relations, viewerId, window, includeOverdue = true } = args;
 
   const relationsByIssue = new Map<string, Relation[]>();
   for (const r of relations) {
@@ -77,7 +78,7 @@ export function buildAgenda(args: {
   const weekendItems = topLevel.filter((i) => window.weekend.includes(i.dueDate!));
 
   const groups: AgendaGroup[] = [];
-  if (overdue.length) {
+  if (includeOverdue && overdue.length) {
     groups.push({ key: "overdue", label: "Overdue", date: null, items: sortItems(overdue.map(toItem)) });
   }
   window.weekdays.forEach((date, idx) => {
