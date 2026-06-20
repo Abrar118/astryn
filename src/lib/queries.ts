@@ -23,6 +23,7 @@ import {
   listIssues,
   listLabels,
   listNotifications,
+  listRelations,
   listUnscheduled,
   listUsers,
   listWorkflowStates,
@@ -133,7 +134,7 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
  * keyring write, so a failed write still leaves an empty cache.
  */
 const WORKSPACE_KEYS = [
-  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["users"], ["labels"], ["cycles"],
+  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["relations"], ["users"], ["labels"], ["cycles"],
   ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
 ];
 
@@ -265,6 +266,10 @@ export function useIssues(filters: IssueFilters) {
     queryKey: ["issues", filters],
     queryFn: () => listIssues(filters),
   });
+}
+
+export function useRelations() {
+  return useQuery({ queryKey: ["relations"], queryFn: listRelations });
 }
 
 export function useIssueDetail(id: string | null, seed?: CalendarIssue) {

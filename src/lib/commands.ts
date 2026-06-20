@@ -76,6 +76,17 @@ export type Label = { id: string; name: string | null; color: string | null };
 
 /** A list-view issue: the cached read-shape plus its labels. */
 export type IssueListItem = Issue & { labels: Label[] };
+
+export type Relation = {
+  issueId: string;
+  type: string;
+  relatedId: string;
+  relatedIdentifier: string | null;
+  relatedTitle: string | null;
+  relatedStateName: string | null;
+  relatedStateType: string | null;
+  relatedStateColor: string | null;
+};
 export type DetailState = { id: string; name: string; type: string; color: string };
 export type DetailCycle = { id: string; number: number | null; name: string | null };
 export type DetailRef = {
@@ -243,6 +254,8 @@ export const listUnscheduled = (args: IssueFilters): Promise<CalendarIssue[]> =>
 
 export const listIssues = (args: IssueFilters): Promise<IssueListItem[]> =>
   invoke("list_issues", { args });
+
+export const listRelations = (): Promise<Relation[]> => invoke("list_relations");
 
 export const listFilterOptions = (): Promise<FilterOptions> =>
   invoke("list_filter_options");
