@@ -4,7 +4,7 @@ import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import type { DatesSetArg, EventClickArg, EventContentArg, EventDropArg } from "@fullcalendar/core";
+import type { DatesSetArg, EventClickArg, EventContentArg, EventDropArg, EventMountArg } from "@fullcalendar/core";
 import type { DropArg } from "@fullcalendar/interaction";
 import { useCalendarIssues, useIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
 import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
@@ -15,6 +15,9 @@ import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import { eventAccent, tint } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
+
+// Native contextmenu handlers per FullCalendar event element (for cleanup).
+const ctxHandlers = new WeakMap<HTMLElement, (e: MouseEvent) => void>();
 
 /** Build the shared hover-card payload from a cached issue. */
 function toMentionTarget(i: IssueListItem): MentionTarget {
@@ -31,21 +34,21 @@ function toMentionTarget(i: IssueListItem): MentionTarget {
 }
 
 /**
- * A calendar event chip: the soft tinted Linear/GCal pill, plus the same rich
- * issue hover-card used by editor mention pills, and the issue right-click menu.
+ * A calendar event chip: the soft tinted Linear/GCal pill plus the same rich
+ * issue hover-card used by editor mention pills. The right-click menu is wired
+ * separately on the FullCalendar element (see `eventDidMount`) because a React
+ * `onContextMenu` inside FullCalendar's custom event content does not fire.
  */
 function CalendarChip({
   title,
   color,
   overdue,
   target,
-  onContextMenu,
 }: {
   title: string;
   color: string;
   overdue: boolean;
   target: MentionTarget | null;
-  onContextMenu: (e: ReactMouseEvent) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const openTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,12 +80,6 @@ function CalendarChip({
         overdue ? "ring-1 ring-red-500/60" : ""
       }`}
       style={{ backgroundColor: tint(color, 0.2) }}
-      onContextMenu={onContextMenu}
-      // Keep right-click from reaching FullCalendar's drag delegation so the
-      // context menu always fires.
-      onMouseDown={(e) => {
-        if (e.button === 2) e.stopPropagation();
-      }}
       onMouseEnter={scheduleOpen}
       onMouseLeave={close}
     >
@@ -156,7 +153,8 @@ export function CalendarPage() {
     [scheduled, colorBy, today],
   );
 
-  // Soft tinted chip with the shared issue hover-card + right-click menu.
+  // Soft tinted chip with the shared issue hover-card. (Right-click is wired via
+  // eventDidMount below.)
   const renderEvent = (arg: EventContentArg) => {
     const { color, overdue } = arg.event.extendedProps as { color: string; overdue: boolean };
     const issue = issuesById.get(arg.event.id);
@@ -166,9 +164,26 @@ export function CalendarPage() {
         color={color}
         overdue={overdue}
         target={issue ? toMentionTarget(issue) : null}
-        onContextMenu={(e) => openMenu(e, arg.event.id)}
       />
     );
+  };
+
+  // FullCalendar swallows React onContextMenu on custom event content, so attach
+  // a native contextmenu listener directly on each rendered event element.
+  const onEventDidMount = (arg: EventMountArg) => {
+    const handler = (e: MouseEvent) => {
+      e.preventDefault();
+      openMenu(e as unknown as ReactMouseEvent, arg.event.id);
+    };
+    arg.el.addEventListener("contextmenu", handler);
+    ctxHandlers.set(arg.el, handler);
+  };
+  const onEventWillUnmount = (arg: EventMountArg) => {
+    const handler = ctxHandlers.get(arg.el);
+    if (handler) {
+      arg.el.removeEventListener("contextmenu", handler);
+      ctxHandlers.delete(arg.el);
+    }
   };
 
   return (
@@ -190,6 +205,8 @@ export function CalendarPage() {
             buttonText={{ today: "Today", month: "Month", week: "Week" }}
             events={events}
             eventContent={renderEvent}
+            eventDidMount={onEventDidMount}
+            eventWillUnmount={onEventWillUnmount}
             datesSet={(arg: DatesSetArg) => setRange(rangeFromDates(arg.start, arg.end))}
             eventClick={(arg: EventClickArg) => setParams({ issue: arg.event.id })}
             eventDrop={(arg: EventDropArg) => {
