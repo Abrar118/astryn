@@ -6,6 +6,7 @@ import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
 import { Settings } from "@/features/settings/Settings";
 import { IssueDrawer } from "@/features/drawer/IssueDrawer";
+import { IssuePage } from "@/features/drawer/IssuePage";
 import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
@@ -21,6 +22,7 @@ function Shell() {
         {active.view === "calendar" && <CalendarPage />}
         {active.view === "list" && <IssuesView />}
         {active.view === "settings" && <Settings />}
+        {active.view === "issue" && active.issueId && <IssuePage issueId={active.issueId} />}
       </main>
       <Dock isSyncing={isSyncing} refresh={refresh} />
       <IssueDrawer />
