@@ -243,16 +243,16 @@ function FallbackChildRow({
 }
 
 function eventIcon(event: ActivityItem): ReactNode {
-  if (event.kind === "created") return <CircleDot className="size-4 text-muted-foreground" />;
+  if (event.kind === "created") return <CircleDot className="size-4 text-emerald-400" />;
   switch (event.category) {
     case "status":
       return event.toStateType
         ? <StatusIcon type={event.toStateType} color={event.toStateColor ?? ""} />
-        : <IterationCcw className="size-3.5 text-muted-foreground" />;
+        : <IterationCcw className="size-3.5 text-amber-400" />;
     case "assignee":
       return event.toAssigneeName
         ? <Avatar name={event.toAssigneeName} size={20} />
-        : <User className="size-3.5 text-muted-foreground" />;
+        : <User className="size-3.5 text-indigo-400" />;
     case "priority":
       return (
         <span
@@ -260,11 +260,11 @@ function eventIcon(event: ActivityItem): ReactNode {
           style={{ backgroundColor: PRIORITIES.find((p) => p.value === event.toPriority)?.color ?? "#6b7280" }}
         />
       );
-    case "title": return <Pencil className="size-3.5 text-muted-foreground" />;
-    case "description": return <FileText className="size-3.5 text-muted-foreground" />;
-    case "relation": return <Link2 className="size-3.5 text-muted-foreground" />;
-    case "attachment": return <Paperclip className="size-3.5 text-muted-foreground" />;
-    default: return <IterationCcw className="size-3.5 text-muted-foreground" />;
+    case "title": return <Pencil className="size-3.5 text-blue-400" />;
+    case "description": return <FileText className="size-3.5 text-sky-400" />;
+    case "relation": return <Link2 className="size-3.5 text-violet-400" />;
+    case "attachment": return <Paperclip className="size-3.5 text-cyan-400" />;
+    default: return <IterationCcw className="size-3.5 text-amber-400" />;
   }
 }
 
