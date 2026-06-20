@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { ArrowLeftRight } from "lucide-react";
 import { useWorkspace, type Tab } from "@/lib/tabs";
 import { clampRatio, MIN_PANE_PX } from "@/lib/paneModel";
-import { PaneTabStrip, TAB_DND_TYPE } from "./PaneTabStrip";
+import { PaneTabStrip } from "./PaneTabStrip";
 import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
 import { InboxView } from "@/features/inbox/InboxView";
@@ -11,6 +11,7 @@ import { IssuePage } from "@/features/drawer/IssuePage";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
+const TAB_DRAG_THRESHOLD = 5;
 
 function PaneContent({ tab }: { tab: Tab }) {
   switch (tab.view) {
@@ -28,28 +29,61 @@ function PaneContent({ tab }: { tab: Tab }) {
 }
 
 export function SplitLayout() {
-  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane } = useWorkspace();
+  const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane, selectTab, moveTabToOtherPane } =
+    useWorkspace();
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
-  const [dragActive, setDragActive] = useState(false);
   const isSplit = panes.length === 2;
   const [usableWidth, setUsableWidth] = useState(0);
 
-  // Reflect any tab drag (from a PaneTabStrip) so the right-half drop overlay shows.
-  useEffect(() => {
-    const onStart = (e: globalThis.DragEvent) => {
-      if (e.dataTransfer?.types.includes(TAB_DND_TYPE)) setDragActive(true);
-    };
-    const clear = () => setDragActive(false);
-    window.addEventListener("dragstart", onStart);
-    window.addEventListener("dragend", clear);
-    window.addEventListener("drop", clear);
-    return () => {
-      window.removeEventListener("dragstart", onStart);
-      window.removeEventListener("dragend", clear);
-      window.removeEventListener("drop", clear);
-    };
-  }, []);
+  // ── Tab drag (pointer-driven) ───────────────────────────────────────────────
+  // HTML5 drag-and-drop `drop` events do not fire in Tauri's WKWebView (same
+  // reason the issue board uses pointer events), so tab moves are driven manually:
+  // capture the pointer on the tab, then resolve the drop target at pointer-up via
+  // elementFromPoint + data attributes. A move below threshold is treated as a
+  // click (tab select).
+  const tabGesture = useRef<{ tabId: string; sourcePaneId: string; x: number; y: number; label: string; started: boolean } | null>(null);
+  const [draggingTabId, setDraggingTabId] = useState<string | null>(null);
+  const [tabGhost, setTabGhost] = useState<{ label: string; x: number; y: number } | null>(null);
+
+  const onTabPointerDown = (e: ReactPointerEvent, tabId: string, sourcePaneId: string, label: string) => {
+    if (e.button !== 0) return;
+    tabGesture.current = { tabId, sourcePaneId, x: e.clientX, y: e.clientY, label, started: false };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const onTabPointerMove = (e: ReactPointerEvent) => {
+    const g = tabGesture.current;
+    if (!g) return;
+    if (!g.started) {
+      if (Math.hypot(e.clientX - g.x, e.clientY - g.y) < TAB_DRAG_THRESHOLD) return;
+      g.started = true;
+      setDraggingTabId(g.tabId);
+    }
+    setTabGhost({ label: g.label, x: e.clientX, y: e.clientY });
+  };
+
+  const onTabPointerUp = (e: ReactPointerEvent) => {
+    const g = tabGesture.current;
+    tabGesture.current = null;
+    setDraggingTabId(null);
+    setTabGhost(null);
+    if (!g) return;
+    if (!g.started) {
+      selectTab(g.tabId); // below threshold → a click, not a drag
+      return;
+    }
+    const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+    if (!el) return;
+    // Single-pane right-half zone → create the split.
+    if (el.closest("[data-split-right]")) {
+      splitTabRight(g.tabId);
+      return;
+    }
+    // Dropped over the OTHER pane (its strip or content) → move it there.
+    const targetPaneId = el.closest<HTMLElement>("[data-pane-id]")?.dataset.paneId;
+    if (targetPaneId && targetPaneId !== g.sourcePaneId) moveTabToOtherPane(g.tabId);
+  };
 
   // Re-clamp the ratio when the container width changes so no pane strands below the minimum.
   useEffect(() => {
@@ -68,7 +102,7 @@ export function SplitLayout() {
   // Tear down any in-flight resize drag if the component unmounts mid-drag.
   useEffect(() => () => resizeCleanup.current?.(), []);
 
-  const startResize = (e: PointerEvent) => {
+  const startResize = (e: ReactPointerEvent) => {
     e.preventDefault();
     const move = (ev: globalThis.PointerEvent) => {
       const rect = containerRef.current?.getBoundingClientRect();
@@ -99,13 +133,6 @@ export function SplitLayout() {
     }
   };
 
-  const onRightDrop = (e: DragEvent) => {
-    e.preventDefault();
-    const tabId = e.dataTransfer.getData(TAB_DND_TYPE);
-    setDragActive(false);
-    if (tabId) splitTabRight(tabId);
-  };
-
   const minPct = usableWidth > 0 ? Math.min(50, Math.round((MIN_PANE_PX / usableWidth) * 100)) : 0;
 
   return (
@@ -116,6 +143,7 @@ export function SplitLayout() {
         return (
           <div
             key={pane.id}
+            data-pane-id={pane.id}
             onMouseDown={() => focusPane(pane.id)}
             className="flex min-w-0 flex-col"
             style={{ flexBasis: `${basis}%` }}
@@ -126,6 +154,10 @@ export function SplitLayout() {
               showClock={idx === panes.length - 1}
               canClose={pane.tabs.length > 1 || isSplit}
               isSplit={isSplit}
+              draggingTabId={draggingTabId}
+              onTabPointerDown={onTabPointerDown}
+              onTabPointerMove={onTabPointerMove}
+              onTabPointerUp={onTabPointerUp}
             />
             <div className="min-h-0 flex-1 overflow-hidden">
               <PaneContent key={pane.activeTabId} tab={activeTab} />
@@ -162,13 +194,21 @@ export function SplitLayout() {
         </div>
       )}
 
-      {dragActive && (
+      {/* Drag a tab into the right half to create the split (single-pane only). */}
+      {!isSplit && draggingTabId && (
         <div
-          data-testid="right-drop-zone"
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={onRightDrop}
+          data-split-right
           className="absolute inset-y-0 right-0 z-20 w-1/2 border-l-2 border-primary/60 bg-primary/10"
         />
+      )}
+
+      {tabGhost && (
+        <div
+          className="pointer-events-none fixed z-50 max-w-48 truncate rounded-md border border-border bg-card px-2.5 py-1 text-xs font-medium text-foreground shadow-2xl"
+          style={{ left: tabGhost.x + 12, top: tabGhost.y + 12 }}
+        >
+          {tabGhost.label}
+        </div>
       )}
     </div>
   );

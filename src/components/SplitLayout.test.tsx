@@ -20,10 +20,12 @@ const ws = vi.hoisted(() => ({
   splitTabRight: vi.fn(),
   swapPanes: vi.fn(),
   setRatio: vi.fn(),
+  focusPane: vi.fn(),
+  selectTab: vi.fn(),
+  moveTabToOtherPane: vi.fn(),
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
 vi.mock("./PaneTabStrip", () => ({
-  TAB_DND_TYPE: "application/x-astryn-tab",
   PaneTabStrip: ({ pane }: { pane: { id: string } }) => <div data-testid={`strip-${pane.id}`} />,
 }));
 vi.mock("@/features/calendar/CalendarPage", () => ({ CalendarPage: () => <div>cal</div> }));
@@ -42,16 +44,6 @@ describe("SplitLayout", () => {
     expect(screen.getByTestId("strip-pane-0")).toBeTruthy();
     expect(screen.getByTestId("strip-pane-1")).toBeTruthy();
     expect(screen.getByLabelText("Swap panes")).toBeTruthy();
-  });
-
-  it("dropping a tab on the right-half overlay calls splitTabRight with the dragged id", () => {
-    render(<SplitLayout />);
-    const dataTransfer = { getData: (t: string) => (t === "application/x-astryn-tab" ? "tab-0" : ""), types: ["application/x-astryn-tab"] };
-    // A tab drag must be in progress for the overlay to render; SplitLayout listens on window.
-    fireEvent.dragStart(screen.getByTestId("strip-pane-0"), { dataTransfer });
-    const overlay = screen.getByTestId("right-drop-zone");
-    fireEvent.drop(overlay, { dataTransfer });
-    expect(ws.splitTabRight).toHaveBeenCalledWith("tab-0");
   });
 
   it("ArrowRight on the divider nudges the ratio up", () => {
