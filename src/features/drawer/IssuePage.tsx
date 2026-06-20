@@ -16,7 +16,7 @@ export function IssuePage({ issueId }: { issueId: string }) {
   }
 
   return (
-    <div className="mx-auto flex h-full w-full max-w-5xl flex-col">
+    <div className="flex h-full w-full flex-col">
       <IssueDetail id={issueId} result={result} mode="page" onClose={() => closeTab(active.id)} />
     </div>
   );

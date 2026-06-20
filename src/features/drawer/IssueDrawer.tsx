@@ -444,7 +444,10 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
 
       <div className="flex min-h-0 flex-1">
         {/* Main column */}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto px-7 py-6">
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto">
+          {/* Page mode centers the reading column (Linear-style full-page);
+              drawer mode keeps the original padded full-width layout. */}
+          <div className={mode === "page" ? "mx-auto max-w-3xl px-8 py-8" : "px-7 py-6"}>
           <textarea
             ref={titleRef}
             rows={1}
@@ -618,6 +621,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               </div>
             </DrawerSection>
           )}
+          </div>
         </div>
 
         {/* Properties rail — right-click anywhere here for the full issue menu */}
