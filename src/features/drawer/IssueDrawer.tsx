@@ -45,7 +45,7 @@ import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { Avatar } from "@/components/Avatar";
 import { DatePicker } from "@/components/DatePicker";
 import { Popover, PopoverItem } from "@/components/Popover";
-import { buildActivity } from "./drawerActivity";
+import { buildActivity, mergeActivityTimeline } from "./drawerActivity";
 import { buildCommentThreads } from "./comments/commentThreads";
 import { CommentComposer } from "./comments/CommentComposer";
 import { CommentThread } from "./comments/CommentThread";
@@ -257,6 +257,11 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
         })
       : [],
     [live],
+  );
+
+  const timeline = useMemo(
+    () => mergeActivityTimeline(activity, live ? buildCommentThreads(live.comments) : []),
+    [activity, live],
   );
 
   const detailTitle = d.title;
@@ -565,35 +570,24 @@ function DrawerContent({ id, result, onClose }: { id: string; result: IssueDetai
           {live && (
             <DrawerSection title="Activity" className="border-t border-border pt-6">
               <div className="space-y-4">
-                {activity.length > 0 && (
-                  <div className="relative space-y-4 before:absolute before:bottom-3 before:left-[11px] before:top-3 before:w-px before:bg-border">
-                    {activity.map((item) => (
-                      <div key={item.id} className="relative flex gap-3">
-                        <div className="relative z-10 mt-0.5 shrink-0 rounded-full bg-background">
-                          <span className="flex size-6 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
-                            {item.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
-                          </span>
-                        </div>
+                <div className="space-y-3">
+                  {timeline.map((entry) =>
+                    entry.kind === "event" ? (
+                      <div key={entry.key} className="flex gap-3">
+                        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border border-border bg-card text-muted-foreground">
+                          {entry.event.kind === "created" ? <CircleDot className="size-3.5" /> : <IterationCcw className="size-3.5" />}
+                        </span>
                         <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
-                          <span className="font-medium text-foreground">{item.actorName ?? "Linear"}</span>{" "}
-                          {item.summary} · {timeAgo(item.createdAt)}
+                          <span className="font-medium text-foreground">{entry.event.actorName ?? "Linear"}</span>{" "}
+                          {entry.event.summary} · {timeAgo(entry.event.createdAt)}
                         </p>
                       </div>
-                    ))}
-                  </div>
-                )}
-                <div className="space-y-3">
-                  {buildCommentThreads(live.comments).map((thread) => (
-                    <CommentThread
-                      key={thread.comment.id}
-                      thread={thread}
-                      issueId={id}
-                      onOpenLink={handleLink}
-                      resolveMention={resolveMention}
-                    />
-                  ))}
+                    ) : (
+                      <CommentThread key={entry.key} thread={entry.thread} issueId={id} onOpenLink={handleLink} resolveMention={resolveMention} />
+                    ),
+                  )}
                 </div>
-                {live.comments.length === 0 && activity.length === 0 && (
+                {timeline.length === 0 && (
                   <p className="text-sm text-muted-foreground">No activity yet.</p>
                 )}
                 {(live.hasMoreHistory || live.hasMoreComments) && (

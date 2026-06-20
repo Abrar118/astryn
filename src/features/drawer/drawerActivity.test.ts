@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildActivity } from "./drawerActivity";
+import { buildActivity, mergeActivityTimeline } from "./drawerActivity";
+import type { CommentThreadData } from "./comments/commentThreads";
 
 describe("buildActivity", () => {
   it("merges creation and history in chronological order", () => {
@@ -62,5 +63,67 @@ describe("buildActivity", () => {
       "related issue AST-9",
       "updated the description",
     ]);
+  });
+});
+
+describe("mergeActivityTimeline", () => {
+  const baseComment = {
+    id: "",
+    parentId: null,
+    body: "",
+    userId: null,
+    userName: null,
+    createdAt: "",
+    editedAt: null,
+    reactions: [],
+  };
+
+  it("interleaves events and threads sorted by createdAt", () => {
+    const activity = buildActivity({
+      createdAt: "2026-01-01T00:00:00Z",
+      creatorName: "Alice",
+      history: [
+        {
+          id: "h1",
+          createdAt: "2026-01-03T00:00:00Z",
+          actorName: "Alice",
+          fromStateName: "Todo",
+          toStateName: "Done",
+          fromAssigneeName: null,
+          toAssigneeName: null,
+          fromPriority: null,
+          toPriority: null,
+          fromTitle: null,
+          toTitle: null,
+          updatedDescription: false,
+          attachment: null,
+          relationChanges: [],
+        },
+      ],
+    });
+
+    const threads: CommentThreadData[] = [
+      {
+        comment: { ...baseComment, id: "c1", createdAt: "2026-01-02T00:00:00Z" },
+        replies: [],
+      },
+      {
+        comment: { ...baseComment, id: "c2", createdAt: "2026-01-04T00:00:00Z" },
+        replies: [],
+      },
+    ];
+
+    const timeline = mergeActivityTimeline(activity, threads);
+
+    expect(timeline.map((e) => ({ kind: e.kind, createdAt: e.createdAt }))).toEqual([
+      { kind: "event",  createdAt: "2026-01-01T00:00:00Z" },
+      { kind: "thread", createdAt: "2026-01-02T00:00:00Z" },
+      { kind: "event",  createdAt: "2026-01-03T00:00:00Z" },
+      { kind: "thread", createdAt: "2026-01-04T00:00:00Z" },
+    ]);
+  });
+
+  it("returns [] for empty input", () => {
+    expect(mergeActivityTimeline([], [])).toEqual([]);
   });
 });

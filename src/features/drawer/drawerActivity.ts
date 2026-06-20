@@ -1,4 +1,5 @@
 import type { DetailHistory } from "@/lib/commands";
+import type { CommentThreadData } from "./comments/commentThreads";
 
 export type ActivityItem =
   | { kind: "created"; id: string; createdAt: string; actorName: string | null; summary: string }
@@ -33,6 +34,25 @@ export function historySummary(event: DetailHistory): string {
   if (event.fromTitle != null || event.toTitle != null) return "changed the title";
   if (event.updatedDescription) return "updated the description";
   return "updated the issue";
+}
+
+export type TimelineEntry =
+  | { kind: "event"; key: string; createdAt: string; event: ActivityItem }
+  | { kind: "thread"; key: string; createdAt: string; thread: CommentThreadData };
+
+/** Merge activity events + comment threads into one list sorted oldest-first by createdAt
+ *  (threads positioned by their top-level comment's createdAt). */
+export function mergeActivityTimeline(
+  activity: ActivityItem[],
+  threads: CommentThreadData[],
+): TimelineEntry[] {
+  const events: TimelineEntry[] = activity.map((event) => ({
+    kind: "event", key: event.id, createdAt: event.createdAt, event,
+  }));
+  const threadEntries: TimelineEntry[] = threads.map((thread) => ({
+    kind: "thread", key: `thread-${thread.comment.id}`, createdAt: thread.comment.createdAt, thread,
+  }));
+  return [...events, ...threadEntries].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
 export function buildActivity(input: {

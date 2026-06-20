@@ -94,7 +94,7 @@ export function CommentComposer({
       >
         <div
           className="comment-composer-prose max-h-56 overflow-y-auto px-3 py-2 text-sm"
-          data-placeholder={placeholder ?? (variant === "reply" ? "Leave a reply…" : "Leave a comment…")}
+          style={{ ["--milkdown-placeholder" as string]: `"${placeholder ?? (variant === "reply" ? "Leave a reply…" : "Leave a comment…")}"` } as React.CSSProperties}
         >
           <MilkdownProvider>
             <ComposerInner

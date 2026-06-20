@@ -486,7 +486,7 @@
 /* The "Add description…" placeholder is an edit affordance — show it only in
    the editable instance, never in read-only display. */
 .milkdown .ProseMirror[contenteditable="true"] p.is-empty:first-child::before {
-  content: "Add description…";
+  content: var(--milkdown-placeholder, "Add description…");
   float: left;
   height: 0;
   color: var(--muted-foreground);
@@ -599,14 +599,10 @@
 }
 
 /* Comment composer: reset outline and ensure minimum height for the ProseMirror
-   editable region, and show a placeholder when the composer is empty. */
+   editable region. The placeholder text is supplied via the --milkdown-placeholder
+   CSS custom property set inline on .comment-composer-prose, which inherits down
+   to the empty <p> where the shared ::before rule reads it. */
 .comment-composer-prose .ProseMirror { outline: none; min-height: 1.5rem; }
-.comment-composer-prose .ProseMirror p.is-empty:first-child::before {
-  content: attr(data-placeholder);
-  color: var(--muted-foreground);
-  position: absolute;
-  pointer-events: none;
-}
 
 /* Kill the blue ring from the global `* { outline-ring/50 }` rule on the
    composer wrapper and its ProseMirror contenteditable. Focus is still
