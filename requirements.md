@@ -58,9 +58,9 @@ The user already lives in Linear for issue tracking at work. The point of this a
 3. **Draggable calendar tasks** — drag an issue to a new day to reschedule its due date.
 4. **"My activity" timeline** — a chronological feed of the user's own actions/changes.
 5. **"This Week" agenda** — viewer's issues organized by due date for the current work week (replaces the original standup and weekly-review generators).
-7. **GitHub PR & branch tracking** — PR status correlated to the issue it belongs to.
-8. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
-9. **Related docs & link storage** per issue (local-first).
+6. **GitHub PR & branch tracking** — PR status correlated to the issue it belongs to.
+7. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
+8. **Related docs & link storage** per issue (local-first).
 
 ### Out of scope `[EXT]`
 

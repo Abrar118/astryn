@@ -22,7 +22,7 @@ const WEEKDAY_LABELS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday"];
 const prioRank = (p: number) => (p === 0 ? 5 : p);
 
 function sortItems(items: AgendaItem[]): AgendaItem[] {
-  return items.sort(
+  return [...items].sort(
     (a, b) =>
       prioRank(a.issue.priority) - prioRank(b.issue.priority) ||
       a.issue.identifier.localeCompare(b.issue.identifier),

@@ -87,6 +87,7 @@ export type Relation = {
   relatedStateType: string | null;
   relatedStateColor: string | null;
 };
+
 export type DetailState = { id: string; name: string; type: string; color: string };
 export type DetailCycle = { id: string; number: number | null; name: string | null };
 export type DetailRef = {

@@ -24,7 +24,7 @@ import { IssuesView } from "@/features/issues/IssuesView";
 import { InboxView } from "@/features/inbox/InboxView";
 import { Settings } from "@/features/settings/Settings";
 import { IssuePage } from "@/features/drawer/IssuePage";
-import { AgendaView } from "../features/agenda/AgendaView";
+import { AgendaView } from "@/features/agenda/AgendaView";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;

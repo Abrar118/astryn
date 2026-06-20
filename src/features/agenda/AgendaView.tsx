@@ -16,7 +16,7 @@ const RELATION_LABEL: Record<string, string> = {
 
 export function AgendaView() {
   const today = dhakaToday();
-  const window = weekWindow();
+  const weekWin = weekWindow();
   const me = useMe();
   const { data: issues, isLoading: issuesLoading } = useIssues({});
   const { data: relations, isLoading: relsLoading } = useRelations();
@@ -43,7 +43,7 @@ export function AgendaView() {
 
   const viewerId = me.data?.viewerId;
   const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window })
+    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: weekWin })
     : [];
 
   const isEmpty = groups.every((g) => g.items.length === 0);
@@ -76,7 +76,7 @@ export function AgendaView() {
               key={`${r.type}-${r.relatedId}`}
               type="button"
               onClick={() => open(r.relatedId)}
-              className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50"
+              className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <span className="w-16 shrink-0 uppercase tracking-wide text-[10px]">
                 {RELATION_LABEL[r.type] ?? r.type}
@@ -101,7 +101,7 @@ export function AgendaView() {
         <CalendarRange className="size-4 text-muted-foreground" />
         <h1 className="text-sm font-medium">This Week</h1>
         <span className="text-xs text-muted-foreground">
-          {window.weekStart} – {window.weekdays[4]}
+          {weekWin.weekStart} – {weekWin.weekdays[4]}
         </span>
       </header>
 
