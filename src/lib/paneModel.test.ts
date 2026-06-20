@@ -246,6 +246,21 @@ describe("openIssueInRightSplit / openIssueTabAcross", () => {
     expect(s.focusedPaneId).toBe("pane-1");
     assertInvariants(s);
   });
+  it("focuses the right copy (no collapse / no new duplicate) when the issue exists in both panes", () => {
+    const s0: WorkspaceState = {
+      panes: [
+        { id: "pane-0", tabs: [{ id: "tab-0", view: "issue", issueId: "iss-1" }], activeTabId: "tab-0" },
+        { id: "pane-1", tabs: [{ id: "tab-1", view: "issue", issueId: "iss-1" }], activeTabId: "tab-1" },
+      ],
+      focusedPaneId: "pane-0", ratio: 0.5, seq: 2,
+    };
+    const s = openIssueInRightSplit(s0, "iss-1");
+    expect(s.panes).toHaveLength(2); // not collapsed
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]); // left untouched
+    expect(s.panes[1].activeTabId).toBe("tab-1"); // right copy focused
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
   it("openIssueTabAcross adds to the focused pane when not open anywhere", () => {
     const s = openIssueTabAcross(split(), "iss-3");
     expect(s.panes[0].tabs.map((t) => t.view)).toEqual(["calendar", "issue"]);

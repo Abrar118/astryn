@@ -106,7 +106,7 @@ export function SplitLayout() {
     if (tabId) splitTabRight(tabId);
   };
 
-  const minPct = usableWidth > 0 ? Math.round((MIN_PANE_PX / usableWidth) * 100) : 0;
+  const minPct = usableWidth > 0 ? Math.min(50, Math.round((MIN_PANE_PX / usableWidth) * 100)) : 0;
 
   return (
     <div ref={containerRef} className="relative flex min-h-0 flex-1">

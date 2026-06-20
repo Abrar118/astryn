@@ -60,50 +60,52 @@ export function PaneTabStrip({
       }`}
     >
       {focused && <span className="mr-0.5 h-4 w-0.5 shrink-0 rounded-full bg-primary" aria-hidden />}
-      {pane.tabs.map((t) => {
-        const isActive = t.id === pane.activeTabId;
-        const issue = t.view === "issue" ? (issues ?? []).find((i) => i.id === t.issueId) : undefined;
-        const label = t.view === "issue" ? issue?.identifier ?? "Issue" : META[t.view].label;
-        const icon = t.view === "issue" ? <FileText className="size-3.5" /> : META[t.view].icon;
-        return (
-          <div
-            key={t.id}
-            draggable
-            onDragStart={(e) => onDragStart(e, t.id)}
-            onClick={() => selectTab(t.id)}
-            onContextMenu={(e) => openMenu(e, t.id)}
-            className={`group flex cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
-              isActive ? "bg-card text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
-            }`}
-          >
-            <span className="text-muted-foreground">{icon}</span>
-            <span>{label}</span>
-            {canClose && (
-              <button
-                type="button"
-                aria-label="Close tab"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  closeTab(t.id);
-                }}
-                className="ml-1 cursor-pointer rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
-              >
-                <X className="size-3" />
-              </button>
-            )}
-          </div>
-        );
-      })}
-      <button
-        type="button"
-        aria-label="New tab"
-        onClick={() => addTabIn(pane.id)}
-        className="ml-1 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-      >
-        <Plus className="size-4" />
-      </button>
+      <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+        {pane.tabs.map((t) => {
+          const isActive = t.id === pane.activeTabId;
+          const issue = t.view === "issue" ? (issues ?? []).find((i) => i.id === t.issueId) : undefined;
+          const label = t.view === "issue" ? issue?.identifier ?? "Issue" : META[t.view].label;
+          const icon = t.view === "issue" ? <FileText className="size-3.5" /> : META[t.view].icon;
+          return (
+            <div
+              key={t.id}
+              draggable
+              onDragStart={(e) => onDragStart(e, t.id)}
+              onClick={() => selectTab(t.id)}
+              onContextMenu={(e) => openMenu(e, t.id)}
+              className={`group flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
+                isActive ? "bg-card text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+              }`}
+            >
+              <span className="text-muted-foreground">{icon}</span>
+              <span className="max-w-[12rem] truncate">{label}</span>
+              {canClose && (
+                <button
+                  type="button"
+                  aria-label="Close tab"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    closeTab(t.id);
+                  }}
+                  className="ml-1 cursor-pointer rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:opacity-100"
+                >
+                  <X className="size-3" />
+                </button>
+              )}
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          aria-label="New tab"
+          onClick={() => addTabIn(pane.id)}
+          className="ml-1 shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Plus className="size-4" />
+        </button>
+      </div>
       {showClock && (
-        <div className="ml-auto">
+        <div className="shrink-0">
           <DualClock compact />
         </div>
       )}

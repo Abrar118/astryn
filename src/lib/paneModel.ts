@@ -231,16 +231,18 @@ export function openIssueTabAcross(state: WorkspaceState, issueId: string): Work
 }
 
 export function openIssueInRightSplit(state: WorkspaceState, issueId: string): WorkspaceState {
-  const found = findIssueTab(state, issueId);
-  if (found) {
-    // Already in the right pane → just focus/activate it there.
-    if (state.panes.length === 2 && found.paneIdx === 1) {
-      const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: found.tabId } : p));
+  // Prefer an existing copy in the RIGHT pane — focus it, disturb nothing else.
+  if (state.panes.length === 2) {
+    const rightTab = state.panes[1].tabs.find((t) => t.view === "issue" && t.issueId === issueId);
+    if (rightTab) {
+      const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: rightTab.id } : p));
       return { ...state, panes, focusedPaneId: state.panes[1].id };
     }
-    // Sole issue tab in the only pane: cloning (splitTabRight) would duplicate the
-    // issue and break workspace-wide dedup. Instead replace the left with a fresh
-    // calendar tab and move the issue itself to a new right pane.
+  }
+  const found = findIssueTab(state, issueId);
+  if (found) {
+    // Sole issue tab in the only pane: cloning would duplicate the issue. Replace the
+    // left with a fresh calendar tab and move the issue itself to a new right pane.
     const leftPane = state.panes[found.paneIdx];
     if (state.panes.length === 1 && leftPane.tabs.length === 1) {
       const issueTab = leftPane.tabs[0];
@@ -249,10 +251,10 @@ export function openIssueInRightSplit(state: WorkspaceState, issueId: string): W
       const right: Pane = { id: nextPaneId(state.panes), tabs: [issueTab], activeTabId: issueTab.id };
       return { ...state, panes: [left, right], focusedPaneId: right.id, seq: state.seq + 1 };
     }
-    // Otherwise found in the left pane alongside other tabs → move it to the right.
+    // Found only in the left pane → move that tab to the right.
     return splitTabRight(state, found.tabId);
   }
-  // Not open anywhere → open a fresh issue tab in the right pane, leaving the left untouched.
+  // Not open anywhere → fresh issue tab in the right pane, left untouched.
   if (state.panes.length === 2) return addIssueTabIn(state, state.panes[1].id, issueId);
   const id = `tab-${state.seq}`;
   const right: Pane = { id: nextPaneId(state.panes), tabs: [{ id, view: "issue", issueId }], activeTabId: id };
