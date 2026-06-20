@@ -86,7 +86,7 @@ function makeLinkMarkView(
     const target = identifier ? resolveMention(identifier) : undefined;
 
     if (identifier && target) {
-      const { dom, contentDOM } = makePillDom("");
+      const { dom, contentDOM } = makePillDom("issue");
       dom.title = target.title;
 
       // Status dot
