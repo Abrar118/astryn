@@ -2,10 +2,10 @@ import { useIssueDetail } from "@/lib/queries";
 import { useWorkspace } from "@/lib/tabs";
 import { IssueDetail } from "./IssueDrawer";
 
-/** Full-page issue view rendered in the workspace main area (an "issue" tab). */
-export function IssuePage({ issueId }: { issueId: string }) {
+/** Full-page issue view rendered in a workspace pane (an "issue" tab). */
+export function IssuePage({ issueId, tabId }: { issueId: string; tabId: string }) {
   const { data: result } = useIssueDetail(issueId);
-  const { closeTab, active } = useWorkspace();
+  const { closeTab } = useWorkspace();
 
   if (!result) {
     return (
@@ -17,7 +17,7 @@ export function IssuePage({ issueId }: { issueId: string }) {
 
   return (
     <div className="flex h-full w-full flex-col">
-      <IssueDetail id={issueId} result={result} mode="page" onClose={() => closeTab(active.id)} />
+      <IssueDetail id={issueId} result={result} mode="page" onClose={() => closeTab(tabId)} />
     </div>
   );
 }

@@ -24,7 +24,7 @@ function Shell() {
         {active.view === "list" && <IssuesView />}
         {active.view === "inbox" && <InboxView />}
         {active.view === "settings" && <Settings />}
-        {active.view === "issue" && active.issueId && <IssuePage issueId={active.issueId} />}
+        {active.view === "issue" && active.issueId && <IssuePage issueId={active.issueId} tabId={active.id} />}
       </main>
       <Dock isSyncing={isSyncing} refresh={refresh} />
       <IssueDrawer />
