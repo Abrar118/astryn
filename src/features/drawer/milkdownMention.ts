@@ -84,7 +84,7 @@ function makeLinkMarkView(
 
     if (identifier && target) {
       const { dom, contentDOM } = makePillDom("issue");
-      dom.title = target.title;
+      dom.title = `${target.identifier} ${target.title}`;
 
       // Status dot
       const dot = document.createElement("span");
@@ -97,6 +97,22 @@ function makeLinkMarkView(
         `background:${target.stateColor || "#6b7280"}`,
       ].join(";");
       dom.insertBefore(dot, contentDOM);
+
+      // Title suffix (muted, trailing text after identifier contentDOM)
+      const titleSpan = document.createElement("span");
+      titleSpan.textContent = target.title;
+      titleSpan.style.cssText = [
+        "color:var(--muted-foreground,#8b909a)",
+        "margin-left:4px",
+        "font-weight:400",
+        "max-width:20em",
+        "overflow:hidden",
+        "text-overflow:ellipsis",
+        "white-space:nowrap",
+        "display:inline-block",
+        "vertical-align:middle",
+      ].join(";");
+      dom.appendChild(titleSpan);
 
       dom.addEventListener("click", (e) => {
         e.preventDefault();

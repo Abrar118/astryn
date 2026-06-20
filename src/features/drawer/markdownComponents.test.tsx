@@ -51,10 +51,22 @@ describe("createMarkdownComponents", () => {
     renderMarkdown("done ([PRO-153](https://linear.app/gam/issue/PRO-153/decouple))", {
       onActivateLink,
       resolveMention: (id) =>
-        id === "PRO-153" ? { stateColor: "#22c55e", title: "Decouple tenancy" } : undefined,
+        id === "PRO-153"
+          ? {
+              identifier: "PRO-153",
+              title: "Decouple tenancy",
+              stateType: "started",
+              stateColor: "#22c55e",
+              stateName: "In Progress",
+              projectName: "Health",
+              priority: 2,
+              assigneeName: "Alice",
+            }
+          : undefined,
     });
     const pill = screen.getByRole("button", { name: /PRO-153/ });
-    expect(pill.getAttribute("title")).toBe("Decouple tenancy");
+    // Title is now embedded inline in the pill text, not as a title attribute
+    expect(pill.textContent).toContain("Decouple tenancy");
     pill.click();
     expect(onActivateLink).toHaveBeenCalledWith("https://linear.app/gam/issue/PRO-153/decouple");
   });

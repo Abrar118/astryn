@@ -4,6 +4,7 @@ import { defaultUrlTransform } from "react-markdown";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { USER_MENTION_PREFIX, userMentionFromHref } from "./comments/milkdownUserMention";
+import { IssueMentionPill } from "./comments/IssueMentionPill";
 
 /**
  * `urlTransform` for ReactMarkdown that preserves `mention://user/…` hrefs
@@ -25,7 +26,16 @@ export function issueIdentifierFromHref(href: string): string | null {
 }
 
 /** A cached issue a mention can resolve to, for the pill's status dot + tooltip. */
-export type MentionTarget = { stateColor: string; title: string };
+export type MentionTarget = {
+  identifier: string;
+  title: string;
+  stateType: string;
+  stateColor: string;
+  stateName: string | null;
+  projectName: string | null;
+  priority: number;
+  assigneeName: string | null;
+};
 
 /** Resolve an issue identifier to a cached issue (undefined if not cached). */
 export type MentionResolver = (identifier: string) => MentionTarget | undefined;
@@ -64,18 +74,7 @@ export function createMarkdownComponents(opts: {
       const target = ident ? opts.resolveMention(ident) : undefined;
       if (href && ident && target) {
         return (
-          <button
-            type="button"
-            title={target.title}
-            onClick={() => opts.onActivateLink(href)}
-            className="mx-px inline-flex items-center gap-1 rounded-md border border-border bg-secondary/70 px-1.5 py-0.5 align-baseline text-[0.85em] font-medium text-foreground no-underline transition-colors hover:bg-accent"
-          >
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: target.stateColor || "#6b7280" }}
-            />
-            {ident}
-          </button>
+          <IssueMentionPill target={target} href={href} onActivate={opts.onActivateLink} />
         );
       }
       return (
