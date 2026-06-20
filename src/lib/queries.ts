@@ -8,8 +8,11 @@ import {
 } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import {
+  createComment,
   createIssue,
+  deleteComment,
   deleteIssue,
+  addReaction,
   errorText,
   getIssueDetail,
   getMe,
@@ -21,7 +24,9 @@ import {
   listUnscheduled,
   listUsers,
   listWorkflowStates,
+  removeReaction,
   syncIssues,
+  updateComment,
   updateIssue,
   type CalendarIssue,
   type CreateIssueInput,
@@ -30,8 +35,19 @@ import {
   type IssueListItem,
   type Label,
   type LiveDetail,
+  type Me,
   type UpdateIssuePatch,
 } from "./commands";
+import {
+  addComment,
+  addReactionTo,
+  editComment,
+  makePendingComment,
+  makePendingReaction,
+  removeCommentDeep,
+  removeReactionFrom,
+  replaceComment,
+} from "@/features/drawer/comments/commentCache";
 import {
   applyPatchToCalendarIssue,
   calendarIssueFromList,
@@ -338,6 +354,123 @@ export function useUpdateIssue() {
       qc.invalidateQueries({ queryKey: ["issue", id] });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
     },
+  });
+}
+
+type DetailSnapshot = { key: QueryKey; data: unknown };
+
+function snapshotDetail(qc: QueryClient, issueId: string): DetailSnapshot {
+  return { key: ["issue", issueId], data: qc.getQueryData(["issue", issueId]) };
+}
+
+export function useCreateComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ issueId, body, parentId }: { issueId: string; body: string; parentId?: string | null }) =>
+      createComment(issueId, body, parentId),
+    onMutate: async ({ issueId, body, parentId }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const me = qc.getQueryData<Me | null>(["me"]) ?? null;
+      const tempId = `pending-${crypto.randomUUID()}`;
+      const pending = makePendingComment(tempId, issueId, body, parentId ?? null, me);
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], addComment(cur, pending));
+      return { snap, tempId };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't post comment", { description: errorText(err) });
+    },
+    onSuccess: (server, { issueId }, ctx) => {
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur && ctx) qc.setQueryData(["issue", issueId], replaceComment(cur, ctx.tempId, server));
+    },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useUpdateComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { issueId: string; id: string; body: string }) => updateComment(id, body),
+    onMutate: async ({ issueId, id, body }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], editComment(cur, id, body, new Date().toISOString()));
+      return { snap };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't update comment", { description: errorText(err) });
+    },
+    onSuccess: (server, { issueId, id }) => {
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], editComment(cur, id, server.body, server.editedAt));
+    },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useDeleteComment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { issueId: string; id: string }) => deleteComment(id),
+    onMutate: async ({ issueId, id }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], removeCommentDeep(cur, id));
+      return { snap };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't delete comment", { description: errorText(err) });
+    },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useAddReaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ commentId, emoji }: { issueId: string; commentId: string; emoji: string }) =>
+      addReaction(commentId, emoji),
+    onMutate: async ({ issueId, commentId, emoji }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const me = qc.getQueryData<Me | null>(["me"]) ?? null;
+      const tempId = `pending-${crypto.randomUUID()}`;
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], addReactionTo(cur, commentId, makePendingReaction(tempId, emoji, me)));
+      return { snap, tempId };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't add reaction", { description: errorText(err) });
+    },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useRemoveReaction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ reactionId }: { issueId: string; commentId: string; reactionId: string }) =>
+      removeReaction(reactionId),
+    onMutate: async ({ issueId, commentId, reactionId }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], removeReactionFrom(cur, commentId, reactionId));
+      return { snap };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't remove reaction", { description: errorText(err) });
+    },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
   });
 }
 
