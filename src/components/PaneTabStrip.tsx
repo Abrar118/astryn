@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { Calendar, FileText, Inbox, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { Calendar, CalendarRange, FileText, Inbox, List, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -11,6 +11,7 @@ import { TabContextMenu } from "./TabContextMenu";
 const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
   calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
   list: { label: "Issues", icon: <List className="size-3.5" /> },
+  "this-week": { label: "This Week", icon: <CalendarRange className="size-3.5" /> },
   inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
   settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
 };

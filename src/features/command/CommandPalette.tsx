@@ -15,6 +15,7 @@ import { gooeyToast } from "goey-toast";
 import {
   ArrowLeft,
   Calendar,
+  CalendarRange,
   Copy,
   ExternalLink,
   Inbox,
@@ -195,6 +196,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
       { key: "go-calendar", section: "Go to", icon: <Calendar className="size-4" />, label: "Go to Calendar", onSelect: () => goTo("calendar") },
       { key: "go-issues", section: "Go to", icon: <List className="size-4" />, label: "Go to Issues", onSelect: () => goTo("list") },
+      { key: "go-this-week", section: "Go to", icon: <CalendarRange className="size-4" />, label: "Go to This Week", onSelect: () => goTo("this-week") },
       { key: "go-inbox", section: "Go to", icon: <Inbox className="size-4" />, label: "Go to Inbox", onSelect: () => goTo("inbox") },
       { key: "go-settings", section: "Go to", icon: <SettingsIcon className="size-4" />, label: "Go to Settings", onSelect: () => goTo("settings") },
       { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab("calendar"); onClose(); } },

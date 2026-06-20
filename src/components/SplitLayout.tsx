@@ -24,6 +24,7 @@ import { IssuesView } from "@/features/issues/IssuesView";
 import { InboxView } from "@/features/inbox/InboxView";
 import { Settings } from "@/features/settings/Settings";
 import { IssuePage } from "@/features/drawer/IssuePage";
+import { AgendaView } from "../features/agenda/AgendaView";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
@@ -35,6 +36,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <CalendarPage />;
     case "list":
       return <IssuesView />;
+    case "this-week":
+      return <AgendaView />;
     case "inbox":
       return <InboxView />;
     case "settings":

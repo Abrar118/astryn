@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { Calendar, Inbox, List, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Calendar, CalendarRange, Inbox, List, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 
 function DockButton({
@@ -38,11 +38,12 @@ function DockButton({
 const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[] = [
   { view: "calendar", label: "Calendar", icon: <Calendar className="size-5" /> },
   { view: "list", label: "Issues", icon: <List className="size-5" /> },
+  { view: "this-week", label: "This Week", icon: <CalendarRange className="size-5" /> },
   { view: "inbox", label: "Inbox", icon: <Inbox className="size-5" /> },
   { view: "settings", label: "Settings", icon: <SettingsIcon className="size-5" /> },
 ];
 
-const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", inbox: "Inbox", settings: "Settings" };
+const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", "this-week": "This Week", inbox: "Inbox", settings: "Settings" };
 
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();
