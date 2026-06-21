@@ -50,7 +50,7 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is ke
 
 **Data flow:** Linear/GitHub → Rust client → SQLite (cache) → Tauri command → TanStack Query → React. SQLite is a **cache plus a little app-owned data** (`doc_links`, `sync_cursors`, `settings`); Linear is the source of truth for issues. The frontend **never touches SQLite directly**. After any mutation, **upsert the returned entity into SQLite** so the cache stays consistent without a full resync.
 
-**DB location:** `~/Documents/astryn/astryn.db` (resolved via Tauri `document_dir()` + `astryn/`, created on startup; startup fails loudly if the dir or migrations fail). Migrations in `src-tauri/migrations/` run on startup; **only create tables a milestone uses** — M0–M4 have added `settings`, `issues`, `labels`, `relations`, `pending_issue_deletes`, `sync_cursors`, `github_prs`, and `github_sync_meta`.
+**DB location:** `~/Library/Application Support/com.orion.astryn/astryn.db` (resolved via Tauri `app_data_dir()`, created on startup; startup fails loudly if the dir or migrations fail). **Not `~/Documents`** — that folder is TCC-protected on macOS, so a Finder/launchd-launched app is denied access and SQLite aborts startup with `SQLITE_CANTOPEN`; the app data dir is unprotected. The DB is a re-syncable cache (no secrets), so the relocation loses nothing. Migrations in `src-tauri/migrations/` run on startup; **only create tables a milestone uses** — M0–M4 have added `settings`, `issues`, `labels`, `relations`, `pending_issue_deletes`, `sync_cursors`, `github_prs`, and `github_sync_meta`.
 
 **Secrets — two seams, keychain only:**
 - `SecretStore` (`secrets/`) = storage trait (`get`/`set`/`delete`), backed by the `keyring` crate. A `FakeSecretStore` backs tests.
