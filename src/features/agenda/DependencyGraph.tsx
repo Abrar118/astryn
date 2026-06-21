@@ -81,7 +81,7 @@ function edgeKindFor(kind: string): EdgeKind {
   return EDGE_KINDS[kind] ?? { label: kind.replace(/_/g, " "), color: "#64748b", dashed: true };
 }
 
-const LEGEND: EdgeKind[] = [SUB_ISSUE, EDGE_KINDS.blocks, EDGE_KINDS.blocked_by, EDGE_KINDS.related];
+const LEGEND: EdgeKind[] = [SUB_ISSUE, EDGE_KINDS.blocks, EDGE_KINDS.related];
 
 // ── Node component ────────────────────────────────────────────────────────────
 
@@ -186,7 +186,7 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       {showToggle && (
         <button
           type="button"
-          aria-label={data.expanded ? "Collapse neighbors" : `Expand ${data.hiddenCount} neighbors`}
+          aria-label={data.expanded ? "Collapse neighbors" : `Expand ${data.hiddenCount} neighbor${data.hiddenCount !== 1 ? "s" : ""}`}
           title={data.expanded ? "Collapse neighbors" : `Expand ${data.hiddenCount} neighbor${data.hiddenCount !== 1 ? "s" : ""}`}
           onClick={(e) => {
             e.stopPropagation();

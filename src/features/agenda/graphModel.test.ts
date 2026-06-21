@@ -127,4 +127,15 @@ describe("buildGraphElements", () => {
     // B—D relation is excluded because D is not visible.
     expect(edges.some((e) => e.target === "D")).toBe(false);
   });
+
+  it("collapses a bidirectional relationship into a single canonical edge", () => {
+    const bi = buildIndex(
+      [iss({ id: "C" }), iss({ id: "A" })],
+      [rel("C", "blocks", "A"), rel("A", "blocked_by", "C")],
+    );
+    const visible = new Set(["C", "A"]);
+    const { edges } = buildGraphElements(visible, new Set(["A"]), bi);
+    const relEdges = edges.filter((e) => e.kind === "blocks" || e.kind === "blocked_by");
+    expect(relEdges).toEqual([{ source: "C", target: "A", kind: "blocks" }]);
+  });
 });

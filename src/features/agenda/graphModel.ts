@@ -105,14 +105,22 @@ export function buildGraphElements(
     }
   }
 
-  // Relation edges, both endpoints visible.
+  // Relation edges (both endpoints visible), canonicalized so a relationship
+  // stored from both sides (e.g. "C blocks A" + "A blocked_by C") yields one edge.
+  const INVERSE: Record<string, string> = { blocked_by: "blocks", duplicate_of: "duplicate" };
+  const SYMMETRIC = new Set(["related", "duplicate"]);
   for (const r of index.relations) {
-    if (visibleIds.has(r.issueId) && visibleIds.has(r.relatedId)) {
-      const key = `rel|${r.issueId}|${r.relatedId}|${r.type}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        edges.push({ source: r.issueId, target: r.relatedId, kind: r.type });
-      }
+    if (!visibleIds.has(r.issueId) || !visibleIds.has(r.relatedId)) continue;
+    const inverse = INVERSE[r.type];
+    const kind = inverse ?? r.type;
+    const source = inverse ? r.relatedId : r.issueId;
+    const target = inverse ? r.issueId : r.relatedId;
+    const key = SYMMETRIC.has(kind)
+      ? `rel|${kind}|${[source, target].sort().join("|")}`
+      : `rel|${kind}|${source}|${target}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      edges.push({ source, target, kind });
     }
   }
 
