@@ -626,3 +626,16 @@
   outline: none;
 }
 
+.md-codeblock { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.md-codeblock-header {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 4px 8px; background: color-mix(in oklab, var(--card) 90%, transparent);
+  border-bottom: 1px solid var(--border); font-size: 12px; color: var(--muted-foreground);
+}
+.md-codeblock-lang { text-transform: lowercase; }
+.md-codeblock-copy, .md-codeblock-select {
+  font-size: 12px; color: var(--foreground); background: transparent;
+  border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px; cursor: pointer;
+}
+.md-codeblock pre { margin: 0; padding: 8px; overflow-x: auto; }
+
