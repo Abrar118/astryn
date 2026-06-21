@@ -20,7 +20,7 @@ TypeScript is strict; keep code free of unused locals, unused parameters, and fa
 
 ## Testing Guidelines
 
-No frontend test runner or coverage threshold is configured yet. For frontend changes, treat `npm run build` as the minimum automated check and manually exercise the affected flow with `npm run tauri dev`. Add Rust unit tests beside their modules using `#[cfg(test)]`; place broader backend tests in `src-tauri/tests/`. When introducing a frontend test framework, use `*.test.ts` or `*.test.tsx` next to the code under test and add its command to `package.json`.
+**Vitest is configured** (`npm test`); place frontend tests as `*.test.ts` or `*.test.tsx` beside the code under test. For frontend changes, treat `npm run build` as the minimum automated check and `npm test` as the frontend test suite; manually exercise the affected flow with `npm run tauri dev`. Add Rust unit tests beside their modules using `#[cfg(test)]`; place broader backend tests in `src-tauri/tests/`.
 
 ## Commit & Pull Request Guidelines
 

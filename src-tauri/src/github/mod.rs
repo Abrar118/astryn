@@ -25,9 +25,9 @@ pub enum GitHubError {
 /// Classify a non-empty GraphQL `errors` array. GitHub primary rate limits arrive
 /// as HTTP 200 with `type: "RATE_LIMITED"`.
 pub fn classify_graphql_errors(errors: &[Value]) -> GitHubError {
-    let throttled = errors.iter().any(|e| {
-        e.get("type").and_then(|t| t.as_str()) == Some("RATE_LIMITED")
-    });
+    let throttled = errors
+        .iter()
+        .any(|e| e.get("type").and_then(|t| t.as_str()) == Some("RATE_LIMITED"));
     if throttled {
         return GitHubError::RateLimited(None);
     }
@@ -70,7 +70,11 @@ pub fn interpret_status(status: u16, throttled: bool) -> Option<GitHubError> {
 
 /// Best available rate-limit delay (seconds): prefer `retry-after` (already a
 /// delta), else derive from the `x-ratelimit-reset` epoch minus `now`.
-pub fn rate_limit_hint(retry_after: Option<i64>, reset_epoch: Option<i64>, now: i64) -> Option<i64> {
+pub fn rate_limit_hint(
+    retry_after: Option<i64>,
+    reset_epoch: Option<i64>,
+    now: i64,
+) -> Option<i64> {
     retry_after.or_else(|| reset_epoch.map(|reset| (reset - now).max(0)))
 }
 
@@ -86,14 +90,20 @@ pub struct PatProvider {
 
 impl PatProvider {
     pub fn new(store: Arc<dyn SecretStore>, account: impl Into<String>) -> Self {
-        Self { store, account: account.into() }
+        Self {
+            store,
+            account: account.into(),
+        }
     }
 }
 
 impl GitHubCredentialProvider for PatProvider {
     fn authorization(&self) -> Result<Option<String>, SecretError> {
         // Classic PATs are sent as a Bearer credential.
-        Ok(self.store.get(&self.account)?.map(|t| format!("Bearer {t}")))
+        Ok(self
+            .store
+            .get(&self.account)?
+            .map(|t| format!("Bearer {t}")))
     }
 }
 
@@ -114,16 +124,15 @@ impl GitHubClient {
             .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| GitHubError::Network)?;
-        Ok(Self { http, endpoint: endpoint.into() })
+        Ok(Self {
+            http,
+            endpoint: endpoint.into(),
+        })
     }
 
     /// POST a GraphQL body; returns the parsed `data` object. Detects 429/403
     /// throttling from headers and HTTP-200-with-errors via `extract_data`.
-    pub async fn graphql(
-        &self,
-        authorization: &str,
-        body: Value,
-    ) -> Result<Value, GitHubError> {
+    pub async fn graphql(&self, authorization: &str, body: Value) -> Result<Value, GitHubError> {
         let resp = self
             .http
             .post(&self.endpoint)
@@ -136,7 +145,9 @@ impl GitHubClient {
         let status = resp.status().as_u16();
         let h = resp.headers();
         let num = |name: &str| {
-            h.get(name).and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<i64>().ok())
+            h.get(name)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<i64>().ok())
         };
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -212,7 +223,10 @@ mod tests {
 
     #[test]
     fn status_401_is_auth() {
-        assert!(matches!(interpret_status(401, false), Some(GitHubError::Auth)));
+        assert!(matches!(
+            interpret_status(401, false),
+            Some(GitHubError::Auth)
+        ));
     }
 
     #[test]
@@ -225,7 +239,10 @@ mod tests {
 
     #[test]
     fn status_403_unthrottled_is_auth() {
-        assert!(matches!(interpret_status(403, false), Some(GitHubError::Auth)));
+        assert!(matches!(
+            interpret_status(403, false),
+            Some(GitHubError::Auth)
+        ));
     }
 
     #[test]
@@ -256,11 +273,17 @@ mod tests {
     #[test]
     fn graphql_errors_without_message_are_malformed() {
         let errs = vec![serde_json::json!({"extensions": {"code": "X"}})];
-        assert!(matches!(classify_graphql_errors(&errs), GitHubError::Malformed));
+        assert!(matches!(
+            classify_graphql_errors(&errs),
+            GitHubError::Malformed
+        ));
     }
 
     #[test]
     fn status_429_is_rate_limited() {
-        assert!(matches!(interpret_status(429, false), Some(GitHubError::RateLimited(_))));
+        assert!(matches!(
+            interpret_status(429, false),
+            Some(GitHubError::RateLimited(_))
+        ));
     }
 }

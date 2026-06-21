@@ -6,10 +6,10 @@ use tauri::State;
 
 use super::{AppState, CmdError};
 use crate::db::github as gdb;
-use crate::github::{GitHubCredentialProvider, GitHubError};
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
 };
+use crate::github::{GitHubCredentialProvider, GitHubError};
 use crate::secrets::SecretStore;
 
 #[cfg(test)]
@@ -22,14 +22,22 @@ mod tests {
 
     async fn pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
-        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db")).await.unwrap();
+        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db"))
+            .await
+            .unwrap();
         (dir, pool)
     }
 
     #[test]
     fn status_computation() {
-        assert!(matches!(compute_github_status(false, None), GitHubStatus::NotConfigured));
-        assert!(matches!(compute_github_status(true, None), GitHubStatus::Unverified));
+        assert!(matches!(
+            compute_github_status(false, None),
+            GitHubStatus::NotConfigured
+        ));
+        assert!(matches!(
+            compute_github_status(true, None),
+            GitHubStatus::Unverified
+        ));
         match compute_github_status(true, Some("octocat".into())) {
             GitHubStatus::Connected { login } => assert_eq!(login, "octocat"),
             _ => panic!("expected Connected"),
@@ -43,10 +51,15 @@ mod tests {
         gdb::save_github_login(&pool, "olduser").await.unwrap();
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         let gen = AtomicU64::new(0);
-        set_github_token_logic(store.clone(), &pool, &gen, "ghp_new".into()).await.unwrap();
+        set_github_token_logic(store.clone(), &pool, &gen, "ghp_new".into())
+            .await
+            .unwrap();
         assert_eq!(gdb::load_github_login(&pool).await.unwrap(), None);
         assert_eq!(gen.load(Ordering::SeqCst), 1);
-        assert_eq!(store.get(GITHUB_TOKEN_ACCOUNT).unwrap(), Some("ghp_new".into()));
+        assert_eq!(
+            store.get(GITHUB_TOKEN_ACCOUNT).unwrap(),
+            Some("ghp_new".into())
+        );
     }
 
     #[tokio::test]
@@ -70,32 +83,51 @@ mod tests {
         let (_d, pool) = pool().await;
         let creds: Arc<dyn GitHubCredentialProvider> =
             Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
-        let status = test_github_connection_logic(creds, &pool, |_auth| async {
-            Ok("octocat".to_string())
-        })
-        .await
-        .unwrap();
+        let status =
+            test_github_connection_logic(creds, &pool, |_auth| async { Ok("octocat".to_string()) })
+                .await
+                .unwrap();
         assert!(matches!(status, GitHubStatus::Connected { .. }));
-        assert_eq!(gdb::load_github_login(&pool).await.unwrap(), Some("octocat".into()));
+        assert_eq!(
+            gdb::load_github_login(&pool).await.unwrap(),
+            Some("octocat".into())
+        );
     }
 
     fn page_pr(n: i64) -> ParsedPr {
         ParsedPr {
-            id: format!("o/r#{n}"), repo: "o/r".into(), number: n, title: Some("t".into()),
-            draft: false, mergeable: Some("mergeable".into()), ci_status: Some("success".into()),
-            review_decision: None, author_login: Some("octocat".into()), author_avatar: None,
-            comment_count: Some(0), branch: Some("b".into()), url: Some("u".into()),
-            linear_identifier: None, updated_at: Some("2026-06-20T00:00:00Z".into()),
+            id: format!("o/r#{n}"),
+            repo: "o/r".into(),
+            number: n,
+            title: Some("t".into()),
+            draft: false,
+            mergeable: Some("mergeable".into()),
+            ci_status: Some("success".into()),
+            review_decision: None,
+            author_login: Some("octocat".into()),
+            author_avatar: None,
+            comment_count: Some(0),
+            branch: Some("b".into()),
+            url: Some("u".into()),
+            linear_identifier: None,
+            updated_at: Some("2026-06-20T00:00:00Z".into()),
         }
     }
 
     #[tokio::test]
     async fn sync_populates_all_buckets() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
         let results = sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, _q, _c| async {
-            Ok((vec![page_pr(1)], PageInfo { has_next_page: false, end_cursor: None }))
+            Ok((
+                vec![page_pr(1)],
+                PageInfo {
+                    has_next_page: false,
+                    end_cursor: None,
+                },
+            ))
         })
         .await
         .unwrap();
@@ -110,8 +142,11 @@ mod tests {
     async fn sync_failure_leaves_prior_cache() {
         let (_d, pool) = pool().await;
         // Pre-seed one bucket so we can prove a later failed sync preserves it.
-        gdb::replace_bucket(&pool, "needs_review", &[page_pr(7)], "old", false).await.unwrap();
-        let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        gdb::replace_bucket(&pool, "needs_review", &[page_pr(7)], "old", false)
+            .await
+            .unwrap();
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
         let results = sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, _q, _c| async {
             Err(GitHubError::Network)
@@ -121,13 +156,20 @@ mod tests {
         assert!(results.iter().all(|r| !r.ok));
         // The previously-cached needs_review PR survives the failed refresh.
         let dash = list_github_prs_logic(&pool).await.unwrap();
-        assert_eq!(dash.prs.iter().filter(|p| p.bucket == "needs_review").count(), 1);
+        assert_eq!(
+            dash.prs
+                .iter()
+                .filter(|p| p.bucket == "needs_review")
+                .count(),
+            1
+        );
     }
 
     #[tokio::test]
     async fn sync_caps_and_flags_truncation() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
         let calls = Arc::new(Mutex::new(0u32));
         let calls2 = calls.clone();
@@ -135,9 +177,20 @@ mod tests {
         sync_github_prs_logic(creds, &pool, &gen, "now".into(), move |_a, _q, _c| {
             let calls = calls2.clone();
             async move {
-                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let n = {
+                    let mut g = calls.lock().unwrap();
+                    let n = *g;
+                    *g += 1;
+                    n
+                };
                 let prs = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
-                Ok((prs, PageInfo { has_next_page: true, end_cursor: Some(format!("c{n}")) }))
+                Ok((
+                    prs,
+                    PageInfo {
+                        has_next_page: true,
+                        end_cursor: Some(format!("c{n}")),
+                    },
+                ))
             }
         })
         .await
@@ -155,10 +208,21 @@ mod tests {
         let (prs, truncated) = fetch_bucket("auth", Bucket::Mine, &move |_a, _q, _c| {
             let calls = calls2.clone();
             async move {
-                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let n = {
+                    let mut g = calls.lock().unwrap();
+                    let n = *g;
+                    *g += 1;
+                    n
+                };
                 let last = n == 2;
                 let page = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
-                Ok((page, PageInfo { has_next_page: !last, end_cursor: if last { None } else { Some(format!("c{n}")) } }))
+                Ok((
+                    page,
+                    PageInfo {
+                        has_next_page: !last,
+                        end_cursor: if last { None } else { Some(format!("c{n}")) },
+                    },
+                ))
             }
         })
         .await
@@ -175,9 +239,20 @@ mod tests {
         let (prs, truncated) = fetch_bucket("auth", Bucket::Mine, &move |_a, _q, _c| {
             let calls = calls2.clone();
             async move {
-                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let n = {
+                    let mut g = calls.lock().unwrap();
+                    let n = *g;
+                    *g += 1;
+                    n
+                };
                 let page = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
-                Ok((page, PageInfo { has_next_page: true, end_cursor: Some(format!("c{n}")) }))
+                Ok((
+                    page,
+                    PageInfo {
+                        has_next_page: true,
+                        end_cursor: Some(format!("c{n}")),
+                    },
+                ))
             }
         })
         .await
@@ -190,7 +265,13 @@ mod tests {
     async fn fetch_bucket_repeated_cursor_is_malformed() {
         let err = fetch_bucket("auth", Bucket::Mine, &|_a, _q, _c| async {
             // Always claims more with the SAME cursor -> would loop forever.
-            Ok((vec![page_pr(1)], PageInfo { has_next_page: true, end_cursor: Some("same".into()) }))
+            Ok((
+                vec![page_pr(1)],
+                PageInfo {
+                    has_next_page: true,
+                    end_cursor: Some("same".into()),
+                },
+            ))
         })
         .await;
         assert!(matches!(err, Err(GitHubError::Malformed)));
@@ -199,7 +280,13 @@ mod tests {
     #[tokio::test]
     async fn fetch_bucket_missing_cursor_is_malformed() {
         let err = fetch_bucket("auth", Bucket::Mine, &|_a, _q, _c| async {
-            Ok((vec![page_pr(1)], PageInfo { has_next_page: true, end_cursor: None }))
+            Ok((
+                vec![page_pr(1)],
+                PageInfo {
+                    has_next_page: true,
+                    end_cursor: None,
+                },
+            ))
         })
         .await;
         assert!(matches!(err, Err(GitHubError::Malformed)));
@@ -208,12 +295,21 @@ mod tests {
     #[tokio::test]
     async fn sync_aborts_and_writes_nothing_when_generation_changes() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
         // Bump the generation mid-fetch (simulating a token swap) so the guard trips.
         let result = sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, _q, _c| {
             gen.fetch_add(1, Ordering::SeqCst);
-            async { Ok((vec![page_pr(1)], PageInfo { has_next_page: false, end_cursor: None })) }
+            async {
+                Ok((
+                    vec![page_pr(1)],
+                    PageInfo {
+                        has_next_page: false,
+                        end_cursor: None,
+                    },
+                ))
+            }
         })
         .await;
         assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
@@ -312,10 +408,18 @@ where
                 gdb::replace_bucket(pool, bucket.key(), &prs, &now, truncated)
                     .await
                     .map_err(|_| CmdError::Internal)?;
-                results.push(BucketSyncResult { bucket: bucket.key().into(), ok: true, truncated });
+                results.push(BucketSyncResult {
+                    bucket: bucket.key().into(),
+                    ok: true,
+                    truncated,
+                });
             }
             Err(_) => {
-                results.push(BucketSyncResult { bucket: bucket.key().into(), ok: false, truncated: false });
+                results.push(BucketSyncResult {
+                    bucket: bucket.key().into(),
+                    ok: false,
+                    truncated: false,
+                });
             }
         }
     }
@@ -324,7 +428,9 @@ where
 
 pub async fn list_github_prs_logic(pool: &SqlitePool) -> Result<PrDashboard, CmdError> {
     let prs = gdb::list_prs(pool).await.map_err(|_| CmdError::Internal)?;
-    let meta = gdb::load_sync_meta(pool).await.map_err(|_| CmdError::Internal)?;
+    let meta = gdb::load_sync_meta(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(PrDashboard { prs, meta })
 }
 
@@ -335,7 +441,9 @@ fn now_iso() -> String {
 }
 
 #[tauri::command]
-pub async fn sync_github_prs(state: State<'_, AppState>) -> Result<Vec<BucketSyncResult>, CmdError> {
+pub async fn sync_github_prs(
+    state: State<'_, AppState>,
+) -> Result<Vec<BucketSyncResult>, CmdError> {
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     sync_github_prs_logic(
@@ -384,7 +492,9 @@ pub async fn set_github_token_logic(
 ) -> Result<(), CmdError> {
     // Wipe + bump FIRST so a later keyring failure leaves an empty cache (safe),
     // never the new token paired with the previous account's data.
-    gdb::wipe_github_cache(pool).await.map_err(|_| CmdError::Internal)?;
+    gdb::wipe_github_cache(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.set(GITHUB_TOKEN_ACCOUNT, &token))
@@ -399,7 +509,9 @@ pub async fn clear_github_token_logic(
     pool: &SqlitePool,
     generation: &AtomicU64,
 ) -> Result<(), CmdError> {
-    gdb::wipe_github_cache(pool).await.map_err(|_| CmdError::Internal)?;
+    gdb::wipe_github_cache(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
     tokio::task::spawn_blocking(move || s.delete(GITHUB_TOKEN_ACCOUNT))
@@ -419,7 +531,9 @@ pub async fn get_github_status_logic(
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
         .is_some();
-    let login = gdb::load_github_login(pool).await.map_err(|_| CmdError::Internal)?;
+    let login = gdb::load_github_login(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(compute_github_status(has_token, login))
 }
 
@@ -439,7 +553,9 @@ where
         .map_err(|_| CmdError::SecretStore)?
         .ok_or(CmdError::GitHubNotConfigured)?;
     let login = fetch_login(auth).await?;
-    gdb::save_github_login(pool, &login).await.map_err(|_| CmdError::Internal)?;
+    gdb::save_github_login(pool, &login)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     Ok(GitHubStatus::Connected { login })
 }
 
@@ -460,13 +576,24 @@ async fn fetch_viewer_login(
 #[tauri::command]
 pub async fn set_github_token(state: State<'_, AppState>, token: String) -> Result<(), CmdError> {
     let _g = state.github_lock.lock().await;
-    set_github_token_logic(state.secret_store.clone(), &state.pool, &state.github_generation, token).await
+    set_github_token_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.github_generation,
+        token,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn clear_github_token(state: State<'_, AppState>) -> Result<(), CmdError> {
     let _g = state.github_lock.lock().await;
-    clear_github_token_logic(state.secret_store.clone(), &state.pool, &state.github_generation).await
+    clear_github_token_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.github_generation,
+    )
+    .await
 }
 
 #[tauri::command]

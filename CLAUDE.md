@@ -17,9 +17,11 @@ Per-milestone specs and plans live in `docs/superpowers/specs/` and `docs/superp
 
 **M0 (scaffold) is complete** on `main`. Built and installed: Tailwind v4, shadcn/ui (+ Geist font, `tw-animate-css`), TanStack Query, `goey-toast`; Rust side: `sqlx` (SQLite), `keyring`, `reqwest` (rustls), `thiserror`, `tokio`. The Rust backend (secrets/db/linear/commands), the dual-clock Home, and the Settings key flow are working; **24 Rust unit tests pass**. The default `greet` command is gone.
 
-**NOT yet present:** FullCalendar, React Flow, the `github/`, `activity/`, `generators/` Rust modules, and all feature screens beyond Home/Settings.
+**M4 — GitHub PR dashboard (F7). Done.** Standalone viewer-centric PR dashboard with classic-PAT auth, four `@me`-filtered buckets (needs-my-review / my open PRs / assigned / involved), per-bucket transactional cache (cap 300), `github_prs` + `github_sync_meta` tables, credential isolation + generation guard, and the optional Linear-identifier chip. Rust + Vitest test suites pass.
 
-Build in milestone order (`requirements.md` §11): **M1 next** (calendar + drawer + drag, F1–F3) → … → M6. Each milestone must be independently runnable before starting the next.
+**NOT yet present:** FullCalendar, React Flow, the `activity/`, `generators/` Rust modules, and all feature screens beyond Home/Settings/PRs.
+
+Build in milestone order (`requirements.md` §11): M5 next (hierarchy/web viz, F8) → M6. Each milestone must be independently runnable before starting the next.
 
 ## Commands
 
@@ -38,7 +40,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml         # lint
 cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is kept clean; run without --check to apply
 ```
 
-- **No JS test framework is configured yet.** Rust logic is unit-tested (`cargo test`). If you add frontend tests, wire the runner + a `test` script.
+- **Frontend tests use Vitest** (`npm test`); Rust logic is unit-tested (`cargo test`).
 - TS config is **strict** with `noUnusedLocals`/`noUnusedParameters` — unused symbols fail the build.
 - `npm run dev` (Vite-only, browser) won't work for anything using `invoke()` — use `tauri dev`.
 

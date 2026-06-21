@@ -8,6 +8,7 @@ use crate::db;
 use crate::db::issues::{
     self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
 };
+use crate::github::{GitHubClient, GitHubCredentialProvider, GitHubError};
 use crate::linear::issues::{
     create_input_to_value, patch_to_input, validate_create_input, CreateIssueInput,
     DetailAttachment, DetailChild, DetailComment, DetailCycle, DetailHistory, DetailReaction,
@@ -15,7 +16,6 @@ use crate::linear::issues::{
     ParsedCycle, ParsedIssue, ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
-use crate::github::{GitHubClient, GitHubCredentialProvider, GitHubError};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
 use crate::secrets::SecretStore;
 

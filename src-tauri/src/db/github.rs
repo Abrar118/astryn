@@ -99,8 +99,12 @@ pub async fn replace_bucket(
 /// Drop all GitHub cache state (rows + meta + cached login). Leaves Linear alone.
 pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM github_prs").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM github_sync_meta").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM github_prs")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM github_sync_meta")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM settings WHERE key = ?1")
         .bind(GITHUB_LOGIN_KEY)
         .execute(&mut *tx)
@@ -144,7 +148,9 @@ mod tests {
 
     async fn pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
-        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db")).await.unwrap();
+        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db"))
+            .await
+            .unwrap();
         (dir, pool)
     }
 
@@ -171,8 +177,12 @@ mod tests {
     #[tokio::test]
     async fn replace_bucket_upserts_and_prunes() {
         let (_d, pool) = pool().await;
-        replace_bucket(&pool, "mine", &[pr(1, None), pr(2, None)], "now", false).await.unwrap();
-        replace_bucket(&pool, "mine", &[pr(2, None)], "now", true).await.unwrap();
+        replace_bucket(&pool, "mine", &[pr(1, None), pr(2, None)], "now", false)
+            .await
+            .unwrap();
+        replace_bucket(&pool, "mine", &[pr(2, None)], "now", true)
+            .await
+            .unwrap();
         let rows = list_prs(&pool).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].number, 2);
@@ -187,7 +197,15 @@ mod tests {
         let (_d, pool) = pool().await;
         sqlx::query("INSERT INTO issues (id, identifier, title, url, created_at, updated_at, synced_at) VALUES ('iss-1','ENG-9','x','u','t','t','t')")
             .execute(&pool).await.unwrap();
-        replace_bucket(&pool, "mine", &[pr(9, Some("ENG-9")), pr(8, Some("ZZZ-1"))], "now", false).await.unwrap();
+        replace_bucket(
+            &pool,
+            "mine",
+            &[pr(9, Some("ENG-9")), pr(8, Some("ZZZ-1"))],
+            "now",
+            false,
+        )
+        .await
+        .unwrap();
         let rows = list_prs(&pool).await.unwrap();
         let matched = rows.iter().find(|r| r.number == 9).unwrap();
         let unmatched = rows.iter().find(|r| r.number == 8).unwrap();
@@ -198,7 +216,9 @@ mod tests {
     #[tokio::test]
     async fn wipe_clears_prs_meta_and_login() {
         let (_d, pool) = pool().await;
-        replace_bucket(&pool, "mine", &[pr(1, None)], "now", false).await.unwrap();
+        replace_bucket(&pool, "mine", &[pr(1, None)], "now", false)
+            .await
+            .unwrap();
         save_github_login(&pool, "octocat").await.unwrap();
         wipe_github_cache(&pool).await.unwrap();
         assert!(list_prs(&pool).await.unwrap().is_empty());

@@ -1,7 +1,7 @@
+use super::GitHubError;
 use regex::Regex;
 use serde_json::{json, Value};
 use std::sync::OnceLock;
-use super::GitHubError;
 
 pub const PER_BUCKET_CAP: usize = 300;
 pub const PAGE_SIZE: i64 = 100;
@@ -16,7 +16,12 @@ pub enum Bucket {
 
 impl Bucket {
     pub fn all() -> [Bucket; 4] {
-        [Bucket::NeedsReview, Bucket::Mine, Bucket::Assigned, Bucket::Involved]
+        [
+            Bucket::NeedsReview,
+            Bucket::Mine,
+            Bucket::Assigned,
+            Bucket::Involved,
+        ]
     }
 
     pub fn key(&self) -> &'static str {
@@ -110,12 +115,14 @@ fn str_at(v: &Value, k: &str) -> Option<String> {
 }
 
 fn map_mergeable(v: Option<&str>) -> Option<String> {
-    Some(match v {
-        Some("MERGEABLE") => "mergeable",
-        Some("CONFLICTING") => "conflicting",
-        _ => "unknown",
-    }
-    .to_string())
+    Some(
+        match v {
+            Some("MERGEABLE") => "mergeable",
+            Some("CONFLICTING") => "conflicting",
+            _ => "unknown",
+        }
+        .to_string(),
+    )
 }
 
 fn map_review(v: Option<&str>) -> Option<String> {
@@ -128,19 +135,24 @@ fn map_review(v: Option<&str>) -> Option<String> {
 }
 
 fn map_ci(v: Option<&str>) -> Option<String> {
-    Some(match v {
-        Some("SUCCESS") => "success",
-        Some("FAILURE") | Some("ERROR") => "failure",
-        Some("PENDING") | Some("EXPECTED") => "pending",
-        _ => "none",
-    }
-    .to_string())
+    Some(
+        match v {
+            Some("SUCCESS") => "success",
+            Some("FAILURE") | Some("ERROR") => "failure",
+            Some("PENDING") | Some("EXPECTED") => "pending",
+            _ => "none",
+        }
+        .to_string(),
+    )
 }
 
 fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
     // With `is:pr`, every search node IS a PullRequest; a node missing required
     // fields is malformed and must fail the page (never silently disappear).
-    let number = n.get("number").and_then(Value::as_i64).ok_or(GitHubError::Malformed)?;
+    let number = n
+        .get("number")
+        .and_then(Value::as_i64)
+        .ok_or(GitHubError::Malformed)?;
     let repo = n
         .get("repository")
         .and_then(|r| str_at(r, "nameWithOwner"))
@@ -151,7 +163,10 @@ fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
         branch.as_deref().unwrap_or(""),
         title.as_deref().unwrap_or(""),
     );
-    let ci = n.get("statusCheckRollup").and_then(|r| r.get("state")).and_then(|s| s.as_str());
+    let ci = n
+        .get("statusCheckRollup")
+        .and_then(|r| r.get("state"))
+        .and_then(|s| s.as_str());
     Ok(ParsedPr {
         id: format!("{repo}#{number}"),
         repo,
@@ -163,7 +178,10 @@ fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
         review_decision: map_review(n.get("reviewDecision").and_then(|r| r.as_str())),
         author_login: n.get("author").and_then(|a| str_at(a, "login")),
         author_avatar: n.get("author").and_then(|a| str_at(a, "avatarUrl")),
-        comment_count: n.get("comments").and_then(|c| c.get("totalCount")).and_then(Value::as_i64),
+        comment_count: n
+            .get("comments")
+            .and_then(|c| c.get("totalCount"))
+            .and_then(Value::as_i64),
         branch,
         url: str_at(n, "url"),
         linear_identifier,
@@ -180,7 +198,10 @@ pub fn parse_search_page(data: &Value) -> Result<(Vec<ParsedPr>, PageInfo), GitH
         .get("nodes")
         .and_then(|n| n.as_array())
         .ok_or(GitHubError::Malformed)?;
-    let prs = nodes.iter().map(node_to_pr).collect::<Result<Vec<_>, _>>()?;
+    let prs = nodes
+        .iter()
+        .map(node_to_pr)
+        .collect::<Result<Vec<_>, _>>()?;
     let page = search.get("pageInfo").ok_or(GitHubError::Malformed)?;
     let page_info = PageInfo {
         has_next_page: page
@@ -333,10 +354,16 @@ mod tests {
     fn missing_structure_is_malformed() {
         // No `search` object at all -> never silently treat as an empty page,
         // which would let sync transactionally erase a bucket.
-        assert!(matches!(parse_search_page(&json!({})), Err(GitHubError::Malformed)));
+        assert!(matches!(
+            parse_search_page(&json!({})),
+            Err(GitHubError::Malformed)
+        ));
         // Missing pageInfo.
         let no_page = json!({ "search": { "nodes": [] } });
-        assert!(matches!(parse_search_page(&no_page), Err(GitHubError::Malformed)));
+        assert!(matches!(
+            parse_search_page(&no_page),
+            Err(GitHubError::Malformed)
+        ));
     }
 
     #[test]
@@ -349,6 +376,9 @@ mod tests {
                 "nodes": [ { "title": "no number" } ]
             }
         });
-        assert!(matches!(parse_search_page(&bad), Err(GitHubError::Malformed)));
+        assert!(matches!(
+            parse_search_page(&bad),
+            Err(GitHubError::Malformed)
+        ));
     }
 }
