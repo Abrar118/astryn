@@ -34,6 +34,9 @@ pub fn classify_graphql_errors(errors: &[Value]) -> GitHubError {
         .filter_map(|e| e.get("message").and_then(|m| m.as_str()))
         .collect::<Vec<_>>()
         .join("; ");
+    if joined.is_empty() {
+        return GitHubError::Malformed;
+    }
     GitHubError::Api(joined)
 }
 
@@ -66,7 +69,7 @@ pub fn interpret_status(status: u16, throttled: bool) -> Option<GitHubError> {
 /// Best available rate-limit delay (seconds): prefer `retry-after` (already a
 /// delta), else derive from the `x-ratelimit-reset` epoch minus `now`.
 pub fn rate_limit_hint(retry_after: Option<i64>, reset_epoch: Option<i64>, now: i64) -> Option<i64> {
-    retry_after.or_else(|| reset_epoch.map(|reset| reset - now))
+    retry_after.or_else(|| reset_epoch.map(|reset| (reset - now).max(0)))
 }
 
 pub trait GitHubCredentialProvider: Send + Sync {
@@ -241,5 +244,21 @@ mod tests {
     #[test]
     fn rate_limit_hint_none_when_absent() {
         assert_eq!(rate_limit_hint(None, None, 1_000), None);
+    }
+
+    #[test]
+    fn rate_limit_hint_clamps_past_reset_to_zero() {
+        assert_eq!(rate_limit_hint(None, Some(900), 1_000), Some(0));
+    }
+
+    #[test]
+    fn graphql_errors_without_message_are_malformed() {
+        let errs = vec![serde_json::json!({"extensions": {"code": "X"}})];
+        assert!(matches!(classify_graphql_errors(&errs), GitHubError::Malformed));
+    }
+
+    #[test]
+    fn status_429_is_rate_limited() {
+        assert!(matches!(interpret_status(429, false), Some(GitHubError::RateLimited(_))));
     }
 }
