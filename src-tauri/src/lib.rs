@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod github;
 mod linear;
 mod link_preview;
 mod secrets;
@@ -8,11 +9,13 @@ use std::sync::Arc;
 use tauri::Manager;
 
 use commands::AppState;
+use github::{GitHubClient, GitHubCredentialProvider, PatProvider};
 use linear::{LinearClient, LinearCredentialProvider, PersonalKeyProvider};
 use secrets::{KeyringSecretStore, SecretStore};
 
 const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
+const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -35,6 +38,9 @@ pub fn run() {
             let credentials: Arc<dyn LinearCredentialProvider> =
                 Arc::new(PersonalKeyProvider::new(store.clone(), LINEAR_KEY_ACCOUNT));
             let linear = LinearClient::new().expect("failed to build Linear HTTP client");
+            let github_credentials: Arc<dyn GitHubCredentialProvider> =
+                Arc::new(PatProvider::new(store.clone(), GITHUB_TOKEN_ACCOUNT));
+            let github = GitHubClient::new().expect("failed to build GitHub HTTP client");
 
             app.manage(AppState {
                 pool,
@@ -51,6 +57,10 @@ pub fn run() {
                     ),
                 ),
                 link_preview_inflight: std::sync::Mutex::new(std::collections::HashMap::new()),
+                github_credentials,
+                github,
+                github_lock: tokio::sync::Mutex::new(()),
+                github_generation: std::sync::atomic::AtomicU64::new(0),
             });
             Ok(())
         })
@@ -82,7 +92,15 @@ pub fn run() {
             commands::add_reaction,
             commands::remove_reaction,
             commands::create_label,
-            commands::list_relations
+            commands::list_relations,
+            commands::github::set_github_token,
+            commands::github::clear_github_token,
+            commands::github::get_github_status,
+            commands::github::test_github_connection,
+            commands::github::sync_github_prs,
+            commands::github::list_github_prs,
+            commands::github::get_github_contributions,
+            commands::github::sync_github_contributions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

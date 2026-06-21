@@ -3,7 +3,7 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) shipped, with several workspace extensions beyond the original plan; F7–F9 remain.
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) shipped, with several workspace extensions beyond the original plan; F8–F9 remain.
 **Last updated:** 2026-06-21
 
 ---
@@ -25,7 +25,7 @@
 - **Inbox** — Linear notifications in the dock with a master-detail layout.
 - **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
 
-**Not yet built:** F7 (GitHub PR tracking), F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
+**Not yet built:** F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
 
 ---
 
@@ -58,7 +58,7 @@ The user already lives in Linear for issue tracking at work. The point of this a
 3. **Draggable calendar tasks** — drag an issue to a new day to reschedule its due date.
 4. **"My activity" timeline** — a chronological feed of the user's own actions/changes.
 5. **"This Week" agenda** — viewer's issues organized by due date for the current work week (replaces the original standup and weekly-review generators).
-6. **GitHub PR & branch tracking** — PR status correlated to the issue it belongs to.
+6. **GitHub PR dashboard** — a standalone view of open PRs that involve you (needs-my-review, my PRs, assigned, involved) across all accessible repos.
 7. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
 8. **Related docs & link storage** per issue (local-first).
 
@@ -126,9 +126,9 @@ Phase 1 uses a **Linear personal API key** (user generates it at Linear → Sett
 - Endpoint: `https://api.linear.app/graphql`.
 - `[EXT]` OAuth2 flow for multi-account later. Don't build it now, but keep the auth module behind a trait/interface so a second provider can slot in.
 
-### GitHub `[CHOICE: fine-grained PAT]`
+### GitHub `[CHOICE: classic PAT]`
 
-A **fine-grained personal access token** with read access to the relevant repos (Pull requests: read, Contents: read, Checks: read). Stored in the keychain alongside the Linear key. Optional — the app must degrade gracefully if no GitHub token is set (feature 7 simply shows "GitHub not connected").
+A **classic personal access token** with `repo` scope (private-repo visibility); add `read:org` only if org/team membership is queried or testing proves it is required. Stored in the keychain (account `github_token`) and sent as `Authorization: Bearer <token>`. Optional — the app degrades gracefully if no token is set (the dashboard shows a "Connect GitHub" prompt). Classic (not fine-grained) is chosen because fine-grained tokens cannot reliably cover arbitrary collaborations; document the broad-access trade-off and the SAML-SSO authorization requirement.
 
 ---
 
@@ -226,25 +226,37 @@ CREATE TABLE doc_links (
 );
 CREATE INDEX idx_doclinks_issue ON doc_links(issue_id);
 
--- GitHub PRs correlated to issues (feature 7)
+-- GitHub PRs — viewer/bucket-centric (feature 7, M4)
 CREATE TABLE github_prs (
-  id            TEXT PRIMARY KEY,     -- "{repo}#{number}"
-  issue_id      TEXT,                 -- may be NULL if correlation fails
-  repo          TEXT NOT NULL,        -- "owner/name"
-  number        INTEGER NOT NULL,
-  title         TEXT,
-  state         TEXT,                 -- open|closed
-  draft         INTEGER,              -- bool
-  merged        INTEGER,              -- bool
-  mergeable     TEXT,                 -- mergeable|conflicting|unknown
-  ci_status     TEXT,                 -- success|failure|pending|none
-  review_state  TEXT,                 -- approved|changes_requested|review_required|none
-  branch        TEXT,
-  url           TEXT,
-  updated_at    TEXT,
-  synced_at     TEXT NOT NULL
+  id                TEXT NOT NULL,     -- "owner/repo#number"
+  bucket            TEXT NOT NULL,     -- needs_review | mine | assigned | involved
+  repo              TEXT NOT NULL,     -- "owner/name"
+  number            INTEGER NOT NULL,
+  title             TEXT,
+  draft             INTEGER,           -- bool (every cached row is an OPEN PR; see note)
+  mergeable         TEXT,              -- mergeable | conflicting | unknown
+  ci_status         TEXT,              -- success | failure | pending | none
+  review_decision   TEXT,             -- approved | changes_requested | review_required | NULL (overall PR review status)
+  author_login      TEXT,
+  author_avatar     TEXT,
+  comment_count     INTEGER,
+  branch            TEXT,              -- headRefName
+  url               TEXT,
+  linear_identifier TEXT,             -- normalized uppercase id extracted from branch/title (e.g. "ENG-123"), nullable
+  updated_at        TEXT,             -- PR updatedAt (ISO)
+  synced_at         TEXT NOT NULL,
+  PRIMARY KEY (id, bucket)
 );
-CREATE INDEX idx_prs_issue ON github_prs(issue_id);
+CREATE INDEX idx_github_prs_bucket ON github_prs(bucket);
+CREATE INDEX idx_github_prs_linear_identifier ON github_prs(linear_identifier);
+
+-- Per-bucket sync metadata so truncation/staleness survive restart.
+CREATE TABLE github_sync_meta (
+  bucket         TEXT PRIMARY KEY,     -- needs_review | mine | assigned | involved
+  fetched_count  INTEGER NOT NULL,
+  truncated      INTEGER NOT NULL,     -- bool: cap (300) was hit
+  last_synced_at TEXT
+);
 
 -- Sync bookkeeping
 CREATE TABLE sync_cursors (
@@ -269,7 +281,7 @@ CREATE TABLE settings (
 - **Initial sync:** pull **all issues across all teams in the `GAM Health Solutions` workspace** (resolved scope — not limited to the user's teams or their own assignments). Page through `issues` 100 at a time, upsert into `issues`/`labels`/`relations`/`comments`. If the personal API key has access to more than one organization, filter to GAM Health Solutions; if it's the only workspace, no filter is needed.
 - **Incremental sync:** store the max `updatedAt` seen in `sync_cursors`. On refresh, query `issues(filter: { updatedAt: { gt: $cursor } })` and upsert. This keeps refreshes cheap.
 - **Trigger:** manual "refresh" button + a configurable interval poll (default 5 min) `[CHOICE]`. `[EXT]` Linear webhooks via a relay later — not now.
-- **GitHub sync:** on demand when an issue with linked PRs is viewed, plus a background refresh of PRs for issues in "started" state. Respect GitHub rate limits (conditional requests / ETags where possible).
+- **GitHub sync:** background refresh on dashboard open + a 5-minute poll while open; each bucket is fetched to completion (cap 300, `sort:updated-desc`) and committed in one transaction (delete+insert+meta), so a partial/failed fetch never empties a bucket. Rate limits: parse GraphQL `errors` on HTTP 200, treat throttled 403 as rate-limited.
 - **Rate limits:** Linear uses complexity-based rate limiting — keep query depth modest, request only needed fields, and back off on `429`. Surface a non-blocking toast if throttled.
 
 ---
@@ -352,19 +364,20 @@ mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
 
 ---
 
-## 8. GitHub correlation (feature 7)
+## 8. GitHub PR dashboard (feature 7)
 
-**Finding PRs for an issue — two sources, combined:**
+The PR dashboard is viewer-centric: it shows open PRs that involve *you* (the authenticated GitHub user), organized into four buckets via `@me` GraphQL search filters:
 
-1. **From Linear:** linked PRs appear in `issue.attachments` where `sourceType` indicates GitHub. Parse the PR URL → `owner/repo` + number. This is the reliable primary source.
-2. **Fallback by identifier:** Linear's branch/PR convention embeds the issue identifier (e.g. `ENG-123`) in branch names and PR titles. If attachments are missing, you may search GitHub for the identifier — but treat this as secondary and lower-confidence.
+| Bucket | Search query |
+| --- | --- |
+| Needs my review | `is:pr is:open review-requested:@me sort:updated-desc` |
+| My open PRs | `is:pr is:open author:@me sort:updated-desc` |
+| Assigned to me | `is:pr is:open assignee:@me sort:updated-desc` |
+| Involved/mentioned | `is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me sort:updated-desc` |
 
-**Enrich with live status via GitHub REST:**
-- PR object → `GET /repos/{owner}/{repo}/pulls/{number}` → `state`, `draft`, `merged`, `mergeable`, head `sha`, `head.ref` (branch).
-- CI → `GET /repos/{owner}/{repo}/commits/{sha}/check-runs` → roll up to `success|failure|pending`.
-- Reviews → `GET /repos/{owner}/{repo}/pulls/{number}/reviews` → reduce to `approved|changes_requested|review_required`.
+Each bucket is capped at the 300 most recently updated PRs. The `involved` bucket is the *remainder* — `involves:@me` minus the other three via negative qualifiers, so it never overlaps them. Overlap among the other three is intentional and allowed.
 
-Store the rolled-up result in `github_prs`. In the issue drawer, render a compact PR badge row (state + CI + review). If no GitHub token: show a "Connect GitHub" affordance instead.
+**Linear correlation** is demoted to an optional convenience chip: when a PR's `headRefName` or `title` contains a Linear issue identifier (matched case-insensitively with `\b[A-Z][A-Z0-9]*-\d+\b`, then normalized to uppercase), the row shows a chip that opens that issue's tab inside Astryn. The identifier is extracted at sync time and stored in `github_prs.linear_identifier`; the join to `issues.identifier` happens at read time in `list_github_prs`, so it automatically follows Linear cache rebuilds. If no GitHub token: the dashboard shows a "Connect GitHub" prompt; no error state.
 
 ---
 
@@ -411,9 +424,9 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 - **Frontend:** `src/features/agenda/`. Week-window math via a new `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). Grouping and rendering in the frontend; data assembly in Rust (`generators/` module, `get_week_agenda` command).
 - **AC:** groups match due dates in Dhaka time; Sunday week start; Overdue/Weekend sections shown only when non-empty; sub-issues threaded and deduped; relations shown per issue; clicking any row opens the F2 drawer; cache-only reads keep the view available offline.
 
-### F7 — GitHub PR & branch tracking `[REQ]`
-- See §8. Render per-issue PR badges in the drawer; add an optional global "PRs" view listing all open PRs grouped by issue with status.
-- **AC:** an issue with a linked PR shows correct state/CI/review badges; an issue with none shows nothing; with no token the feature degrades to a connect prompt without errors.
+### F7 — GitHub PR dashboard `[REQ]`
+- A standalone view with four sections (needs-my-review, my open PRs, assigned, involved), each row showing title, #number, author, comments, repo, updated time, and status/CI/conflict/review badges; a Linear chip when the branch/title identifier matches a cached issue.
+- **AC:** with a token, sections populate; with none, a connect prompt shows without errors; a sync failure leaves the previous cache intact; setting/clearing the token never disturbs the Linear cache.
 
 ### F8 — Issue web / hierarchy viz `[REQ]`
 - **Data:** `issues.parent_id` (tree) + `relations` (cross-links).
@@ -461,7 +474,7 @@ src/                 # React frontend
 - **M1 — Calendar + Drawer + Drag (F1–F3). ✅ Done.** The core loop: see issues, open details, edit, reschedule. Shipped with extensions: list/board views, the full-page issue tab, the two-pane split workspace, the command palette + shortcuts, the inbox, sub-issues, and label create (see *Implementation status* near the top).
 - **M2 — Activity timeline (F4). ✅ Done.**
 - **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
-- **M4 — GitHub PR tracking (F7).** Not started.
+- **M4 — GitHub PR dashboard (F7).** Standalone viewer-centric PR dashboard; classic-PAT auth; offline-first per-bucket cache.
 - **M5 — Hierarchy/web viz (F8).** Not started.
 - **M6 — Doc links (F9).** Not started.
 

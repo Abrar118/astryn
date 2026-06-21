@@ -2,6 +2,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::path::Path;
 
+pub mod github;
 pub mod issues;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
@@ -142,5 +143,19 @@ mod tests {
             load_viewer_name(&pool).await.unwrap(),
             Some("Abrar 2".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn migration_creates_github_tables() {
+        let (_dir, pool) = temp_pool().await;
+        let prs: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM github_prs")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let meta: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM github_sync_meta")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((prs.0, meta.0), (0, 0));
     }
 }

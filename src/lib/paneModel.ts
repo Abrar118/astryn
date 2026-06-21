@@ -1,4 +1,4 @@
-export type ViewKind = "calendar" | "list" | "this-week" | "graph" | "inbox" | "settings" | "issue";
+export type ViewKind = "calendar" | "list" | "this-week" | "graph" | "inbox" | "prs" | "settings" | "issue";
 export type Tab = { id: string; view: ViewKind; issueId?: string };
 export type Pane = { id: string; tabs: Tab[]; activeTabId: string };
 export type WorkspaceState = {
@@ -8,7 +8,7 @@ export type WorkspaceState = {
   seq: number; // monotonic tab-id counter
 };
 
-export const VIEWS: ViewKind[] = ["calendar", "list", "this-week", "graph", "inbox", "settings", "issue"];
+export const VIEWS: ViewKind[] = ["calendar", "list", "this-week", "graph", "inbox", "prs", "settings", "issue"];
 export const MIN_PANE_PX = 320;
 
 export const FALLBACK: WorkspaceState = {

@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { Calendar, CalendarRange, FileText, Inbox, List, Network, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { Calendar, CalendarRange, FileText, GitPullRequest, Inbox, List, Network, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -14,6 +14,7 @@ const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode 
   "this-week": { label: "Overview", icon: <CalendarRange className="size-3.5" /> },
   graph: { label: "Dependencies", icon: <Network className="size-3.5" /> },
   inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
+  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5" /> },
   settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
 };
 

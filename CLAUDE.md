@@ -17,9 +17,11 @@ Per-milestone specs and plans live in `docs/superpowers/specs/` and `docs/superp
 
 **M0 (scaffold) is complete** on `main`. Built and installed: Tailwind v4, shadcn/ui (+ Geist font, `tw-animate-css`), TanStack Query, `goey-toast`; Rust side: `sqlx` (SQLite), `keyring`, `reqwest` (rustls), `thiserror`, `tokio`. The Rust backend (secrets/db/linear/commands), the dual-clock Home, and the Settings key flow are working; **24 Rust unit tests pass**. The default `greet` command is gone.
 
-**NOT yet present:** FullCalendar, React Flow, the `github/`, `activity/`, `generators/` Rust modules, and all feature screens beyond Home/Settings.
+**M4 — GitHub PR dashboard (F7). Done.** Standalone viewer-centric PR dashboard with classic-PAT auth, four `@me`-filtered buckets (needs-my-review / my open PRs / assigned / involved), per-bucket transactional cache (cap 300), `github_prs` + `github_sync_meta` tables, credential isolation + generation guard, and the optional Linear-identifier chip. Rust + Vitest test suites pass.
 
-Build in milestone order (`requirements.md` §11): **M1 next** (calendar + drawer + drag, F1–F3) → … → M6. Each milestone must be independently runnable before starting the next.
+**NOT yet present:** FullCalendar, React Flow, the `activity/`, `generators/` Rust modules, and all feature screens beyond Home/Settings/PRs.
+
+Build in milestone order (`requirements.md` §11): M5 next (hierarchy/web viz, F8) → M6. Each milestone must be independently runnable before starting the next.
 
 ## Commands
 
@@ -38,7 +40,7 @@ cargo clippy --manifest-path src-tauri/Cargo.toml         # lint
 cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is kept clean; run without --check to apply
 ```
 
-- **No JS test framework is configured yet.** Rust logic is unit-tested (`cargo test`). If you add frontend tests, wire the runner + a `test` script.
+- **Frontend tests use Vitest** (`npm test`); Rust logic is unit-tested (`cargo test`).
 - TS config is **strict** with `noUnusedLocals`/`noUnusedParameters` — unused symbols fail the build.
 - `npm run dev` (Vite-only, browser) won't work for anything using `invoke()` — use `tauri dev`.
 
@@ -48,7 +50,7 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is ke
 
 **Data flow:** Linear/GitHub → Rust client → SQLite (cache) → Tauri command → TanStack Query → React. SQLite is a **cache plus a little app-owned data** (`doc_links`, `sync_cursors`, `settings`); Linear is the source of truth for issues. The frontend **never touches SQLite directly**. After any mutation, **upsert the returned entity into SQLite** so the cache stays consistent without a full resync.
 
-**DB location:** `~/Documents/astryn/astryn.db` (resolved via Tauri `document_dir()` + `astryn/`, created on startup; startup fails loudly if the dir or migrations fail). Migrations in `src-tauri/migrations/` run on startup; **only create tables a milestone uses** — so far just `settings` (which also caches the verified Linear viewer name).
+**DB location:** `~/Documents/astryn/astryn.db` (resolved via Tauri `document_dir()` + `astryn/`, created on startup; startup fails loudly if the dir or migrations fail). Migrations in `src-tauri/migrations/` run on startup; **only create tables a milestone uses** — M0–M4 have added `settings`, `issues`, `labels`, `relations`, `pending_issue_deletes`, `sync_cursors`, `github_prs`, and `github_sync_meta`.
 
 **Secrets — two seams, keychain only:**
 - `SecretStore` (`secrets/`) = storage trait (`get`/`set`/`delete`), backed by the `keyring` crate. A `FakeSecretStore` backs tests.
@@ -58,7 +60,7 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check   # formatting is ke
 
 **Cross-cutting (`requirements.md` §12):** offline-first (opens and shows cached data with no network); optimistic writes with rollback; all sync/error/rate-limit feedback via **`goey-toast`** — note the package is spelled `goey-toast` (imports `GooeyToaster` / `gooeyToast`, plus `goey-toast/styles.css`); do not substitute another toast lib. Tauri commands return **sanitized** errors (no raw reqwest/keyring/GraphQL diagnostics); GraphQL `errors` on HTTP 200 are treated as failures.
 
-**Rust module layout** (`requirements.md` §10): existing — `secrets/`, `db/`, `linear/` (client + GraphQL parse + HTTP-status interpreter + credential provider), `commands/` (thin `#[tauri::command]` wrappers over unit-testable async logic fns + `AppState` + `ConnectionStatus`/`CmdError`). Future — `github/`, `activity/`, `generators/`. Commands are registered in `src-tauri/src/lib.rs` via `tauri::generate_handler![...]`; window permissions in `src-tauri/capabilities/default.json`.
+**Rust module layout** (`requirements.md` §10): existing — `secrets/`, `db/`, `linear/` (client + GraphQL parse + HTTP-status interpreter + credential provider), `commands/` (thin `#[tauri::command]` wrappers over unit-testable async logic fns + `AppState` + `ConnectionStatus`/`CmdError`), `github/` (REST client + PR buckets + sync). Future — `activity/`, `generators/`. Commands are registered in `src-tauri/src/lib.rs` via `tauri::generate_handler![...]`; window permissions in `src-tauri/capabilities/default.json`.
 
 **Frontend layout:** `src/features/<feature>/` (currently `home/`, `settings/`), `src/lib/commands.ts` (hand-maintained typed Tauri bindings + shared types like `ConnectionStatus`), `src/components/ui/` (shadcn), `src/styles/index.css` (Tailwind v4 entry + theme).
 

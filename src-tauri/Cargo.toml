@@ -29,6 +29,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync"] }
 time = { version = "0.3", features = ["parsing", "formatting"] }
 base64 = "0.22"
 scraper = "0.21"
+regex = "1"
 
 # keyring backend is selected per-OS; the SecretStore code is identical across all three.
 [target.'cfg(target_os = "macos")'.dependencies]

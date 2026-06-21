@@ -6,7 +6,7 @@ function App() {
   return (
     <>
       <AppShell />
-      <GooeyToaster position="bottom-right" />
+      <GooeyToaster position="top-center" theme="dark" showProgress closeButton="top-left" />
     </>
   );
 }

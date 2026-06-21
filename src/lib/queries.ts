@@ -15,11 +15,14 @@ import {
   deleteIssue,
   addReaction,
   errorText,
+  getGithubContributions,
+  getGithubStatus,
   getIssueDetail,
   getMe,
   listCalendarIssues,
   listCycles,
   listFilterOptions,
+  listGithubPrs,
   listIssues,
   listLabels,
   listNotifications,
@@ -28,6 +31,8 @@ import {
   listUsers,
   listWorkflowStates,
   removeReaction,
+  syncGithubContributions,
+  syncGithubPrs,
   syncIssues,
   updateComment,
   updateIssue,
@@ -524,4 +529,70 @@ export function useSyncLoop() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return { isSyncing: mut.isPending, refresh: () => mut.mutate() };
+}
+
+export function useGithubStatus() {
+  return useQuery({ queryKey: ["github-status"], queryFn: getGithubStatus });
+}
+
+export function useGithubPrs() {
+  return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs });
+}
+
+/**
+ * Background GitHub sync: runs on mount + every 5 minutes while a token is
+ * present, then invalidates the cached list so fresh rows render. Disabled
+ * entirely when not configured (no token -> no network).
+ */
+export function useGithubSync(enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["github-sync"],
+    enabled,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      try {
+        const results = await syncGithubPrs();
+        await qc.invalidateQueries({ queryKey: ["github-prs"] });
+        return results;
+      } catch (err) {
+        gooeyToast.error("Couldn't refresh pull requests", { description: errorText(err) });
+        throw err;
+      }
+    },
+  });
+}
+
+export function useGithubContributions() {
+  return useQuery({ queryKey: ["github-contributions"], queryFn: getGithubContributions });
+}
+
+/** Background refresh of the contribution calendar; mirrors useGithubSync. */
+export function useGithubContributionsSync(enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["github-contributions-sync"],
+    enabled,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const contributions = await syncGithubContributions();
+      await qc.invalidateQueries({ queryKey: ["github-contributions"] });
+      return contributions;
+    },
+  });
+}
+
+export function clearGithubQueries(qc: QueryClient) {
+  for (const key of [
+    ["github-status"],
+    ["github-prs"],
+    ["github-sync"],
+    ["github-contributions"],
+    ["github-contributions-sync"],
+  ]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
 }
