@@ -99,11 +99,19 @@ pub enum CmdError {
     InvalidInput,
     #[error("Image unavailable.")]
     ImageUnavailable,
+    #[error("Preview unavailable.")]
+    PreviewUnavailable,
 }
 
 impl serde::Serialize for CmdError {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.to_string())
+    }
+}
+
+impl From<crate::link_preview::PreviewError> for CmdError {
+    fn from(_: crate::link_preview::PreviewError) -> Self {
+        CmdError::PreviewUnavailable
     }
 }
 
@@ -118,6 +126,13 @@ impl From<LinearError> for CmdError {
     }
 }
 
+/// Shared result slot for the per-URL single-flight gate.
+type PreviewGate = std::sync::Arc<
+    tokio::sync::Mutex<
+        Option<Result<crate::link_preview::LinkPreview, crate::link_preview::PreviewError>>,
+    >,
+>;
+
 pub struct AppState {
     pub pool: SqlitePool,
     pub secret_store: Arc<dyn SecretStore>,
@@ -129,6 +144,15 @@ pub struct AppState {
     pub workspace_generation: AtomicU64,
     /// Epoch-seconds deadline before which sync is suppressed after a 429 (0 = none).
     pub rate_limited_until: AtomicU64,
+    /// In-memory bounded TTL cache for link previews (never persisted).
+    pub link_preview_cache: tokio::sync::Mutex<crate::link_preview::cache::PreviewCache>,
+    /// Per-URL single-flight gates. The gate's guarded value is the shared
+    /// result of the in-flight fetch, so concurrent waiters reuse the first
+    /// outcome (success OR error) instead of each re-fetching. A fresh request
+    /// after the batch drains creates a new gate and retries (failures are not
+    /// persistently cached). The std Mutex guarding the map is never held across
+    /// an await.
+    pub link_preview_inflight: std::sync::Mutex<std::collections::HashMap<String, PreviewGate>>,
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
@@ -670,6 +694,81 @@ pub async fn load_linear_image(
     url: String,
 ) -> Result<String, CmdError> {
     state.linear.load_image(&url).await.map_err(CmdError::from)
+}
+
+pub async fn fetch_link_preview_logic(
+    cache: &tokio::sync::Mutex<crate::link_preview::cache::PreviewCache>,
+    inflight: &std::sync::Mutex<std::collections::HashMap<String, PreviewGate>>,
+    url: String,
+) -> Result<crate::link_preview::LinkPreview, CmdError> {
+    // Fast path: a fresh cache entry needs no gate.
+    if let Some(hit) = cache.lock().await.get(&url, std::time::Instant::now()) {
+        return Ok(hit);
+    }
+
+    // Acquire (or create) the per-URL gate. The std Mutex is held only for the
+    // map get/insert — never across an await.
+    let gate: PreviewGate = {
+        let mut map = inflight.lock().expect("inflight mutex poisoned");
+        map.entry(url.clone())
+            .or_insert_with(|| std::sync::Arc::new(tokio::sync::Mutex::new(None)))
+            .clone()
+    };
+    let mut slot = gate.lock().await; // serialize concurrent same-URL requests
+
+    // A prior holder of this gate may have already computed the result while we
+    // waited — reuse it (success OR error) without fetching again.
+    if let Some(shared) = slot.as_ref() {
+        let result = shared.clone();
+        drop(slot);
+        cleanup_inflight(inflight, &url, &gate);
+        return result.map_err(CmdError::from);
+    }
+
+    // Also re-check the positive cache (a prior, already-cleaned gate may have
+    // filled a still-fresh TTL entry).
+    if let Some(hit) = cache.lock().await.get(&url, std::time::Instant::now()) {
+        drop(slot);
+        cleanup_inflight(inflight, &url, &gate);
+        return Ok(hit);
+    }
+
+    // We are the single flight for this URL: do the fetch, share the outcome.
+    let result = crate::link_preview::fetch::fetch_link_preview(&url).await;
+    if let Ok(ref preview) = result {
+        cache
+            .lock()
+            .await
+            .put(url.clone(), preview.clone(), std::time::Instant::now());
+    }
+    *slot = Some(result.clone());
+    drop(slot);
+    cleanup_inflight(inflight, &url, &gate);
+    result.map_err(CmdError::from)
+}
+
+/// Remove the per-URL gate from the map once no other waiter still references
+/// it (`strong_count <= 2` = the map's copy + our local clone). `ptr_eq` guards
+/// against removing a replacement gate.
+fn cleanup_inflight(
+    inflight: &std::sync::Mutex<std::collections::HashMap<String, PreviewGate>>,
+    url: &str,
+    gate: &PreviewGate,
+) {
+    let mut map = inflight.lock().expect("inflight mutex poisoned");
+    if let Some(existing) = map.get(url) {
+        if std::sync::Arc::ptr_eq(existing, gate) && std::sync::Arc::strong_count(existing) <= 2 {
+            map.remove(url);
+        }
+    }
+}
+
+#[tauri::command]
+pub async fn fetch_link_preview(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<crate::link_preview::LinkPreview, CmdError> {
+    fetch_link_preview_logic(&state.link_preview_cache, &state.link_preview_inflight, url).await
 }
 
 #[tauri::command]

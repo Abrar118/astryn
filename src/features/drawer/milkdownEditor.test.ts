@@ -88,6 +88,23 @@ describe("Milkdown image node", () => {
  *   - doc.check() passes (spread is stored as boolean, not string)
  *   - serialized Markdown has NO blank line between items (stays tight)
  */
+describe("Round-trip safety: bare URL and fenced code block", () => {
+  it("preserves a standalone bare URL (no link wrapping)", async () => {
+    const { markdown, valid } = await roundtripMarkdown("https://example.com/path");
+    expect(valid).toBe(true);
+    expect(markdown).toContain("https://example.com/path");
+    expect(markdown).not.toContain("](https://example.com/path)");
+  });
+
+  it("preserves a fenced code block with a language", async () => {
+    const src = "```ts\nconst x = 1;\n```";
+    const { markdown, valid } = await roundtripMarkdown(src);
+    expect(valid).toBe(true);
+    expect(markdown).toContain("```ts");
+    expect(markdown).toContain("const x = 1;");
+  });
+});
+
 describe("DOM-paste spread regression", () => {
   /**
    * Spin up a headless Milkdown editor to get the fully-patched ProseMirror

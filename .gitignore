@@ -27,3 +27,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Superpowers local scratch (ledgers, briefs, brainstorm server state — local paths/ports)
+.superpowers/
