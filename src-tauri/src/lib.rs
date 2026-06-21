@@ -44,6 +44,12 @@ pub fn run() {
                 workspace_lock: tokio::sync::Mutex::new(()),
                 workspace_generation: std::sync::atomic::AtomicU64::new(0),
                 rate_limited_until: std::sync::atomic::AtomicU64::new(0),
+                link_preview_cache: tokio::sync::Mutex::new(
+                    crate::link_preview::cache::PreviewCache::new(
+                        128,
+                        std::time::Duration::from_secs(600),
+                    ),
+                ),
             });
             Ok(())
         })
@@ -59,6 +65,7 @@ pub fn run() {
             commands::list_filter_options,
             commands::get_issue_detail,
             commands::load_linear_image,
+            commands::fetch_link_preview,
             commands::update_issue,
             commands::create_issue,
             commands::list_users,

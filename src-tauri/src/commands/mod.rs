@@ -99,11 +99,19 @@ pub enum CmdError {
     InvalidInput,
     #[error("Image unavailable.")]
     ImageUnavailable,
+    #[error("Preview unavailable.")]
+    PreviewUnavailable,
 }
 
 impl serde::Serialize for CmdError {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         s.serialize_str(&self.to_string())
+    }
+}
+
+impl From<crate::link_preview::PreviewError> for CmdError {
+    fn from(_: crate::link_preview::PreviewError) -> Self {
+        CmdError::PreviewUnavailable
     }
 }
 
@@ -129,6 +137,8 @@ pub struct AppState {
     pub workspace_generation: AtomicU64,
     /// Epoch-seconds deadline before which sync is suppressed after a 429 (0 = none).
     pub rate_limited_until: AtomicU64,
+    /// In-memory bounded TTL cache for link previews (never persisted).
+    pub link_preview_cache: tokio::sync::Mutex<crate::link_preview::cache::PreviewCache>,
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
@@ -660,6 +670,33 @@ pub async fn load_linear_image(
     url: String,
 ) -> Result<String, CmdError> {
     state.linear.load_image(&url).await.map_err(CmdError::from)
+}
+
+/// Coalesce + cache wrapper around the live fetcher. Holds the cache lock only
+/// around get/put; the network fetch runs without the lock held. A second
+/// request for the same URL after the first completes is served from cache.
+pub async fn fetch_link_preview_logic(
+    cache: &tokio::sync::Mutex<crate::link_preview::cache::PreviewCache>,
+    url: String,
+) -> Result<crate::link_preview::LinkPreview, CmdError> {
+    let now = std::time::Instant::now();
+    if let Some(hit) = cache.lock().await.get(&url, now) {
+        return Ok(hit);
+    }
+    let preview = crate::link_preview::fetch::fetch_link_preview(&url).await?;
+    cache
+        .lock()
+        .await
+        .put(url, preview.clone(), std::time::Instant::now());
+    Ok(preview)
+}
+
+#[tauri::command]
+pub async fn fetch_link_preview(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<crate::link_preview::LinkPreview, CmdError> {
+    fetch_link_preview_logic(&state.link_preview_cache, url).await
 }
 
 #[tauri::command]
