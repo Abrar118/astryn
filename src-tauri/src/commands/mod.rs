@@ -15,10 +15,15 @@ use crate::linear::issues::{
     ParsedCycle, ParsedIssue, ParsedUser, UpdateIssuePatch, WorkflowState,
 };
 use crate::linear::sync::{run_sync, SyncMode, SyncResult};
+use crate::github::{GitHubClient, GitHubCredentialProvider, GitHubError};
 use crate::linear::{LinearClient, LinearCredentialProvider, LinearError};
 use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
+
+pub mod github;
+
+const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +106,10 @@ pub enum CmdError {
     ImageUnavailable,
     #[error("Preview unavailable.")]
     PreviewUnavailable,
+    #[error("No GitHub token is configured.")]
+    GitHubNotConfigured,
+    #[error("GitHub rejected the request.")]
+    GitHubApi,
 }
 
 impl serde::Serialize for CmdError {
@@ -122,6 +131,16 @@ impl From<LinearError> for CmdError {
             LinearError::RateLimited(_) => CmdError::RateLimited,
             LinearError::Auth | LinearError::Api(_) | LinearError::Malformed => CmdError::LinearApi,
             LinearError::Asset => CmdError::ImageUnavailable,
+        }
+    }
+}
+
+impl From<GitHubError> for CmdError {
+    fn from(e: GitHubError) -> Self {
+        match e {
+            GitHubError::Network | GitHubError::Server => CmdError::Network,
+            GitHubError::RateLimited(_) => CmdError::RateLimited,
+            GitHubError::Auth | GitHubError::Api(_) | GitHubError::Malformed => CmdError::GitHubApi,
         }
     }
 }
@@ -153,6 +172,12 @@ pub struct AppState {
     /// persistently cached). The std Mutex guarding the map is never held across
     /// an await.
     pub link_preview_inflight: std::sync::Mutex<std::collections::HashMap<String, PreviewGate>>,
+    pub github_credentials: Arc<dyn GitHubCredentialProvider>,
+    pub github: GitHubClient,
+    /// Serializes GitHub credential mutations and sync (set/clear/test/sync).
+    pub github_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every GitHub cache wipe; guards a late sync write.
+    pub github_generation: AtomicU64,
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
