@@ -22,12 +22,14 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            // DB lives in ~/Documents/astryn/astryn.db (created by init_pool if missing).
+            // DB lives in the app data dir (~/Library/Application Support/com.orion.astryn
+            // on macOS), created by init_pool if missing. NOT ~/Documents: that folder is
+            // TCC-protected on macOS, so a launchd/Finder-launched app is denied access and
+            // SQLite fails with SQLITE_CANTOPEN. The DB is a re-syncable cache (no secrets).
             let data_dir = app
                 .path()
-                .document_dir()
-                .expect("could not resolve Documents dir")
-                .join("astryn");
+                .app_data_dir()
+                .expect("could not resolve app data dir");
             let db_path = data_dir.join("astryn.db");
             let pool = tauri::async_runtime::block_on(db::init_pool(&db_path))
                 .expect("failed to initialize database (directory or migrations)");
