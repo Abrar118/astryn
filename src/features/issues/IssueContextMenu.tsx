@@ -85,7 +85,10 @@ async function copyText(text: string, label: string) {
   gooeyToast.success(`${label} copied`);
 }
 
-type Ctx = { openMenu: (e: ReactMouseEvent, id: string) => void };
+/** An optional contextual action injected by the caller (e.g. graph collapse). */
+export type MenuExtraAction = { label: string; icon: ReactNode; onSelect: () => void };
+
+type Ctx = { openMenu: (e: ReactMouseEvent, id: string, extra?: MenuExtraAction | null) => void };
 const MenuCtx = createContext<Ctx | null>(null);
 
 export function useIssueMenu(): Ctx {
@@ -94,17 +97,17 @@ export function useIssueMenu(): Ctx {
   return ctx;
 }
 
-type MenuState = { id: string; x: number; y: number };
+type MenuState = { id: string; x: number; y: number; extra: MenuExtraAction | null };
 
 export function IssueMenuProvider({ children }: { children: ReactNode }) {
   const { data: issues } = useIssues({});
   const { data: users } = useUsers();
   const [menu, setMenu] = useState<MenuState | null>(null);
 
-  const openMenu = (e: ReactMouseEvent, id: string) => {
+  const openMenu = (e: ReactMouseEvent, id: string, extra: MenuExtraAction | null = null) => {
     e.preventDefault();
     e.stopPropagation();
-    setMenu({ id, x: e.clientX, y: e.clientY });
+    setMenu({ id, x: e.clientX, y: e.clientY, extra });
   };
 
   const issue = menu ? (issues ?? []).find((i) => i.id === menu.id) ?? null : null;
@@ -117,6 +120,7 @@ export function IssueMenuProvider({ children }: { children: ReactNode }) {
           issue={issue}
           users={users ?? []}
           allIssues={issues ?? []}
+          extra={menu.extra}
           x={menu.x}
           y={menu.y}
           onClose={() => setMenu(null)}
@@ -172,6 +176,7 @@ function Menu({
   issue,
   users,
   allIssues,
+  extra,
   x,
   y,
   onClose,
@@ -179,6 +184,7 @@ function Menu({
   issue: IssueListItem;
   users: User[];
   allIssues: IssueListItem[];
+  extra: MenuExtraAction | null;
   x: number;
   y: number;
   onClose: () => void;
@@ -269,6 +275,22 @@ function Menu({
       className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
       style={{ left, top }}
     >
+      {/* Caller-injected contextual action (e.g. graph collapse) */}
+      {extra && (
+        <>
+          <Row
+            icon={extra.icon}
+            label={extra.label}
+            onMouseEnter={() => setSub(null)}
+            onClick={() => {
+              extra.onSelect();
+              onClose();
+            }}
+          />
+          <div className="my-1 border-t border-border/60" />
+        </>
+      )}
+
       {/* Team (move to another team) */}
       <div className="relative" onMouseEnter={() => setSub("team")}>
         <Row icon={<Users className="size-4" />} label="Team" hasSub />

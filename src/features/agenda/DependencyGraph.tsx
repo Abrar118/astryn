@@ -17,7 +17,7 @@ import {
   type Edge,
   type OnNodeDrag,
 } from "@xyflow/react";
-import { Link2, Link2Off, Search, X } from "lucide-react";
+import { Network, Search, X } from "lucide-react";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
@@ -64,6 +64,8 @@ type EdgeKind = {
 };
 
 const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: "#6366f1", dashed: true };
+/** Edge from an issue to its collapsed-related connector node. */
+const COLLAPSED: EdgeKind = { label: "", color: "#64748b", dashed: true };
 
 const EDGE_KINDS: Record<string, EdgeKind> = {
   blocks: { label: "Blocks", color: "#ef4444", animated: true },
@@ -185,8 +187,39 @@ function IssueNode({ data }: { data: IssueNodeData }) {
   );
 }
 
+// ── Collapsed-related connector node ─────────────────────────────────────────
+
+type ConnectorNodeData = {
+  count: number;
+  sourceId: string;
+  onExpand: (id: string) => void;
+};
+
+/** A round node standing in for an issue's collapsed related issues. */
+function ConnectorNode({ data }: { data: ConnectorNodeData }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => data.onExpand(data.sourceId)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          data.onExpand(data.sourceId);
+        }
+      }}
+      title={`${data.count} related issue${data.count !== 1 ? "s" : ""} — click to expand`}
+      className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-dashed border-border bg-card text-[11px] font-semibold text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
+      +{data.count}
+    </div>
+  );
+}
+
 const NODE_TYPES: NodeTypes = {
   issueNode: IssueNode as unknown as NodeTypes["issueNode"],
+  connectorNode: ConnectorNode as unknown as NodeTypes["connectorNode"],
 };
 
 // ── Node search ──────────────────────────────────────────────────────────────
@@ -291,8 +324,26 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
   // Loaded once; updated on drag-stop and read when seeding the layout.
   const savedPositions = useRef<Record<string, XY>>(loadPositions());
 
-  // Toggle related-issue (blocks / blocked-by / related / duplicate) nodes.
-  const [showRelated, setShowRelated] = useState(true);
+  // Per-issue collapse of related issues into a single connector node.
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const collapsedRef = useRef(collapsed);
+  const toggleCollapsed = useCallback((id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      collapsedRef.current = next;
+      return next;
+    });
+  }, []);
+
+  // How many related issues each issue has (for the menu action gating).
+  const relatedCount = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of items) if (it.relations.length) m.set(it.issue.id, it.relations.length);
+    return m;
+  }, [items]);
+  const relatedCountRef = useRef(relatedCount);
+  relatedCountRef.current = relatedCount;
 
   // Stable handlers so node data identity doesn't churn the layout memo.
   const openRef = useRef(onOpen);
@@ -303,8 +354,19 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
   const menuRef = useRef(openMenu);
   menuRef.current = openMenu;
   const handleContextMenu = useCallback(
-    (e: ReactMouseEvent, id: string) => menuRef.current(e, id),
-    [],
+    (e: ReactMouseEvent, id: string) => {
+      const count = relatedCountRef.current.get(id) ?? 0;
+      const extra =
+        count > 0
+          ? {
+              label: collapsedRef.current.has(id) ? "Expand related" : "Collapse related",
+              icon: <Network className="size-4" />,
+              onSelect: () => toggleCollapsed(id),
+            }
+          : null;
+      menuRef.current(e, id, extra);
+    },
+    [toggleCollapsed],
   );
 
   // Does the graph have anything to show (independent of the related toggle)?
@@ -325,6 +387,9 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       target: string;
       kind: EdgeKind;
     }> = [];
+
+    // Round stand-in nodes for issues whose related issues are collapsed.
+    const connectorList: Array<{ id: string; sourceId: string; count: number }> = [];
 
     const addNode = (
       id: string,
@@ -369,8 +434,15 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         edgeList.push({ source: item.issue.id, target: child.id, kind: SUB_ISSUE });
       }
 
-      // Related nodes + relation edges (collapsible)
-      if (!showRelated) continue;
+      // Related issues: collapse into a connector node, or expand inline.
+      if (collapsed.has(item.issue.id)) {
+        if (item.relations.length > 0) {
+          const cid = `cc-${item.issue.id}`;
+          connectorList.push({ id: cid, sourceId: item.issue.id, count: item.relations.length });
+          edgeList.push({ source: item.issue.id, target: cid, kind: COLLAPSED });
+        }
+        continue;
+      }
       for (const rel of item.relations) {
         const fullRelated = allIssuesById.get(rel.relatedId);
         const mentionTarget = fullRelated
@@ -428,12 +500,14 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       });
     });
 
-    rightIds.forEach((id, idx) => {
+    // Right column: issue nodes first, then collapsed connector nodes.
+    let rightRow = 0;
+    rightIds.forEach((id) => {
       const d = nodeMap.get(id)!;
       builtNodes.push({
         id,
         type: "issueNode",
-        position: savedPositions.current[id] ?? { x: COL_GAP, y: idx * (NODE_HEIGHT + ROW_GAP) },
+        position: savedPositions.current[id] ?? { x: COL_GAP, y: rightRow++ * (NODE_HEIGHT + ROW_GAP) },
         data: {
           identifier: d.identifier,
           title: d.title,
@@ -448,12 +522,25 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       });
     });
 
+    connectorList.forEach((c) => {
+      builtNodes.push({
+        id: c.id,
+        type: "connectorNode",
+        position: savedPositions.current[c.id] ?? { x: COL_GAP, y: rightRow++ * (NODE_HEIGHT + ROW_GAP) },
+        data: {
+          count: c.count,
+          sourceId: c.sourceId,
+          onExpand: toggleCollapsed,
+        } satisfies ConnectorNodeData,
+      });
+    });
+
     const builtEdges: Edge[] = edgeList.map((e, i) => ({
       id: `e-${i}-${e.source}-${e.target}`,
       source: e.source,
       target: e.target,
       type: "smoothstep",
-      label: e.kind.label,
+      label: e.kind.label || undefined,
       animated: e.kind.animated ?? false,
       markerEnd: { type: MarkerType.ArrowClosed, color: e.kind.color, width: 16, height: 16 },
       style: {
@@ -463,14 +550,14 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         ...(e.kind.dashed ? { strokeDasharray: "5 4" } : {}),
       },
       labelStyle: { fontSize: 10, fontWeight: 500, fill: e.kind.color },
-      labelShowBg: true,
+      labelShowBg: Boolean(e.kind.label),
       labelBgPadding: [6, 3] as [number, number],
       labelBgBorderRadius: 4,
       labelBgStyle: { fill: "var(--color-card)", fillOpacity: 0.95, stroke: e.kind.color, strokeOpacity: 0.35 },
     }));
 
     return { nodes: builtNodes, edges: builtEdges };
-  }, [items, allIssuesById, handleOpen, handleContextMenu, showRelated]);
+  }, [items, allIssuesById, handleOpen, handleContextMenu, toggleCollapsed, collapsed]);
 
   // Controlled state so nodes can be dragged (positions persist on change).
   const [nodes, setNodes, onNodesChange] = useNodesState(base.nodes);
@@ -526,17 +613,6 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         proOptions={{ hideAttribution: false }}
       >
         <SearchPanel query={query} setQuery={setQuery} nodes={nodes} />
-        <Panel position="bottom-right">
-          <button
-            type="button"
-            onClick={() => setShowRelated((v) => !v)}
-            aria-pressed={!showRelated}
-            className="flex items-center gap-1.5 rounded-md border border-border bg-card/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
-          >
-            {showRelated ? <Link2 className="size-3.5" /> : <Link2Off className="size-3.5" />}
-            {showRelated ? "Hide related" : "Show related"}
-          </button>
-        </Panel>
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
         <Panel position="top-right">
