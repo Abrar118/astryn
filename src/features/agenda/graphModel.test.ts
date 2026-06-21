@@ -5,11 +5,15 @@ import {
   computeVisible,
   hiddenNeighborCount,
   buildGraphElements,
+  groupKeyOf,
+  buildGroups,
+  bulkStatusTeamId,
 } from "./graphModel";
 import type { IssueListItem, Relation } from "../../lib/commands";
 
 /** Minimal issue fixture — only fields the model reads. */
 function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
+  const stateName = over.stateName ?? "Todo";
   return {
     identifier: over.identifier ?? `ENG-${over.id}`,
     title: over.title ?? "T",
@@ -17,8 +21,8 @@ function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
     dueDate: over.dueDate ?? null,
     priority: over.priority ?? 0,
     url: "u",
-    stateId: null,
-    stateName: over.stateName ?? "Todo",
+    stateId: over.stateId ?? (stateName ? `s_${stateName.replace(/\s+/g, "_")}` : null),
+    stateName,
     stateType: over.stateType ?? "unstarted",
     stateColor: over.stateColor ?? "#fff",
     assigneeId: over.assigneeId ?? "me",
@@ -137,5 +141,70 @@ describe("buildGraphElements", () => {
     const { edges } = buildGraphElements(visible, new Set(["A"]), bi);
     const relEdges = edges.filter((e) => e.kind === "blocks" || e.kind === "blocked_by");
     expect(relEdges).toEqual([{ source: "C", target: "A", kind: "blocks" }]);
+  });
+});
+
+describe("groupKeyOf", () => {
+  it("returns null for none", () => {
+    expect(groupKeyOf(iss({ id: "1" }), "none")).toBeNull();
+  });
+  it("groups by status name with fallback", () => {
+    expect(groupKeyOf(iss({ id: "1", stateName: "In Progress" }), "status")?.label).toBe("In Progress");
+    expect(groupKeyOf(iss({ id: "1", stateName: null }), "status")?.label).toBe("No status");
+  });
+  it("groups by project with fallback", () => {
+    expect(groupKeyOf(iss({ id: "1", projectName: "Apollo" }), "project")?.label).toBe("Apollo");
+    expect(groupKeyOf(iss({ id: "1", projectName: null }), "project")?.label).toBe("No project");
+  });
+  it("groups by cycle name, number, then fallback", () => {
+    expect(groupKeyOf(iss({ id: "1", cycleName: "Sprint 4" }), "cycle")?.label).toBe("Sprint 4");
+    expect(groupKeyOf(iss({ id: "1", cycleName: null, cycleNumber: 7 }), "cycle")?.label).toBe("Cycle 7");
+    expect(groupKeyOf(iss({ id: "1", cycleName: null, cycleNumber: null }), "cycle")?.label).toBe("No cycle");
+  });
+});
+
+describe("buildGroups", () => {
+  const index = buildIndex(
+    [
+      iss({ id: "A", stateName: "Todo" }),
+      iss({ id: "B", stateName: "Todo" }),
+      iss({ id: "C", stateName: "Done" }),
+    ],
+    [],
+  );
+  it("returns [] when groupBy is none", () => {
+    expect(buildGroups(new Set(["A", "B"]), "none", index)).toEqual([]);
+  });
+  it("buckets visible issues by the dimension", () => {
+    const groups = buildGroups(new Set(["A", "B", "C"]), "status", index);
+    const byLabel = new Map(groups.map((g) => [g.label, g.memberIds.sort()]));
+    expect(byLabel.get("Todo")).toEqual(["A", "B"]);
+    expect(byLabel.get("Done")).toEqual(["C"]);
+  });
+  it("puts ids missing from the cache in the catch-all bucket", () => {
+    const groups = buildGroups(new Set(["A", "ghost"]), "status", index);
+    const ghost = groups.find((g) => g.memberIds.includes("ghost"));
+    expect(ghost?.label).toBe("No status");
+  });
+});
+
+describe("bulkStatusTeamId", () => {
+  const index = buildIndex(
+    [
+      iss({ id: "A", teamId: "t1" }),
+      iss({ id: "B", teamId: "t1" }),
+      iss({ id: "C", teamId: "t2" }),
+      iss({ id: "D", teamId: null }),
+    ],
+    [],
+  );
+  it("returns the shared team when all selected agree", () => {
+    expect(bulkStatusTeamId(["A", "B"], index)).toBe("t1");
+  });
+  it("returns null when teams differ", () => {
+    expect(bulkStatusTeamId(["A", "C"], index)).toBeNull();
+  });
+  it("returns null when any selected has no team", () => {
+    expect(bulkStatusTeamId(["A", "D"], index)).toBeNull();
   });
 });

@@ -126,3 +126,67 @@ export function buildGraphElements(
 
   return { nodes, edges };
 }
+
+export type GroupBy = "none" | "status" | "project" | "cycle";
+export type GraphGroup = { id: string; label: string; memberIds: string[] };
+
+/** The group key + display label for an issue under a grouping dimension. */
+export function groupKeyOf(
+  issue: IssueListItem,
+  groupBy: GroupBy,
+): { key: string; label: string } | null {
+  switch (groupBy) {
+    case "none":
+      return null;
+    case "status":
+      return issue.stateName
+        ? { key: issue.stateId ?? "_none", label: issue.stateName }
+        : { key: "_none", label: "No status" };
+    case "project":
+      return issue.projectName
+        ? { key: issue.projectId ?? "_none", label: issue.projectName }
+        : { key: "_none", label: "No project" };
+    case "cycle":
+      if (issue.cycleName) return { key: `c${issue.cycleNumber ?? issue.cycleName}`, label: issue.cycleName };
+      if (issue.cycleNumber != null) return { key: `c${issue.cycleNumber}`, label: `Cycle ${issue.cycleNumber}` };
+      return { key: "_none", label: "No cycle" };
+  }
+}
+
+const NO_GROUP_LABEL: Record<Exclude<GroupBy, "none">, string> = {
+  status: "No status",
+  project: "No project",
+  cycle: "No cycle",
+};
+
+/** Bucket the currently-visible issues into groups for the given dimension. */
+export function buildGroups(
+  visibleIds: Set<string>,
+  groupBy: GroupBy,
+  index: GraphIndex,
+): GraphGroup[] {
+  if (groupBy === "none") return [];
+  const groups = new Map<string, GraphGroup>();
+  for (const id of visibleIds) {
+    const issue = index.byId.get(id);
+    const g = issue ? groupKeyOf(issue, groupBy) : { key: "_none", label: NO_GROUP_LABEL[groupBy] };
+    const key = g?.key ?? "_none";
+    const label = g?.label ?? NO_GROUP_LABEL[groupBy];
+    const gid = `grp|${groupBy}|${key}`;
+    const grp = groups.get(gid) ?? { id: gid, label, memberIds: [] };
+    grp.memberIds.push(id);
+    groups.set(gid, grp);
+  }
+  return [...groups.values()];
+}
+
+/** The single teamId shared by all selected issues, or null if they differ / any lacks one. */
+export function bulkStatusTeamId(selectedIds: string[], index: GraphIndex): string | null {
+  let teamId: string | null | undefined;
+  for (const id of selectedIds) {
+    const t = index.byId.get(id)?.teamId ?? null;
+    if (teamId === undefined) teamId = t;
+    else if (teamId !== t) return null;
+  }
+  return teamId ?? null;
+}
