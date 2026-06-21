@@ -106,6 +106,30 @@ pub struct LabelRecord {
     pub color: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct RelationRecord {
+    pub related_issue_id: String,
+    pub r#type: String,
+    pub related_identifier: Option<String>,
+    pub related_title: Option<String>,
+    pub related_state_name: Option<String>,
+    pub related_state_type: Option<String>,
+    pub related_state_color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct RelationItem {
+    pub issue_id: String,
+    pub r#type: String,
+    pub related_id: String,
+    pub related_identifier: Option<String>,
+    pub related_title: Option<String>,
+    pub related_state_name: Option<String>,
+    pub related_state_type: Option<String>,
+    pub related_state_color: Option<String>,
+}
+
 #[derive(Debug, Clone, serde::Serialize, sqlx::FromRow)]
 pub struct TeamOption {
     pub id: String,
@@ -204,6 +228,46 @@ pub async fn replace_labels(
             .await?;
     }
     Ok(())
+}
+
+pub async fn replace_relations(
+    tx: &mut Transaction<'_, Sqlite>,
+    issue_id: &str,
+    relations: &[RelationRecord],
+) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM relations WHERE issue_id = ?1")
+        .bind(issue_id)
+        .execute(&mut **tx)
+        .await?;
+    for r in relations {
+        sqlx::query(
+            "INSERT OR IGNORE INTO relations
+               (issue_id, related_issue_id, type, related_identifier, related_title,
+                related_state_name, related_state_type, related_state_color)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+        )
+        .bind(issue_id)
+        .bind(&r.related_issue_id)
+        .bind(&r.r#type)
+        .bind(&r.related_identifier)
+        .bind(&r.related_title)
+        .bind(&r.related_state_name)
+        .bind(&r.related_state_type)
+        .bind(&r.related_state_color)
+        .execute(&mut **tx)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn load_relations(pool: &SqlitePool) -> Result<Vec<RelationItem>, sqlx::Error> {
+    sqlx::query_as(
+        "SELECT issue_id, type, related_issue_id AS related_id, related_identifier, related_title,
+                related_state_name, related_state_type, related_state_color
+         FROM relations",
+    )
+    .fetch_all(pool)
+    .await
 }
 
 const CAL_COLS: &str = "id, identifier, title, due_date, COALESCE(priority,0) AS priority,
@@ -342,6 +406,10 @@ pub async fn finalize_delete(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Er
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("DELETE FROM relations WHERE issue_id = ?1")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM issues WHERE id = ?1")
         .bind(id)
         .execute(&mut *tx)
@@ -357,6 +425,11 @@ pub async fn recover_pending_deletes(pool: &SqlitePool) -> Result<(), sqlx::Erro
     let mut tx = pool.begin().await?;
     sqlx::query(
         "DELETE FROM labels WHERE issue_id IN (SELECT issue_id FROM pending_issue_deletes)",
+    )
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "DELETE FROM relations WHERE issue_id IN (SELECT issue_id FROM pending_issue_deletes)",
     )
     .execute(&mut *tx)
     .await?;
@@ -418,6 +491,9 @@ pub async fn wipe_workspace_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> 
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM issues").execute(&mut *tx).await?;
     sqlx::query("DELETE FROM labels").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM relations")
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM sync_cursors")
         .execute(&mut *tx)
         .await?;
@@ -648,6 +724,43 @@ mod tests {
         assert_eq!(opts.teams.len(), 1);
         assert_eq!(opts.teams[0].key, "ENG");
         assert_eq!(opts.projects[0].name, "Proj");
+    }
+
+    #[tokio::test]
+    async fn replace_relations_replaces_and_load_returns() {
+        let (_d, p) = pool().await;
+        assert!(upsert(&p, &rec("1", Some("2026-06-10"), "2026-06-01T00:00:00Z")).await);
+
+        let mut tx = p.begin().await.unwrap();
+        replace_relations(
+            &mut tx,
+            "1",
+            &[RelationRecord {
+                related_issue_id: "2".into(),
+                r#type: "blocks".into(),
+                related_identifier: Some("ENG-2".into()),
+                related_title: Some("Other".into()),
+                related_state_name: Some("In Progress".into()),
+                related_state_type: Some("started".into()),
+                related_state_color: Some("#abc".into()),
+            }],
+        )
+        .await
+        .unwrap();
+        tx.commit().await.unwrap();
+
+        let rels = load_relations(&p).await.unwrap();
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].issue_id, "1");
+        assert_eq!(rels[0].r#type, "blocks");
+        assert_eq!(rels[0].related_id, "2");
+        assert_eq!(rels[0].related_state_type.as_deref(), Some("started"));
+
+        // Replacing with an empty slice clears them.
+        let mut tx = p.begin().await.unwrap();
+        replace_relations(&mut tx, "1", &[]).await.unwrap();
+        tx.commit().await.unwrap();
+        assert!(load_relations(&p).await.unwrap().is_empty());
     }
 
     #[tokio::test]

@@ -1,4 +1,4 @@
-use crate::db::issues::{self, IssueRecord, LabelRecord};
+use crate::db::issues::{self, IssueRecord, LabelRecord, RelationRecord};
 use crate::linear::issues::{IssuesPage, ParsedIssue};
 use crate::linear::LinearError;
 use sqlx::SqlitePool;
@@ -20,7 +20,7 @@ pub struct SyncResult {
     pub synced: usize,
 }
 
-pub fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
+pub fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>, Vec<RelationRecord>) {
     let labels = i
         .labels
         .iter()
@@ -28,6 +28,19 @@ pub fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
             label_id: l.id.clone(),
             name: l.name.clone(),
             color: l.color.clone(),
+        })
+        .collect();
+    let relations = i
+        .relations
+        .iter()
+        .map(|r| RelationRecord {
+            related_issue_id: r.related_id.clone(),
+            r#type: r.r#type.clone(),
+            related_identifier: r.related_identifier.clone(),
+            related_title: r.related_title.clone(),
+            related_state_name: r.related_state_name.clone(),
+            related_state_type: r.related_state_type.clone(),
+            related_state_color: r.related_state_color.clone(),
         })
         .collect();
     let rec = IssueRecord {
@@ -61,7 +74,7 @@ pub fn to_record(i: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
         archived_at: i.archived_at,
         raw_json: i.raw_json,
     };
-    (rec, labels)
+    (rec, labels, relations)
 }
 
 use time::format_description::well_known::Rfc3339;
@@ -129,12 +142,15 @@ where
         let mut tx = pool.begin().await.map_err(|_| LinearError::Malformed)?;
         for parsed in page.issues {
             let updated = parsed.updated_at.clone();
-            let (rec, labels) = to_record(parsed);
+            let (rec, labels, relations) = to_record(parsed);
             let applied = issues::upsert_issue(&mut tx, &rec)
                 .await
                 .map_err(|_| LinearError::Malformed)?;
             if applied {
                 issues::replace_labels(&mut tx, &rec.id, &labels)
+                    .await
+                    .map_err(|_| LinearError::Malformed)?;
+                issues::replace_relations(&mut tx, &rec.id, &relations)
                     .await
                     .map_err(|_| LinearError::Malformed)?;
             }
@@ -210,6 +226,7 @@ mod tests {
                 name: Some("bug".into()),
                 color: None,
             }],
+            relations: vec![],
             raw_json: "{}".into(),
         }
     }
@@ -305,5 +322,34 @@ mod tests {
         }]);
         let res = run_sync(&p, f, true).await.unwrap();
         assert_eq!(res.mode, SyncMode::Full);
+    }
+
+    #[tokio::test]
+    async fn sync_persists_relations() {
+        use crate::db::issues::load_relations;
+        let dir = tempfile::tempdir().unwrap();
+        let p = init_pool(&dir.path().join("a/t.db")).await.unwrap();
+
+        let mut iss = issue("1", "2026-06-01T00:00:00Z");
+        iss.relations = vec![crate::linear::issues::ParsedRelation {
+            related_id: "2".into(),
+            r#type: "blocks".into(),
+            related_identifier: Some("ENG-2".into()),
+            related_title: Some("Other".into()),
+            related_state_name: Some("In Progress".into()),
+            related_state_type: Some("started".into()),
+            related_state_color: Some("#abc".into()),
+        }];
+        let (f, _calls) = pager(vec![IssuesPage {
+            issues: vec![iss],
+            has_next: false,
+            end_cursor: None,
+        }]);
+        run_sync(&p, f, true).await.unwrap();
+
+        let rels = load_relations(&p).await.unwrap();
+        assert_eq!(rels.len(), 1);
+        assert_eq!(rels[0].issue_id, "1");
+        assert_eq!(rels[0].related_id, "2");
     }
 }

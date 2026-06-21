@@ -189,7 +189,8 @@ fn parsed_to_issue(p: &ParsedIssue) -> Issue {
 }
 
 fn parsed_to_record(p: ParsedIssue) -> (IssueRecord, Vec<LabelRecord>) {
-    crate::linear::sync::to_record(p)
+    let (rec, labels, _relations) = crate::linear::sync::to_record(p);
+    (rec, labels)
 }
 
 fn now_epoch() -> u64 {
@@ -653,6 +654,15 @@ pub async fn list_issues(
     args: UnscheduledArgs,
 ) -> Result<Vec<issues::IssueListItem>, CmdError> {
     issues::load_issues(&state.pool, args.team_id, args.assignee_id, args.project_id)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+#[tauri::command]
+pub async fn list_relations(
+    state: State<'_, AppState>,
+) -> Result<Vec<issues::RelationItem>, CmdError> {
+    issues::load_relations(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)
 }
@@ -1187,6 +1197,7 @@ mod logic_tests {
             updated_at: updated.into(),
             archived_at: None,
             labels: vec![],
+            relations: vec![],
             raw_json: "{}".into(),
         }
     }

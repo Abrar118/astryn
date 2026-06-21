@@ -81,7 +81,8 @@ pub fn run() {
             commands::delete_comment,
             commands::add_reaction,
             commands::remove_reaction,
-            commands::create_label
+            commands::create_label,
+            commands::list_relations
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

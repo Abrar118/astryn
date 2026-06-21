@@ -10,6 +10,17 @@ pub struct ParsedLabel {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct ParsedRelation {
+    pub related_id: String,
+    pub r#type: String,
+    pub related_identifier: Option<String>,
+    pub related_title: Option<String>,
+    pub related_state_name: Option<String>,
+    pub related_state_type: Option<String>,
+    pub related_state_color: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct ParsedIssue {
     pub id: String,
     pub identifier: String,
@@ -40,6 +51,7 @@ pub struct ParsedIssue {
     pub updated_at: String,
     pub archived_at: Option<String>,
     pub labels: Vec<ParsedLabel>,
+    pub relations: Vec<ParsedRelation>,
     pub raw_json: String,
 }
 
@@ -171,6 +183,27 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
                 .collect()
         })
         .unwrap_or_default();
+    let relations = n
+        .get("relations")
+        .and_then(|r| r.get("nodes"))
+        .and_then(|x| x.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|r| {
+                    let ri = r.get("relatedIssue")?;
+                    Some(ParsedRelation {
+                        related_id: s(ri, "id").unwrap_or_default(),
+                        r#type: s(r, "type").unwrap_or_default(),
+                        related_identifier: s(ri, "identifier"),
+                        related_title: s(ri, "title"),
+                        related_state_name: nested(ri, "state", "name"),
+                        related_state_type: nested(ri, "state", "type"),
+                        related_state_color: nested(ri, "state", "color"),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     ParsedIssue {
         id: s(n, "id").unwrap_or_default(),
         identifier: s(n, "identifier").unwrap_or_default(),
@@ -205,6 +238,7 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         updated_at: s(n, "updatedAt").unwrap_or_default(),
         archived_at: s(n, "archivedAt"),
         labels,
+        relations,
         raw_json: n.to_string(),
     }
 }
@@ -1076,7 +1110,9 @@ fn issues_query() -> String {
         "query Issues($after: String, $filter: IssueFilter) {{
            issues(first: 100, after: $after, filter: $filter, includeArchived: true, orderBy: updatedAt) {{
              pageInfo {{ hasNextPage endCursor }}
-             nodes {{ {ISSUE_NODE_FIELDS} }}
+             nodes {{ {ISSUE_NODE_FIELDS}
+               relations(first: 50) {{ nodes {{ type relatedIssue {{ id identifier title state {{ name type color }} }} }} }}
+             }}
            }}
          }}"
     )
@@ -1353,6 +1389,31 @@ mod tests {
         assert_eq!(i.labels.len(), 1);
         assert_eq!(i.archived_at, None);
         assert!(!i.raw_json.is_empty());
+    }
+
+    #[test]
+    fn node_to_issue_parses_relations() {
+        let n = serde_json::json!({
+            "id": "1", "identifier": "ENG-1", "title": "T", "url": "u",
+            "createdAt": "c", "updatedAt": "u",
+            "attachments": { "nodes": [] },
+            "labels": { "nodes": [] },
+            "relations": { "nodes": [
+                { "type": "blocks", "relatedIssue": {
+                    "id": "2", "identifier": "ENG-2", "title": "Other",
+                    "state": { "name": "In Progress", "type": "started", "color": "#abc" }
+                }}
+            ]}
+        });
+        let p = node_to_issue(&n);
+        assert_eq!(p.relations.len(), 1);
+        assert_eq!(p.relations[0].related_id, "2");
+        assert_eq!(p.relations[0].r#type, "blocks");
+        assert_eq!(p.relations[0].related_identifier.as_deref(), Some("ENG-2"));
+        assert_eq!(
+            p.relations[0].related_state_type.as_deref(),
+            Some("started")
+        );
     }
 
     #[test]
