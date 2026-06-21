@@ -401,10 +401,11 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
       setNodes(positioned);
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
     });
+    // elements already depends on expandedIds; listing it too would double-fire the layout.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     elements,
     resolveDisplay,
-    expandedIds,
     handleOpen,
     handleSelect,
     toggleExpand,
