@@ -119,6 +119,7 @@ async fn resolve_public_addr(url: &reqwest::Url) -> Result<SocketAddr, PreviewEr
 fn pinned_client(url: &reqwest::Url, addr: SocketAddr) -> Result<reqwest::Client, PreviewError> {
     let host = url.host_str().ok_or(PreviewError::Unsupported)?;
     reqwest::Client::builder()
+        .no_proxy() // SSRF: never route through a system proxy that would re-resolve the host
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(CONNECT_TIMEOUT)
         .timeout(TOTAL_TIMEOUT)

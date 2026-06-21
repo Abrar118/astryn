@@ -8,8 +8,10 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_public_v4(v4),
         IpAddr::V6(v6) => {
-            // Unwrap v4-mapped (::ffff:a.b.c.d) and v4-translated (64:ff9b::/96)
-            // so an attacker can't smuggle a private v4 through a v6 literal.
+            // Unwrap v4-mapped (::ffff:a.b.c.d) so an attacker can't smuggle a
+            // private v4 through a v6 literal. Note: to_ipv4_mapped() only handles
+            // ::ffff:a.b.c.d; the v4-translated 64:ff9b:: range is blocked separately
+            // in is_public_v6 (the check there covers /32, conservatively broader than /96).
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_public_v4(mapped);
             }
@@ -30,6 +32,7 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
         || o[0] == 0                  // 0.0.0.0/8
         || (o[0] == 100 && (o[1] & 0xc0) == 64)  // 100.64.0.0/10 CGNAT
         || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24 IETF
+        || (o[0] == 198 && (o[1] & 0xfe) == 18)  // 198.18.0.0/15 benchmarking
         || (o[0] & 0xf0) == 240) // 240.0.0.0/4 reserved
 }
 
@@ -41,7 +44,12 @@ fn is_public_v6(ip: Ipv6Addr) -> bool {
         || (seg[0] & 0xfe00) == 0xfc00  // fc00::/7 unique-local
         || (seg[0] & 0xffc0) == 0xfe80  // fe80::/10 link-local
         || (seg[0] == 0x2001 && seg[1] == 0x0db8) // 2001:db8::/32 documentation
-        || (seg[0] == 0x0064 && seg[1] == 0xff9b)) // 64:ff9b::/96 v4-translated
+        || (seg[0] == 0x0064 && seg[1] == 0xff9b) // 64:ff9b::/32 v4-translated (conservative /32 block)
+        || (seg[0] == 0x0100 && seg[1] == 0 && seg[2] == 0 && seg[3] == 0) // 0100::/64 discard-only
+        || (seg[0] == 0x2001 && (seg[1] & 0xfe00) == 0) // 2001::/23 IETF protocol assignments (Teredo etc.)
+        || (seg[0] == 0x2002)                            // 2002::/16 6to4
+        || (seg[0] == 0x3fff && (seg[1] & 0xf000) == 0) // 3fff::/20 documentation
+        || (seg[0] == 0x5f00)) // 5f00::/16 SRv6 SIDs
 }
 
 #[cfg(test)]
@@ -73,6 +81,8 @@ mod tests {
             "100.64.0.1",      // CGNAT (shared)
             "224.0.0.1",       // multicast
             "255.255.255.255", // broadcast
+            "198.18.0.1",      // 198.18.0.0/15 benchmarking (RFC 2544)
+            "198.19.255.1",    // 198.18.0.0/15 benchmarking (RFC 2544)
         ] {
             assert!(!is_public_ip(v4(s)), "{s} should be blocked");
         }
@@ -94,8 +104,24 @@ mod tests {
             "ff02::1",          // multicast
             "::ffff:127.0.0.1", // v4-mapped loopback
             "::ffff:10.0.0.1",  // v4-mapped private
+            "100::1",           // 0100::/64 discard-only (RFC 6666)
+            "2001::1",          // 2001::/23 IETF protocol assignments (Teredo)
+            "2002::1",          // 2002::/16 6to4 (RFC 3056)
+            "3fff::1",          // 3fff::/20 documentation (RFC 9637)
+            "5f00::1",          // 5f00::/16 SRv6 SIDs (RFC 9602)
         ] {
             assert!(!is_public_ip(v6(s)), "{s} should be blocked");
         }
+    }
+
+    #[test]
+    fn public_v6_protocol_assignment_neighbors_allowed() {
+        // Regression: 2001::/23 mask (seg[1] & 0xfe00) == 0 must NOT over-block
+        // real global unicast addresses like Google's 2001:4860:: (seg[1] == 0x4860,
+        // which does not satisfy (0x4860 & 0xfe00) == 0).
+        assert!(
+            is_public_ip(v6("2001:4860:4860::8888")),
+            "2001:4860:4860::8888 (Google DNS) should be allowed"
+        );
     }
 }
