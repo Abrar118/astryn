@@ -39,13 +39,26 @@ Astryn is the first phase of a broader personal command center. Today it focuses
 - **Comments** — Linear-style threads with replies, emoji reactions, `@`-mentions, and mention hover-cards; create, edit, and delete.
 - **Sub-issues, relations, attachments**, and a per-issue **activity timeline** with semantic, color-coded event icons.
 
+### Planning & overview
+
+- **"This Week" overview** — your issues grouped by due date for the current Sunday-started week (`Asia/Dhaka`): an **Overdue** group, one section per weekday, and a **Weekend** group, with threaded sub-issues and related issues, sticky day headers, an activity heatmap, and status/priority breakdowns.
+- **Dependency graph** — a React Flow visualization of parent/child hierarchy and issue relations (blocks / blocked-by / related / duplicate) as styled edges, with grouping and bulk actions; click a node to open its detail.
+
+### GitHub pull requests
+
+- **Standalone PR dashboard** of open PRs that involve you across every accessible repo — four sections: **Needs my review**, **My open PRs**, **Assigned to me**, and **Involved / mentioned** (resolved via `@me` search, deduped per section).
+- **Per-PR badges** — open/draft, CI status, merge-conflict, and review decision (including "changes requested" on your own PRs), alongside author + avatar, comment count, repo, and relative update time.
+- **GitHub contribution heatmap** — your real contribution calendar for the last year rendered at the top of the page, beside Open / Needs-review / Changes-requested / Conflict metric tiles.
+- **Linear chip** — a PR whose branch or title carries an issue identifier (e.g. `ENG-123`) links straight to that issue's tab in Astryn.
+- **Classic PAT** stored in the OS keychain; degrades to a quiet "Connect GitHub" prompt when no token is set. Offline-first per-bucket cache with background sync.
+
 ### Workspace & navigation
 
-- **Browser-style tabs** — calendar, issues, inbox, settings, or a pinned issue, each in its own tab; layout persists across reloads.
+- **Browser-style tabs** — calendar, issues, overview, dependencies, pull requests, inbox, settings, or a pinned issue, each in its own tab; layout persists across reloads.
 - **Two-pane split view** — split the workspace into two independent tab groups with a resizable divider (pointer and keyboard), pane swapping, and drag-to-split.
 - **Three ways to fill the right pane**: drag a tab across, right-click a tab to split, or pick an issue from the issue context menu / command palette.
 - **Drag-and-drop on @dnd-kit** for both tabs (reorder, move across panes, drag-to-split) and board cards — pointer **and** keyboard accessible.
-- **Command palette** (`⌘/Ctrl + K`) for issue search, creation, go-to navigation (Calendar / Issues / Inbox / Settings), resync actions, and opening a selected issue directly in the right split.
+- **Command palette** (`⌘/Ctrl + K`) for issue search, creation, go-to navigation (Calendar / Issues / Overview / Dependencies / Pull Requests / Inbox / Settings), resync actions, and opening a selected issue directly in the right split.
 - **Keyboard shortcuts**: `⌘/Ctrl + T` new tab, `⌘/Ctrl + [` back, `⌘/Ctrl + R` resync, `⌘/Ctrl + Shift + R` full resync, and `C` to create an issue.
 
 ### Inbox
@@ -55,12 +68,12 @@ Astryn is the first phase of a broader personal command center. Today it focuses
 ### Foundation
 
 - **Local-first data layer** backed by SQLite for fast cache reads and resilient, persisted workspace state.
-- **Secure authentication** — Linear credentials stored in the operating-system keychain, never in the webview or SQLite.
-- **All external API calls run in Rust**, exposed to the renderer as typed Tauri commands; the webview never receives a token.
+- **Secure authentication** — Linear and GitHub credentials stored in the operating-system keychain, never in the webview or SQLite.
+- **All external API calls (Linear & GitHub) run in Rust**, exposed to the renderer as typed Tauri commands; the webview never receives a token.
 - **Optimistic updates and background sync** with rollback handling, and all sync / error / rate-limit feedback through `goey-toast`.
 - **Home dual clock** showing your local Dhaka time alongside Germany (`Europe/Berlin`, DST-aware).
 
-> **Roadmap (not yet built):** standup and weekly-review generators, GitHub pull-request tracking, an issue relationship/hierarchy graph, and per-issue reference link storage. See [`requirements.md`](requirements.md) for the full plan.
+> **Roadmap (not yet built):** per-issue reference link storage (docs & links per issue). See [`requirements.md`](requirements.md) for the full plan.
 
 ## Premise
 
@@ -73,12 +86,12 @@ This boundary keeps the local cache authoritative for the interface while preser
 | Layer | Responsibility |
 | --- | --- |
 | Tauri 2 | Desktop shell, command boundary, packaging |
-| Rust | Linear API access, keychain integration, sync, SQLite |
+| Rust | Linear & GitHub API access, keychain integration, sync, SQLite |
 | React 19 + TypeScript | Workspace, calendar, issue editing, command palette |
 | TanStack Query | Renderer-side server-state coordination and optimistic updates |
 | SQLite | Local issue cache, sync state, and app-owned metadata |
 
-All outbound Linear requests run in Rust. Tokens are stored through the OS keychain and are not written to local storage, SQLite, or frontend environment files.
+All outbound Linear and GitHub requests run in Rust. Tokens are stored through the OS keychain and are not written to local storage, SQLite, or frontend environment files.
 
 ## Requirements
 
@@ -86,6 +99,7 @@ All outbound Linear requests run in Rust. Tokens are stored through the OS keych
 - Rust stable toolchain
 - [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
 - A Linear personal API key (added in the app's Settings on first run)
+- *(Optional)* a GitHub **classic** personal access token (`repo` scope) for the pull-request dashboard
 
 ## Development
 
@@ -125,7 +139,7 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check # Rust formatting
 
 ## Current scope
 
-Astryn currently targets a single-user Linear workflow and delivers the calendar, issue workspace, detail editing, activity timeline, inbox, command palette, and the two-pane split workspace. Planned directions include generated standup and weekly-review views, GitHub pull-request context, issue relationship visualization, local reference links, and additional activity sources.
+Astryn currently targets a single-user Linear workflow and delivers the calendar, issue workspace, detail editing, activity timeline, the "This Week" overview, the dependency graph, the GitHub pull-request dashboard, the inbox, the command palette, and the two-pane split workspace. Planned directions include per-issue reference links (docs & links) and additional activity sources.
 
 ## License
 
