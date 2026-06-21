@@ -31,7 +31,7 @@ function Section({
         <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
         <span className="rounded-full bg-white/10 px-1.5 text-[11px] text-muted-foreground">{prs.length}</span>
         {meta?.truncated && (
-          <span className="text-[11px] text-amber-400">showing 300 most recent</span>
+          <span className="text-[11px] text-amber-400">showing {meta.fetchedCount} most recent</span>
         )}
         {stale && <span className="text-[11px] text-amber-400">couldn't refresh — cached</span>}
       </div>

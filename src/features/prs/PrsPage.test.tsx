@@ -67,10 +67,10 @@ describe("PrsPage", () => {
     setup(
       { state: "connected", login: "octocat" },
       [],
-      [{ bucket: "mine", fetchedCount: 300, truncated: true, lastSyncedAt: null }],
+      [{ bucket: "mine", fetchedCount: 142, truncated: true, lastSyncedAt: null }],
     );
     render(<PrsPage />);
-    expect(screen.getByText(/300 most recent/i)).toBeInTheDocument();
+    expect(screen.getByText(/142 most recent/i)).toBeInTheDocument();
   });
 
   it("flags a section that failed to refresh", () => {
