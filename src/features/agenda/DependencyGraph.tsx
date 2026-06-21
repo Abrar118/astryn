@@ -439,13 +439,19 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   ]);
 
   const relayout = useCallback(() => {
+    // Re-layout from the current issue nodes, preserving grouping. Strip any
+    // group containers and stale parent links so the layout rebuilds cleanly.
+    const issueNodes = nodes
+      .filter((n) => n.type === "issueNode")
+      .map((n) => { const copy = { ...n }; delete copy.parentId; delete copy.extent; return copy; });
+    const groups = buildGroups(elements.visible, groupBy, indexRef.current);
     const token = ++layoutToken.current;
-    void layoutGraph(nodes, edges).then((positioned) => {
+    void layoutGraph(issueNodes, edges, groups).then((positioned) => {
       if (token !== layoutToken.current) return;
       setNodes(positioned);
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
     });
-  }, [nodes, edges, setNodes, fitView]);
+  }, [nodes, edges, elements.visible, groupBy, setNodes, fitView]);
 
   // Search recenter on matches as the term changes.
   const term = query.trim().toLowerCase();
