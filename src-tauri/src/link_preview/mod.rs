@@ -1,5 +1,6 @@
 pub mod addr;
 pub mod cache;
+pub mod fetch;
 pub mod meta;
 pub mod url;
 
