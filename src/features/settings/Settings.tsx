@@ -6,14 +6,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
+  clearGithubToken,
   clearLinearKey,
   errorText,
   getConnectionStatus,
+  getGithubStatus,
+  setGithubToken,
   setLinearKey,
   syncIssues,
+  testGithubConnection,
   testLinearConnection,
 } from "@/lib/commands";
-import { clearWorkspaceQueries, invalidateWorkspaceQueries } from "@/lib/queries";
+import { clearGithubQueries, clearWorkspaceQueries, invalidateWorkspaceQueries } from "@/lib/queries";
 
 export function Settings() {
   const qc = useQueryClient();
@@ -64,6 +68,55 @@ export function Settings() {
       gooeyToast.error("Resync failed", { description: errorText(err) });
     },
   });
+
+  const [ghInput, setGhInput] = useState("");
+  const [ghSaving, setGhSaving] = useState(false);
+  const invalidateGhStatus = () => qc.invalidateQueries({ queryKey: ["github-status"] });
+  const { data: ghStatus } = useQuery({ queryKey: ["github-status"], queryFn: getGithubStatus });
+
+  const ghTestMut = useMutation({
+    mutationFn: () => testGithubConnection(),
+    onSuccess: (s) => {
+      if (s.state === "connected") gooeyToast.success(`Connected as ${s.login}`);
+      invalidateGhStatus();
+    },
+    onError: (err) => gooeyToast.error("GitHub connection failed", { description: errorText(err) }),
+  });
+
+  const ghClearMut = useMutation({
+    mutationFn: () => clearGithubToken(),
+    onSuccess: () => {
+      clearGithubQueries(qc);
+      gooeyToast.success("GitHub token cleared");
+      invalidateGhStatus();
+    },
+    onError: (err) => {
+      clearGithubQueries(qc);
+      gooeyToast.error("Could not clear the token", { description: errorText(err) });
+    },
+  });
+
+  const ghBusy = ghSaving || ghTestMut.isPending || ghClearMut.isPending;
+
+  const handleGhSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (ghBusy) return;
+    const token = ghInput.trim();
+    if (!token) return;
+    setGhInput(""); // clear the secret from component state immediately
+    setGhSaving(true);
+    try {
+      await setGithubToken(token);
+      clearGithubQueries(qc);
+      gooeyToast.success("GitHub token saved");
+      invalidateGhStatus();
+    } catch (err) {
+      clearGithubQueries(qc);
+      gooeyToast.error("Could not save the token", { description: errorText(err) });
+    } finally {
+      setGhSaving(false);
+    }
+  };
 
   // One operation at a time: never let Test/Clear/Resync run while a key is being saved
   // (or vice versa), which could cache an identity against the wrong key.
@@ -144,6 +197,43 @@ export function Settings() {
               onClick={() => resyncMut.mutate()}
             >
               Resync workspace
+            </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-6">
+        <p className="text-sm text-muted-foreground">
+          {ghStatus === undefined
+            ? "Checking…"
+            : ghStatus.state === "connected"
+              ? `Connected as ${ghStatus.login}`
+              : ghStatus.state === "unverified"
+                ? "Token saved — not verified"
+                : "Not connected"}
+        </p>
+        <form className="flex flex-col gap-3" onSubmit={handleGhSave}>
+          <Label htmlFor="github-token">GitHub personal access token (classic)</Label>
+          <Input
+            id="github-token"
+            type="password"
+            autoComplete="off"
+            placeholder="ghp_…"
+            value={ghInput}
+            onChange={(e) => setGhInput(e.currentTarget.value)}
+            disabled={ghBusy}
+          />
+          <p className="text-xs text-muted-foreground">
+            Needs <code>repo</code> scope. Add <code>read:org</code> only if org/team membership is
+            required. Classic tokens grant broad repo access; for SSO orgs, authorize the token.
+          </p>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={ghBusy}>Save GitHub token</Button>
+            <Button type="button" variant="secondary" disabled={ghBusy} onClick={() => ghTestMut.mutate()}>
+              Test connection
+            </Button>
+            <Button type="button" variant="ghost" disabled={ghBusy} onClick={() => ghClearMut.mutate()}>
+              Clear token
             </Button>
           </div>
         </form>
