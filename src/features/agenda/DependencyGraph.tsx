@@ -5,6 +5,10 @@ import {
   ReactFlow,
   Background,
   Controls,
+  Handle,
+  Panel,
+  Position,
+  MarkerType,
   type NodeTypes,
   type Node,
   type Edge,
@@ -12,6 +16,7 @@ import {
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
+import { cn } from "@/lib/utils";
 import type { AgendaItem } from "./agenda";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -43,20 +48,31 @@ function mentionTargetFromRelation(rel: Relation): MentionTarget {
   };
 }
 
-function humanizeRelationType(type: string): string {
-  switch (type) {
-    case "blocks":
-      return "blocks";
-    case "blocked_by":
-      return "blocked by";
-    case "duplicate":
-      return "duplicate";
-    case "duplicate_of":
-      return "duplicate of";
-    default:
-      return type.replace(/_/g, " ");
-  }
+// ── Edge styling per relation type ───────────────────────────────────────────
+
+type EdgeKind = {
+  label: string;
+  color: string;
+  dashed?: boolean;
+  animated?: boolean;
+};
+
+const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: "#6366f1", dashed: true };
+
+const EDGE_KINDS: Record<string, EdgeKind> = {
+  blocks: { label: "Blocks", color: "#ef4444", animated: true },
+  blocked_by: { label: "Blocked by", color: "#f59e0b", animated: true },
+  related: { label: "Related to", color: "#64748b", dashed: true },
+  duplicate: { label: "Duplicate", color: "#a855f7", dashed: true },
+  duplicate_of: { label: "Duplicate of", color: "#a855f7", dashed: true },
+};
+
+function edgeKind(type: string): EdgeKind {
+  return EDGE_KINDS[type] ?? { label: type.replace(/_/g, " "), color: "#64748b", dashed: true };
 }
+
+/** Legend rows describing the edge encoding shown on the canvas. */
+const LEGEND: EdgeKind[] = [SUB_ISSUE, EDGE_KINDS.blocks, EDGE_KINDS.blocked_by, EDGE_KINDS.related];
 
 // ── Node data shape ─────────────────────────────────────────────────────────
 
@@ -65,9 +81,12 @@ type IssueNodeData = {
   title: string;
   stateColor: string;
   issueId: string;
+  isRoot: boolean;
   mentionTarget: MentionTarget;
   onOpen: (id: string) => void;
 };
+
+const HANDLE_CLASS = "!size-1.5 !border !border-border !bg-muted-foreground/70";
 
 // ── Custom node component ───────────────────────────────────────────────────
 
@@ -118,13 +137,21 @@ function IssueNode({ data }: { data: IssueNodeData }) {
           data.onOpen(data.issueId);
         }
       }}
-      className="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      className={cn(
+        "flex w-[200px] cursor-pointer flex-col gap-1 rounded-lg border bg-card px-2.5 py-1.5 text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+        data.isRoot ? "border-primary/40 ring-1 ring-primary/15" : "border-border",
+      )}
     >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: data.stateColor }}
-      />
-      <span className="max-w-[120px] truncate font-mono">{data.identifier}</span>
+      <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
+      <div className="flex items-center gap-1.5">
+        <span
+          className="size-2 shrink-0 rounded-full"
+          style={{ backgroundColor: data.stateColor }}
+        />
+        <span className="truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
+      </div>
+      <span className="truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
+      <Handle type="source" position={Position.Right} className={HANDLE_CLASS} />
     </div>
   );
 }
@@ -135,10 +162,10 @@ const NODE_TYPES: NodeTypes = {
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
-const NODE_WIDTH = 160;
-const NODE_HEIGHT = 32;
-const ROW_GAP = 56;
-const COL_GAP = 240;
+const NODE_WIDTH = 200;
+const NODE_HEIGHT = 48;
+const ROW_GAP = 48;
+const COL_GAP = 360;
 
 // ── Main component ──────────────────────────────────────────────────────────
 
@@ -164,8 +191,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     const edgeList: Array<{
       source: string;
       target: string;
-      label: string;
-      dashed: boolean;
+      kind: EdgeKind;
     }> = [];
 
     const addNode = (
@@ -208,12 +234,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           toMentionTarget(fullChild),
           false,
         );
-        edgeList.push({
-          source: item.issue.id,
-          target: child.id,
-          label: "sub-issue",
-          dashed: true,
-        });
+        edgeList.push({ source: item.issue.id, target: child.id, kind: SUB_ISSUE });
       }
 
       // Related nodes + relation edges
@@ -231,12 +252,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           mentionTarget,
           false,
         );
-        edgeList.push({
-          source: rel.issueId,
-          target: rel.relatedId,
-          label: humanizeRelationType(rel.type),
-          dashed: false,
-        });
+        edgeList.push({ source: rel.issueId, target: rel.relatedId, kind: edgeKind(rel.type) });
       }
     }
 
@@ -270,6 +286,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           title: d.title,
           stateColor: d.stateColor,
           issueId: id,
+          isRoot: d.isRoot,
           mentionTarget: d.mentionTarget,
           onOpen,
         } satisfies IssueNodeData,
@@ -288,6 +305,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           title: d.title,
           stateColor: d.stateColor,
           issueId: id,
+          isRoot: d.isRoot,
           mentionTarget: d.mentionTarget,
           onOpen,
         } satisfies IssueNodeData,
@@ -300,14 +318,20 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       source: e.source,
       target: e.target,
       type: "smoothstep",
-      label: e.label,
+      label: e.kind.label,
+      animated: e.kind.animated ?? false,
+      markerEnd: { type: MarkerType.ArrowClosed, color: e.kind.color, width: 16, height: 16 },
       style: {
-        stroke: "rgba(144, 164, 174, 0.6)",
+        stroke: e.kind.color,
         strokeWidth: 1.5,
-        ...(e.dashed ? { strokeDasharray: "4 3" } : {}),
+        strokeOpacity: 0.8,
+        ...(e.kind.dashed ? { strokeDasharray: "5 4" } : {}),
       },
-      labelStyle: { fontSize: 10, fill: "rgba(144, 164, 174, 0.8)" },
-      labelBgStyle: { fill: "transparent" },
+      labelStyle: { fontSize: 10, fontWeight: 500, fill: e.kind.color },
+      labelShowBg: true,
+      labelBgPadding: [6, 3] as [number, number],
+      labelBgBorderRadius: 4,
+      labelBgStyle: { fill: "var(--color-card)", fillOpacity: 0.95, stroke: e.kind.color, strokeOpacity: 0.35 },
     }));
 
     return { nodes: builtNodes, edges: builtEdges };
@@ -337,6 +361,26 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       >
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
+        <Panel position="top-right">
+          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card/90 px-3 py-2 backdrop-blur">
+            {LEGEND.map((k) => (
+              <div key={k.label} className="flex items-center gap-2">
+                <svg width="22" height="6" className="shrink-0" aria-hidden>
+                  <line
+                    x1="0"
+                    y1="3"
+                    x2="22"
+                    y2="3"
+                    stroke={k.color}
+                    strokeWidth="1.5"
+                    strokeDasharray={k.dashed ? "5 4" : undefined}
+                  />
+                </svg>
+                <span className="text-[10px] text-muted-foreground">{k.label}</span>
+              </div>
+            ))}
+          </div>
+        </Panel>
       </ReactFlow>
     </div>
   );
