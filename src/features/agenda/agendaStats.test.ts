@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildHeatmap, statusBreakdown, priorityBreakdown } from "./agendaStats";
+import { buildHeatmap, statusBreakdown, priorityBreakdown, agendaCounts } from "./agendaStats";
+import type { AgendaGroup, AgendaItem } from "./agenda";
 import type { IssueListItem } from "../../lib/commands";
 
 /** Minimal fixture factory — only fills in fields the functions under test read. */
@@ -180,5 +181,52 @@ describe("priorityBreakdown", () => {
     ];
     const [entry] = priorityBreakdown(items);
     expect(entry.count).toBe(3);
+  });
+});
+
+describe("agendaCounts", () => {
+  const item = (over: Partial<IssueListItem> & { id: string }): AgendaItem => ({
+    issue: iss(over),
+    children: [],
+    relations: [],
+  });
+  const group = (key: string, items: AgendaItem[]): AgendaGroup => ({
+    key,
+    label: key,
+    date: null,
+    items,
+  });
+
+  it("buckets by state: unstarted→todo, started→inProgress, review-named→inReview", () => {
+    const groups = [
+      group("2026-06-22", [
+        item({ id: "1", stateType: "unstarted", stateName: "Todo" }),
+        item({ id: "2", stateType: "started", stateName: "In Progress" }),
+        item({ id: "3", stateType: "started", stateName: "In Review" }),
+      ]),
+    ];
+    expect(agendaCounts(groups)).toEqual({ todo: 1, inProgress: 1, inReview: 1, overdue: 0 });
+  });
+
+  it("counts the Overdue group size and still buckets its items by state", () => {
+    const groups = [
+      group("overdue", [
+        item({ id: "1", stateType: "started", stateName: "In Progress" }),
+        item({ id: "2", stateType: "unstarted", stateName: "Todo" }),
+      ]),
+      group("2026-06-22", [item({ id: "3", stateType: "started", stateName: "In Progress" })]),
+    ];
+    expect(agendaCounts(groups)).toEqual({ todo: 1, inProgress: 2, inReview: 0, overdue: 2 });
+  });
+
+  it("ignores completed/canceled states (none of the four buckets)", () => {
+    const groups = [
+      group("2026-06-22", [
+        item({ id: "1", stateType: "completed", stateName: "Done" }),
+        item({ id: "2", stateType: "canceled", stateName: "Canceled" }),
+        item({ id: "3", stateType: "backlog", stateName: "Backlog" }),
+      ]),
+    ];
+    expect(agendaCounts(groups)).toEqual({ todo: 0, inProgress: 0, inReview: 0, overdue: 0 });
   });
 });

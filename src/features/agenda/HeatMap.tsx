@@ -39,60 +39,63 @@ export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex gap-1">
-        {/* Weekday label column */}
-        <div className="flex flex-col gap-[3px] pt-[18px]">
+      <div className="flex items-stretch gap-[3px]">
+        {/* Weekday label column — flex rows align to the square cells beside them */}
+        <div className="flex w-3 shrink-0 flex-col gap-[3px]">
+          <span className="h-[14px]" aria-hidden />
           {WEEKDAY_LETTERS.map((letter, i) => (
             <span
               key={i}
-              className="flex h-3 w-3 items-center justify-center text-[9px] leading-none text-muted-foreground"
+              className="flex flex-1 items-center justify-center text-[9px] leading-none text-muted-foreground"
             >
               {letter}
             </span>
           ))}
         </div>
 
-        {/* Week columns */}
-        {weeks.map((week, weekIdx) => {
-          const isSelected = week.offset === currentOffset;
-          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-          const thisMonth = months[new Date(`${week.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "";
-          const prevMonth = weekIdx === 0 ? null : (months[new Date(`${weeks[weekIdx - 1]?.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "");
-          const showMonth = weekIdx === 0 || thisMonth !== prevMonth;
-          return (
-            <div
-              key={week.offset}
-              className={[
-                "flex flex-col gap-[3px] rounded-sm p-[2px] transition-all duration-100",
-                isSelected ? "ring-1 ring-ring" : "",
-              ].join(" ")}
-            >
-              {/* Month label — only on first column or when month changes */}
-              <span className="h-[14px] text-center text-[9px] leading-none text-muted-foreground">
-                {showMonth ? thisMonth : ""}
-              </span>
-              {week.cells.map((cell: HeatCell, dayIdx) => {
-                const bg = cellBg(cell.count, maxCount);
-                const label = `${weekdayName(cell.date)} ${formatDate(cell.date).slice(4)}: ${cell.count} issue${cell.count !== 1 ? "s" : ""}`;
-                return (
-                  <button
-                    key={dayIdx}
-                    type="button"
-                    aria-label={label}
-                    title={label}
-                    onClick={() => onSelectWeek(cell.offset)}
-                    className={[
-                      "h-3 w-3 cursor-pointer rounded-[2px] outline-none transition-opacity duration-100",
-                      "focus-visible:ring-1 focus-visible:ring-ring",
-                      cell.count === 0 ? "bg-muted/40" : "",
-                    ].join(" ")}
-                    style={bg ? { backgroundColor: bg } : undefined}
-                  />
-                );
-              })}
-            </div>
-          );
-        })}
+        {/* Week columns — each flexes to fill the row, cells stay square */}
+        <div className="flex min-w-0 flex-1 gap-[3px]">
+          {weeks.map((week, weekIdx) => {
+            const isSelected = week.offset === currentOffset;
+            const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+            const thisMonth = months[new Date(`${week.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "";
+            const prevMonth = weekIdx === 0 ? null : (months[new Date(`${weeks[weekIdx - 1]?.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "");
+            const showMonth = weekIdx === 0 || thisMonth !== prevMonth;
+            return (
+              <div
+                key={week.offset}
+                className={[
+                  "flex min-w-0 flex-1 flex-col gap-[3px] rounded-sm transition-all duration-100",
+                  isSelected ? "ring-1 ring-ring" : "",
+                ].join(" ")}
+              >
+                {/* Month label — only on first column or when month changes */}
+                <span className="h-[14px] truncate text-center text-[9px] leading-none text-muted-foreground">
+                  {showMonth ? thisMonth : ""}
+                </span>
+                {week.cells.map((cell: HeatCell, dayIdx) => {
+                  const bg = cellBg(cell.count, maxCount);
+                  const label = `${weekdayName(cell.date)} ${formatDate(cell.date).slice(4)}: ${cell.count} issue${cell.count !== 1 ? "s" : ""}`;
+                  return (
+                    <button
+                      key={dayIdx}
+                      type="button"
+                      aria-label={label}
+                      title={label}
+                      onClick={() => onSelectWeek(cell.offset)}
+                      className={[
+                        "aspect-square w-full cursor-pointer rounded-[2px] outline-none transition-opacity duration-100",
+                        "focus-visible:ring-1 focus-visible:ring-ring",
+                        cell.count === 0 ? "bg-muted/40" : "",
+                      ].join(" ")}
+                      style={bg ? { backgroundColor: bg } : undefined}
+                    />
+                  );
+                })}
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       {/* Legend */}

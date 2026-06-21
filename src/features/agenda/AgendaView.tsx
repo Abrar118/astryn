@@ -7,9 +7,8 @@ import { buildAgenda, type AgendaItem } from "./agenda";
 import { IssueRow } from "../issues/IssueRow";
 import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
-import { buildHeatmap } from "./agendaStats";
+import { buildHeatmap, agendaCounts, type AgendaCounts } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
-import { DependencyGraph } from "./DependencyGraph";
 
 const RELATION_LABEL: Record<string, string> = {
   blocks: "Blocks",
@@ -17,6 +16,47 @@ const RELATION_LABEL: Record<string, string> = {
   related: "Related",
   duplicate: "Duplicate",
 };
+
+const STAT_TILES: { key: keyof AgendaCounts; label: string; color: string }[] = [
+  { key: "todo", label: "Todo", color: "#6b7280" },
+  { key: "inProgress", label: "In Progress", color: "#f59e0b" },
+  { key: "inReview", label: "In Review", color: "#8b5cf6" },
+  { key: "overdue", label: "Overdue", color: "#ef4444" },
+];
+
+/** Four-count glance card shown beside the heatmap. */
+function StatsCard({ counts, total }: { counts: AgendaCounts; total: number }) {
+  return (
+    <div className="flex flex-col gap-2 lg:w-60 lg:shrink-0">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+          This week
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          {total} issue{total !== 1 ? "s" : ""}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+      {STAT_TILES.map((t) => (
+        <div
+          key={t.key}
+          className="flex flex-col gap-1 rounded-lg border border-border/60 bg-card px-3 py-2.5"
+        >
+          <div className="flex items-center gap-1.5">
+            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: t.color }} />
+            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+              {t.label}
+            </span>
+          </div>
+          <span className="text-2xl font-semibold tabular-nums leading-none text-foreground">
+            {counts[t.key]}
+          </span>
+        </div>
+      ))}
+      </div>
+    </div>
+  );
+}
 
 /** Format a YYYY-MM-DD date as "Jun 21". */
 function shortDate(date: string): string {
@@ -92,8 +132,10 @@ export function AgendaView() {
 
   // Dashboard data
   const heatmapWeeks = viewerId
-    ? buildHeatmap(issues ?? [], viewerId, { now: new Date(), weeksBack: 8, weeksForward: 1 })
+    ? buildHeatmap(issues ?? [], viewerId, { now: new Date(), weeksBack: 51, weeksForward: 1 })
     : [];
+  const counts = agendaCounts(groups);
+  const weekTotal = groups.reduce((n, g) => n + g.items.length, 0);
 
   const renderItem = (item: AgendaItem) => (
     <div key={item.issue.id}>
@@ -181,31 +223,24 @@ export function AgendaView() {
         </div>
       </header>
 
-      {/* Dashboard — only when not loading and viewer is known */}
+      {/* Dashboard — heatmap (full-width) + glance card on the same row */}
       {viewerId && (
-        <div className="border-b border-border/60 px-4 py-4 space-y-5">
-          {/* Heatmap */}
-          <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Activity
-            </p>
-            <HeatMap
-              weeks={heatmapWeeks}
-              currentOffset={weekOffset}
-              onSelectWeek={setWeekOffset}
-            />
-          </div>
-
-          {/* Dependency graph */}
-          <div>
-            <p className="mb-2 text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-              Dependencies
-            </p>
-            <DependencyGraph
-              items={groups.flatMap((g) => g.items)}
-              allIssues={issues ?? []}
-              onOpen={open}
-            />
+        <div className="border-b border-border/60 px-4 py-4">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+            <div className="flex min-w-0 flex-1 flex-col">
+              <div className="mb-2 flex items-baseline justify-between">
+                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                  Activity
+                </p>
+                <p className="text-[11px] text-muted-foreground">Last 12 months · click a column to jump</p>
+              </div>
+              <HeatMap
+                weeks={heatmapWeeks}
+                currentOffset={weekOffset}
+                onSelectWeek={setWeekOffset}
+              />
+            </div>
+            <StatsCard counts={counts} total={weekTotal} />
           </div>
         </div>
       )}
@@ -216,7 +251,7 @@ export function AgendaView() {
           Nothing on your plate this week.
         </div>
       ) : (
-        <div className="divide-y divide-border/40">
+        <div className="divide-y divide-border/40 pb-12">
           {groups.map((g) => (
             <section key={g.key}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-4 py-2.5 backdrop-blur">

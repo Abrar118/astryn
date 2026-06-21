@@ -316,14 +316,14 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
   // Empty state: no edges (subsumes the no-items case)
   if (edges.length === 0) {
     return (
-      <div className="flex h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
+      <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
         No dependencies this week
       </div>
     );
   }
 
   return (
-    <div className="h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
+    <div className="h-full min-h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
       <ReactFlow
         nodes={nodes}
         edges={edges}
