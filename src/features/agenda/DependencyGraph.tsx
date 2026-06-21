@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   ReactFlow,
   Background,
@@ -17,8 +17,9 @@ import {
   type Edge,
   type OnNodeDrag,
 } from "@xyflow/react";
-import { Search, X } from "lucide-react";
+import { Link2, Link2Off, Search, X } from "lucide-react";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
+import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
 import { cn } from "@/lib/utils";
@@ -92,6 +93,7 @@ type IssueNodeData = {
   dimmed?: boolean;
   mentionTarget: MentionTarget;
   onOpen: (id: string) => void;
+  onContextMenu: (e: ReactMouseEvent, id: string) => void;
 };
 
 const HANDLE_CLASS = "!size-1.5 !border !border-border !bg-muted-foreground/70";
@@ -144,6 +146,10 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       onMouseEnter={scheduleOpen}
       onMouseLeave={close}
       onClick={() => data.onOpen(data.issueId)}
+      onContextMenu={(e) => {
+        close();
+        data.onContextMenu(e, data.issueId);
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
@@ -285,6 +291,28 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
   // Loaded once; updated on drag-stop and read when seeding the layout.
   const savedPositions = useRef<Record<string, XY>>(loadPositions());
 
+  // Toggle related-issue (blocks / blocked-by / related / duplicate) nodes.
+  const [showRelated, setShowRelated] = useState(true);
+
+  // Stable handlers so node data identity doesn't churn the layout memo.
+  const openRef = useRef(onOpen);
+  openRef.current = onOpen;
+  const handleOpen = useCallback((id: string) => openRef.current(id), []);
+
+  const { openMenu } = useIssueMenu();
+  const menuRef = useRef(openMenu);
+  menuRef.current = openMenu;
+  const handleContextMenu = useCallback(
+    (e: ReactMouseEvent, id: string) => menuRef.current(e, id),
+    [],
+  );
+
+  // Does the graph have anything to show (independent of the related toggle)?
+  const hasContent = useMemo(
+    () => items.some((it) => it.children.length > 0 || it.relations.length > 0),
+    [items],
+  );
+
   const base = useMemo(() => {
     // Collect all node data; prefer IssueListItem over relation-ref.
     const nodeMap = new Map<
@@ -341,7 +369,8 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         edgeList.push({ source: item.issue.id, target: child.id, kind: SUB_ISSUE });
       }
 
-      // Related nodes + relation edges
+      // Related nodes + relation edges (collapsible)
+      if (!showRelated) continue;
       for (const rel of item.relations) {
         const fullRelated = allIssuesById.get(rel.relatedId);
         const mentionTarget = fullRelated
@@ -392,7 +421,8 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           issueId: id,
           isRoot: d.isRoot,
           mentionTarget: d.mentionTarget,
-          onOpen,
+          onOpen: handleOpen,
+          onContextMenu: handleContextMenu,
         } satisfies IssueNodeData,
         width: NODE_WIDTH,
       });
@@ -411,7 +441,8 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
           issueId: id,
           isRoot: d.isRoot,
           mentionTarget: d.mentionTarget,
-          onOpen,
+          onOpen: handleOpen,
+          onContextMenu: handleContextMenu,
         } satisfies IssueNodeData,
         width: NODE_WIDTH,
       });
@@ -439,7 +470,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     }));
 
     return { nodes: builtNodes, edges: builtEdges };
-  }, [items, allIssuesById, onOpen]);
+  }, [items, allIssuesById, handleOpen, handleContextMenu, showRelated]);
 
   // Controlled state so nodes can be dragged (positions persist on change).
   const [nodes, setNodes, onNodesChange] = useNodesState(base.nodes);
@@ -468,8 +499,9 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     });
   }, [nodes, term]);
 
-  // Empty state: no edges (subsumes the no-items case)
-  if (base.edges.length === 0) {
+  // Empty state: nothing to graph (checked independent of the related toggle so
+  // collapsing related issues can't trap the user on the empty screen).
+  if (!hasContent) {
     return (
       <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
         No dependencies this week
@@ -494,6 +526,17 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         proOptions={{ hideAttribution: false }}
       >
         <SearchPanel query={query} setQuery={setQuery} nodes={nodes} />
+        <Panel position="bottom-right">
+          <button
+            type="button"
+            onClick={() => setShowRelated((v) => !v)}
+            aria-pressed={!showRelated}
+            className="flex items-center gap-1.5 rounded-md border border-border bg-card/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+          >
+            {showRelated ? <Link2 className="size-3.5" /> : <Link2Off className="size-3.5" />}
+            {showRelated ? "Hide related" : "Show related"}
+          </button>
+        </Panel>
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
         <Panel position="top-right">
