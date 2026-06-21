@@ -626,3 +626,32 @@
   outline: none;
 }
 
+/* React Flow — theme the zoom controls and attribution to match the dark UI */
+.react-flow__controls {
+  box-shadow: none;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+.react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow__controls-button:hover {
+  background: var(--accent);
+}
+.react-flow__controls-button svg {
+  fill: var(--muted-foreground);
+}
+.react-flow__controls-button:hover svg {
+  fill: var(--foreground);
+}
+.react-flow__attribution {
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+  border-radius: 0.375rem 0 0 0;
+}
+.react-flow__attribution a {
+  color: var(--muted-foreground);
+}
+
