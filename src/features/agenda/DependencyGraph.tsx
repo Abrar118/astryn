@@ -31,7 +31,7 @@ import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
 import { cn } from "@/lib/utils";
-import { buildIndex, computeVisible, buildGraphElements, neighbors } from "./graphModel";
+import { buildIndex, computeVisible, buildGraphElements, neighbors, buildGroups, type GroupBy } from "./graphModel";
 import { layoutGraph } from "./graphLayout";
 
 // ── Mention-target helpers ───────────────────────────────────────────────────
@@ -209,9 +209,29 @@ function IssueNode({ data }: { data: IssueNodeData }) {
   );
 }
 
+type GroupNodeData = { label: string; count: number };
+
+function GroupNode({ data }: { data: GroupNodeData }) {
+  return (
+    <div className="pointer-events-none h-full w-full rounded-xl border border-border/70 bg-muted/10">
+      <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {data.label} <span className="text-muted-foreground/50">· {data.count}</span>
+      </div>
+    </div>
+  );
+}
+
 const NODE_TYPES: NodeTypes = {
   issueNode: IssueNode as unknown as NodeTypes["issueNode"],
+  group: GroupNode as unknown as NodeTypes["group"],
 };
+
+const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
+  { value: "none", label: "None" },
+  { value: "status", label: "Status" },
+  { value: "project", label: "Project" },
+  { value: "cycle", label: "Cycle" },
+];
 
 // ── Display resolution ────────────────────────────────────────────────────────
 
@@ -277,6 +297,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   expandedRef.current = expandedIds;
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [groupBy, setGroupBy] = useState<GroupBy>("none");
 
   // Stable handlers so node-data identity stays steady across re-renders.
   const openRef = useRef(onOpen);
@@ -336,7 +357,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
 
   const elements = useMemo(() => {
     const visible = computeVisible(rootIds, expandedIds, index);
-    return buildGraphElements(visible, rootSet, index);
+    return { visible, ...buildGraphElements(visible, rootSet, index) };
   }, [rootIds, expandedIds, index, rootSet]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
@@ -395,8 +416,9 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     });
 
     setEdges(rfEdges);
+    const groups = buildGroups(elements.visible, groupBy, indexRef.current);
     const token = ++layoutToken.current;
-    void layoutGraph(rfNodes, rfEdges).then((positioned) => {
+    void layoutGraph(rfNodes, rfEdges, groups).then((positioned) => {
       if (token !== layoutToken.current) return;
       setNodes(positioned);
       requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
@@ -405,6 +427,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     elements,
+    groupBy,
     resolveDisplay,
     handleOpen,
     handleSelect,
@@ -429,7 +452,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   useEffect(() => {
     if (!term) return;
     const matched = nodes
-      .filter((n) => nodeMatches(n.data as IssueNodeData, term))
+      .filter((n) => n.type === "issueNode" && nodeMatches(n.data as IssueNodeData, term))
       .map((n) => ({ id: n.id }));
     if (matched.length) fitView({ nodes: matched, duration: 400, padding: 0.4, maxZoom: 1.5 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -438,17 +461,19 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   // Search highlight wins; otherwise selection drives the neighborhood focus.
   const displayNodes = useMemo(() => {
     if (term) {
-      return nodes.map((n) => {
-        const match = nodeMatches(n.data as IssueNodeData, term);
-        return { ...n, data: { ...n.data, highlight: match, dimmed: !match } };
-      });
+      return nodes.map((n) =>
+        n.type !== "issueNode"
+          ? n
+          : { ...n, data: { ...n.data, highlight: nodeMatches(n.data as IssueNodeData, term), dimmed: !nodeMatches(n.data as IssueNodeData, term) } },
+      );
     }
     if (selectedId) {
       const nbrs = neighbors(selectedId, index);
-      return nodes.map((n) => {
-        const inFocus = n.id === selectedId || nbrs.has(n.id);
-        return { ...n, data: { ...n.data, highlight: n.id === selectedId, dimmed: !inFocus } };
-      });
+      return nodes.map((n) =>
+        n.type !== "issueNode"
+          ? n
+          : { ...n, data: { ...n.data, highlight: n.id === selectedId, dimmed: !(n.id === selectedId || nbrs.has(n.id)) } },
+      );
     }
     return nodes;
   }, [nodes, term, selectedId, index]);
@@ -497,6 +522,23 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
               <RotateCcw className="size-3.5" />
               Re-layout
             </button>
+            <div className="flex items-center gap-0.5 rounded-md border border-border bg-card/90 p-0.5 shadow-sm backdrop-blur">
+              {GROUP_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setGroupBy(o.value)}
+                  className={cn(
+                    "rounded px-2 py-0.5 text-[11px] transition-colors",
+                    groupBy === o.value
+                      ? "bg-accent text-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
         </Panel>
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
@@ -504,7 +546,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         <MiniMap
           pannable
           zoomable
-          nodeColor={(n) => (n.data as IssueNodeData).stateColor}
+          nodeColor={(n) => (n.type === "issueNode" ? (n.data as IssueNodeData).stateColor : "rgba(255,255,255,0.06)")}
           nodeStrokeWidth={2}
           className="!border !border-border !bg-card"
           maskColor="rgba(0,0,0,0.5)"
