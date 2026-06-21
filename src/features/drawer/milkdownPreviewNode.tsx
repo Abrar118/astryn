@@ -87,9 +87,21 @@ export function createPreviewNodeView(): NodeViewConstructor {
     const isPreview = () => classifyUrlParagraph(readParagraph(node)) === "preview";
 
     if (!isPreview()) {
-      // Default paragraph: editable contentDOM, no custom UI.
+      // Default paragraph: editable contentDOM, no custom UI. The `update`
+      // hook is REQUIRED: without it ProseMirror recreates the node view on
+      // every change, tearing down the DOM the selection lives in and breaking
+      // typing/Enter for all normal paragraphs. Keep the view while the node
+      // stays a non-preview paragraph; return false only when it becomes a
+      // preview so a fresh node view picks up the preview branch.
       const p = document.createElement("p");
-      return { dom: p, contentDOM: p };
+      return {
+        dom: p,
+        contentDOM: p,
+        update(updated: ProseMirrorNode) {
+          if (updated.type !== node.type) return false;
+          return classifyUrlParagraph(readParagraph(updated)) !== "preview";
+        },
+      };
     }
 
     const url = readParagraph(node).text.trim();

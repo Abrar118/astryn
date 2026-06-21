@@ -146,7 +146,17 @@ export function createCodeBlockNodeView(): NodeViewConstructor {
 
     wrapper.appendChild(header);
     wrapper.appendChild(pre);
-    return { dom: wrapper, contentDOM: code };
+    return {
+      dom: wrapper,
+      contentDOM: code,
+      // Keep the node view alive while it stays a code block so ProseMirror
+      // patches the code content in place. Without `update`, PM recreates the
+      // view on every keystroke, tearing down the editable <code> and breaking
+      // typing/Enter inside the block.
+      update(updated: ProseMirrorNode) {
+        return updated.type === node.type;
+      },
+    };
   };
 }
 
