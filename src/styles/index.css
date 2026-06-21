@@ -639,6 +639,36 @@
 }
 .md-codeblock pre { margin: 0; padding: 8px; overflow-x: auto; }
 
+/* Syntax highlighting — lowlight/highlight.js token classes, dark theme.
+   Scoped to .md-codeblock so it never affects the rest of the UI. */
+.md-codeblock .hljs-keyword,
+.md-codeblock .hljs-built_in,
+.md-codeblock .hljs-literal { color: #c792ea; }
+.md-codeblock .hljs-string,
+.md-codeblock .hljs-attr,
+.md-codeblock .hljs-regexp,
+.md-codeblock .hljs-addition { color: #c3e88d; }
+.md-codeblock .hljs-number,
+.md-codeblock .hljs-symbol { color: #f78c6c; }
+.md-codeblock .hljs-title,
+.md-codeblock .hljs-title.function_,
+.md-codeblock .hljs-section { color: #82aaff; }
+.md-codeblock .hljs-variable,
+.md-codeblock .hljs-name,
+.md-codeblock .hljs-deletion { color: #f07178; }
+.md-codeblock .hljs-type,
+.md-codeblock .hljs-class .hljs-title,
+.md-codeblock .hljs-attribute,
+.md-codeblock .hljs-tag { color: #ffcb6b; }
+.md-codeblock .hljs-comment,
+.md-codeblock .hljs-quote,
+.md-codeblock .hljs-meta { color: var(--muted-foreground); font-style: italic; }
+.md-codeblock .hljs-doctag,
+.md-codeblock .hljs-operator,
+.md-codeblock .hljs-punctuation { color: var(--foreground); }
+.md-codeblock .hljs-emphasis { font-style: italic; }
+.md-codeblock .hljs-strong { font-weight: 600; }
+
 .md-preview-card { display:flex; gap:8px; max-height:96px; overflow:hidden; width:100%;
   text-align:left; border:1px solid var(--border); border-radius:6px; padding:8px;
   background: color-mix(in oklab, var(--card) 92%, transparent); cursor:pointer; }
