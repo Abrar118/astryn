@@ -8,7 +8,7 @@ A standalone, dedicated **PR dashboard** centered on *you* (the authenticated Gi
 
 The page has four sections — **Needs my review**, **My open PRs**, **Assigned to me**, **Involved/mentioned** — each listing open pull requests with title, number, author, comment count, status badges (open/draft, CI, conflict), and review state. When a PR's branch or title carries a Linear issue identifier (e.g. `ENG-123`), the row shows a chip that opens that issue's tab inside Astryn.
 
-This keeps Astryn's hard architectural rule: all GitHub API calls happen in Rust; the webview is a pure consumer of cached data + typed Tauri commands. No token ever reaches the webview.
+This keeps Astryn's hard architectural rule: all GitHub API calls happen in Rust; the webview is a pure consumer of cached data + typed Tauri commands. The token is accepted transiently from the Settings input, sent directly over IPC, immediately removed from component state, and never returned to the renderer or retained in browser storage, SQLite, logs, or query caches.
 
 ## 2. Goals & non-goals
 
@@ -38,9 +38,9 @@ This keeps Astryn's hard architectural rule: all GitHub API calls happen in Rust
 
 New module mirroring `linear/`:
 
-- **`mod.rs`** — `GitHubClient` (a `reqwest::Client` against the GraphQL endpoint `https://api.github.com/graphql`), `GitHubError` (sanitized variants: `Network`, `Auth`, `RateLimited(Option<i64>)`, `Malformed`, `Server`, `Api(String)`), an HTTP-status interpreter (401/403 → `Auth`, 429 → `RateLimited` with reset hint from headers, 5xx → `Server`), and the `GitHubCredentialProvider` trait + `PatProvider`.
+- **`mod.rs`** — `GitHubClient` (a `reqwest::Client` against the GraphQL endpoint `https://api.github.com/graphql`), `GitHubError` (sanitized variants: `Network`, `Auth`, `RateLimited(Option<i64>)`, `Malformed`, `Server`, `Api(String)`), the response interpreter (see §4.6), and the `GitHubCredentialProvider` trait + `PatProvider`.
 - **`prs.rs`** — GraphQL query construction, parsing, and the bucket definitions.
-- Connection check: `viewer { login }` for `test_github_connection` / `get_github_status`.
+- Connection check: `viewer { login }` for `test_github_connection` only (`get_github_status` is offline — see §6).
 
 ### 4.1 Buckets & search queries
 
@@ -48,23 +48,27 @@ Each bucket is a GitHub GraphQL `search(type: ISSUE, query: ...)` over open PRs,
 
 | Bucket | `bucket` value | Search query |
 | --- | --- | --- |
-| Needs my review | `needs_review` | `is:pr is:open review-requested:@me` |
-| My open PRs | `mine` | `is:pr is:open author:@me` |
-| Assigned to me | `assigned` | `is:pr is:open assignee:@me` |
-| Involved/mentioned | `involved` | `is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me` |
+| Needs my review | `needs_review` | `is:pr is:open review-requested:@me sort:updated-desc` |
+| My open PRs | `mine` | `is:pr is:open author:@me sort:updated-desc` |
+| Assigned to me | `assigned` | `is:pr is:open assignee:@me sort:updated-desc` |
+| Involved/mentioned | `involved` | `is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me sort:updated-desc` |
 
-**Bucket overlap is resolved explicitly:** "Involved/mentioned" is the *remainder* — `involves:@me` minus authored/assigned/review-requested via negative qualifiers — so a PR appears in at most one section. (A PR could still legitimately match both `needs_review` and `assigned`; those are treated as distinct, intentional memberships and are deduped only within a single bucket.)
+Every query carries `sort:updated-desc` so the per-bucket cap (§4.3) yields a deterministic, stable subset (the most recently updated PRs) rather than an unstable relevance-ranked one.
+
+**Bucket overlap is resolved explicitly:** `involved` never overlaps the other buckets — it is the *remainder*, `involves:@me` minus authored/assigned/review-requested via negative qualifiers. Overlap among `needs_review`, `mine`, and `assigned` is intentional and allowed (a PR you authored that's also assigned to you appears in both); rows are deduped only within a single bucket.
 
 ### 4.2 Fields per PR node
 
-For each `PullRequest` node: `number`, `title`, `url`, `isDraft`, `mergeable` (→ conflict flag), `state`, `author { login, avatarUrl }`, `comments { totalCount }`, `reviewDecision`, `repository { nameWithOwner }`, `headRefName` (branch), `updatedAt`, and the head-ref **status-check rollup** for CI.
+For each `PullRequest` node: `number`, `title`, `url`, `isDraft`, `mergeable` (→ conflict flag), `author { login, avatarUrl }`, `comments { totalCount }`, `reviewDecision`, `repository { nameWithOwner }`, `headRefName` (branch), `updatedAt`, and the head-ref **status-check rollup** for CI. (`state` is not stored — every cached row is open, per §5.)
 
 - **CI rollup:** use the PR's head-ref status-check rollup, **verified against the live schema** during implementation — prefer a direct `PullRequest.statusCheckRollup { state }` if the live schema exposes it, otherwise fall back to `commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }`. Roll up to `success | failure | pending | none`. (Per the repo's "live API wins — introspect before trusting field names" rule.)
 - **`review_decision`:** this is the PR's **overall** review status (`APPROVED` / `CHANGES_REQUESTED` / `REVIEW_REQUIRED` / `null`), **not** the current viewer's personal review decision. It is stored and rendered as-is, and `null` is preserved (null does **not** mean `REVIEW_REQUIRED`). This overall status is exactly what serves the user's requirement "show if my own PRs have changes requested": a `CHANGES_REQUESTED` value on a `mine`-bucket row. No per-viewer review query is needed.
 
 ### 4.3 Pagination
 
-GitHub GraphQL connections return at most 100 nodes per page and require cursor pagination. Each bucket is fetched by paging on `pageInfo { hasNextPage endCursor }` until exhausted **or** an explicit safety cap of **300 PRs per bucket** is reached. If the cap is hit, the UI shows a small "showing first 300" note for that section. "One query per bucket" holds only for buckets of ≤100 results; larger buckets issue follow-up paged queries.
+GitHub GraphQL connections return at most 100 nodes per page and require cursor pagination. Each bucket is fetched by paging on `pageInfo { hasNextPage endCursor }` until exhausted **or** an explicit safety cap of **300 PRs per bucket** is reached. The milestone goal is therefore "the **300 most recently updated** PRs per bucket," not literally every PR. "One query per bucket" holds only for buckets of ≤100 results; larger buckets issue follow-up paged queries.
+
+**Truncation must be persisted, not inferred from row count.** A bucket with exactly 300 cached rows is indistinguishable from a truncated one by count alone. So per-bucket sync metadata — `{ fetched_count, truncated, last_synced_at }` — is persisted (a small `github_sync_meta` table keyed by `bucket`) and returned by `list_github_prs`, so the "showing the 300 most recent" note survives an app restart.
 
 ### 4.4 Sync, pruning & failure handling
 
@@ -74,14 +78,21 @@ GitHub GraphQL connections return at most 100 nodes per page and require cursor 
 2. Only on full success, in a single transaction: upsert the fetched rows and **prune** rows for *that bucket* that were not in the result set.
 3. If any page fails (network, rate-limit, auth), **abort that bucket** and leave its prior cache untouched. Never prune globally on partially fetched results.
 
-This guarantees a page-2 failure or a 429 never empties a bucket. Buckets are independent: one failing does not roll back another's successful refresh. The command returns a per-bucket status so the UI can show which sections are stale.
-
-**Rate limits:** GitHub GraphQL uses a points-based limit; these searches are cheap. On 429, back off and surface a non-blocking `goey-toast`, keeping cached rows visible.
+This guarantees a page-2 failure or a rate-limit never empties a bucket. Buckets are independent: one failing does not roll back another's successful refresh. The command returns a per-bucket status so the UI can show which sections are stale. Rate-limit and error classification is handled per §4.6.
 
 ### 4.5 Credential isolation
 
-- A dedicated GitHub sync lock (separate from any Linear sync lock) serializes `sync_github_prs` and prevents an in-flight sync from committing under a token that was swapped mid-flight (re-read/capture the token at the start of a sync; if it changed, abort).
-- Setting or clearing the GitHub token clears **only** GitHub state — all `github_prs` rows and the `github_login` setting — and never touches the Linear workspace cache.
+- A dedicated GitHub lock (separate from any Linear sync lock) serializes `set_github_token`, `clear_github_token`, `test_github_connection`, and `sync_github_prs`. A generation guard prevents an in-flight sync from committing under a token swapped mid-flight: capture the token (and a credential generation counter) at the start of a sync; if it changed by commit time, abort without writing.
+- **Both setting and clearing** the GitHub token are treated as an account switch: each wipes **only** GitHub state — all `github_prs` rows, `github_sync_meta`, and the `github_login` setting — so a replaced token can never expose the previous account's cached PRs or report its login via `get_github_status`. The Linear workspace cache is never touched.
+
+### 4.6 Rate-limit & error interpretation
+
+GitHub's GraphQL API reports limits differently from plain REST, so the interpreter must not rely on status codes alone (per [GitHub's GraphQL rate-limit docs](https://docs.github.com/en/graphql/overview/rate-limits-and-query-limits-for-the-graphql-api)):
+
+- **Parse the GraphQL `errors` array even on HTTP 200.** Primary rate-limit and many query errors arrive as `200 OK` with a non-empty `errors` array (e.g. `type: "RATE_LIMITED"`). A non-empty `errors` array is a failure; a `RATE_LIMITED`/throttle error maps to `RateLimited`.
+- **Inspect headers** `x-ratelimit-remaining`, `x-ratelimit-reset`, and `retry-after` to populate the `RateLimited` reset hint.
+- **403** may be a *secondary* rate limit (treat as `RateLimited` when `retry-after` / `x-ratelimit-remaining: 0` indicates throttling) **or** an auth/API failure otherwise (`Auth`). 401 is always `Auth`. 5xx → `Server`.
+- Backoff on `RateLimited` and surface a non-blocking `goey-toast`, keeping cached rows visible.
 
 ## 5. Data model
 
@@ -94,9 +105,7 @@ CREATE TABLE github_prs (
   repo              TEXT NOT NULL,     -- "owner/name"
   number            INTEGER NOT NULL,
   title             TEXT,
-  state             TEXT,              -- open | closed | merged
-  draft             INTEGER,           -- bool
-  merged            INTEGER,           -- bool
+  draft             INTEGER,           -- bool (every cached row is an OPEN PR; see note)
   mergeable         TEXT,              -- mergeable | conflicting | unknown
   ci_status         TEXT,              -- success | failure | pending | none
   review_decision   TEXT,             -- approved | changes_requested | review_required | NULL (overall PR review status)
@@ -105,29 +114,38 @@ CREATE TABLE github_prs (
   comment_count     INTEGER,
   branch            TEXT,              -- headRefName
   url               TEXT,
-  linear_identifier TEXT,             -- extracted from branch/title (e.g. "ENG-123"), nullable
+  linear_identifier TEXT,             -- normalized uppercase id extracted from branch/title (e.g. "ENG-123"), nullable
   updated_at        TEXT,             -- PR updatedAt (ISO)
   synced_at         TEXT NOT NULL,
   PRIMARY KEY (id, bucket)
 );
 CREATE INDEX idx_github_prs_bucket ON github_prs(bucket);
 CREATE INDEX idx_github_prs_linear_identifier ON github_prs(linear_identifier);
+
+-- Per-bucket sync metadata so truncation/staleness survive restart.
+CREATE TABLE github_sync_meta (
+  bucket         TEXT PRIMARY KEY,     -- needs_review | mine | assigned | involved
+  fetched_count  INTEGER NOT NULL,
+  truncated      INTEGER NOT NULL,     -- bool: cap (§4.3) was hit
+  last_synced_at TEXT
+);
 ```
 
-- **`linear_identifier`** is extracted at sync time by matching `headRefName`/`title` against the Linear identifier pattern (`[A-Z][A-Z0-9]+-\d+`).
+- **Every cached row is an open PR** (all queries carry `is:open`), so `state` and `merged` are omitted from the schema — they'd be constant. `draft` is kept because open PRs can be draft or ready.
+- **`linear_identifier`** is extracted at sync time by matching `headRefName`/`title` with a case-insensitive, boundary-aware pattern `(?i)\b[A-Z][A-Z0-9]*-\d+\b` (Linear-generated branches are commonly lowercase, e.g. `eng-123`), then **normalized to uppercase** before storing/joining.
 - **No stored `linear_issue_id`.** Instead, `list_github_prs` resolves the issue id at read time by **joining** `github_prs.linear_identifier = issues.identifier` and returning `linear_issue_id` alongside each row. The join (not a persisted id) automatically follows Linear cache rebuilds and never goes stale.
 - The cached `github_login` lives in the existing `settings` table (key `github_login`), mirroring how the verified Linear viewer name is cached.
 
 ## 6. Commands — `src-tauri/src/commands/github.rs`
 
-New handler file (kept out of the already-large `commands/mod.rs`). Thin `#[tauri::command]` wrappers over unit-testable async `_logic` fns, registered in `lib.rs` via `generate_handler![...]`. New permissions added to `src-tauri/capabilities/default.json`.
+New handler file (kept out of the already-large `commands/mod.rs`). Thin `#[tauri::command]` wrappers over unit-testable async `_logic` fns, registered in `lib.rs` via `generate_handler![...]`. (Custom application commands do **not** require entries in `src-tauri/capabilities/default.json` — that file only carries core/plugin permissions, and none of the existing custom commands are listed there — so M4 adds no capability entries.)
 
-- `set_github_token(token)` — store in keychain; clears nothing else.
-- `clear_github_token()` — delete the keychain entry, wipe `github_prs` rows + `github_login`. Leaves the Linear cache intact.
-- `get_github_status()` → `GitHubStatus` (`NotConfigured` | `Unverified` | `Connected { login }`), mirroring `ConnectionStatus`.
-- `test_github_connection()` — call `viewer { login }`, cache `github_login`, return `Connected`.
-- `sync_github_prs()` → per-bucket result summary (which buckets refreshed vs stayed stale). Acquires the GitHub lock; runs the §4.4 per-bucket transactional refresh.
-- `list_github_prs()` → rows grouped by bucket, each enriched with `linear_issue_id` via the §5 join.
+- `set_github_token(token)` — treated as an account switch: store the new token in the keychain **and** wipe prior GitHub state (`github_prs`, `github_sync_meta`, `github_login`). Leaves the Linear cache intact. (Uses the §4.5 GitHub lock.)
+- `clear_github_token()` — delete the keychain entry and wipe `github_prs`, `github_sync_meta`, `github_login`. Leaves the Linear cache intact.
+- `get_github_status()` → `GitHubStatus` (`NotConfigured` | `Unverified` | `Connected { login }`), mirroring `ConnectionStatus`. **Offline:** derived purely from keychain presence + the cached `github_login` setting; it never calls the network.
+- `test_github_connection()` — the only status command that hits the network: call `viewer { login }`, cache `github_login`, return `Connected`.
+- `sync_github_prs()` → per-bucket result summary (which buckets refreshed vs stayed stale, with truncation flags). Acquires the GitHub lock; runs the §4.4 per-bucket transactional refresh.
+- `list_github_prs()` → rows grouped by bucket (each enriched with `linear_issue_id` via the §5 join) plus the per-bucket `github_sync_meta`.
 
 All errors are sanitized (`CmdError`); no raw reqwest/GraphQL/keyring diagnostics cross the IPC boundary.
 
@@ -145,12 +163,12 @@ All errors are sanitized (`CmdError`); no raw reqwest/GraphQL/keyring diagnostic
   - CI (success/failure/pending/none),
   - conflict flag (when `mergeable = conflicting`),
   - review decision (approved / **changes requested** / review required; nothing when null).
-  - Linear chip (when `linear_issue_id` present) → calls `openIssueTabAcross(issueId)`.
+  - Linear chip (when `linear_issue_id` present) → calls the workspace context's `openIssueTab(issueId)` (which wraps the `openIssueTabAcross` reducer), not the reducer directly.
 
 ### 7.3 Cache-vs-sync data flow (offline-first)
 `PrsPage` separates the cached read from the network sync:
 - A `list_github_prs` query renders immediately from SQLite.
-- A separate background `sync_github_prs` query runs on mount and on a **5-minute interval** (the interval drives *sync*, matching the Linear sync default — it does **not** merely re-read SQLite), plus a manual refresh button.
+- A separate background `sync_github_prs` query runs on mount and on a **5-minute interval** (the interval drives *sync*, matching the Linear sync default — it does **not** merely re-read SQLite), plus a manual refresh button. This sync query is **disabled while status is `NotConfigured`** (no token → no network calls), gated on `get_github_status`.
 - On `sync_github_prs` success, invalidate the `list_github_prs` query so the UI picks up fresh rows.
 - On sync failure, keep showing the stale cached rows with a quiet `goey-toast` / inline warning.
 
@@ -161,11 +179,12 @@ Bindings and types added to `src/lib/commands.ts`.
 **Rust (`cargo test`):**
 - GraphQL parsing per field, including CI rollup mapping and `review_decision` mapping (incl. `null` preserved).
 - Bucket search-query construction (incl. the `involved` negative-qualifier remainder).
-- Pagination loop (multi-page, `hasNextPage`, cap enforcement).
-- Linear identifier extraction from branch/title and the read-time join resolution.
+- Pagination loop (multi-page, `hasNextPage`, cap enforcement, `truncated` flag persistence).
+- Linear identifier extraction: lowercase branches (`eng-123`), mixed case, punctuation boundaries, false substrings (no match inside `release-2024`-style or embedded text), and uppercase normalization; plus the read-time join resolution.
 - Prune-on-full-success / abort-on-partial-failure behavior (no global prune; one bucket failing leaves its cache; another succeeding still commits).
-- Credential isolation (clear-token wipes only GitHub state; swapped-token sync aborts).
-- HTTP/error status mapping and the connect/status `_logic` fns.
+- Credential isolation (set-token and clear-token each wipe only GitHub state; swapped-token sync aborts via the generation guard).
+- Rate-limit/error interpretation per §4.6: GraphQL errors on HTTP 200, `RATE_LIMITED` → `RateLimited`, 403 secondary-limit vs auth disambiguation, header reset hints.
+- `get_github_status` is offline (no network); `test_github_connection` calls `viewer`.
 
 **Frontend (Vitest — already configured; the CLAUDE.md "no JS test framework" note is stale):**
 - Four-section rendering and counts.
@@ -192,7 +211,7 @@ The implementation must update `requirements.md`, whose F7-related sections stil
 2. Each row shows title, `#number`, author, comment count, repo, updated-time, and correct status/CI/conflict/review badges.
 3. A PR whose branch/title contains a Linear identifier present in the cache shows a chip that opens that issue's tab.
 4. With no token, the page shows a "Connect GitHub" prompt and no errors.
-5. A sync failure (network/rate-limit/partial page) leaves the previous cache intact and shows a quiet warning; no bucket is emptied by a partial fetch.
-6. Setting/clearing the GitHub token never disturbs the Linear workspace cache.
-7. The token never appears in the webview, SQLite, logs, or query caches.
+5. A sync failure (network/rate-limit/partial page) leaves the previous cache intact and shows a quiet warning; no bucket is emptied by a partial fetch. A truncated bucket shows its "300 most recent" note across restarts.
+6. Setting **or** clearing the GitHub token wipes only GitHub state (rows, sync meta, login) and never disturbs the Linear workspace cache; a replaced token never exposes the previous account's PRs or login.
+7. The token is accepted transiently from the Settings input, sent directly over IPC, immediately cleared from component state, and never returned to the renderer or retained in browser storage, SQLite, logs, or query caches.
 8. Rust + Vitest suites pass; `npx tsc --noEmit` clean.
