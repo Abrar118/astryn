@@ -1,10 +1,19 @@
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import {
   ReactFlow,
+  ReactFlowProvider,
   Background,
   Controls,
+  MiniMap,
   Handle,
   Panel,
   Position,
@@ -15,17 +24,17 @@ import {
   type NodeTypes,
   type Node,
   type Edge,
-  type OnNodeDrag,
 } from "@xyflow/react";
-import { Network, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Network, RotateCcw, Search, X } from "lucide-react";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
 import { cn } from "@/lib/utils";
-import type { AgendaItem } from "./agenda";
+import { buildIndex, computeVisible, buildGraphElements, neighbors } from "./graphModel";
+import { layoutGraph } from "./graphLayout";
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Mention-target helpers ───────────────────────────────────────────────────
 
 function toMentionTarget(i: IssueListItem): MentionTarget {
   return {
@@ -40,7 +49,6 @@ function toMentionTarget(i: IssueListItem): MentionTarget {
   };
 }
 
-/** Best-effort MentionTarget from partial relation-ref data. */
 function mentionTargetFromRelation(rel: Relation): MentionTarget {
   return {
     identifier: rel.relatedIdentifier ?? rel.relatedId,
@@ -54,18 +62,11 @@ function mentionTargetFromRelation(rel: Relation): MentionTarget {
   };
 }
 
-// ── Edge styling per relation type ───────────────────────────────────────────
+// ── Edge styling per relation kind ───────────────────────────────────────────
 
-type EdgeKind = {
-  label: string;
-  color: string;
-  dashed?: boolean;
-  animated?: boolean;
-};
+type EdgeKind = { label: string; color: string; dashed?: boolean; animated?: boolean };
 
 const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: "#6366f1", dashed: true };
-/** Edge from an issue to its collapsed-related connector node. */
-const COLLAPSED: EdgeKind = { label: "", color: "#64748b", dashed: true };
 
 const EDGE_KINDS: Record<string, EdgeKind> = {
   blocks: { label: "Blocks", color: "#ef4444", animated: true },
@@ -75,14 +76,14 @@ const EDGE_KINDS: Record<string, EdgeKind> = {
   duplicate_of: { label: "Duplicate of", color: "#a855f7", dashed: true },
 };
 
-function edgeKind(type: string): EdgeKind {
-  return EDGE_KINDS[type] ?? { label: type.replace(/_/g, " "), color: "#64748b", dashed: true };
+function edgeKindFor(kind: string): EdgeKind {
+  if (kind === "sub_issue") return SUB_ISSUE;
+  return EDGE_KINDS[kind] ?? { label: kind.replace(/_/g, " "), color: "#64748b", dashed: true };
 }
 
-/** Legend rows describing the edge encoding shown on the canvas. */
 const LEGEND: EdgeKind[] = [SUB_ISSUE, EDGE_KINDS.blocks, EDGE_KINDS.blocked_by, EDGE_KINDS.related];
 
-// ── Node data shape ─────────────────────────────────────────────────────────
+// ── Node component ────────────────────────────────────────────────────────────
 
 type IssueNodeData = {
   identifier: string;
@@ -90,22 +91,22 @@ type IssueNodeData = {
   stateColor: string;
   issueId: string;
   isRoot: boolean;
-  /** Set while a search is active: highlighted match / dimmed non-match. */
+  expanded: boolean;
+  hiddenCount: number;
   highlight?: boolean;
   dimmed?: boolean;
   mentionTarget: MentionTarget;
   onOpen: (id: string) => void;
+  onSelect: (id: string) => void;
+  onToggleExpand: (id: string) => void;
   onContextMenu: (e: ReactMouseEvent, id: string) => void;
 };
 
 const HANDLE_CLASS = "!size-1.5 !border !border-border !bg-muted-foreground/70";
 
-/** Whether a node matches the (already-lowercased, non-empty) search term. */
 function nodeMatches(data: IssueNodeData, term: string): boolean {
   return data.identifier.toLowerCase().includes(term) || data.title.toLowerCase().includes(term);
 }
-
-// ── Custom node component ───────────────────────────────────────────────────
 
 function IssueNode({ data }: { data: IssueNodeData }) {
   const nodeRef = useRef<HTMLDivElement>(null);
@@ -134,11 +135,9 @@ function IssueNode({ data }: { data: IssueNodeData }) {
     }, 150);
   }, [data.mentionTarget]);
 
-  useEffect(() => {
-    return () => {
-      close();
-    };
-  }, [close]);
+  useEffect(() => () => close(), [close]);
+
+  const showToggle = data.expanded || data.hiddenCount > 0;
 
   return (
     <div
@@ -147,19 +146,20 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       tabIndex={0}
       onMouseEnter={scheduleOpen}
       onMouseLeave={close}
-      onClick={() => data.onOpen(data.issueId)}
+      onClick={() => data.onSelect(data.issueId)}
+      onDoubleClick={() => data.onOpen(data.issueId)}
       onContextMenu={(e) => {
         close();
         data.onContextMenu(e, data.issueId);
       }}
       onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
+        if (e.key === "Enter") {
           e.preventDefault();
           data.onOpen(data.issueId);
         }
       }}
       className={cn(
-        "relative flex w-[200px] cursor-pointer flex-col gap-1 overflow-hidden rounded-lg border bg-card py-1.5 pl-3 pr-2.5 text-foreground shadow-sm transition-all hover:bg-accent focus-visible:outline-none",
+        "relative flex w-[200px] cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg border bg-card py-1.5 pl-3 pr-1.5 text-foreground shadow-sm transition-all hover:bg-accent focus-visible:outline-none",
         data.highlight
           ? "border-amber-400 ring-2 ring-amber-400"
           : data.isRoot
@@ -168,7 +168,6 @@ function IssueNode({ data }: { data: IssueNodeData }) {
         data.dimmed && "opacity-30",
       )}
     >
-      {/* Status color: left accent bar + faint full tint */}
       <span
         className="absolute inset-y-0 left-0 w-1"
         style={{ backgroundColor: data.stateColor }}
@@ -180,421 +179,278 @@ function IssueNode({ data }: { data: IssueNodeData }) {
         aria-hidden
       />
       <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
-      <span className="relative truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
-      <span className="relative truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <span className="truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
+        <span className="truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
+      </div>
+      {showToggle && (
+        <button
+          type="button"
+          aria-label={data.expanded ? "Collapse neighbors" : `Expand ${data.hiddenCount} neighbors`}
+          title={data.expanded ? "Collapse neighbors" : `Expand ${data.hiddenCount} neighbor${data.hiddenCount !== 1 ? "s" : ""}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            data.onToggleExpand(data.issueId);
+          }}
+          className="relative z-10 flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-background/80 px-1 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {data.expanded ? (
+            <ChevronDown className="size-3" />
+          ) : (
+            <>
+              {data.hiddenCount}
+              <ChevronRight className="size-3" />
+            </>
+          )}
+        </button>
+      )}
       <Handle type="source" position={Position.Right} className={HANDLE_CLASS} />
-    </div>
-  );
-}
-
-// ── Collapsed-related connector node ─────────────────────────────────────────
-
-type ConnectorNodeData = {
-  count: number;
-  sourceId: string;
-  onExpand: (id: string) => void;
-};
-
-/** A round node standing in for an issue's collapsed related issues. */
-function ConnectorNode({ data }: { data: ConnectorNodeData }) {
-  return (
-    <div
-      role="button"
-      tabIndex={0}
-      onClick={() => data.onExpand(data.sourceId)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          data.onExpand(data.sourceId);
-        }
-      }}
-      title={`${data.count} related issue${data.count !== 1 ? "s" : ""} — click to expand`}
-      className="flex size-10 cursor-pointer items-center justify-center rounded-full border border-dashed border-border bg-card text-[11px] font-semibold text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
-      +{data.count}
     </div>
   );
 }
 
 const NODE_TYPES: NodeTypes = {
   issueNode: IssueNode as unknown as NodeTypes["issueNode"],
-  connectorNode: ConnectorNode as unknown as NodeTypes["connectorNode"],
 };
 
-// ── Node search ──────────────────────────────────────────────────────────────
+// ── Display resolution ────────────────────────────────────────────────────────
 
-/**
- * In-canvas search box. Lifts the query to the parent (which highlights/dims
- * nodes) and recenters the viewport on the matches as the term changes.
- */
-function SearchPanel({
-  query,
-  setQuery,
-  nodes,
-}: {
-  query: string;
-  setQuery: (q: string) => void;
-  nodes: Node[];
-}) {
-  const rf = useReactFlow();
-  const term = query.trim().toLowerCase();
+type Display = { identifier: string; title: string; stateColor: string; mentionTarget: MentionTarget };
 
-  useEffect(() => {
-    if (!term) return;
-    const matched = nodes
-      .filter((n) => nodeMatches(n.data as IssueNodeData, term))
-      .map((n) => ({ id: n.id }));
-    if (matched.length) {
-      rf.fitView({ nodes: matched, duration: 400, padding: 0.4, maxZoom: 1.5 });
-    }
-    // Recenter only when the term changes, not on every drag.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [term]);
-
-  return (
-    <Panel position="top-left">
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search issues…"
-          className="h-7 w-48 rounded-md border border-border bg-card/90 pl-7 pr-6 text-xs text-foreground shadow-sm backdrop-blur placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-        />
-        {query && (
-          <button
-            type="button"
-            aria-label="Clear search"
-            onClick={() => setQuery("")}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-          >
-            <X className="size-3.5" />
-          </button>
-        )}
-      </div>
-    </Panel>
-  );
+function fallbackDisplay(id: string): Display {
+  return {
+    identifier: id,
+    title: id,
+    stateColor: "#6B7280",
+    mentionTarget: {
+      identifier: id,
+      title: id,
+      stateType: "unstarted",
+      stateColor: "#6B7280",
+      stateName: null,
+      projectName: null,
+      priority: 0,
+      assigneeName: null,
+    },
+  };
 }
 
-// ── Layout constants ────────────────────────────────────────────────────────
-
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 48;
-const ROW_GAP = 48;
-const COL_GAP = 360;
-
-// ── Position persistence ──────────────────────────────────────────────────────
-// Dragged positions survive reloads / re-seeds, keyed by issue id.
-
-const POSITIONS_KEY = "astryn:depgraph:positions";
-type XY = { x: number; y: number };
-
-function loadPositions(): Record<string, XY> {
-  try {
-    const raw = localStorage.getItem(POSITIONS_KEY);
-    return raw ? (JSON.parse(raw) as Record<string, XY>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function persistPositions(map: Record<string, XY>) {
-  try {
-    localStorage.setItem(POSITIONS_KEY, JSON.stringify(map));
-  } catch {
-    /* storage unavailable — positions stay session-only */
-  }
-}
-
-// ── Main component ──────────────────────────────────────────────────────────
+// ── Main component ─────────────────────────────────────────────────────────────
 
 type Props = {
-  items: AgendaItem[];
-  allIssues: IssueListItem[];
+  rootIds: string[];
+  issues: IssueListItem[];
+  relations: Relation[];
   onOpen: (id: string) => void;
 };
 
-export function DependencyGraph({ items, allIssues, onOpen }: Props) {
-  const allIssuesById = useMemo(
-    () => new Map(allIssues.map((i) => [i.id, i]),),
-    [allIssues],
+export function DependencyGraph(props: Props) {
+  if (props.rootIds.length === 0) {
+    return (
+      <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
+        Nothing to graph this week
+      </div>
+    );
+  }
+  return (
+    <ReactFlowProvider>
+      <DependencyGraphInner {...props} />
+    </ReactFlowProvider>
   );
+}
 
-  // Loaded once; updated on drag-stop and read when seeding the layout.
-  const savedPositions = useRef<Record<string, XY>>(loadPositions());
+function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
+  const index = useMemo(() => buildIndex(issues, relations), [issues, relations]);
+  const indexRef = useRef(index);
+  indexRef.current = index;
+  const rootSet = useMemo(() => new Set(rootIds), [rootIds]);
 
-  // Per-issue collapse of related issues into a single connector node.
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  const collapsedRef = useRef(collapsed);
-  const toggleCollapsed = useCallback((id: string) => {
-    setCollapsed((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      collapsedRef.current = next;
-      return next;
-    });
-  }, []);
-
-  // How many related issues each issue has (for the menu action gating).
-  const relatedCount = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const it of items) if (it.relations.length) m.set(it.issue.id, it.relations.length);
+  // Relation-ref fallback for related issues not in the issues cache.
+  const relRefById = useMemo(() => {
+    const m = new Map<string, Relation>();
+    for (const r of relations) if (!m.has(r.relatedId)) m.set(r.relatedId, r);
     return m;
-  }, [items]);
-  const relatedCountRef = useRef(relatedCount);
-  relatedCountRef.current = relatedCount;
+  }, [relations]);
 
-  // Stable handlers so node data identity doesn't churn the layout memo.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const expandedRef = useRef(expandedIds);
+  expandedRef.current = expandedIds;
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+
+  // Stable handlers so node-data identity stays steady across re-renders.
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
   const handleOpen = useCallback((id: string) => openRef.current(id), []);
+  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
 
   const { openMenu } = useIssueMenu();
   const menuRef = useRef(openMenu);
   menuRef.current = openMenu;
   const handleContextMenu = useCallback(
     (e: ReactMouseEvent, id: string) => {
-      const count = relatedCountRef.current.get(id) ?? 0;
-      const extra =
-        count > 0
-          ? {
-              label: collapsedRef.current.has(id) ? "Expand related" : "Collapse related",
-              icon: <Network className="size-4" />,
-              onSelect: () => toggleCollapsed(id),
-            }
-          : null;
+      const hasNeighbors = neighbors(id, indexRef.current).size > 0;
+      const extra = hasNeighbors
+        ? {
+            label: expandedRef.current.has(id) ? "Collapse neighbors" : "Expand neighbors",
+            icon: <Network className="size-4" />,
+            onSelect: () => toggleExpand(id),
+          }
+        : null;
       menuRef.current(e, id, extra);
     },
-    [toggleCollapsed],
+    [toggleExpand],
   );
 
-  // Does the graph have anything to show (independent of the related toggle)?
-  const hasContent = useMemo(
-    () => items.some((it) => it.children.length > 0 || it.relations.length > 0),
-    [items],
+  const resolveDisplay = useCallback(
+    (id: string): Display => {
+      const iss = index.byId.get(id);
+      if (iss) {
+        return {
+          identifier: iss.identifier,
+          title: iss.title,
+          stateColor: iss.stateColor,
+          mentionTarget: toMentionTarget(iss),
+        };
+      }
+      const ref = relRefById.get(id);
+      if (ref) {
+        return {
+          identifier: ref.relatedIdentifier ?? id,
+          title: ref.relatedTitle ?? id,
+          stateColor: ref.relatedStateColor ?? "#6B7280",
+          mentionTarget: mentionTargetFromRelation(ref),
+        };
+      }
+      return fallbackDisplay(id);
+    },
+    [index, relRefById],
   );
 
-  const base = useMemo(() => {
-    // Collect all node data; prefer IssueListItem over relation-ref.
-    const nodeMap = new Map<
-      string,
-      { identifier: string; title: string; stateColor: string; stateType: string; mentionTarget: MentionTarget; isRoot: boolean }
-    >();
+  const elements = useMemo(() => {
+    const visible = computeVisible(rootIds, expandedIds, index);
+    return buildGraphElements(visible, rootSet, index);
+  }, [rootIds, expandedIds, index, rootSet]);
 
-    const edgeList: Array<{
-      source: string;
-      target: string;
-      kind: EdgeKind;
-    }> = [];
+  const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  const { fitView } = useReactFlow();
+  const layoutToken = useRef(0);
 
-    // Round stand-in nodes for issues whose related issues are collapsed.
-    const connectorList: Array<{ id: string; sourceId: string; count: number }> = [];
-
-    const addNode = (
-      id: string,
-      identifier: string,
-      title: string,
-      stateColor: string,
-      stateType: string,
-      mentionTarget: MentionTarget,
-      isRoot: boolean,
-    ) => {
-      const existing = nodeMap.get(id);
-      // Prefer: week root > child > allIssues lookup > relation partial
-      if (!existing || (!existing.isRoot && isRoot)) {
-        nodeMap.set(id, { identifier, title, stateColor, stateType, mentionTarget, isRoot });
-      }
-    };
-
-    for (const item of items) {
-      const full = allIssuesById.get(item.issue.id) ?? item.issue;
-      addNode(
-        item.issue.id,
-        full.identifier,
-        full.title,
-        full.stateColor,
-        full.stateType,
-        toMentionTarget(full),
-        true,
-      );
-
-      // Child nodes + parent→child edges
-      for (const child of item.children) {
-        const fullChild = allIssuesById.get(child.id) ?? child;
-        addNode(
-          child.id,
-          fullChild.identifier,
-          fullChild.title,
-          fullChild.stateColor,
-          fullChild.stateType,
-          toMentionTarget(fullChild),
-          false,
-        );
-        edgeList.push({ source: item.issue.id, target: child.id, kind: SUB_ISSUE });
-      }
-
-      // Related issues: collapse into a connector node, or expand inline.
-      if (collapsed.has(item.issue.id)) {
-        if (item.relations.length > 0) {
-          const cid = `cc-${item.issue.id}`;
-          connectorList.push({ id: cid, sourceId: item.issue.id, count: item.relations.length });
-          edgeList.push({ source: item.issue.id, target: cid, kind: COLLAPSED });
-        }
-        continue;
-      }
-      for (const rel of item.relations) {
-        const fullRelated = allIssuesById.get(rel.relatedId);
-        const mentionTarget = fullRelated
-          ? toMentionTarget(fullRelated)
-          : mentionTargetFromRelation(rel);
-        addNode(
-          rel.relatedId,
-          fullRelated?.identifier ?? rel.relatedIdentifier ?? rel.relatedId,
-          fullRelated?.title ?? rel.relatedTitle ?? rel.relatedId,
-          fullRelated?.stateColor ?? rel.relatedStateColor ?? "#6B7280",
-          fullRelated?.stateType ?? rel.relatedStateType ?? "unstarted",
-          mentionTarget,
-          false,
-        );
-        edgeList.push({ source: rel.issueId, target: rel.relatedId, kind: edgeKind(rel.type) });
-      }
-    }
-
-    if (edgeList.length === 0) {
-      return { nodes: [], edges: [] };
-    }
-
-    // Two-tier columnar layout: roots in left column, others in right column.
-    const rootIds = new Set(items.map((it) => it.issue.id));
-    const leftIds: string[] = [];
-    const rightIds: string[] = [];
-
-    for (const id of nodeMap.keys()) {
-      if (rootIds.has(id)) {
-        leftIds.push(id);
-      } else {
-        rightIds.push(id);
-      }
-    }
-
-    const builtNodes: Node[] = [];
-
-    leftIds.forEach((id, idx) => {
-      const d = nodeMap.get(id)!;
-      builtNodes.push({
-        id,
-        type: "issueNode",
-        position: savedPositions.current[id] ?? { x: 0, y: idx * (NODE_HEIGHT + ROW_GAP) },
-        data: {
-          identifier: d.identifier,
-          title: d.title,
-          stateColor: d.stateColor,
-          issueId: id,
-          isRoot: d.isRoot,
-          mentionTarget: d.mentionTarget,
-          onOpen: handleOpen,
-          onContextMenu: handleContextMenu,
-        } satisfies IssueNodeData,
-        width: NODE_WIDTH,
-      });
-    });
-
-    // Right column: issue nodes first, then collapsed connector nodes.
-    let rightRow = 0;
-    rightIds.forEach((id) => {
-      const d = nodeMap.get(id)!;
-      builtNodes.push({
-        id,
-        type: "issueNode",
-        position: savedPositions.current[id] ?? { x: COL_GAP, y: rightRow++ * (NODE_HEIGHT + ROW_GAP) },
-        data: {
-          identifier: d.identifier,
-          title: d.title,
-          stateColor: d.stateColor,
-          issueId: id,
-          isRoot: d.isRoot,
-          mentionTarget: d.mentionTarget,
-          onOpen: handleOpen,
-          onContextMenu: handleContextMenu,
-        } satisfies IssueNodeData,
-        width: NODE_WIDTH,
-      });
-    });
-
-    connectorList.forEach((c) => {
-      builtNodes.push({
-        id: c.id,
-        type: "connectorNode",
-        position: savedPositions.current[c.id] ?? { x: COL_GAP, y: rightRow++ * (NODE_HEIGHT + ROW_GAP) },
-        data: {
-          count: c.count,
-          sourceId: c.sourceId,
-          onExpand: toggleCollapsed,
-        } satisfies ConnectorNodeData,
-      });
-    });
-
-    const builtEdges: Edge[] = edgeList.map((e, i) => ({
-      id: `e-${i}-${e.source}-${e.target}`,
-      source: e.source,
-      target: e.target,
-      type: "smoothstep",
-      label: e.kind.label || undefined,
-      animated: e.kind.animated ?? false,
-      markerEnd: { type: MarkerType.ArrowClosed, color: e.kind.color, width: 16, height: 16 },
-      style: {
-        stroke: e.kind.color,
-        strokeWidth: 1.5,
-        strokeOpacity: 0.8,
-        ...(e.kind.dashed ? { strokeDasharray: "5 4" } : {}),
-      },
-      labelStyle: { fontSize: 10, fontWeight: 500, fill: e.kind.color },
-      labelShowBg: Boolean(e.kind.label),
-      labelBgPadding: [6, 3] as [number, number],
-      labelBgBorderRadius: 4,
-      labelBgStyle: { fill: "var(--color-card)", fillOpacity: 0.95, stroke: e.kind.color, strokeOpacity: 0.35 },
-    }));
-
-    return { nodes: builtNodes, edges: builtEdges };
-  }, [items, allIssuesById, handleOpen, handleContextMenu, toggleCollapsed, collapsed]);
-
-  // Controlled state so nodes can be dragged (positions persist on change).
-  const [nodes, setNodes, onNodesChange] = useNodesState(base.nodes);
-  const [edges, setEdges, onEdgesChange] = useEdgesState(base.edges);
-  const [query, setQuery] = useState("");
-
-  // Re-seed when the underlying graph changes (e.g. week / data changes).
+  // Build React Flow elements + run elk layout whenever the visible set changes.
   useEffect(() => {
-    setNodes(base.nodes);
-    setEdges(base.edges);
-  }, [base, setNodes, setEdges]);
-
-  // Persist a node's position once a drag finishes.
-  const onNodeDragStop = useCallback<OnNodeDrag>((_e, node) => {
-    savedPositions.current[node.id] = node.position;
-    persistPositions(savedPositions.current);
-  }, []);
-
-  // Apply search highlight/dim flags on top of the (draggable) node state.
-  const term = query.trim().toLowerCase();
-  const displayNodes = useMemo(() => {
-    if (!term) return nodes;
-    return nodes.map((n) => {
-      const match = nodeMatches(n.data as IssueNodeData, term);
-      return { ...n, data: { ...n.data, highlight: match, dimmed: !match } };
+    const rfNodes: Node[] = elements.nodes.map((n) => {
+      const d = resolveDisplay(n.id);
+      return {
+        id: n.id,
+        type: "issueNode",
+        position: { x: 0, y: 0 },
+        data: {
+          identifier: d.identifier,
+          title: d.title,
+          stateColor: d.stateColor,
+          issueId: n.id,
+          isRoot: n.isRoot,
+          expanded: expandedIds.has(n.id),
+          hiddenCount: n.hiddenCount,
+          mentionTarget: d.mentionTarget,
+          onOpen: handleOpen,
+          onSelect: handleSelect,
+          onToggleExpand: toggleExpand,
+          onContextMenu: handleContextMenu,
+        } satisfies IssueNodeData,
+        width: 200,
+      };
     });
-  }, [nodes, term]);
 
-  // Empty state: nothing to graph (checked independent of the related toggle so
-  // collapsing related issues can't trap the user on the empty screen).
-  if (!hasContent) {
-    return (
-      <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
-        No dependencies this week
-      </div>
-    );
-  }
+    const rfEdges: Edge[] = elements.edges.map((e, i) => {
+      const kind = edgeKindFor(e.kind);
+      return {
+        id: `e-${i}-${e.source}-${e.target}-${e.kind}`,
+        source: e.source,
+        target: e.target,
+        type: "smoothstep",
+        label: kind.label || undefined,
+        animated: kind.animated ?? false,
+        markerEnd: { type: MarkerType.ArrowClosed, color: kind.color, width: 16, height: 16 },
+        style: {
+          stroke: kind.color,
+          strokeWidth: 1.5,
+          strokeOpacity: 0.8,
+          ...(kind.dashed ? { strokeDasharray: "5 4" } : {}),
+        },
+        labelStyle: { fontSize: 10, fontWeight: 500, fill: kind.color },
+        labelShowBg: Boolean(kind.label),
+        labelBgPadding: [6, 3] as [number, number],
+        labelBgBorderRadius: 4,
+        labelBgStyle: { fill: "var(--color-card)", fillOpacity: 0.95, stroke: kind.color, strokeOpacity: 0.35 },
+      };
+    });
+
+    setEdges(rfEdges);
+    const token = ++layoutToken.current;
+    void layoutGraph(rfNodes, rfEdges).then((positioned) => {
+      if (token !== layoutToken.current) return;
+      setNodes(positioned);
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+    });
+  }, [
+    elements,
+    resolveDisplay,
+    expandedIds,
+    handleOpen,
+    handleSelect,
+    toggleExpand,
+    handleContextMenu,
+    setNodes,
+    setEdges,
+    fitView,
+  ]);
+
+  const relayout = useCallback(() => {
+    const token = ++layoutToken.current;
+    void layoutGraph(nodes, edges).then((positioned) => {
+      if (token !== layoutToken.current) return;
+      setNodes(positioned);
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+    });
+  }, [nodes, edges, setNodes, fitView]);
+
+  // Search recenter on matches as the term changes.
+  const term = query.trim().toLowerCase();
+  useEffect(() => {
+    if (!term) return;
+    const matched = nodes
+      .filter((n) => nodeMatches(n.data as IssueNodeData, term))
+      .map((n) => ({ id: n.id }));
+    if (matched.length) fitView({ nodes: matched, duration: 400, padding: 0.4, maxZoom: 1.5 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [term]);
+
+  // Search highlight wins; otherwise selection drives the neighborhood focus.
+  const displayNodes = useMemo(() => {
+    if (term) {
+      return nodes.map((n) => {
+        const match = nodeMatches(n.data as IssueNodeData, term);
+        return { ...n, data: { ...n.data, highlight: match, dimmed: !match } };
+      });
+    }
+    if (selectedId) {
+      const nbrs = neighbors(selectedId, index);
+      return nodes.map((n) => {
+        const inFocus = n.id === selectedId || nbrs.has(n.id);
+        return { ...n, data: { ...n.data, highlight: n.id === selectedId, dimmed: !inFocus } };
+      });
+    }
+    return nodes;
+  }, [nodes, term, selectedId, index]);
 
   return (
     <div className="h-full min-h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
@@ -603,18 +459,55 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeDragStop={onNodeDragStop}
+        onPaneClick={() => setSelectedId(null)}
         nodeTypes={NODE_TYPES}
         nodesDraggable
-        fitView
-        fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.4}
+        minZoom={0.3}
         maxZoom={2}
         proOptions={{ hideAttribution: false }}
       >
-        <SearchPanel query={query} setQuery={setQuery} nodes={nodes} />
+        <Panel position="top-left">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search issues…"
+                className="h-7 w-48 rounded-md border border-border bg-card/90 pl-7 pr-6 text-xs text-foreground shadow-sm backdrop-blur placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setQuery("")}
+                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={relayout}
+              title="Re-layout"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+            >
+              <RotateCcw className="size-3.5" />
+              Re-layout
+            </button>
+          </div>
+        </Panel>
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
+        <MiniMap
+          pannable
+          zoomable
+          nodeColor={(n) => (n.data as IssueNodeData).stateColor}
+          nodeStrokeWidth={2}
+          className="!border !border-border !bg-card"
+          maskColor="rgba(0,0,0,0.5)"
+        />
         <Panel position="top-right">
           <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card/90 px-3 py-2 backdrop-blur">
             {LEGEND.map((k) => (
