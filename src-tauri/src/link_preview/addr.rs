@@ -10,8 +10,8 @@ pub fn is_public_ip(ip: IpAddr) -> bool {
         IpAddr::V6(v6) => {
             // Unwrap v4-mapped (::ffff:a.b.c.d) so an attacker can't smuggle a
             // private v4 through a v6 literal. Note: to_ipv4_mapped() only handles
-            // ::ffff:a.b.c.d; the v4-translated 64:ff9b:: range is blocked separately
-            // in is_public_v6 (the check there covers /32, conservatively broader than /96).
+            // ::ffff:a.b.c.d; the v4-translated 64:ff9b:: range is outside global-unicast
+            // 2000::/3 and is therefore rejected by the allowlist in is_public_v6.
             if let Some(mapped) = v6.to_ipv4_mapped() {
                 return is_public_v4(mapped);
             }
@@ -38,18 +38,22 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
 
 fn is_public_v6(ip: Ipv6Addr) -> bool {
     let seg = ip.segments();
-    !(ip.is_loopback()
-        || ip.is_unspecified()
-        || ip.is_multicast()
-        || (seg[0] & 0xfe00) == 0xfc00  // fc00::/7 unique-local
-        || (seg[0] & 0xffc0) == 0xfe80  // fe80::/10 link-local
-        || (seg[0] == 0x2001 && seg[1] == 0x0db8) // 2001:db8::/32 documentation
-        || (seg[0] == 0x0064 && seg[1] == 0xff9b) // 64:ff9b::/32 v4-translated (conservative /32 block)
-        || (seg[0] == 0x0100 && seg[1] == 0 && seg[2] == 0 && seg[3] == 0) // 0100::/64 discard-only
-        || (seg[0] == 0x2001 && (seg[1] & 0xfe00) == 0) // 2001::/23 IETF protocol assignments (Teredo etc.)
-        || (seg[0] == 0x2002)                            // 2002::/16 6to4
-        || (seg[0] == 0x3fff && (seg[1] & 0xf000) == 0) // 3fff::/20 documentation
-        || (seg[0] == 0x5f00)) // 5f00::/16 SRv6 SIDs
+    // SSRF allowlist: only assigned global-unicast space (2000::/3) can be
+    // public. Everything else — loopback, unspecified, multicast, link-local,
+    // ULA (fc00::/7), deprecated site-local (fec0::/10), the discard prefix,
+    // SRv6 (5f00::/16), NAT64 (64:ff9b::), and all currently unallocated
+    // ranges (e.g. 4000::/3) — falls outside 2000::/3 and is rejected here.
+    if (seg[0] & 0xe000) != 0x2000 {
+        return false;
+    }
+    // Exclude special-use sub-ranges that live inside 2000::/3.
+    !(
+        // 2001::/23 IETF protocol assignments (Teredo etc.) and 2001:db8::/32 documentation
+        (seg[0] == 0x2001 && ((seg[1] & 0xfe00) == 0 || seg[1] == 0x0db8))
+            || seg[0] == 0x2002 // 2002::/16 6to4
+            || (seg[0] == 0x3fff && (seg[1] & 0xf000) == 0)
+        // 3fff::/20 documentation
+    )
 }
 
 #[cfg(test)]
@@ -109,6 +113,8 @@ mod tests {
             "2002::1",          // 2002::/16 6to4 (RFC 3056)
             "3fff::1",          // 3fff::/20 documentation (RFC 9637)
             "5f00::1",          // 5f00::/16 SRv6 SIDs (RFC 9602)
+            "fec0::1",          // deprecated site-local (fec0::/10, outside 2000::/3)
+            "4000::1",          // unallocated (outside 2000::/3)
         ] {
             assert!(!is_public_ip(v6(s)), "{s} should be blocked");
         }
