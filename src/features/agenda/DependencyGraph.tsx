@@ -1,6 +1,6 @@
 import "@xyflow/react/dist/style.css";
 
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   Background,
@@ -9,10 +9,14 @@ import {
   Panel,
   Position,
   MarkerType,
+  useNodesState,
+  useEdgesState,
+  useReactFlow,
   type NodeTypes,
   type Node,
   type Edge,
 } from "@xyflow/react";
+import { Search, X } from "lucide-react";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
@@ -82,11 +86,19 @@ type IssueNodeData = {
   stateColor: string;
   issueId: string;
   isRoot: boolean;
+  /** Set while a search is active: highlighted match / dimmed non-match. */
+  highlight?: boolean;
+  dimmed?: boolean;
   mentionTarget: MentionTarget;
   onOpen: (id: string) => void;
 };
 
 const HANDLE_CLASS = "!size-1.5 !border !border-border !bg-muted-foreground/70";
+
+/** Whether a node matches the (already-lowercased, non-empty) search term. */
+function nodeMatches(data: IssueNodeData, term: string): boolean {
+  return data.identifier.toLowerCase().includes(term) || data.title.toLowerCase().includes(term);
+}
 
 // ── Custom node component ───────────────────────────────────────────────────
 
@@ -138,19 +150,29 @@ function IssueNode({ data }: { data: IssueNodeData }) {
         }
       }}
       className={cn(
-        "flex w-[200px] cursor-pointer flex-col gap-1 rounded-lg border bg-card px-2.5 py-1.5 text-foreground shadow-sm transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
-        data.isRoot ? "border-primary/40 ring-1 ring-primary/15" : "border-border",
+        "relative flex w-[200px] cursor-pointer flex-col gap-1 overflow-hidden rounded-lg border bg-card py-1.5 pl-3 pr-2.5 text-foreground shadow-sm transition-all hover:bg-accent focus-visible:outline-none",
+        data.highlight
+          ? "border-amber-400 ring-2 ring-amber-400"
+          : data.isRoot
+            ? "border-primary/40 ring-1 ring-primary/15"
+            : "border-border",
+        data.dimmed && "opacity-30",
       )}
     >
+      {/* Status color: left accent bar + faint full tint */}
+      <span
+        className="absolute inset-y-0 left-0 w-1"
+        style={{ backgroundColor: data.stateColor }}
+        aria-hidden
+      />
+      <span
+        className="pointer-events-none absolute inset-0 opacity-[0.08]"
+        style={{ backgroundColor: data.stateColor }}
+        aria-hidden
+      />
       <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
-      <div className="flex items-center gap-1.5">
-        <span
-          className="size-2 shrink-0 rounded-full"
-          style={{ backgroundColor: data.stateColor }}
-        />
-        <span className="truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
-      </div>
-      <span className="truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
+      <span className="relative truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
+      <span className="relative truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
       <Handle type="source" position={Position.Right} className={HANDLE_CLASS} />
     </div>
   );
@@ -159,6 +181,61 @@ function IssueNode({ data }: { data: IssueNodeData }) {
 const NODE_TYPES: NodeTypes = {
   issueNode: IssueNode as unknown as NodeTypes["issueNode"],
 };
+
+// ── Node search ──────────────────────────────────────────────────────────────
+
+/**
+ * In-canvas search box. Lifts the query to the parent (which highlights/dims
+ * nodes) and recenters the viewport on the matches as the term changes.
+ */
+function SearchPanel({
+  query,
+  setQuery,
+  nodes,
+}: {
+  query: string;
+  setQuery: (q: string) => void;
+  nodes: Node[];
+}) {
+  const rf = useReactFlow();
+  const term = query.trim().toLowerCase();
+
+  useEffect(() => {
+    if (!term) return;
+    const matched = nodes
+      .filter((n) => nodeMatches(n.data as IssueNodeData, term))
+      .map((n) => ({ id: n.id }));
+    if (matched.length) {
+      rf.fitView({ nodes: matched, duration: 400, padding: 0.4, maxZoom: 1.5 });
+    }
+    // Recenter only when the term changes, not on every drag.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [term]);
+
+  return (
+    <Panel position="top-left">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search issues…"
+          className="h-7 w-48 rounded-md border border-border bg-card/90 pl-7 pr-6 text-xs text-foreground shadow-sm backdrop-blur placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+        />
+        {query && (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => setQuery("")}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+      </div>
+    </Panel>
+  );
+}
 
 // ── Layout constants ────────────────────────────────────────────────────────
 
@@ -181,7 +258,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     [allIssues],
   );
 
-  const { nodes, edges } = useMemo(() => {
+  const base = useMemo(() => {
     // Collect all node data; prefer IssueListItem over relation-ref.
     const nodeMap = new Map<
       string,
@@ -337,8 +414,29 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     return { nodes: builtNodes, edges: builtEdges };
   }, [items, allIssuesById, onOpen]);
 
+  // Controlled state so nodes can be dragged (positions persist on change).
+  const [nodes, setNodes, onNodesChange] = useNodesState(base.nodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(base.edges);
+  const [query, setQuery] = useState("");
+
+  // Re-seed when the underlying graph changes (e.g. week / data changes).
+  useEffect(() => {
+    setNodes(base.nodes);
+    setEdges(base.edges);
+  }, [base, setNodes, setEdges]);
+
+  // Apply search highlight/dim flags on top of the (draggable) node state.
+  const term = query.trim().toLowerCase();
+  const displayNodes = useMemo(() => {
+    if (!term) return nodes;
+    return nodes.map((n) => {
+      const match = nodeMatches(n.data as IssueNodeData, term);
+      return { ...n, data: { ...n.data, highlight: match, dimmed: !match } };
+    });
+  }, [nodes, term]);
+
   // Empty state: no edges (subsumes the no-items case)
-  if (edges.length === 0) {
+  if (base.edges.length === 0) {
     return (
       <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
         No dependencies this week
@@ -349,8 +447,10 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
   return (
     <div className="h-full min-h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
       <ReactFlow
-        nodes={nodes}
+        nodes={displayNodes}
         edges={edges}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         nodeTypes={NODE_TYPES}
         nodesDraggable
         fitView
@@ -359,6 +459,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         maxZoom={2}
         proOptions={{ hideAttribution: false }}
       >
+        <SearchPanel query={query} setQuery={setQuery} nodes={nodes} />
         <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
         <Panel position="top-right">
