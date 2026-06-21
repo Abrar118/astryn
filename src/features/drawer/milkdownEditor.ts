@@ -18,6 +18,7 @@ import type { Ctx } from "@milkdown/ctx";
 import type { NodeSchema } from "@milkdown/transformer";
 import { descriptionImageView } from "./milkdownImageNode";
 import { descriptionCodeBlockView } from "./milkdownCodeBlock";
+import { descriptionPreviewView } from "./milkdownPreviewNode";
 import {
   descriptionSlash,
   descriptionTooltip,
@@ -37,12 +38,17 @@ import {
  * `descriptionCodeBlockView` renders a read-only `mermaid` block as a diagram
  * (and leaves the editable `<pre><code>` untouched otherwise); like the image
  * view it overrides only DOM rendering, so the markdown round-trips unchanged.
+ *
+ * `descriptionPreviewView` overrides only DOM rendering of standalone bare-URL
+ * paragraphs (predicate-gated) and never alters Markdown serialization, so
+ * round-trips are unchanged.
  */
 export const descriptionPlugins: unknown[] = [
   commonmark,
   gfm,
   descriptionImageView,
   descriptionCodeBlockView,
+  descriptionPreviewView,
   ...descriptionSlash,
   ...descriptionTooltip,
 ];
