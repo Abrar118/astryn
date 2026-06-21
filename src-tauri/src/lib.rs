@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod github;
 mod linear;
 mod link_preview;
 mod secrets;
