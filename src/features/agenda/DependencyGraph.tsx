@@ -15,6 +15,7 @@ import {
   type NodeTypes,
   type Node,
   type Edge,
+  type OnNodeDrag,
 } from "@xyflow/react";
 import { Search, X } from "lucide-react";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
@@ -244,6 +245,29 @@ const NODE_HEIGHT = 48;
 const ROW_GAP = 48;
 const COL_GAP = 360;
 
+// ── Position persistence ──────────────────────────────────────────────────────
+// Dragged positions survive reloads / re-seeds, keyed by issue id.
+
+const POSITIONS_KEY = "astryn:depgraph:positions";
+type XY = { x: number; y: number };
+
+function loadPositions(): Record<string, XY> {
+  try {
+    const raw = localStorage.getItem(POSITIONS_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, XY>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistPositions(map: Record<string, XY>) {
+  try {
+    localStorage.setItem(POSITIONS_KEY, JSON.stringify(map));
+  } catch {
+    /* storage unavailable — positions stay session-only */
+  }
+}
+
 // ── Main component ──────────────────────────────────────────────────────────
 
 type Props = {
@@ -257,6 +281,9 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     () => new Map(allIssues.map((i) => [i.id, i]),),
     [allIssues],
   );
+
+  // Loaded once; updated on drag-stop and read when seeding the layout.
+  const savedPositions = useRef<Record<string, XY>>(loadPositions());
 
   const base = useMemo(() => {
     // Collect all node data; prefer IssueListItem over relation-ref.
@@ -357,7 +384,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       builtNodes.push({
         id,
         type: "issueNode",
-        position: { x: 0, y: idx * (NODE_HEIGHT + ROW_GAP) },
+        position: savedPositions.current[id] ?? { x: 0, y: idx * (NODE_HEIGHT + ROW_GAP) },
         data: {
           identifier: d.identifier,
           title: d.title,
@@ -376,7 +403,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
       builtNodes.push({
         id,
         type: "issueNode",
-        position: { x: COL_GAP, y: idx * (NODE_HEIGHT + ROW_GAP) },
+        position: savedPositions.current[id] ?? { x: COL_GAP, y: idx * (NODE_HEIGHT + ROW_GAP) },
         data: {
           identifier: d.identifier,
           title: d.title,
@@ -425,6 +452,12 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
     setEdges(base.edges);
   }, [base, setNodes, setEdges]);
 
+  // Persist a node's position once a drag finishes.
+  const onNodeDragStop = useCallback<OnNodeDrag>((_e, node) => {
+    savedPositions.current[node.id] = node.position;
+    persistPositions(savedPositions.current);
+  }, []);
+
   // Apply search highlight/dim flags on top of the (draggable) node state.
   const term = query.trim().toLowerCase();
   const displayNodes = useMemo(() => {
@@ -451,6 +484,7 @@ export function DependencyGraph({ items, allIssues, onOpen }: Props) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
+        onNodeDragStop={onNodeDragStop}
         nodeTypes={NODE_TYPES}
         nodesDraggable
         fitView
