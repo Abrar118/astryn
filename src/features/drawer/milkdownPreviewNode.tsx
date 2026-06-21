@@ -82,9 +82,9 @@ function PreviewCard({ url }: { url: string }) {
 /**
  * Paragraph node view that renders a standalone bare-URL paragraph as a preview
  * card. Registered ONLY on the read-only display editor (see DescriptionEditor):
- * overriding the paragraph node view in an editable instance breaks splitBlock
- * (Enter), so the editable editor uses ProseMirror's stock paragraphs. The
- * `view.editable` guards are defensive — this view should never run editable.
+ * previews are a display-time affordance, and editing stays on stock paragraphs
+ * so the embed doesn't re-render/re-fetch per keystroke while a URL is typed.
+ * The `view.editable` guards are defensive — this view should never run editable.
  */
 export function createPreviewNodeView(): NodeViewConstructor {
   return (node: ProseMirrorNode, view: EditorView) => {

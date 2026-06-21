@@ -139,9 +139,11 @@ function MilkdownEditorInner({
         })
         .use(listener)
         .use(descriptionPlugins as MilkdownPlugin[])
-        // Preview cards override the paragraph node view, which breaks
-        // splitBlock (Enter) when editable. Register them ONLY on the
-        // read-only display editor; the editable editor uses stock paragraphs.
+        // Link-preview cards render only on the read-only/display editor.
+        // While editing, a standalone URL stays plain editable text — a
+        // deliberate UX choice so the embed doesn't re-render and re-fetch
+        // metadata on every keystroke as the URL is typed. (Canonical Markdown
+        // is unchanged either way; the card is pure presentation.)
         .use(editable ? [] : ([descriptionPreviewView] as unknown as MilkdownPlugin[]))
         .use(
           resolveMention

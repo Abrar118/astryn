@@ -39,9 +39,11 @@ import {
  * view it overrides only DOM rendering, so the markdown round-trips unchanged.
  *
  * NOTE: `descriptionPreviewView` (standalone bare-URL preview cards) is NOT in
- * this shared list. It overrides the paragraph node view, which interferes with
- * splitBlock (Enter) in an editable instance, so it is registered ONLY on the
- * read-only display editor (see DescriptionEditor's `.use(editable ? [] : …)`).
+ * this shared list. By design it is registered ONLY on the read-only display
+ * editor (see DescriptionEditor's `.use(editable ? [] : …)`): previews are a
+ * display affordance, and keeping the editable instance on stock paragraphs
+ * avoids re-rendering/re-fetching the embed on every keystroke while a URL is
+ * being typed.
  */
 export const descriptionPlugins: unknown[] = [
   commonmark,

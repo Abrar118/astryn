@@ -16,7 +16,7 @@ This increment includes:
 - Generic metadata preview cards for HTTP(S) URLs.
 - Automatic previews only for bare URLs that occupy an entire paragraph.
 - A selection-toolbar action that converts between a preview and a normal Markdown link.
-- Compact read-only cards and single-row edit-mode embeds.
+- Compact preview cards in the read-only/display view. **(Updated during implementation: previews are display-only — while editing, a standalone URL stays plain editable text. This avoids re-rendering/re-fetching the embed on every keystroke as a URL is typed; the inline editable single-row embed originally proposed below is intentionally not built.)**
 - Syntax highlighting for fenced code blocks.
 - An edit-mode language selector driven by the Markdown fence language.
 - A Copy action that copies only the code body.
@@ -45,15 +45,13 @@ Add a focused Milkdown/ProseMirror view for standalone bare-URL paragraphs. It o
 **Detection / schema mechanism.** A bare URL in commonmark is plain text inside an ordinary `paragraph` node — there is no node type for a `$view` to attach to, unlike every existing node view (registered via `$view` in `descriptionPlugins`). The preview is therefore driven by a **paragraph node view with a predicate**, not a new schema node:
 
 - A predicate `isStandaloneUrlParagraph(node)` returns true only when the paragraph's sole content is a single text node whose entire trimmed value is one valid HTTP(S) URL and which carries **no `link` mark** (a Markdown link keeps its mark and stays a link).
-- The paragraph node view renders the preview presentation when the predicate holds and `!view.editable` (read-only card) or when editable (single-row embed); otherwise it falls back to default paragraph rendering with an editable `contentDOM`.
+- The paragraph node view is registered **only on the read-only display editor**. It renders the preview card when the predicate holds (and `!view.editable`); otherwise it falls back to default paragraph rendering. The editable editor keeps ProseMirror's stock paragraphs (no override), so editing/typing is unaffected.
 - Persistence is unchanged: the node remains a normal paragraph containing bare-URL text, so the existing commonmark serializer emits the bare URL verbatim. No custom parser/serializer is added. A round-trip test must confirm the bare URL is not auto-linked or escaped on serialize.
 - The read-only Milkdown view (non-editable mode) is the primary display renderer; the react-markdown path (`markdownComponents.tsx`) is only the `EditorErrorBoundary` fallback and is out of scope — in that degraded crash state the URL renders as a plain link, which is acceptable.
 
-- Read-only mode renders a compact card capped at 96 px high.
-- Edit mode renders a single-row preview with favicon or site marker, title, and domain so embeds do not make caret movement or document spacing awkward.
-- No additional blank paragraph or margin block is inserted before or after the embed.
-- The edit-mode row behaves as one selectable block. Enter or double-click exposes the original URL for editing.
-- Read-only activation uses Astryn's existing external-link handler; the webview never navigates directly.
+- The read-only/display view renders a compact card capped at 96 px high.
+- While editing, a standalone URL is shown as plain editable text (no embed) — see the Scope note above; the card appears once the description is displayed read-only.
+- Card activation (read-only) uses Astryn's existing external-link handler; the webview never navigates directly.
 - A loading card appears immediately while metadata is requested.
 - A failed or offline request falls back to a compact clickable row showing the original URL.
 
@@ -182,7 +180,7 @@ Use the approved compact treatment:
 
 - Bare standalone URL detection versus standard Markdown links and inline URLs.
 - Standalone paste in an empty paragraph versus paste inside prose.
-- Preview loading, success, URL fallback, cache reuse, read-only activation, and edit-mode collapsed rendering.
+- Preview loading, success, URL fallback, cache reuse, and read-only activation.
 - Selection-toolbar eligibility and both conversion directions.
 - Conversion participates in undo/redo and emits canonical Markdown.
 - A standalone bare URL round-trips through serialize without gaining a `link` mark or escaping.
