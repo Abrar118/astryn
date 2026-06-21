@@ -31,7 +31,7 @@ export function DependencyGraphPage() {
   const groups = viewerId
     ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: win })
     : [];
-  const items = groups.flatMap((g) => g.items);
+  const rootIds = groups.flatMap((g) => g.items.map((it) => it.issue.id));
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -40,12 +40,17 @@ export function DependencyGraphPage() {
         <div className="flex flex-col min-w-0">
           <span className="text-sm font-semibold leading-tight">Dependencies</span>
           <span className="text-[11px] text-muted-foreground leading-tight">
-            This week's blocks, sub-issues &amp; related issues
+            This week's issues — expand a node to explore its neighbors
           </span>
         </div>
       </header>
       <div className="min-h-0 flex-1 p-4">
-        <DependencyGraph items={items} allIssues={issues ?? []} onOpen={open} />
+        <DependencyGraph
+          rootIds={rootIds}
+          issues={issues ?? []}
+          relations={relations ?? []}
+          onOpen={open}
+        />
       </div>
     </div>
   );
