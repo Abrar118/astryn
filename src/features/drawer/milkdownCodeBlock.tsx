@@ -109,14 +109,17 @@ export function createCodeBlockNodeView(): NodeViewConstructor {
     }
 
     // Edit mode (non-mermaid): editable <pre><code> with a header + language
-    // selector. The <code> stays the contentDOM so editing is unchanged; the
-    // header is non-editable chrome.
+    // selector. The <code> stays the contentDOM so editing is unchanged. Do NOT
+    // set contenteditable on the wrapper or the <pre>/<code> — ProseMirror owns
+    // the contentDOM's editability. Only the header is marked non-editable;
+    // manually nesting contenteditable=true inside =false corrupts PM's
+    // selection/DOM handling (backspace/Enter break, clicks go read-only).
     const wrapper = document.createElement("div");
     wrapper.className = "md-codeblock md-codeblock-edit";
-    wrapper.setAttribute("contenteditable", "false");
 
     const header = document.createElement("div");
     header.className = "md-codeblock-header";
+    header.setAttribute("contenteditable", "false");
     const select = document.createElement("select");
     select.className = "md-codeblock-select";
     const language = node.attrs.language as string | undefined;
@@ -142,7 +145,6 @@ export function createCodeBlockNodeView(): NodeViewConstructor {
     const code = document.createElement("code");
     if (language) code.setAttribute("data-language", language);
     pre.appendChild(code);
-    pre.setAttribute("contenteditable", "true");
 
     wrapper.appendChild(header);
     wrapper.appendChild(pre);
