@@ -18,6 +18,7 @@ import {
   configureDescriptionTooltip,
 } from "./milkdownMenus";
 import { descriptionMentionPlugin } from "./milkdownMention";
+import { descriptionPreviewView } from "./milkdownPreviewNode";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 
 /**
@@ -138,6 +139,10 @@ function MilkdownEditorInner({
         })
         .use(listener)
         .use(descriptionPlugins as MilkdownPlugin[])
+        // Preview cards override the paragraph node view, which breaks
+        // splitBlock (Enter) when editable. Register them ONLY on the
+        // read-only display editor; the editable editor uses stock paragraphs.
+        .use(editable ? [] : ([descriptionPreviewView] as unknown as MilkdownPlugin[]))
         .use(
           resolveMention
             ? descriptionMentionPlugin(resolveMention, (href) =>

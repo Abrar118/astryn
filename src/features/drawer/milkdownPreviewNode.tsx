@@ -24,7 +24,13 @@ function openExternal(href: string) {
   if (safe) void openUrl(safe).catch(() => undefined);
 }
 
-function PreviewCard({ url, editable }: { url: string; editable: boolean }) {
+/**
+ * Read-only preview card for a standalone bare URL. Fetches metadata via the
+ * Rust command (presentation only — never dispatches a ProseMirror transaction)
+ * and opens the link through the external-link handler (the webview never
+ * navigates directly). Shown only on the read-only display editor.
+ */
+function PreviewCard({ url }: { url: string }) {
   const [data, setData] = useState<LinkPreview | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -56,15 +62,6 @@ function PreviewCard({ url, editable }: { url: string; editable: boolean }) {
   }
 
   const title = data.title ?? host;
-  if (editable) {
-    return (
-      <div className="md-preview-row">
-        {data.imageDataUrl && <img className="md-preview-fav" src={data.imageDataUrl} alt="" />}
-        <span className="md-preview-title">{title}</span>
-        <span className="md-preview-host">{host}</span>
-      </div>
-    );
-  }
   return (
     <button
       type="button"
@@ -82,72 +79,47 @@ function PreviewCard({ url, editable }: { url: string; editable: boolean }) {
   );
 }
 
+/**
+ * Paragraph node view that renders a standalone bare-URL paragraph as a preview
+ * card. Registered ONLY on the read-only display editor (see DescriptionEditor):
+ * overriding the paragraph node view in an editable instance breaks splitBlock
+ * (Enter), so the editable editor uses ProseMirror's stock paragraphs. The
+ * `view.editable` guards are defensive — this view should never run editable.
+ */
 export function createPreviewNodeView(): NodeViewConstructor {
   return (node: ProseMirrorNode, view: EditorView) => {
-    const isPreview = () => classifyUrlParagraph(readParagraph(node)) === "preview";
+    const isPreview =
+      !view.editable && classifyUrlParagraph(readParagraph(node)) === "preview";
 
-    if (!isPreview()) {
-      // Default paragraph: editable contentDOM, no custom UI. The `update`
-      // hook is REQUIRED: without it ProseMirror recreates the node view on
-      // every change, tearing down the DOM the selection lives in and breaking
-      // typing/Enter for all normal paragraphs. Keep the view while the node
-      // stays a non-preview paragraph; return false only when it becomes a
-      // preview so a fresh node view picks up the preview branch.
+    if (!isPreview) {
+      // Non-preview (or editable): default paragraph rendering.
       const p = document.createElement("p");
       return {
         dom: p,
         contentDOM: p,
-        update(updated: ProseMirrorNode) {
-          if (updated.type !== node.type) return false;
-          return classifyUrlParagraph(readParagraph(updated)) !== "preview";
-        },
+        update: (updated: ProseMirrorNode) =>
+          updated.type === node.type &&
+          !(!view.editable && classifyUrlParagraph(readParagraph(updated)) === "preview"),
       };
     }
 
-    const url = readParagraph(node).text.trim();
-
-    if (!view.editable) {
-      // Read-only: opaque presentation card, no contentDOM.
-      const dom = document.createElement("div");
-      dom.setAttribute("data-milkdown-preview", "");
-      const root = createRoot(dom);
-      root.render(<PreviewCard url={url} editable={false} />);
-      return {
-        dom,
-        ignoreMutation: () => true,
-        update(updated: ProseMirrorNode) {
-          if (updated.type !== node.type) return false;
-          if (classifyUrlParagraph(readParagraph(updated)) !== "preview") return false;
-          root.render(<PreviewCard url={readParagraph(updated).text.trim()} editable={false} />);
-          return true;
-        },
-        destroy() { root.unmount(); },
-      };
-    }
-
-    // Edit mode: single-row chrome + an editable contentDOM holding the URL so
-    // the original URL is always editable inline (Enter/typing edits it).
+    // Read-only preview: opaque presentation card, no contentDOM.
     const dom = document.createElement("div");
-    dom.className = "md-preview-edit";
-    const chrome = document.createElement("div");
-    chrome.setAttribute("contenteditable", "false");
-    const root = createRoot(chrome);
-    root.render(<PreviewCard url={url} editable />);
-    const content = document.createElement("p");
-    content.className = "md-preview-edit-url";
-    dom.appendChild(chrome);
-    dom.appendChild(content);
+    dom.setAttribute("data-milkdown-preview", "");
+    const root = createRoot(dom);
+    root.render(<PreviewCard url={readParagraph(node).text.trim()} />);
     return {
       dom,
-      contentDOM: content,
-      ignoreMutation: (m) => !content.contains(m.target as Node),
+      ignoreMutation: () => true,
       update(updated: ProseMirrorNode) {
         if (updated.type !== node.type) return false;
-        if (classifyUrlParagraph(readParagraph(updated)) !== "preview") return false;
-        root.render(<PreviewCard url={readParagraph(updated).text.trim()} editable />);
+        if (view.editable || classifyUrlParagraph(readParagraph(updated)) !== "preview") return false;
+        root.render(<PreviewCard url={readParagraph(updated).text.trim()} />);
         return true;
       },
-      destroy() { root.unmount(); },
+      destroy() {
+        root.unmount();
+      },
     };
   };
 }
