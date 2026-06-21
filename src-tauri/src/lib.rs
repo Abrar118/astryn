@@ -96,7 +96,9 @@ pub fn run() {
             commands::github::set_github_token,
             commands::github::clear_github_token,
             commands::github::get_github_status,
-            commands::github::test_github_connection
+            commands::github::test_github_connection,
+            commands::github::sync_github_prs,
+            commands::github::list_github_prs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
