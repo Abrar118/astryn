@@ -50,6 +50,7 @@ pub fn run() {
                         std::time::Duration::from_secs(600),
                     ),
                 ),
+                link_preview_inflight: std::sync::Mutex::new(std::collections::HashMap::new()),
             });
             Ok(())
         })
