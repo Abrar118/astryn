@@ -7,6 +7,8 @@ const hooks = vi.hoisted(() => ({
   useGithubStatus: vi.fn(),
   useGithubPrs: vi.fn(),
   useGithubSync: vi.fn(),
+  useGithubContributions: vi.fn(),
+  useGithubContributionsSync: vi.fn(),
 }));
 const setActiveView = vi.hoisted(() => vi.fn());
 const refetch = vi.hoisted(() => vi.fn());
@@ -31,6 +33,8 @@ function setup(status: unknown, prs: GithubPr[] = [], meta: unknown[] = [], sync
   hooks.useGithubStatus.mockReturnValue({ data: status });
   hooks.useGithubPrs.mockReturnValue({ data: { prs, meta } });
   hooks.useGithubSync.mockReturnValue({ data: undefined, isError: false, refetch, ...(sync as object) });
+  hooks.useGithubContributions.mockReturnValue({ data: null });
+  hooks.useGithubContributionsSync.mockReturnValue({ data: undefined });
 }
 
 describe("PrsPage", () => {

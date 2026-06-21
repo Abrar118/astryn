@@ -15,6 +15,7 @@ import {
   deleteIssue,
   addReaction,
   errorText,
+  getGithubContributions,
   getGithubStatus,
   getIssueDetail,
   getMe,
@@ -30,6 +31,7 @@ import {
   listUsers,
   listWorkflowStates,
   removeReaction,
+  syncGithubContributions,
   syncGithubPrs,
   syncIssues,
   updateComment,
@@ -562,8 +564,34 @@ export function useGithubSync(enabled: boolean) {
   });
 }
 
+export function useGithubContributions() {
+  return useQuery({ queryKey: ["github-contributions"], queryFn: getGithubContributions });
+}
+
+/** Background refresh of the contribution calendar; mirrors useGithubSync. */
+export function useGithubContributionsSync(enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["github-contributions-sync"],
+    enabled,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const contributions = await syncGithubContributions();
+      await qc.invalidateQueries({ queryKey: ["github-contributions"] });
+      return contributions;
+    },
+  });
+}
+
 export function clearGithubQueries(qc: QueryClient) {
-  for (const key of [["github-status"], ["github-prs"], ["github-sync"]]) {
+  for (const key of [
+    ["github-status"],
+    ["github-prs"],
+    ["github-sync"],
+    ["github-contributions"],
+    ["github-contributions-sync"],
+  ]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }

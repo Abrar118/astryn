@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use crate::github::prs::ParsedPr;
 
 pub const GITHUB_LOGIN_KEY: &str = "github_login";
+pub const GITHUB_CONTRIBUTIONS_KEY: &str = "github_contributions";
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -105,8 +106,9 @@ pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM github_sync_meta")
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM settings WHERE key = ?1")
+    sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2)")
         .bind(GITHUB_LOGIN_KEY)
+        .bind(GITHUB_CONTRIBUTIONS_KEY)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -119,6 +121,16 @@ pub async fn save_github_login(pool: &SqlitePool, login: &str) -> Result<(), sql
 
 pub async fn load_github_login(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
     crate::db::load_setting(pool, GITHUB_LOGIN_KEY).await
+}
+
+/// The contribution calendar is cached as a JSON blob in `settings` (one row),
+/// so it survives restart (offline-first) without a dedicated table.
+pub async fn save_contributions_json(pool: &SqlitePool, json: &str) -> Result<(), sqlx::Error> {
+    crate::db::save_setting(pool, GITHUB_CONTRIBUTIONS_KEY, json).await
+}
+
+pub async fn load_contributions_json(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
+    crate::db::load_setting(pool, GITHUB_CONTRIBUTIONS_KEY).await
 }
 
 pub async fn list_prs(pool: &SqlitePool) -> Result<Vec<PrRow>, sqlx::Error> {

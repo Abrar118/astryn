@@ -370,3 +370,14 @@ export const testGithubConnection = (): Promise<GitHubStatus> =>
 export const syncGithubPrs = (): Promise<BucketSyncResult[]> => invoke("sync_github_prs");
 
 export const listGithubPrs = (): Promise<PrDashboard> => invoke("list_github_prs");
+
+/** One day of the GitHub contribution calendar. `weekday`: 0 = Sun … 6 = Sat. */
+export type ContribDay = { date: string; count: number; weekday: number };
+/** The viewer's contribution calendar: total + weeks (oldest→newest, may be partial at edges). */
+export type Contributions = { total: number; weeks: ContribDay[][] };
+
+export const getGithubContributions = (): Promise<Contributions | null> =>
+  invoke("get_github_contributions");
+
+export const syncGithubContributions = (): Promise<Contributions> =>
+  invoke("sync_github_contributions");

@@ -1,45 +1,31 @@
-import type { GithubPr } from "@/lib/commands";
-import { addDays, weekWindow } from "@/lib/dates";
+import type { Contributions, GithubPr } from "@/lib/commands";
 
 export type PrHeatCell = { date: string; count: number };
-/** 7 cells in Sun→Sat order. */
+/** 7 cells in Sun→Sat order (empty padded slots have an empty date). */
 export type PrHeatWeek = { cells: PrHeatCell[] };
+
+/**
+ * Map the GitHub contribution calendar to fixed 7-row week columns, placing each
+ * day at its weekday so partial edge weeks stay aligned (missing slots render
+ * empty). Weeks stay in GitHub's oldest→newest order.
+ */
+export function contributionsToWeeks(contributions: Contributions | null | undefined): PrHeatWeek[] {
+  if (!contributions) return [];
+  return contributions.weeks.map((week) => {
+    const cells: PrHeatCell[] = Array.from({ length: 7 }, () => ({ date: "", count: 0 }));
+    for (const day of week) {
+      const i = day.weekday >= 0 && day.weekday <= 6 ? day.weekday : 0;
+      cells[i] = { date: day.date, count: day.count };
+    }
+    return { cells };
+  });
+}
 
 /** Distinct PRs by id (a PR can appear in several buckets). */
 function uniqueById(prs: GithubPr[]): GithubPr[] {
   const map = new Map<string, GithubPr>();
   for (const pr of prs) if (!map.has(pr.id)) map.set(pr.id, pr);
   return [...map.values()];
-}
-
-/**
- * A GitHub-style contribution grid of PR activity: distinct PRs counted on the
- * day they were last updated, across the trailing `weeksBack` Sunday-started
- * weeks (oldest→newest), anchored to the Asia/Dhaka calendar like the rest of
- * the app.
- */
-export function buildPrHeatmap(
-  prs: GithubPr[],
-  opts: { now: Date; weeksBack: number },
-): PrHeatWeek[] {
-  const countByDate = new Map<string, number>();
-  for (const pr of uniqueById(prs)) {
-    if (!pr.updatedAt) continue;
-    const date = pr.updatedAt.slice(0, 10);
-    countByDate.set(date, (countByDate.get(date) ?? 0) + 1);
-  }
-
-  const weeks: PrHeatWeek[] = [];
-  for (let offset = -opts.weeksBack; offset <= 0; offset++) {
-    const { weekStart } = weekWindow(opts.now, offset);
-    const cells: PrHeatCell[] = [];
-    for (let day = 0; day < 7; day++) {
-      const date = addDays(weekStart, day);
-      cells.push({ date, count: countByDate.get(date) ?? 0 });
-    }
-    weeks.push({ cells });
-  }
-  return weeks;
 }
 
 export type PrStats = {

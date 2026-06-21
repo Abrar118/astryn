@@ -6,6 +6,7 @@ use tauri::State;
 
 use super::{AppState, CmdError};
 use crate::db::github as gdb;
+use crate::github::contributions::{contributions_query_body, parse_contributions, Contributions};
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
 };
@@ -315,6 +316,58 @@ mod tests {
         assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
         assert!(list_github_prs_logic(&pool).await.unwrap().prs.is_empty());
     }
+
+    fn sample_contributions() -> Contributions {
+        Contributions {
+            total: 2125,
+            weeks: vec![vec![crate::github::contributions::ContribDay {
+                date: "2025-06-15".into(),
+                count: 3,
+                weekday: 0,
+            }]],
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_contributions_stores_and_returns() {
+        let (_d, pool) = pool().await;
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+        let out = sync_github_contributions_logic(creds, &pool, &gen, |_auth| async {
+            Ok(sample_contributions())
+        })
+        .await
+        .unwrap();
+        assert_eq!(out.total, 2125);
+        // Persisted and readable offline.
+        let cached = get_github_contributions_logic(&pool)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(cached, sample_contributions());
+    }
+
+    #[tokio::test]
+    async fn get_contributions_is_none_before_sync() {
+        let (_d, pool) = pool().await;
+        assert_eq!(get_github_contributions_logic(&pool).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn sync_contributions_aborts_on_generation_change() {
+        let (_d, pool) = pool().await;
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+        let result = sync_github_contributions_logic(creds, &pool, &gen, |_auth| {
+            gen.fetch_add(1, Ordering::SeqCst);
+            async { Ok(sample_contributions()) }
+        })
+        .await;
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+        assert_eq!(get_github_contributions_logic(&pool).await.unwrap(), None);
+    }
 }
 
 use super::GITHUB_TOKEN_ACCOUNT;
@@ -466,6 +519,80 @@ pub async fn sync_github_prs(
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
     list_github_prs_logic(&state.pool).await
+}
+
+/// Offline read of the cached contribution calendar (`None` until first sync).
+pub async fn get_github_contributions_logic(
+    pool: &SqlitePool,
+) -> Result<Option<Contributions>, CmdError> {
+    match gdb::load_contributions_json(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?
+    {
+        Some(json) => Ok(Some(
+            serde_json::from_str(&json).map_err(|_| CmdError::Internal)?,
+        )),
+        None => Ok(None),
+    }
+}
+
+pub async fn sync_github_contributions_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    pool: &SqlitePool,
+    generation: &AtomicU64,
+    fetch: F,
+) -> Result<Contributions, CmdError>
+where
+    F: FnOnce(String) -> Fut,
+    Fut: std::future::Future<Output = Result<Contributions, GitHubError>>,
+{
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+    let contribs = fetch(auth).await?;
+    // Abort if the credential changed mid-fetch (token swap) — write nothing.
+    if generation.load(Ordering::SeqCst) != gen0 {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    let json = serde_json::to_string(&contribs).map_err(|_| CmdError::Internal)?;
+    gdb::save_contributions_json(pool, &json)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(contribs)
+}
+
+async fn fetch_contributions(
+    client: &crate::github::GitHubClient,
+    auth: String,
+) -> Result<Contributions, GitHubError> {
+    let data = client.graphql(&auth, contributions_query_body()).await?;
+    parse_contributions(&data)
+}
+
+#[tauri::command]
+pub async fn get_github_contributions(
+    state: State<'_, AppState>,
+) -> Result<Option<Contributions>, CmdError> {
+    get_github_contributions_logic(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn sync_github_contributions(
+    state: State<'_, AppState>,
+) -> Result<Contributions, CmdError> {
+    let _g = state.github_lock.lock().await;
+    let client = state.github.clone();
+    sync_github_contributions_logic(
+        state.github_credentials.clone(),
+        &state.pool,
+        &state.github_generation,
+        move |auth| async move { fetch_contributions(&client, auth).await },
+    )
+    .await
 }
 
 #[derive(Serialize, Debug, PartialEq)]

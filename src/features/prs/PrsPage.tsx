@@ -10,13 +10,17 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
-import { useGithubPrs, useGithubStatus, useGithubSync } from "@/lib/queries";
-import type { GithubPr, GithubSyncMeta, PrBucket } from "@/lib/commands";
+import {
+  useGithubContributions,
+  useGithubContributionsSync,
+  useGithubPrs,
+  useGithubStatus,
+  useGithubSync,
+} from "@/lib/queries";
+import type { Contributions, GithubPr, GithubSyncMeta, PrBucket } from "@/lib/commands";
 import { PrRow } from "./PrRow";
 import { PrHeatMap } from "./PrHeatMap";
-import { buildPrHeatmap, prStats, type PrStats } from "./prActivity";
-
-const HEATMAP_WEEKS = 17; // ~4 months — recent, meaningful, comfortably sized cells
+import { contributionsToWeeks, prStats, type PrStats } from "./prActivity";
 
 const SECTIONS: { bucket: PrBucket; title: string; empty: string; icon: LucideIcon; tint: string }[] = [
   { bucket: "needs_review", title: "Needs my review", empty: "Nothing awaiting your review.", icon: Eye, tint: "text-indigo-400" },
@@ -44,15 +48,24 @@ function MetricTile({ value, label, Icon, tint }: { value: number; label: string
   );
 }
 
-function ActivityCard({ prs, stats }: { prs: GithubPr[]; stats: PrStats }) {
-  const weeks = buildPrHeatmap(prs, { now: new Date(), weeksBack: HEATMAP_WEEKS });
+function ActivityCard({
+  contributions,
+  stats,
+}: {
+  contributions: Contributions | null | undefined;
+  stats: PrStats;
+}) {
+  const weeks = contributionsToWeeks(contributions);
+  const total = contributions?.total ?? 0;
   return (
     <section className="rounded-xl border border-border/60 bg-card p-5 shadow-sm">
       <div className="flex flex-col gap-5 lg:flex-row lg:items-stretch">
         <div className="flex min-w-0 flex-1 flex-col">
           <div className="mb-3 flex items-baseline justify-between">
             <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">Activity</p>
-            <p className="text-[11px] text-muted-foreground">PRs updated · last 4 months</p>
+            <p className="text-[11px] text-muted-foreground">
+              {total.toLocaleString()} contributions · last year
+            </p>
           </div>
           <PrHeatMap weeks={weeks} />
         </div>
@@ -118,7 +131,9 @@ export function PrsPage() {
   const { data: status } = useGithubStatus();
   const connected = status?.state === "connected" || status?.state === "unverified";
   const { data: dashboard } = useGithubPrs();
+  const { data: contributions } = useGithubContributions();
   const sync = useGithubSync(connected);
+  useGithubContributionsSync(connected);
 
   if (status?.state === "not_configured") {
     return (
@@ -166,7 +181,7 @@ export function PrsPage() {
       </header>
 
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-6">
-        <ActivityCard prs={prs} stats={stats} />
+        <ActivityCard contributions={contributions} stats={stats} />
         {SECTIONS.map((s) => (
           <Section
             key={s.bucket}

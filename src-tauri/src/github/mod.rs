@@ -1,3 +1,4 @@
+pub mod contributions;
 pub mod prs;
 
 use serde_json::Value;

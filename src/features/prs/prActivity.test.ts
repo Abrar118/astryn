@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { GithubPr } from "@/lib/commands";
-import { buildPrHeatmap, prStats } from "./prActivity";
+import type { Contributions, GithubPr } from "@/lib/commands";
+import { contributionsToWeeks, prStats } from "./prActivity";
 
 function pr(over: Partial<GithubPr> & Pick<GithubPr, "id" | "bucket">): GithubPr {
   return {
@@ -11,31 +11,29 @@ function pr(over: Partial<GithubPr> & Pick<GithubPr, "id" | "bucket">): GithubPr
   };
 }
 
-const NOW = new Date("2026-06-22T12:00:00Z");
-
-describe("buildPrHeatmap", () => {
-  it("returns weeksBack+1 weeks of 7 cells each", () => {
-    const weeks = buildPrHeatmap([], { now: NOW, weeksBack: 4 });
-    expect(weeks).toHaveLength(5);
-    expect(weeks.every((w) => w.cells.length === 7)).toBe(true);
+describe("contributionsToWeeks", () => {
+  it("returns empty for null contributions", () => {
+    expect(contributionsToWeeks(null)).toEqual([]);
   });
 
-  it("counts each in-window PR once on its updated date", () => {
-    const weeks = buildPrHeatmap(
-      [pr({ id: "o/r#1", bucket: "mine" }), pr({ id: "o/r#2", bucket: "mine" })],
-      { now: NOW, weeksBack: 4 },
-    );
-    const total = weeks.flatMap((w) => w.cells).reduce((n, c) => n + c.count, 0);
-    expect(total).toBe(2);
-  });
-
-  it("dedups a PR that appears in multiple buckets", () => {
-    const weeks = buildPrHeatmap(
-      [pr({ id: "o/r#1", bucket: "needs_review" }), pr({ id: "o/r#1", bucket: "mine" })],
-      { now: NOW, weeksBack: 4 },
-    );
-    const total = weeks.flatMap((w) => w.cells).reduce((n, c) => n + c.count, 0);
-    expect(total).toBe(1);
+  it("pads each week to 7 cells, placing days by weekday", () => {
+    const contributions: Contributions = {
+      total: 5,
+      weeks: [
+        // Partial first week: only Tue(2) and Wed(3) present.
+        [
+          { date: "2025-06-03", count: 2, weekday: 2 },
+          { date: "2025-06-04", count: 3, weekday: 3 },
+        ],
+      ],
+    };
+    const weeks = contributionsToWeeks(contributions);
+    expect(weeks).toHaveLength(1);
+    expect(weeks[0].cells).toHaveLength(7);
+    // Sun(0)/Mon(1) padded empty; Tue(2)/Wed(3) carry data.
+    expect(weeks[0].cells[0]).toEqual({ date: "", count: 0 });
+    expect(weeks[0].cells[2]).toEqual({ date: "2025-06-03", count: 2 });
+    expect(weeks[0].cells[3]).toEqual({ date: "2025-06-04", count: 3 });
   });
 });
 

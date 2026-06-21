@@ -23,7 +23,7 @@ function cellBg(count: number, maxCount: number): string | undefined {
   return `rgba(99, 102, 241, ${opacity})`;
 }
 
-/** A non-interactive contribution grid of PR activity (PRs updated per day). */
+/** A non-interactive GitHub-style contribution grid (contributions per day). */
 export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
   const maxCount = Math.max(0, ...weeks.flatMap((w) => w.cells.map((c) => c.count)));
 
@@ -46,17 +46,22 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
         {/* Week columns — flex to fill width, cells stay square */}
         <div className="flex min-w-0 flex-1 gap-[3px]">
           {weeks.map((week, weekIdx) => {
-            const thisMonth = monthOf(week.cells[0]?.date ?? "");
-            const prevMonth = weekIdx === 0 ? null : monthOf(weeks[weekIdx - 1]?.cells[0]?.date ?? "");
-            const showMonth = weekIdx === 0 || thisMonth !== prevMonth;
+            const firstDate = (cells: PrHeatCell[]) => cells.find((c) => c.date)?.date ?? "";
+            const thisMonth = monthOf(firstDate(week.cells));
+            const prevMonth = weekIdx === 0 ? null : monthOf(firstDate(weeks[weekIdx - 1]?.cells ?? []));
+            const showMonth = thisMonth !== "" && (weekIdx === 0 || thisMonth !== prevMonth);
             return (
               <div key={weekIdx} className="flex min-w-0 flex-1 flex-col gap-[3px]">
                 <span className="h-[14px] truncate text-center text-[9px] leading-none text-muted-foreground">
                   {showMonth ? thisMonth : ""}
                 </span>
                 {week.cells.map((cell: PrHeatCell, dayIdx) => {
+                  // Empty padded slot (partial edge week) — purely decorative.
+                  if (!cell.date) {
+                    return <span key={dayIdx} aria-hidden className="aspect-square w-full rounded-[2px]" />;
+                  }
                   const bg = cellBg(cell.count, maxCount);
-                  const label = `${cell.count} PR${cell.count !== 1 ? "s" : ""} updated · ${formatDate(cell.date)}`;
+                  const label = `${cell.count} contribution${cell.count !== 1 ? "s" : ""} · ${formatDate(cell.date)}`;
                   return (
                     <span
                       key={dayIdx}
