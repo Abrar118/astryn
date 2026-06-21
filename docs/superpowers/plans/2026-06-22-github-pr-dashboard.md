@@ -20,6 +20,10 @@
 - Rust tests run via `cargo test --manifest-path src-tauri/Cargo.toml`; frontend via `npm test`; typecheck via `npx tsc --noEmit`.
 - Bucket keys are exactly: `needs_review`, `mine`, `assigned`, `involved`. Per-bucket cap = 300; GraphQL page size = 100.
 
+## Task sizing note
+
+Most tasks follow the standard 2–5-minute step cadence (write test → run → implement → run → commit). A few backend tasks (**7** state-wiring + connect commands, **8** sync/list) bundle several functions into one "implement" step **on purpose**: their pieces share a file and a compile unit (AppState fields, command wrappers, and `lib.rs` registration must land together or the crate won't build), so each is one cohesive deliverable committed at its marked Commit step. Within Task 8 the pure `fetch_bucket` helper is written and tested alongside the sync logic but is independently unit-tested (see its dedicated tests), so a reviewer can still reject it in isolation. Frontend Tasks 12/13 touch several files but produce one renderable/testable feature each.
+
 ---
 
 ## File Structure
@@ -116,6 +120,8 @@ CREATE TABLE github_prs (
 );
 CREATE INDEX idx_github_prs_bucket ON github_prs(bucket);
 CREATE INDEX idx_github_prs_linear_identifier ON github_prs(linear_identifier);
+-- Speeds the read-time join github_prs.linear_identifier = issues.identifier.
+CREATE INDEX idx_issues_identifier ON issues(identifier);
 
 -- Per-bucket sync metadata so truncation/staleness survive restart.
 CREATE TABLE github_sync_meta (
@@ -172,7 +178,7 @@ Create `src-tauri/src/github/mod.rs`:
 ```rust
 use serde_json::Value;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::secrets::{SecretError, SecretStore};
 
@@ -249,6 +255,21 @@ mod tests {
     fn status_200_is_none() {
         assert!(interpret_status(200, false).is_none());
     }
+
+    #[test]
+    fn rate_limit_hint_prefers_retry_after() {
+        assert_eq!(rate_limit_hint(Some(30), Some(9_999), 1_000), Some(30));
+    }
+
+    #[test]
+    fn rate_limit_hint_derives_delta_from_reset_epoch() {
+        assert_eq!(rate_limit_hint(None, Some(1_100), 1_000), Some(100));
+    }
+
+    #[test]
+    fn rate_limit_hint_none_when_absent() {
+        assert_eq!(rate_limit_hint(None, None, 1_000), None);
+    }
 }
 ```
 
@@ -292,7 +313,8 @@ pub fn extract_data(body: &str) -> Result<Value, GitHubError> {
 }
 
 /// Map transport statuses to errors. 403 is a *secondary* rate limit when the
-/// caller detected throttling headers, otherwise an auth/API failure.
+/// caller detected throttling headers, otherwise an auth/API failure. The hint
+/// is filled by the caller (`graphql`) from headers.
 pub fn interpret_status(status: u16, throttled: bool) -> Option<GitHubError> {
     match status {
         401 => Some(GitHubError::Auth),
@@ -302,6 +324,12 @@ pub fn interpret_status(status: u16, throttled: bool) -> Option<GitHubError> {
         500..=599 => Some(GitHubError::Server),
         _ => None,
     }
+}
+
+/// Best available rate-limit delay (seconds): prefer `retry-after` (already a
+/// delta), else derive from the `x-ratelimit-reset` epoch minus `now`.
+pub fn rate_limit_hint(retry_after: Option<i64>, reset_epoch: Option<i64>, now: i64) -> Option<i64> {
+    retry_after.or_else(|| reset_epoch.map(|reset| reset - now))
 }
 
 pub trait GitHubCredentialProvider: Send + Sync {
@@ -368,17 +396,26 @@ impl GitHubClient {
         let num = |name: &str| {
             h.get(name).and_then(|v| v.to_str().ok()).and_then(|s| s.parse::<i64>().ok())
         };
-        let retry = num("retry-after");
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let hint = rate_limit_hint(num("retry-after"), num("x-ratelimit-reset"), now);
         let remaining = num("x-ratelimit-remaining");
-        let throttled = retry.is_some() || remaining == Some(0);
+        let throttled = hint.is_some() || remaining == Some(0);
         let text = resp.text().await.map_err(|_| GitHubError::Network)?;
         if let Some(e) = interpret_status(status, throttled) {
             return Err(match e {
-                GitHubError::RateLimited(_) => GitHubError::RateLimited(retry),
+                GitHubError::RateLimited(_) => GitHubError::RateLimited(hint),
                 other => other,
             });
         }
-        extract_data(&text)
+        // HTTP-200-with-errors path: a GraphQL RATE_LIMITED loses its hint inside
+        // extract_data — re-attach the header-derived hint here.
+        match extract_data(&text) {
+            Err(GitHubError::RateLimited(_)) => Err(GitHubError::RateLimited(hint)),
+            other => other,
+        }
     }
 }
 
@@ -400,7 +437,7 @@ pub mod fake {
 - [ ] **Step 5: Run tests to verify they pass**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml github::`
-Expected: PASS (8 tests).
+Expected: PASS (11 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -705,8 +742,7 @@ Add to the `tests` module in `src-tauri/src/github/prs.rs`:
                         "author": { "login": "octocat", "avatarUrl": "https://a/x.png" },
                         "comments": { "totalCount": 3 },
                         "statusCheckRollup": { "state": "FAILURE" }
-                    },
-                    { }
+                    }
                 ]
             }
         })
@@ -714,8 +750,8 @@ Add to the `tests` module in `src-tauri/src/github/prs.rs`:
 
     #[test]
     fn parses_pr_fields() {
-        let (prs, page) = parse_search_page(&sample_data());
-        assert_eq!(prs.len(), 1); // the empty (non-PR) node is skipped
+        let (prs, page) = parse_search_page(&sample_data()).unwrap();
+        assert_eq!(prs.len(), 1);
         let p = &prs[0];
         assert_eq!(p.id, "o/r#42");
         assert_eq!(p.repo, "o/r");
@@ -733,7 +769,7 @@ Add to the `tests` module in `src-tauri/src/github/prs.rs`:
     fn null_review_decision_is_preserved() {
         let mut data = sample_data();
         data["search"]["nodes"][0]["reviewDecision"] = Value::Null;
-        let (prs, _) = parse_search_page(&data);
+        let (prs, _) = parse_search_page(&data).unwrap();
         assert_eq!(prs[0].review_decision, None);
     }
 
@@ -741,8 +777,31 @@ Add to the `tests` module in `src-tauri/src/github/prs.rs`:
     fn missing_rollup_maps_to_none_string() {
         let mut data = sample_data();
         data["search"]["nodes"][0]["statusCheckRollup"] = Value::Null;
-        let (prs, _) = parse_search_page(&data);
+        let (prs, _) = parse_search_page(&data).unwrap();
         assert_eq!(prs[0].ci_status.as_deref(), Some("none"));
+    }
+
+    #[test]
+    fn missing_structure_is_malformed() {
+        // No `search` object at all -> never silently treat as an empty page,
+        // which would let sync transactionally erase a bucket.
+        assert!(matches!(parse_search_page(&json!({})), Err(GitHubError::Malformed)));
+        // Missing pageInfo.
+        let no_page = json!({ "search": { "nodes": [] } });
+        assert!(matches!(parse_search_page(&no_page), Err(GitHubError::Malformed)));
+    }
+
+    #[test]
+    fn malformed_pr_node_fails_the_page() {
+        // A node missing `number`/`repository` (with is:pr every node IS a PR)
+        // must fail the page, not vanish.
+        let bad = json!({
+            "search": {
+                "pageInfo": { "hasNextPage": false, "endCursor": null },
+                "nodes": [ { "title": "no number" } ]
+            }
+        });
+        assert!(matches!(parse_search_page(&bad), Err(GitHubError::Malformed)));
     }
 ```
 
@@ -753,7 +812,7 @@ Expected: FAIL — `parse_search_page` / `ParsedPr` not found.
 
 - [ ] **Step 3: Implement**
 
-Add to `src-tauri/src/github/prs.rs` (above the `#[cfg(test)] mod tests`):
+Add `use super::GitHubError;` to the top of `src-tauri/src/github/prs.rs`, then add (above the `#[cfg(test)] mod tests`):
 
 ```rust
 #[derive(Debug, Clone)]
@@ -813,9 +872,14 @@ fn map_ci(v: Option<&str>) -> Option<String> {
     .to_string())
 }
 
-fn node_to_pr(n: &Value) -> Option<ParsedPr> {
-    let number = n.get("number").and_then(Value::as_i64)?;
-    let repo = str_at(n.get("repository")?, "nameWithOwner")?;
+fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
+    // With `is:pr`, every search node IS a PullRequest; a node missing required
+    // fields is malformed and must fail the page (never silently disappear).
+    let number = n.get("number").and_then(Value::as_i64).ok_or(GitHubError::Malformed)?;
+    let repo = n
+        .get("repository")
+        .and_then(|r| str_at(r, "nameWithOwner"))
+        .ok_or(GitHubError::Malformed)?;
     let branch = str_at(n, "headRefName");
     let title = str_at(n, "title");
     let linear_identifier = extract_linear_identifier(
@@ -823,7 +887,7 @@ fn node_to_pr(n: &Value) -> Option<ParsedPr> {
         title.as_deref().unwrap_or(""),
     );
     let ci = n.get("statusCheckRollup").and_then(|r| r.get("state")).and_then(|s| s.as_str());
-    Some(ParsedPr {
+    Ok(ParsedPr {
         id: format!("{repo}#{number}"),
         repo,
         number,
@@ -842,24 +906,25 @@ fn node_to_pr(n: &Value) -> Option<ParsedPr> {
     })
 }
 
-/// Parse one `search` page into PRs + pagination info. Non-PullRequest nodes
-/// (which arrive as empty objects under the inline fragment) are skipped.
-pub fn parse_search_page(data: &Value) -> (Vec<ParsedPr>, PageInfo) {
-    let search = data.get("search");
-    let prs = search
-        .and_then(|s| s.get("nodes"))
+/// Parse one `search` page into PRs + pagination info. Missing `search`/`nodes`/
+/// `pageInfo.hasNextPage` is `Malformed` — never an empty success, which would
+/// let sync transactionally erase a bucket.
+pub fn parse_search_page(data: &Value) -> Result<(Vec<ParsedPr>, PageInfo), GitHubError> {
+    let search = data.get("search").ok_or(GitHubError::Malformed)?;
+    let nodes = search
+        .get("nodes")
         .and_then(|n| n.as_array())
-        .map(|arr| arr.iter().filter_map(node_to_pr).collect())
-        .unwrap_or_default();
-    let page = search.and_then(|s| s.get("pageInfo"));
+        .ok_or(GitHubError::Malformed)?;
+    let prs = nodes.iter().map(node_to_pr).collect::<Result<Vec<_>, _>>()?;
+    let page = search.get("pageInfo").ok_or(GitHubError::Malformed)?;
     let page_info = PageInfo {
         has_next_page: page
-            .and_then(|p| p.get("hasNextPage"))
+            .get("hasNextPage")
             .and_then(Value::as_bool)
-            .unwrap_or(false),
-        end_cursor: page.and_then(|p| str_at(p, "endCursor")),
+            .ok_or(GitHubError::Malformed)?,
+        end_cursor: str_at(page, "endCursor"),
     };
-    (prs, page_info)
+    Ok((prs, page_info))
 }
 ```
 
@@ -1516,7 +1581,7 @@ git commit -m "feat(m4): GitHub connect commands (status, set/clear/test) + AppS
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to the `tests` module in `src-tauri/src/commands/github.rs` (extend imports inside the test module with `use crate::github::prs::{PageInfo, ParsedPr};` and `use std::sync::Mutex;`):
+Add to the `tests` module in `src-tauri/src/commands/github.rs` (extend imports inside the test module with `use crate::github::prs::{Bucket, PageInfo, ParsedPr};` and `use std::sync::Mutex;`; `fetch_bucket` and `sync_github_prs_logic` resolve via the existing `use super::*;`):
 
 ```rust
     fn page_pr(n: i64) -> ParsedPr {
@@ -1571,21 +1636,93 @@ Add to the `tests` module in `src-tauri/src/commands/github.rs` (extend imports 
         let gen = AtomicU64::new(0);
         let calls = Arc::new(Mutex::new(0u32));
         let calls2 = calls.clone();
-        // Each call returns 100 distinct PRs and claims another page exists forever.
+        // Each call returns 100 distinct PRs, a CHANGING cursor, and claims more.
         sync_github_prs_logic(creds, &pool, &gen, "now".into(), move |_a, _q, _c| {
             let calls = calls2.clone();
             async move {
-                let base = { let mut g = calls.lock().unwrap(); let b = *g * 100; *g += 1; b };
-                let prs = (0..100).map(|i| page_pr(base as i64 + i)).collect();
-                Ok((prs, PageInfo { has_next_page: true, end_cursor: Some("c".into()) }))
+                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let prs = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
+                Ok((prs, PageInfo { has_next_page: true, end_cursor: Some(format!("c{n}")) }))
             }
         })
         .await
         .unwrap();
         let dash = list_github_prs_logic(&pool).await.unwrap();
-        // Capped at 300 per bucket × 4 buckets.
-        assert_eq!(dash.prs.len(), 1200);
+        assert_eq!(dash.prs.len(), 1200); // capped at 300 per bucket × 4 buckets
         assert!(dash.meta.iter().all(|m| m.truncated));
+    }
+
+    #[tokio::test]
+    async fn fetch_bucket_exact_300_is_not_truncated() {
+        let calls = Arc::new(Mutex::new(0u32));
+        let calls2 = calls.clone();
+        // Three full pages (300), then the server reports no more pages.
+        let (prs, truncated) = fetch_bucket("auth", Bucket::Mine, &move |_a, _q, _c| {
+            let calls = calls2.clone();
+            async move {
+                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let last = n == 2;
+                let page = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
+                Ok((page, PageInfo { has_next_page: !last, end_cursor: if last { None } else { Some(format!("c{n}")) } }))
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(prs.len(), 300);
+        assert_eq!(truncated, false);
+    }
+
+    #[tokio::test]
+    async fn fetch_bucket_more_than_300_is_truncated() {
+        let calls = Arc::new(Mutex::new(0u32));
+        let calls2 = calls.clone();
+        // Three full pages (300) and the server still reports another page.
+        let (prs, truncated) = fetch_bucket("auth", Bucket::Mine, &move |_a, _q, _c| {
+            let calls = calls2.clone();
+            async move {
+                let n = { let mut g = calls.lock().unwrap(); let n = *g; *g += 1; n };
+                let page = (0..100).map(|i| page_pr((n * 100) as i64 + i)).collect();
+                Ok((page, PageInfo { has_next_page: true, end_cursor: Some(format!("c{n}")) }))
+            }
+        })
+        .await
+        .unwrap();
+        assert_eq!(prs.len(), 300);
+        assert_eq!(truncated, true);
+    }
+
+    #[tokio::test]
+    async fn fetch_bucket_repeated_cursor_is_malformed() {
+        let err = fetch_bucket("auth", Bucket::Mine, &|_a, _q, _c| async {
+            // Always claims more with the SAME cursor -> would loop forever.
+            Ok((vec![page_pr(1)], PageInfo { has_next_page: true, end_cursor: Some("same".into()) }))
+        })
+        .await;
+        assert!(matches!(err, Err(GitHubError::Malformed)));
+    }
+
+    #[tokio::test]
+    async fn fetch_bucket_missing_cursor_is_malformed() {
+        let err = fetch_bucket("auth", Bucket::Mine, &|_a, _q, _c| async {
+            Ok((vec![page_pr(1)], PageInfo { has_next_page: true, end_cursor: None }))
+        })
+        .await;
+        assert!(matches!(err, Err(GitHubError::Malformed)));
+    }
+
+    #[tokio::test]
+    async fn sync_aborts_and_writes_nothing_when_generation_changes() {
+        let (_d, pool) = pool().await;
+        let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+        // Bump the generation mid-fetch (simulating a token swap) so the guard trips.
+        let result = sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, _q, _c| {
+            gen.fetch_add(1, Ordering::SeqCst);
+            async { Ok((vec![page_pr(1)], PageInfo { has_next_page: false, end_cursor: None })) }
+        })
+        .await;
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+        assert!(list_github_prs_logic(&pool).await.unwrap().prs.is_empty());
     }
 ```
 
@@ -1636,7 +1773,6 @@ where
     let mut acc: Vec<ParsedPr> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut cursor: Option<String> = None;
-    let mut truncated = false;
     loop {
         let (prs, page) = fetch_page(auth.to_string(), query.clone(), cursor.clone()).await?;
         for p in prs {
@@ -1644,17 +1780,26 @@ where
                 acc.push(p);
             }
         }
-        if acc.len() >= PER_BUCKET_CAP {
+        // A single page crossing the cap -> definitely truncated.
+        if acc.len() > PER_BUCKET_CAP {
             acc.truncate(PER_BUCKET_CAP);
-            truncated = page.has_next_page || acc.len() == PER_BUCKET_CAP;
-            break;
+            return Ok((acc, true));
         }
+        // Reached the cap exactly: trust the server's hasNextPage for truncation.
+        if acc.len() == PER_BUCKET_CAP {
+            return Ok((acc, page.has_next_page));
+        }
+        // Genuinely exhausted: not truncated.
         if !page.has_next_page {
-            break;
+            return Ok((acc, false));
         }
-        cursor = page.end_cursor;
+        // Must advance with a NEW, non-empty cursor, else the server is buggy and
+        // we would loop forever (dedup hides the repeat) — treat as malformed.
+        match page.end_cursor {
+            Some(next) if Some(&next) != cursor.as_ref() => cursor = Some(next),
+            _ => return Err(GitHubError::Malformed),
+        }
     }
-    Ok((acc, truncated))
 }
 
 pub async fn sync_github_prs_logic<F, Fut>(
@@ -1679,9 +1824,11 @@ where
     for bucket in Bucket::all() {
         match fetch_bucket(&auth, bucket, &fetch_page).await {
             Ok((prs, truncated)) => {
-                // Abort the commit if the credential changed mid-sync.
+                // Abort the whole sync if the credential changed mid-flight: a
+                // partial (shortened) summary is ambiguous, so surface an error
+                // and write nothing further.
                 if generation.load(Ordering::SeqCst) != gen0 {
-                    return Ok(results);
+                    return Err(CmdError::WorkspaceChanged);
                 }
                 gdb::replace_bucket(pool, bucket.key(), &prs, &now, truncated)
                     .await
@@ -1722,7 +1869,7 @@ pub async fn sync_github_prs(state: State<'_, AppState>) -> Result<Vec<BucketSyn
             async move {
                 let body = build_search_body(&query, PAGE_SIZE, cursor.as_deref());
                 let data = client.graphql(&auth, body).await?;
-                Ok(parse_search_page(&data))
+                parse_search_page(&data)
             }
         },
     )
@@ -1873,18 +2020,34 @@ vi.mock("@/lib/commands", () => ({
   getGithubStatus: vi.fn(),
 }));
 
-import { useGithubPrs } from "./queries";
+import { useGithubPrs, useGithubSync } from "./queries";
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
-describe("useGithubPrs", () => {
-  it("returns the cached dashboard", async () => {
+describe("GitHub query hooks", () => {
+  it("useGithubPrs returns the cached dashboard", async () => {
     listGithubPrs.mockResolvedValue({ prs: [{ id: "o/r#1", bucket: "mine" }], meta: [] });
     const { result } = renderHook(() => useGithubPrs(), { wrapper });
     await waitFor(() => expect(result.current.data?.prs).toHaveLength(1));
+  });
+
+  it("useGithubSync(false) never hits the network", async () => {
+    syncGithubPrs.mockResolvedValue([]);
+    renderHook(() => useGithubSync(false), { wrapper });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(syncGithubPrs).not.toHaveBeenCalled();
+  });
+
+  it("useGithubSync(true) syncs then invalidates the cached list", async () => {
+    listGithubPrs.mockResolvedValue({ prs: [], meta: [] });
+    syncGithubPrs.mockResolvedValue([]);
+    // Render both hooks so the sync-driven invalidation refetches the list.
+    renderHook(() => { useGithubPrs(); return useGithubSync(true); }, { wrapper });
+    await waitFor(() => expect(syncGithubPrs).toHaveBeenCalled());
+    await waitFor(() => expect(listGithubPrs.mock.calls.length).toBeGreaterThanOrEqual(2));
   });
 });
 ```
@@ -1980,20 +2143,22 @@ import { PrRow } from "./PrRow";
 const base: GithubPr = {
   id: "o/r#42", bucket: "mine", repo: "o/r", number: 42, title: "Add widget", draft: false,
   mergeable: "mergeable", ciStatus: "success", reviewDecision: "changes_requested",
-  authorLogin: "octocat", authorAvatar: null, commentCount: 3, branch: "eng-9", url: "https://x",
-  linearIdentifier: "ENG-9", linearIssueId: "iss-1", updatedAt: "2026-06-20T00:00:00Z",
+  authorLogin: "octocat", authorAvatar: "https://a/x.png", commentCount: 3, branch: "eng-9",
+  url: "https://x", linearIdentifier: "ENG-9", linearIssueId: "iss-1", updatedAt: "2026-06-20T00:00:00Z",
 };
 
 afterEach(cleanup);
 
 describe("PrRow", () => {
-  it("shows core fields and the changes-requested badge", () => {
+  it("shows core fields, avatar, relative time, and changes-requested badge", () => {
     render(<PrRow pr={base} />);
     expect(screen.getByText("Add widget")).toBeInTheDocument();
     expect(screen.getByText("#42")).toBeInTheDocument();
     expect(screen.getByText("octocat")).toBeInTheDocument();
     expect(screen.getByText("o/r")).toBeInTheDocument();
     expect(screen.getByText(/changes requested/i)).toBeInTheDocument();
+    expect(screen.getByRole("img")).toHaveAttribute("src", "https://a/x.png");
+    expect(screen.getByTestId("pr-updated").textContent).not.toBe("");
   });
 
   it("opens the linked Linear issue when the chip is clicked", () => {
@@ -2007,9 +2172,46 @@ describe("PrRow", () => {
     expect(screen.queryByRole("button", { name: /ENG-9/ })).toBeNull();
   });
 
-  it("shows a conflict badge when conflicting", () => {
-    render(<PrRow pr={{ ...base, mergeable: "conflicting" }} />);
+  it("shows a conflict badge only when conflicting", () => {
+    const { rerender } = render(<PrRow pr={{ ...base, mergeable: "conflicting" }} />);
     expect(screen.getByText(/conflict/i)).toBeInTheDocument();
+    rerender(<PrRow pr={{ ...base, mergeable: "mergeable" }} />);
+    expect(screen.queryByText(/conflict/i)).toBeNull();
+  });
+
+  it("shows explicit open vs draft status", () => {
+    const { rerender } = render(<PrRow pr={base} />);
+    expect(screen.getByText("Open")).toBeInTheDocument();
+    rerender(<PrRow pr={{ ...base, draft: true }} />);
+    expect(screen.getByText("Draft")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["success", "CI passing"],
+    ["failure", "CI failing"],
+    ["pending", "CI pending"],
+  ] as const)("renders a CI badge for %s", (ci, label) => {
+    render(<PrRow pr={{ ...base, ciStatus: ci }} />);
+    expect(screen.getByLabelText(label)).toBeInTheDocument();
+  });
+
+  it.each(["none", null] as const)("renders no CI badge for %s", (ci) => {
+    render(<PrRow pr={{ ...base, ciStatus: ci }} />);
+    expect(screen.queryByLabelText(/^CI /)).toBeNull();
+  });
+
+  it.each([
+    ["approved", /approved/i],
+    ["changes_requested", /changes requested/i],
+    ["review_required", /review required/i],
+  ] as const)("renders the %s review label", (decision, re) => {
+    render(<PrRow pr={{ ...base, reviewDecision: decision }} />);
+    expect(screen.getByText(re)).toBeInTheDocument();
+  });
+
+  it("renders no review label when null", () => {
+    render(<PrRow pr={{ ...base, reviewDecision: null }} />);
+    expect(screen.queryByText(/approved|changes requested|review required/i)).toBeNull();
   });
 });
 ```
@@ -2027,6 +2229,7 @@ Create `src/features/prs/PrRow.tsx`:
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { GitPullRequest, MessageSquare, GitMerge, CheckCircle2, XCircle, Clock } from "lucide-react";
 import { useWorkspace } from "@/lib/tabs";
+import { timeAgo } from "@/features/drawer/timeAgo";
 import type { GithubPr } from "@/lib/commands";
 
 const REVIEW_LABEL: Record<NonNullable<GithubPr["reviewDecision"]>, string> = {
@@ -2048,9 +2251,7 @@ function CiBadge({ status }: { status: GithubPr["ciStatus"] }) {
 
 export function PrRow({ pr }: { pr: GithubPr }) {
   const { openIssueTab } = useWorkspace();
-  const relative = pr.updatedAt
-    ? new Date(pr.updatedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
-    : "";
+  const relative = pr.updatedAt ? timeAgo(pr.updatedAt) : "";
 
   return (
     <div className="flex items-center gap-3 border-b border-border/60 px-4 py-2.5 text-sm hover:bg-white/5">
@@ -2063,6 +2264,9 @@ export function PrRow({ pr }: { pr: GithubPr }) {
         {pr.title ?? "(untitled)"}
       </button>
 
+      <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+        {pr.draft ? "Draft" : "Open"}
+      </span>
       {pr.reviewDecision && (
         <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
           {REVIEW_LABEL[pr.reviewDecision]}
@@ -2074,11 +2278,6 @@ export function PrRow({ pr }: { pr: GithubPr }) {
         </span>
       )}
       <CiBadge status={pr.ciStatus} />
-      {pr.draft && (
-        <span className="shrink-0 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
-          Draft
-        </span>
-      )}
 
       {pr.linearIssueId && (
         <button
@@ -2098,10 +2297,13 @@ export function PrRow({ pr }: { pr: GithubPr }) {
           <MessageSquare className="size-3" /> {pr.commentCount}
         </span>
       )}
+      {pr.authorAvatar && (
+        <img src={pr.authorAvatar} alt={pr.authorLogin ? `${pr.authorLogin} avatar` : "author"} className="size-4 shrink-0 rounded-full" />
+      )}
       {pr.authorLogin && (
         <span className="shrink-0 text-[11px] text-muted-foreground">{pr.authorLogin}</span>
       )}
-      <span className="shrink-0 text-[11px] text-muted-foreground">{relative}</span>
+      <span data-testid="pr-updated" className="shrink-0 text-[11px] text-muted-foreground">{relative}</span>
     </div>
   );
 }
@@ -2110,7 +2312,7 @@ export function PrRow({ pr }: { pr: GithubPr }) {
 - [ ] **Step 4: Run tests to verify they pass**
 
 Run: `npm test -- PrRow`
-Expected: PASS (4 tests).
+Expected: PASS (all cases — core/avatar/time, chip open, no-chip, conflict, open/draft, CI states, review states, null review).
 
 - [ ] **Step 5: Commit**
 
@@ -2210,7 +2412,8 @@ Create `src/features/prs/PrsPage.test.tsx`:
 ```tsx
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import type { GithubPr } from "@/lib/commands";
 
 const hooks = vi.hoisted(() => ({
   useGithubStatus: vi.fn(),
@@ -2218,18 +2421,28 @@ const hooks = vi.hoisted(() => ({
   useGithubSync: vi.fn(),
 }));
 const setActiveView = vi.hoisted(() => vi.fn());
+const refetch = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/queries", () => hooks);
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView, openIssueTab: vi.fn() }) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 
 import { PrsPage } from "./PrsPage";
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); refetch.mockClear(); });
 
-function setup(status: unknown, prs: unknown[] = [], meta: unknown[] = []) {
+function pr(id: string, bucket: GithubPr["bucket"]): GithubPr {
+  return {
+    id, bucket, repo: "o/r", number: 1, title: "Add widget", draft: false, mergeable: "mergeable",
+    ciStatus: "success", reviewDecision: null, authorLogin: "octocat", authorAvatar: null,
+    commentCount: 0, branch: "b", url: "https://x", linearIdentifier: null, linearIssueId: null,
+    updatedAt: "2026-06-20T00:00:00Z",
+  };
+}
+
+function setup(status: unknown, prs: GithubPr[] = [], meta: unknown[] = [], sync: unknown = {}) {
   hooks.useGithubStatus.mockReturnValue({ data: status });
   hooks.useGithubPrs.mockReturnValue({ data: { prs, meta } });
-  hooks.useGithubSync.mockReturnValue({ data: undefined });
+  hooks.useGithubSync.mockReturnValue({ data: undefined, isError: false, refetch, ...(sync as object) });
 }
 
 describe("PrsPage", () => {
@@ -2247,6 +2460,41 @@ describe("PrsPage", () => {
     expect(screen.getByText(/assigned to me/i)).toBeInTheDocument();
     expect(screen.getByText(/involved/i)).toBeInTheDocument();
   });
+
+  it("manual refresh triggers a sync refetch", () => {
+    setup({ state: "connected", login: "octocat" });
+    render(<PrsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /refresh/i }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("renders a PR in every bucket it legitimately belongs to", () => {
+    setup({ state: "connected", login: "octocat" }, [pr("o/r#1", "needs_review"), pr("o/r#1", "mine")]);
+    render(<PrsPage />);
+    // Same PR title shown once under each of the two sections.
+    expect(screen.getAllByText("Add widget")).toHaveLength(2);
+  });
+
+  it("shows a per-section truncation note from sync meta", () => {
+    setup(
+      { state: "connected", login: "octocat" },
+      [],
+      [{ bucket: "mine", fetchedCount: 300, truncated: true, lastSyncedAt: null }],
+    );
+    render(<PrsPage />);
+    expect(screen.getByText(/300 most recent/i)).toBeInTheDocument();
+  });
+
+  it("flags a section that failed to refresh", () => {
+    setup(
+      { state: "connected", login: "octocat" },
+      [],
+      [],
+      { data: [{ bucket: "needs_review", ok: false, truncated: false }] },
+    );
+    render(<PrsPage />);
+    expect(screen.getByText(/couldn't refresh/i)).toBeInTheDocument();
+  });
 });
 ```
 
@@ -2260,7 +2508,7 @@ Expected: FAIL — cannot resolve `./PrsPage`.
 Create `src/features/prs/PrsPage.tsx`:
 
 ```tsx
-import { GitPullRequest } from "lucide-react";
+import { GitPullRequest, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
 import { useGithubPrs, useGithubStatus, useGithubSync } from "@/lib/queries";
@@ -2279,11 +2527,13 @@ function Section({
   empty,
   prs,
   meta,
+  stale,
 }: {
   title: string;
   empty: string;
   prs: GithubPr[];
   meta: GithubSyncMeta | undefined;
+  stale: boolean;
 }) {
   return (
     <section className="flex flex-col">
@@ -2293,11 +2543,12 @@ function Section({
         {meta?.truncated && (
           <span className="text-[11px] text-amber-400">showing 300 most recent</span>
         )}
+        {stale && <span className="text-[11px] text-amber-400">couldn't refresh — cached</span>}
       </div>
       {prs.length === 0 ? (
         <p className="px-4 pb-3 text-xs text-muted-foreground">{empty}</p>
       ) : (
-        prs.map((pr) => <PrRow key={pr.id} pr={pr} />)
+        prs.map((pr) => <PrRow key={`${pr.bucket}:${pr.id}`} pr={pr} />)
       )}
     </section>
   );
@@ -2322,15 +2573,26 @@ export function PrsPage() {
 
   const prs = dashboard?.prs ?? [];
   const meta = dashboard?.meta ?? [];
-  const failed = (sync.data ?? []).filter((r) => !r.ok).map((r) => r.bucket);
+  const failed = new Set((sync.data ?? []).filter((r) => !r.ok).map((r) => r.bucket));
 
   return (
     <main className="flex h-full flex-col overflow-y-auto">
       <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h1 className="text-sm font-semibold">Pull Requests</h1>
-        {failed.length > 0 && (
-          <span className="text-[11px] text-amber-400">Some sections couldn't refresh — showing cached data.</span>
-        )}
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold">Pull Requests</h1>
+          {sync.isError && (
+            <span className="text-[11px] text-amber-400">Sync failed — showing cached data.</span>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Refresh"
+          disabled={sync.isFetching}
+          onClick={() => sync.refetch()}
+        >
+          <RefreshCw className={`size-4 ${sync.isFetching ? "animate-spin" : ""}`} />
+        </Button>
       </header>
       {SECTIONS.map((s) => (
         <Section
@@ -2339,6 +2601,7 @@ export function PrsPage() {
           empty={s.empty}
           prs={prs.filter((p) => p.bucket === s.bucket)}
           meta={meta.find((m) => m.bucket === s.bucket)}
+          stale={failed.has(s.bucket)}
         />
       ))}
     </main>
@@ -2349,7 +2612,7 @@ export function PrsPage() {
 - [ ] **Step 9: Run test + typecheck to verify they pass**
 
 Run: `npm test -- PrsPage`
-Expected: PASS (2 tests).
+Expected: PASS (connect prompt, four headings, manual refresh, cross-bucket duplication, per-section truncation note, failed-section flag).
 Run: `npx tsc --noEmit`
 Expected: no errors (the exhaustive `PaneContent` switch and both `META` records now cover `"prs"`).
 
@@ -2557,6 +2820,7 @@ git commit -m "feat(m4): GitHub connect card in Settings (save/test/clear, secre
 **Files:**
 - Modify: `requirements.md` (§2 item 6, §4 GitHub auth ~line 129, §5 data model, §6 sync, §8, F7+AC ~line 414, §11 M4 line ~464)
 - Modify: `CLAUDE.md` (status section + stale test-framework note)
+- Modify: `AGENTS.md` (stale "no frontend test runner" note)
 
 **Interfaces:** none (docs only)
 
@@ -2606,6 +2870,9 @@ In `CLAUDE.md`:
 - In the "Current status" section, append to the M-list: `**M4 — GitHub PR dashboard (F7). ✅ Done** once this plan is implemented.` (Adjust wording to match the file's existing status style.)
 - In the Commands section, correct the stale note: change "**No JS test framework is configured yet.**" to "**Frontend tests use Vitest** (`npm test`); Rust logic is unit-tested (`cargo test`)."
 
+In `AGENTS.md`:
+- Correct the stale line "No frontend test runner or coverage threshold is configured yet." to note that **Vitest is configured** (`npm test`, `*.test.ts`/`*.test.tsx` beside the code), while keeping `npm run build` as the required automated check.
+
 - [ ] **Step 3: Run the full verification suite**
 
 Run each and confirm clean output:
@@ -2615,16 +2882,28 @@ cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 npm test
-npx tsc --noEmit
+npm run build   # tsc typecheck + vite build — required by AGENTS.md
 ```
 
-Expected: all Rust tests pass; clippy clean; fmt clean; all Vitest tests pass; tsc no errors. Fix any failures before committing.
+Expected: all Rust tests pass; clippy clean; fmt clean; all Vitest tests pass; `npm run build` succeeds. Fix any failures before continuing.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Manual smoke test (`npm run tauri dev`)**
+
+Launch the app and verify each flow by hand (per AGENTS.md's "manually exercise the affected flow"):
+
+- **No token:** open the Pull Requests view → shows the "Connect GitHub" prompt, no errors.
+- **Connect:** Settings → paste a classic PAT → Save → Test connection shows `Connected as <login>`.
+- **Connected:** Pull Requests view populates the four sections; rows show title/#number/author avatar/comments/CI/review badges.
+- **Refresh:** click the header refresh button → spinner runs and rows update.
+- **External link:** click a PR title → opens the PR on github.com in the browser.
+- **Linear chip:** a PR whose branch/title matches a cached issue shows its identifier chip → clicking opens that issue's tab.
+- **Disconnect:** Settings → Clear token → Pull Requests view returns to the connect prompt; the Linear calendar/list still shows issues (Linear cache untouched).
+
+- [ ] **Step 5: Commit**
 
 ```bash
-git add requirements.md CLAUDE.md
-git commit -m "docs(m4): update requirements + CLAUDE for the GitHub PR dashboard"
+git add requirements.md CLAUDE.md AGENTS.md
+git commit -m "docs(m4): update requirements + CLAUDE + AGENTS for the GitHub PR dashboard"
 ```
 
 ---
@@ -2632,5 +2911,8 @@ git commit -m "docs(m4): update requirements + CLAUDE for the GitHub PR dashboar
 ## Self-Review Notes
 
 - **Spec coverage:** §3 auth/scopes → Tasks 7,13; §4 client+rate-limits → Task 2; §4.1 buckets/sort → Task 3; §4.2 fields/CI/review → Task 5; §4.3 pagination+cap+truncation → Tasks 5,8; §4.4 transactional prune + partial-failure → Tasks 6,8; §4.5 credential isolation + fail-safe ordering + generation guard → Tasks 7,8; §4.6 rate-limit interpretation → Task 2; §5 schema + regex + join → Tasks 1,4,5,6; §6 commands → Tasks 7,8; §7 frontend (nav/cache-vs-sync/components/chip) → Tasks 10,11,12,13; §8 testing (Rust + Vitest) → every task; §9 requirements.md → Task 14; §10 ACs → Tasks 7,8,12,13.
+- **Cache-preservation guarantees (review round 2):** malformed pages never erase a bucket — `parse_search_page` returns `Result` and rejects missing `search`/`nodes`/`pageInfo` and malformed PR nodes (Task 5); pagination can't loop forever — missing/repeated cursors are `Malformed` (Task 8); exactly-300 is `truncated=false`, >300-available is `true` (Task 8 `fetch_bucket` tests); a mid-sync credential swap aborts with `WorkspaceChanged` and writes nothing (Task 8).
+- **Rate-limit hints** preserved on HTTP 200 (`RATE_LIMITED`), 403, and 429 via `rate_limit_hint` (retry-after, else reset-epoch − now), unit-tested in Task 2.
 - **Identifier regex** boundary correctness (`xENG-123y` rejected; `release-2024` extracted but join-filtered) is tested in Tasks 4 and 6.
+- **Frontend coverage (review round 2):** manual refresh, per-section stale + truncation note, sync error, cross-bucket duplication (Task 12); avatar, relative time, explicit open/draft, all CI states, all review states + null (Task 11); background-sync enablement + invalidation (Task 10).
 - **Type consistency:** `ParsedPr` (Rust, Task 5) → `replace_bucket` (Task 6) → `PrRow` serialized fields → `GithubPr` (TS, Task 9) → `PrRow.tsx`/`PrsPage.tsx` all use the same snake→camel field names. `GitHubStatus`/`compute_github_status` consistent across Tasks 7/10/12/13. Bucket keys `needs_review|mine|assigned|involved` consistent across Tasks 3/6/8/9/12.
