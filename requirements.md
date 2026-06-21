@@ -3,7 +3,7 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) shipped, with several workspace extensions beyond the original plan; F7–F9 remain.
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) shipped, with several workspace extensions beyond the original plan; F8–F9 remain.
 **Last updated:** 2026-06-21
 
 ---
@@ -25,7 +25,7 @@
 - **Inbox** — Linear notifications in the dock with a master-detail layout.
 - **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
 
-**Not yet built:** F7 (GitHub PR tracking), F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
+**Not yet built:** F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
 
 ---
 
