@@ -1,6 +1,7 @@
 mod commands;
 mod db;
 mod linear;
+mod link_preview;
 mod secrets;
 
 use std::sync::Arc;
