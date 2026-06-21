@@ -33,6 +33,7 @@ import type { IssueListItem, Relation } from "@/lib/commands";
 import { cn } from "@/lib/utils";
 import { buildIndex, computeVisible, buildGraphElements, neighbors, buildGroups, type GroupBy } from "./graphModel";
 import { layoutGraph } from "./graphLayout";
+import { BulkActionBar } from "./BulkActionBar";
 
 // ── Mention-target helpers ───────────────────────────────────────────────────
 
@@ -97,7 +98,6 @@ type IssueNodeData = {
   dimmed?: boolean;
   mentionTarget: MentionTarget;
   onOpen: (id: string) => void;
-  onSelect: (id: string) => void;
   onToggleExpand: (id: string) => void;
   onContextMenu: (e: ReactMouseEvent, id: string) => void;
 };
@@ -146,7 +146,6 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       tabIndex={0}
       onMouseEnter={scheduleOpen}
       onMouseLeave={close}
-      onClick={() => data.onSelect(data.issueId)}
       onDoubleClick={() => data.onOpen(data.issueId)}
       onContextMenu={(e) => {
         close();
@@ -295,7 +294,12 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const expandedRef = useRef(expandedIds);
   expandedRef.current = expandedIds;
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const onSelectionChange = useCallback(
+    (params: { nodes: Node[] }) =>
+      setSelectedIds(params.nodes.filter((n) => n.type === "issueNode").map((n) => n.id)),
+    [],
+  );
   const [query, setQuery] = useState("");
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
 
@@ -303,7 +307,6 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
   const handleOpen = useCallback((id: string) => openRef.current(id), []);
-  const handleSelect = useCallback((id: string) => setSelectedId(id), []);
   const toggleExpand = useCallback((id: string) => {
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -383,7 +386,6 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
           hiddenCount: n.hiddenCount,
           mentionTarget: d.mentionTarget,
           onOpen: handleOpen,
-          onSelect: handleSelect,
           onToggleExpand: toggleExpand,
           onContextMenu: handleContextMenu,
         } satisfies IssueNodeData,
@@ -430,7 +432,6 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     groupBy,
     resolveDisplay,
     handleOpen,
-    handleSelect,
     toggleExpand,
     handleContextMenu,
     setNodes,
@@ -453,6 +454,11 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     });
   }, [nodes, edges, elements.visible, groupBy, setNodes, fitView]);
 
+  const clearSelection = useCallback(() => {
+    setNodes((ns) => ns.map((n) => ({ ...n, selected: false })));
+    setSelectedIds([]);
+  }, [setNodes]);
+
   // Search recenter on matches as the term changes.
   const term = query.trim().toLowerCase();
   useEffect(() => {
@@ -473,16 +479,17 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
           : { ...n, data: { ...n.data, highlight: nodeMatches(n.data as IssueNodeData, term), dimmed: !nodeMatches(n.data as IssueNodeData, term) } },
       );
     }
-    if (selectedId) {
-      const nbrs = neighbors(selectedId, index);
+    if (selectedIds.length === 1) {
+      const focus = selectedIds[0];
+      const nbrs = neighbors(focus, index);
       return nodes.map((n) =>
         n.type !== "issueNode"
           ? n
-          : { ...n, data: { ...n.data, highlight: n.id === selectedId, dimmed: !(n.id === selectedId || nbrs.has(n.id)) } },
+          : { ...n, data: { ...n.data, highlight: n.id === focus, dimmed: !(n.id === focus || nbrs.has(n.id)) } },
       );
     }
     return nodes;
-  }, [nodes, term, selectedId, index]);
+  }, [nodes, term, selectedIds, index]);
 
   return (
     <div className="h-full min-h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
@@ -491,13 +498,18 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onPaneClick={() => setSelectedId(null)}
+        onSelectionChange={onSelectionChange}
         nodeTypes={NODE_TYPES}
         nodesDraggable
         minZoom={0.3}
         maxZoom={2}
         proOptions={{ hideAttribution: false }}
       >
+        {selectedIds.length >= 2 && (
+          <Panel position="bottom-center">
+            <BulkActionBar selectedIds={selectedIds} index={index} onClear={clearSelection} />
+          </Panel>
+        )}
         <Panel position="top-left">
           <div className="flex items-center gap-2">
             <div className="relative">
