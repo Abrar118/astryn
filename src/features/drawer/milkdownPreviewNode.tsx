@@ -10,7 +10,7 @@ import { classifyUrlParagraph, hostLabel } from "./urlPreview";
 import { fetchLinkPreview, type LinkPreview } from "@/lib/commands";
 
 /** Read the sole text + its link href from a paragraph node, or null shape. */
-function readParagraph(node: ProseMirrorNode): { text: string; linkHref: string | null } {
+export function readParagraph(node: ProseMirrorNode): { text: string; linkHref: string | null } {
   if (node.childCount !== 1) return { text: "", linkHref: null };
   const child = node.child(0);
   if (!child.isText) return { text: "", linkHref: null };

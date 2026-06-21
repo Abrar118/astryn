@@ -30,6 +30,7 @@ import { TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { editorViewCtx } from "@milkdown/kit/core";
 import { findParentNode } from "@milkdown/prose";
+import { selectionUrlKind, runPreviewToggle, togglePreviewLabel } from "./previewToggle";
 
 // ---------------------------------------------------------------------------
 // Slash command catalog
@@ -403,6 +404,7 @@ class TooltipView implements PluginView {
   readonly #linkInput: HTMLInputElement;
   readonly #provider: TooltipProvider;
   readonly #ctx: Ctx;
+  readonly #toggleBtn: HTMLButtonElement;
 
   constructor(ctx: Ctx, view: EditorView) {
     this.#ctx = ctx;
@@ -436,6 +438,19 @@ class TooltipView implements PluginView {
       buttons.appendChild(btn);
     }
 
+    const toggleBtn = document.createElement("button");
+    toggleBtn.type = "button";
+    toggleBtn.className = "md-tooltip-preview-toggle";
+    toggleBtn.style.display = "none";
+    toggleBtn.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      runPreviewToggle(this.#ctx);
+      this.#provider.hide();
+      this.#refocusEditor();
+    });
+    buttons.appendChild(toggleBtn);
+    this.#toggleBtn = toggleBtn;
+
     wrapper.appendChild(buttons);
     this.#buttons = buttons;
 
@@ -467,12 +482,12 @@ class TooltipView implements PluginView {
     this.#provider = new TooltipProvider({
       content: this.#content,
       debounce: 50,
-      shouldShow(v: EditorView) {
-        const { selection } = v.state;
-        if (!(selection instanceof TextSelection)) return false;
-        if (selection.empty) return false;
+      shouldShow: (v: EditorView) => {
         if (!v.editable) return false;
-        return true;
+        const { selection } = v.state;
+        if (selection instanceof TextSelection && !selection.empty) return true;
+        // Also show for a caret inside a standalone-URL paragraph (toggle only).
+        return selectionUrlKind(this.#ctx) !== "none";
       },
       offset: 8,
     });
@@ -524,6 +539,14 @@ class TooltipView implements PluginView {
   }
 
   update = (view: EditorView, prevState?: EditorState) => {
+    const kind = selectionUrlKind(this.#ctx);
+    const label = togglePreviewLabel(kind);
+    if (label) {
+      this.#toggleBtn.textContent = label;
+      this.#toggleBtn.style.display = "inline-block";
+    } else {
+      this.#toggleBtn.style.display = "none";
+    }
     this.#provider.update(view, prevState);
   };
 
