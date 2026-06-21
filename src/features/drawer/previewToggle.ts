@@ -1,6 +1,7 @@
 import type { Ctx } from "@milkdown/kit/ctx";
 import { editorViewCtx } from "@milkdown/kit/core";
 import { findParentNode } from "@milkdown/prose";
+import type { EditorView } from "@milkdown/prose/view";
 import { classifyUrlParagraph, hostLabel, type UrlParaKind } from "./urlPreview";
 import { readParagraph } from "./milkdownPreviewNode";
 
@@ -10,9 +11,14 @@ export function togglePreviewLabel(kind: UrlParaKind): string | null {
   return null;
 }
 
-/** The toggle kind for the paragraph at the current selection, or "none". */
-export function selectionUrlKind(ctx: Ctx): UrlParaKind {
-  const view = ctx.get(editorViewCtx);
+/**
+ * The toggle kind for the paragraph at the current selection, or "none".
+ * Takes the live `EditorView` directly — callers (tooltip shouldShow/update)
+ * MUST pass the view ProseMirror hands them. Re-fetching the view from `ctx`
+ * here is unsafe: during `readDOMChange` (which applies typed input / Enter)
+ * `ctx.get(editorViewCtx)` can be undefined, and throwing there breaks editing.
+ */
+export function selectionUrlKind(view: EditorView): UrlParaKind {
   const found = findParentNode((n) => n.type.name === "paragraph")(view.state.selection);
   if (!found) return "none";
   return classifyUrlParagraph(readParagraph(found.node));

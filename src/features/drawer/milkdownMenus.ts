@@ -487,7 +487,7 @@ class TooltipView implements PluginView {
         const { selection } = v.state;
         if (selection instanceof TextSelection && !selection.empty) return true;
         // Also show for a caret inside a standalone-URL paragraph (toggle only).
-        return selectionUrlKind(this.#ctx) !== "none";
+        return selectionUrlKind(v) !== "none";
       },
       offset: 8,
     });
@@ -539,7 +539,10 @@ class TooltipView implements PluginView {
   }
 
   update = (view: EditorView, prevState?: EditorState) => {
-    const kind = selectionUrlKind(this.#ctx);
+    // Use the view ProseMirror passes (always valid); never re-fetch from ctx
+    // here — it can be undefined mid-update and throwing breaks editing. The
+    // toggle only applies while editable.
+    const kind = view.editable ? selectionUrlKind(view) : "none";
     const label = togglePreviewLabel(kind);
     if (label) {
       this.#toggleBtn.textContent = label;
