@@ -317,3 +317,56 @@ export type LinkPreview = {
 
 export const fetchLinkPreview = (url: string): Promise<LinkPreview> =>
   invoke("fetch_link_preview", { url });
+
+// ── M4 GitHub PR dashboard ──────────────────────────────────────────────────
+
+export type GitHubStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; login: string };
+
+export type PrBucket = "needs_review" | "mine" | "assigned" | "involved";
+
+export type GithubPr = {
+  id: string;
+  bucket: PrBucket;
+  repo: string;
+  number: number;
+  title: string | null;
+  draft: boolean;
+  mergeable: "mergeable" | "conflicting" | "unknown" | null;
+  ciStatus: "success" | "failure" | "pending" | "none" | null;
+  reviewDecision: "approved" | "changes_requested" | "review_required" | null;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+  commentCount: number | null;
+  branch: string | null;
+  url: string | null;
+  linearIdentifier: string | null;
+  linearIssueId: string | null;
+  updatedAt: string | null;
+};
+
+export type GithubSyncMeta = {
+  bucket: PrBucket;
+  fetchedCount: number;
+  truncated: boolean;
+  lastSyncedAt: string | null;
+};
+
+export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[] };
+export type BucketSyncResult = { bucket: PrBucket; ok: boolean; truncated: boolean };
+
+export const setGithubToken = (token: string): Promise<void> =>
+  invoke("set_github_token", { token });
+
+export const clearGithubToken = (): Promise<void> => invoke("clear_github_token");
+
+export const getGithubStatus = (): Promise<GitHubStatus> => invoke("get_github_status");
+
+export const testGithubConnection = (): Promise<GitHubStatus> =>
+  invoke("test_github_connection");
+
+export const syncGithubPrs = (): Promise<BucketSyncResult[]> => invoke("sync_github_prs");
+
+export const listGithubPrs = (): Promise<PrDashboard> => invoke("list_github_prs");
