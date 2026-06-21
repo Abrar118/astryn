@@ -550,9 +550,14 @@ export function useGithubSync(enabled: boolean) {
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      const results = await syncGithubPrs();
-      await qc.invalidateQueries({ queryKey: ["github-prs"] });
-      return results;
+      try {
+        const results = await syncGithubPrs();
+        await qc.invalidateQueries({ queryKey: ["github-prs"] });
+        return results;
+      } catch (err) {
+        gooeyToast.error("Couldn't refresh pull requests", { description: errorText(err) });
+        throw err;
+      }
     },
   });
 }

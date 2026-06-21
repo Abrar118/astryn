@@ -6,10 +6,17 @@ import type { ReactNode } from "react";
 
 const listGithubPrs = vi.hoisted(() => vi.fn());
 const syncGithubPrs = vi.hoisted(() => vi.fn());
+const gooeyToastError = vi.hoisted(() => vi.fn());
+
 vi.mock("@/lib/commands", () => ({
   listGithubPrs,
   syncGithubPrs,
   getGithubStatus: vi.fn(),
+  errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
+}));
+
+vi.mock("goey-toast", () => ({
+  gooeyToast: { error: gooeyToastError, success: vi.fn() },
 }));
 
 import { useGithubPrs, useGithubSync } from "./queries";
@@ -23,6 +30,7 @@ describe("GitHub query hooks", () => {
   beforeEach(() => {
     listGithubPrs.mockClear();
     syncGithubPrs.mockClear();
+    gooeyToastError.mockClear();
   });
 
   it("useGithubPrs returns the cached dashboard", async () => {
@@ -48,5 +56,14 @@ describe("GitHub query hooks", () => {
     await waitFor(() => expect(syncGithubPrs).toHaveBeenCalled());
     // After invalidation, the list query becomes stale (and will refetch on next mount/subscription).
     expect(listGithubPrs).toHaveBeenCalled();
+  });
+
+  it("useGithubSync(true) emits a goey-toast error when syncGithubPrs rejects", async () => {
+    syncGithubPrs.mockRejectedValue("GitHub token expired");
+    renderHook(() => useGithubSync(true), { wrapper });
+    await waitFor(() => expect(gooeyToastError).toHaveBeenCalledWith(
+      "Couldn't refresh pull requests",
+      expect.objectContaining({ description: "GitHub token expired" }),
+    ));
   });
 });

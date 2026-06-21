@@ -92,7 +92,7 @@ pub enum CmdError {
     NotConfigured,
     #[error("Could not reach Linear.")]
     Network,
-    #[error("Linear rate limit reached. Try again shortly.")]
+    #[error("Rate limit reached. Try again shortly.")]
     RateLimited,
     #[error("Linear rejected the request.")]
     LinearApi,
