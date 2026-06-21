@@ -38,8 +38,14 @@ export function BulkActionBar({
   const apply = async (patch: UpdateIssuePatch, label: string) => {
     setOpen(null);
     const n = selectedIds.length;
-    const results = await Promise.allSettled(selectedIds.map((id) => update.mutateAsync({ id, patch })));
-    const failed = results.filter((r) => r.status === "rejected").length;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
+        await update.mutateAsync({ id, patch });
+      } catch {
+        failed += 1;
+      }
+    }
     if (failed > 0) {
       gooeyToast.error(`${label} · ${failed} of ${n} failed`);
     } else {

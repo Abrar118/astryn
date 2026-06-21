@@ -31,7 +31,7 @@ import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
 import type { IssueListItem, Relation } from "@/lib/commands";
 import { cn } from "@/lib/utils";
-import { buildIndex, computeVisible, buildGraphElements, neighbors, buildGroups, type GroupBy } from "./graphModel";
+import { buildIndex, computeVisible, buildGraphElements, neighbors, hiddenNeighborCount, buildGroups, type GroupBy } from "./graphModel";
 import { layoutGraph } from "./graphLayout";
 import { BulkActionBar } from "./BulkActionBar";
 
@@ -320,14 +320,16 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   menuRef.current = openMenu;
   const handleContextMenu = useCallback(
     (e: ReactMouseEvent, id: string) => {
-      const hasNeighbors = neighbors(id, indexRef.current).size > 0;
-      const extra = hasNeighbors
-        ? {
-            label: expandedRef.current.has(id) ? "Collapse neighbors" : "Expand neighbors",
-            icon: <Network className="size-4" />,
-            onSelect: () => toggleExpand(id),
-          }
-        : null;
+      const expanded = expandedRef.current.has(id);
+      const hidden = hiddenNeighborCount(id, visibleRef.current, indexRef.current);
+      const extra =
+        expanded || hidden > 0
+          ? {
+              label: expanded ? "Collapse neighbors" : "Expand neighbors",
+              icon: <Network className="size-4" />,
+              onSelect: () => toggleExpand(id),
+            }
+          : null;
       menuRef.current(e, id, extra);
     },
     [toggleExpand],
@@ -362,6 +364,9 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     const visible = computeVisible(rootIds, expandedIds, index);
     return { visible, ...buildGraphElements(visible, rootSet, index) };
   }, [rootIds, expandedIds, index, rootSet]);
+
+  const visibleRef = useRef(elements.visible);
+  visibleRef.current = elements.visible;
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -456,8 +461,9 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
 
   const clearSelection = useCallback(() => {
     setNodes((ns) => ns.map((n) => ({ ...n, selected: false })));
+    setEdges((es) => es.map((e) => ({ ...e, selected: false })));
     setSelectedIds([]);
-  }, [setNodes]);
+  }, [setNodes, setEdges]);
 
   // Search recenter on matches as the term changes.
   const term = query.trim().toLowerCase();
@@ -501,6 +507,8 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         onSelectionChange={onSelectionChange}
         nodeTypes={NODE_TYPES}
         nodesDraggable
+        deleteKeyCode={null}
+        multiSelectionKeyCode="Shift"
         minZoom={0.3}
         maxZoom={2}
         proOptions={{ hideAttribution: false }}
