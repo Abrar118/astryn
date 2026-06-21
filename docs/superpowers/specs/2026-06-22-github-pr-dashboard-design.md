@@ -13,7 +13,7 @@ This keeps Astryn's hard architectural rule: all GitHub API calls happen in Rust
 ## 2. Goals & non-goals
 
 **Goals**
-- One place to see every open PR that involves you, across all accessible repos and orgs.
+- One place to see (up to the 300 most recently updated) open PRs that involve you per bucket, across all accessible repos and orgs.
 - Surface PRs awaiting your review, and your own PRs that have received reviews / changes-requested.
 - Offline-first: the page opens instantly from the local cache, then refreshes in the background.
 - Degrade gracefully with no GitHub token (a quiet "Connect GitHub" prompt, never an error).
@@ -84,6 +84,7 @@ This guarantees a page-2 failure or a rate-limit never empties a bucket. Buckets
 
 - A dedicated GitHub lock (separate from any Linear sync lock) serializes `set_github_token`, `clear_github_token`, `test_github_connection`, and `sync_github_prs`. A generation guard prevents an in-flight sync from committing under a token swapped mid-flight: capture the token (and a credential generation counter) at the start of a sync; if it changed by commit time, abort without writing.
 - **Both setting and clearing** the GitHub token are treated as an account switch: each wipes **only** GitHub state — all `github_prs` rows, `github_sync_meta`, and the `github_login` setting — so a replaced token can never expose the previous account's cached PRs or report its login via `get_github_status`. The Linear workspace cache is never touched.
+- **Fail-safe ordering:** while holding the GitHub lock, wipe the GitHub cache/login/meta and increment the credential generation **before** mutating the keychain (set or delete) the token. If the keychain mutation then fails, the cache is already empty — the prior account's data is never left behind alongside a changed/absent token.
 
 ### 4.6 Rate-limit & error interpretation
 
@@ -180,7 +181,7 @@ Bindings and types added to `src/lib/commands.ts`.
 - GraphQL parsing per field, including CI rollup mapping and `review_decision` mapping (incl. `null` preserved).
 - Bucket search-query construction (incl. the `involved` negative-qualifier remainder).
 - Pagination loop (multi-page, `hasNextPage`, cap enforcement, `truncated` flag persistence).
-- Linear identifier extraction: lowercase branches (`eng-123`), mixed case, punctuation boundaries, false substrings (no match inside `release-2024`-style or embedded text), and uppercase normalization; plus the read-time join resolution.
+- Linear identifier extraction: lowercase branches (`eng-123`), mixed case, punctuation boundaries, and uppercase normalization. Embedded false positives must NOT match (e.g. `xENG-123y` — no word boundary). Note `release-2024` *does* validly match the pattern, so it's tested at the join layer: it extracts `RELEASE-2024` but yields **no chip unless it joins an actual cached issue**. Plus the read-time join resolution itself.
 - Prune-on-full-success / abort-on-partial-failure behavior (no global prune; one bucket failing leaves its cache; another succeeding still commits).
 - Credential isolation (set-token and clear-token each wipe only GitHub state; swapped-token sync aborts via the generation guard).
 - Rate-limit/error interpretation per §4.6: GraphQL errors on HTTP 200, `RATE_LIMITED` → `RateLimited`, 403 secondary-limit vs auth disambiguation, header reset hints.
