@@ -291,3 +291,15 @@ export const removeReaction = (id: string): Promise<void> => invoke("remove_reac
 
 export const createLabel = (name: string, teamId: string | null, color: string): Promise<Label> =>
   invoke("create_label", { name, teamId, color });
+
+export type LinkPreview = {
+  requestedUrl: string;
+  resolvedUrl: string;
+  title: string | null;
+  description: string | null;
+  siteName: string | null;
+  imageDataUrl: string | null;
+};
+
+export const fetchLinkPreview = (url: string): Promise<LinkPreview> =>
+  invoke("fetch_link_preview", { url });
