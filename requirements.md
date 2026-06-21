@@ -3,7 +3,7 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) shipped, with several workspace extensions beyond the original plan; F5–F9 remain.
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) shipped, with several workspace extensions beyond the original plan; F7–F9 remain.
 **Last updated:** 2026-06-21
 
 ---
@@ -25,7 +25,7 @@
 - **Inbox** — Linear notifications in the dock with a master-detail layout.
 - **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
 
-**Not yet built:** F5 (standup), F6 (weekly review), F7 (GitHub PR tracking), F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
+**Not yet built:** F7 (GitHub PR tracking), F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
 
 ---
 
@@ -45,7 +45,7 @@ When the Linear or GitHub API shape in this doc disagrees with reality, **the li
 
 **Astryn** is a local-first desktop app that acts as a **power client for Linear** — covering workflows Linear's own UI and existing third-party tools (LinCal, Morgen, Reclaim) don't. It is Phase 1 of a larger personal "command center" that will later add Slack and Discord activity tracking. **Those are not part of this build** (`[EXT]`), but the data layer should not assume Linear is the only source forever.
 
-The user already lives in Linear for issue tracking at work. The point of this app is a faster, richer, single-pane view: a real calendar, inline detail editing, generated standup/review lists, GitHub PR status tied to issues, and issue-graph visualization.
+The user already lives in Linear for issue tracking at work. The point of this app is a faster, richer, single-pane view: a real calendar, inline detail editing, a due-date "This Week" agenda, GitHub PR status tied to issues, and issue-graph visualization.
 
 ---
 
@@ -57,17 +57,16 @@ The user already lives in Linear for issue tracking at work. The point of this a
 2. **Side-drawer issue details** (ClickUp-style) opened on click, with inline editing.
 3. **Draggable calendar tasks** — drag an issue to a new day to reschedule its due date.
 4. **"My activity" timeline** — a chronological feed of the user's own actions/changes.
-5. **Daily standup list generator.**
-6. **Weekly review list generator.**
-7. **GitHub PR & branch tracking** — PR status correlated to the issue it belongs to.
-8. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
-9. **Related docs & link storage** per issue (local-first).
+5. **"This Week" agenda** — viewer's issues organized by due date for the current work week (replaces the original standup and weekly-review generators).
+6. **GitHub PR & branch tracking** — PR status correlated to the issue it belongs to.
+7. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
+8. **Related docs & link storage** per issue (local-first).
 
 ### Out of scope `[EXT]`
 
 - Slack and Discord integration (Phase 2).
 - Multi-user / team sharing. This is a single-user personal tool.
-- Writing standup/review output back to Slack/Discord (Phase 2 hook only).
+- Posting agenda/standup text to Slack/Discord (Phase 2; the M3 "This Week" view is in-app only).
 - OAuth-based Linear auth (Phase 1 uses a personal API key — see §4).
 
 ---
@@ -110,8 +109,8 @@ Canonical asset source is the in-repo folder **`public/icons/`** (the approved a
 
 ### Time, locale & clock `[REQ]`
 
-- **Base timezone is `Asia/Dhaka` (UTC+6).** All date/time logic — due-date bucketing, the standup "last 24h" window, the weekly window, and activity-feed grouping ("Today/Yesterday") — is computed in Bangladesh local time, not UTC and not the machine's locale.
-- **Week starts on Sunday** (drives the F6 weekly window and any calendar week view).
+- **Base timezone is `Asia/Dhaka` (UTC+6).** All date/time logic — due-date bucketing, the "This Week" agenda week window, and activity-feed grouping ("Today/Yesterday") — is computed in Bangladesh local time, not UTC and not the machine's locale.
+- **Week starts on Sunday** (drives the This Week agenda window and any calendar week view).
 - **Home view shows a live dual clock:** the user's local **Dhaka** time and **Germany** time side by side. Use the `Europe/Berlin` IANA zone so CET/CEST daylight-saving shifts are handled automatically — do **not** hard-code a fixed UTC offset. Update at least once per minute (per second is fine). Label each clock with its city/zone.
 
 ---
@@ -178,13 +177,19 @@ CREATE TABLE labels (
   PRIMARY KEY (issue_id, label_id)
 );
 
--- blocks / blocked_by / related / duplicate
+-- blocks / blocked_by / related / duplicate (denormalized for agenda rendering; added M3)
 CREATE TABLE relations (
-  issue_id        TEXT NOT NULL,
-  related_issue_id TEXT NOT NULL,
-  type            TEXT NOT NULL,
+  issue_id              TEXT NOT NULL,
+  related_issue_id      TEXT NOT NULL,
+  type                  TEXT NOT NULL,   -- blocks | blocked_by | related | duplicate
+  related_identifier    TEXT,
+  related_title         TEXT,
+  related_state_name    TEXT,
+  related_state_type    TEXT,
+  related_state_color   TEXT,
   PRIMARY KEY (issue_id, related_issue_id, type)
 );
+CREATE INDEX idx_relations_issue ON relations(issue_id);
 
 CREATE TABLE comments (
   id         TEXT PRIMARY KEY,
@@ -386,15 +391,25 @@ Each feature lists **data source → behavior → acceptance criteria (AC)**.
 - **Behavior:** chronological feed grouped by day ("Today / Yesterday / earlier"), each entry deep-links to the issue (opens F2 drawer). Entry types: created, state change, reassigned, due date changed, commented, completed.
 - **AC:** the feed reflects actions the user took in Linear (verify with a real state change), newest first, grouped by day; clicking an entry opens that issue.
 
-### F5 — Daily standup generator `[REQ]`
-- **Data:** issues where `assignee = me`, bucketed: **Done** (moved to a completed state in the last 24h), **In progress** (state_type = started), **Blocked** (has a `blocked_by` relation that isn't completed, or a "blocked" label). The 24h window is computed in **`Asia/Dhaka`** local time.
-- **Behavior:** one-click "Generate standup" → under each bucket heading, **list the matching tasks as `IDENTIFIER — Title` lines only**. For now, titles only — no descriptions, estimates, or other per-item detail. Copy-to-clipboard as markdown. `[EXT — next step]` LLM polish via local Ollama — do **not** implement now; route output through a no-op `polish(text): text` seam. `[EXT]` post to Slack/Discord.
-- **AC:** buckets are filtered correctly against the cache using Dhaka-local time; rendered output is title-only lines; markdown copy round-trips cleanly; the `polish` hook returns its input unchanged.
+### F5 + F6 — "This Week" agenda (replaces original standup + weekly generators) `[REQ]` ✅ Done (M3)
 
-### F6 — Weekly review generator `[REQ]`
-- **Data:** 7-day window for a **Sunday-started week**, computed in **`Asia/Dhaka`**: **Completed this week**, **Carried over** (started but not done), **New this week**. `[EXT]` count summary (completed vs. opened) later.
-- **Behavior:** mirrors F5 — under each bucket heading, **list matching tasks as `IDENTIFIER — Title` lines only** (titles only for now). Copy-to-markdown. Same no-op `polish` seam as F5.
-- **AC:** the week window starts Sunday in Dhaka-local time and bounds the buckets correctly; each bucket lists the right task titles; markdown copy round-trips.
+> Design doc: `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`
+
+The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (weekly review: Completed / Carried / New buckets) are **replaced** by a single in-app structured view called **"This Week"**. Markdown export and the no-op `polish()` seam are dropped — output is an interactive view, not generated text.
+
+- **Data:** viewer's issues (assignee = me, via cached `viewer_id` from `settings`) where `due_date` falls within the current work week or is overdue, computed in **`Asia/Dhaka`**, week starting **Sunday**. Issues without a due date are omitted.
+- **Day groups (render order):**
+  1. **Overdue** — `due_date` < this Sunday **and** `state_type` not `completed`/`canceled`. Shown only when non-empty. Sorted by due date ascending.
+  2. **Sunday → Thursday** — one section per weekday; issues whose `due_date` equals that calendar day (any state). Each weekday section always renders even when empty, showing a quiet "Nothing due" line.
+  3. **Weekend** — Friday/Saturday of this week. Shown only when non-empty.
+  - Within a day group: sorted by priority (high→low), then identifier. Group headers are **sticky** while scrolling and show day name · date · muted count badge.
+- **Threaded content** under each top-level row: sub-issues (children via `parent_id`, rendered as compact `IssueRow`s, expanded by default) and related issues (from the `relations` cache: relation type · identifier · title · state chip). **Dedup rule:** if a sub-issue is itself one of *my* issues due this week, it appears only nested — not also as a standalone row.
+- **Navigation:** a new dock/sidebar **"This Week"** entry + a command-palette **"Go to This Week"** action. Clicking any issue (top-level or sub-issue) opens the existing **F2 drawer**.
+- **Offline-first:** reads cache only — shows data without network; manual resync updates via existing sync path.
+- **States:** loading → skeleton rows; whole-week empty → calm centered empty state.
+- **Reuse:** top-level and sub-issue rows use the shared `IssueRow` component (compact variant for sub-issues).
+- **Frontend:** `src/features/agenda/`. Week-window math via a new `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). Grouping and rendering in the frontend; data assembly in Rust (`generators/` module, `get_week_agenda` command).
+- **AC:** groups match due dates in Dhaka time; Sunday week start; Overdue/Weekend sections shown only when non-empty; sub-issues threaded and deduped; relations shown per issue; clicking any row opens the F2 drawer; cache-only reads keep the view available offline.
 
 ### F7 — GitHub PR & branch tracking `[REQ]`
 - See §8. Render per-issue PR badges in the drawer; add an optional global "PRs" view listing all open PRs grouped by issue with status.
@@ -424,15 +439,14 @@ src-tauri/
     db/              # sqlx, migrations, repositories
     secrets/         # keychain wrapper (trait-backed for future providers)
     activity/        # history->activity transformer
-    generators/      # standup + weekly builders
+    generators/      # This Week agenda builder (get_week_agenda)
   migrations/
 src/                 # React frontend
   features/
     calendar/
     drawer/
     timeline/
-    standup/
-    review/
+    agenda/
     graph/
     prs/
   lib/               # tauri command bindings, query hooks
@@ -446,7 +460,7 @@ src/                 # React frontend
 - **M0 — Scaffold. ✅ Done.** Tauri v2 + React + Tailwind v4 + shadcn/ui + SQLite migrations + keychain + Linear GraphQL proxy in Rust. App shell/home view with the Dhaka + Germany dual clock. App/web icons wired from `public/icons/`. Smoke test: `viewer` query returns the user's name in the UI. Settings screen to enter/store the Linear key.
 - **M1 — Calendar + Drawer + Drag (F1–F3). ✅ Done.** The core loop: see issues, open details, edit, reschedule. Shipped with extensions: list/board views, the full-page issue tab, the two-pane split workspace, the command palette + shortcuts, the inbox, sub-issues, and label create (see *Implementation status* near the top).
 - **M2 — Activity timeline (F4). ✅ Done.**
-- **M3 — Standup + Weekly generators (F5, F6).** Not started.
+- **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
 - **M4 — GitHub PR tracking (F7).** Not started.
 - **M5 — Hierarchy/web viz (F8).** Not started.
 - **M6 — Doc links (F9).** Not started.
@@ -473,8 +487,8 @@ Resolved (locked):
 2. **Frontend:** React + TypeScript + Vite, Tailwind v4, shadcn/ui. ✅
 3. **Week start:** Sunday. ✅
 4. **Base timezone:** `Asia/Dhaka` for all date/time logic; home shows a live `Europe/Berlin` (Germany) clock alongside local time. ✅
-5. **Standup/weekly output:** titles only (`IDENTIFIER — Title`) for now; richer formatting and counts are `[EXT]`. ✅
-6. **Local LLM polish:** deferred to the next phase — not Phase 1. Only the no-op `polish` seam exists now. ✅
+5. **F5/F6 output (M3 revision):** the original standup/weekly markdown generators and the no-op `polish` seam are **dropped**. F5 + F6 are replaced by the "This Week" structured in-app view (due-date agenda, Sunday-started week, any state). Owner redefined these `[REQ]` items. ✅
+6. **Local LLM polish:** dropped along with the markdown generators in M3 — no `polish` seam exists in the shipped design. `[EXT]` if a future text-output mode is added. ✅
 
 Resolved during build:
 
@@ -484,4 +498,4 @@ Resolved during build:
 
 ## 14. Non-goals restated `[EXT]`
 
-Slack, Discord, multi-user, OAuth, local-LLM polish, and outbound posting of standup/review are **not** in this build. Leave clean seams (provider trait for auth, source-agnostic activity table, no-op `polish` hook) but implement none of them now. **LLM integration is the immediate next phase** once this Linear build is done.
+Slack, Discord, multi-user, OAuth, and local-LLM polish are **not** in this build. Leave clean seams (provider trait for auth, source-agnostic activity table) but implement none of them now. **LLM integration is the immediate next phase** once this Linear build is done. Note: the no-op `polish` hook was removed in M3 when the text generators were replaced by the "This Week" structured view.
