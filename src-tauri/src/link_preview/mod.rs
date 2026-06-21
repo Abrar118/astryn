@@ -1,4 +1,5 @@
 pub mod addr;
+pub mod cache;
 pub mod meta;
 pub mod url;
 
@@ -25,4 +26,15 @@ pub enum PreviewError {
     TooLarge,
     /// Unexpected internal failure (e.g. runtime join error).
     Internal,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkPreview {
+    pub requested_url: String,
+    pub resolved_url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub site_name: Option<String>,
+    pub image_data_url: Option<String>,
 }
