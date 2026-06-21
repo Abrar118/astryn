@@ -24,8 +24,8 @@ pub fn extract_metadata(html: &str, base: &reqwest::Url) -> Metadata {
             .filter(|s| !s.is_empty())
     });
 
-    let description = meta_content("property", "og:description")
-        .or_else(|| meta_content("name", "description"));
+    let description =
+        meta_content("property", "og:description").or_else(|| meta_content("name", "description"));
 
     let site_name = meta_content("property", "og:site_name");
 
@@ -92,7 +92,10 @@ mod tests {
         assert_eq!(m.title.as_deref(), Some("OG Title"));
         assert_eq!(m.description.as_deref(), Some("OG Desc"));
         assert_eq!(m.site_name.as_deref(), Some("Example"));
-        assert_eq!(m.image_url.as_deref(), Some("https://example.com/img/cover.png"));
+        assert_eq!(
+            m.image_url.as_deref(),
+            Some("https://example.com/img/cover.png")
+        );
     }
 
     #[test]
@@ -105,7 +108,10 @@ mod tests {
         let m = extract_metadata(html, &base());
         assert_eq!(m.title.as_deref(), Some("Plain Title"));
         assert_eq!(m.description.as_deref(), Some("Meta Desc"));
-        assert_eq!(m.canonical_url.as_deref(), Some("https://example.com/canon"));
+        assert_eq!(
+            m.canonical_url.as_deref(),
+            Some("https://example.com/canon")
+        );
         assert_eq!(m.image_url, None);
     }
 

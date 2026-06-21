@@ -37,18 +37,21 @@ describe("createCodeBlockNodeView", () => {
     expect(rendered.props.code).toBe("graph TD; A-->B");
   });
 
-  it("keeps an editable <pre><code> for mermaid while editing (source is editable)", () => {
+  it("keeps mermaid source editable in an edit-mode wrapper while editing", () => {
     const view = construct(fakeNode("mermaid", "graph TD; A-->B"), { editable: true } as never);
-    expect((view.dom as HTMLElement).tagName).toBe("PRE");
+    expect((view.dom as HTMLElement).tagName).toBe("DIV");
+    expect((view.dom as HTMLElement).className).toContain("md-codeblock-edit");
     expect((view.contentDOM as HTMLElement).tagName).toBe("CODE");
     expect(renderSpy).not.toHaveBeenCalled();
   });
 
-  it("keeps an editable <pre><code> for non-mermaid code even when read-only", () => {
+  it("renders highlighted React code (no contentDOM) for non-mermaid code when read-only", () => {
     const view = construct(fakeNode("ts", "const x = 1;"), { editable: false } as never);
-    expect((view.dom as HTMLElement).tagName).toBe("PRE");
-    expect((view.contentDOM as HTMLElement).tagName).toBe("CODE");
-    expect((view.contentDOM as HTMLElement).getAttribute("data-language")).toBe("ts");
-    expect(renderSpy).not.toHaveBeenCalled();
+    expect((view.dom as HTMLElement).getAttribute("data-milkdown-codeblock")).toBe("");
+    expect(view.contentDOM).toBeUndefined();
+    expect(renderSpy).toHaveBeenCalled();
+    const rendered = renderSpy.mock.calls[0][0] as { props: { code: string; language: string } };
+    expect(rendered.props.code).toBe("const x = 1;");
+    expect(rendered.props.language).toBe("ts");
   });
 });

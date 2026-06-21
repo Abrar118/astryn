@@ -1,8 +1,8 @@
-use base64::Engine;
 use crate::link_preview::addr::is_public_ip;
 use crate::link_preview::meta::extract_metadata;
 use crate::link_preview::url::validate_preview_url;
 use crate::link_preview::{LinkPreview, PreviewError};
+use base64::Engine;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -48,7 +48,9 @@ pub async fn fetch_link_preview(requested: &str) -> Result<LinkPreview, PreviewE
                 .and_then(|v| v.to_str().ok())
                 .ok_or(PreviewError::Unsupported)?;
             // Resolve relative redirects against the current URL, then re-validate.
-            current = current.join(location).map_err(|_| PreviewError::Unsupported)?;
+            current = current
+                .join(location)
+                .map_err(|_| PreviewError::Unsupported)?;
             current = validate_preview_url(current.as_str())?;
             continue;
         }
@@ -67,7 +69,8 @@ pub async fn fetch_link_preview(requested: &str) -> Result<LinkPreview, PreviewE
             .unwrap_or("")
             .trim()
             .to_ascii_lowercase();
-        if !(mime == "text/html" || mime == "application/xhtml+xml" || mime == "application/xhtml") {
+        if !(mime == "text/html" || mime == "application/xhtml+xml" || mime == "application/xhtml")
+        {
             return Err(PreviewError::Unsupported);
         }
 
@@ -125,10 +128,7 @@ fn pinned_client(url: &reqwest::Url, addr: SocketAddr) -> Result<reqwest::Client
 }
 
 /// Read a response body up to `cap` bytes, erroring if it exceeds the cap.
-async fn read_capped(
-    mut resp: reqwest::Response,
-    cap: usize,
-) -> Result<Vec<u8>, PreviewError> {
+async fn read_capped(mut resp: reqwest::Response, cap: usize) -> Result<Vec<u8>, PreviewError> {
     if resp.content_length().is_some_and(|len| len > cap as u64) {
         return Err(PreviewError::TooLarge);
     }
@@ -161,7 +161,9 @@ async fn fetch_image_data_url(img: &str) -> Result<String, PreviewError> {
                 .get(reqwest::header::LOCATION)
                 .and_then(|v| v.to_str().ok())
                 .ok_or(PreviewError::Unsupported)?;
-            current = current.join(location).map_err(|_| PreviewError::Unsupported)?;
+            current = current
+                .join(location)
+                .map_err(|_| PreviewError::Unsupported)?;
             current = validate_preview_url(current.as_str())?;
             continue;
         }

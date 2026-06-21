@@ -37,8 +37,17 @@ mod tests {
 
     #[test]
     fn rejects_non_http_schemes() {
-        for s in ["ftp://example.com", "file:///etc/passwd", "javascript:alert(1)", "data:text/html,x"] {
-            assert_eq!(validate_preview_url(s), Err(PreviewError::Unsupported), "{s}");
+        for s in [
+            "ftp://example.com",
+            "file:///etc/passwd",
+            "javascript:alert(1)",
+            "data:text/html,x",
+        ] {
+            assert_eq!(
+                validate_preview_url(s),
+                Err(PreviewError::Unsupported),
+                "{s}"
+            );
         }
     }
 
@@ -56,7 +65,13 @@ mod tests {
 
     #[test]
     fn rejects_missing_host_and_garbage() {
-        assert_eq!(validate_preview_url("https://"), Err(PreviewError::Unsupported));
-        assert_eq!(validate_preview_url("not a url"), Err(PreviewError::Unsupported));
+        assert_eq!(
+            validate_preview_url("https://"),
+            Err(PreviewError::Unsupported)
+        );
+        assert_eq!(
+            validate_preview_url("not a url"),
+            Err(PreviewError::Unsupported)
+        );
     }
 }

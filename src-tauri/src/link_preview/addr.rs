@@ -30,7 +30,7 @@ fn is_public_v4(ip: Ipv4Addr) -> bool {
         || o[0] == 0                  // 0.0.0.0/8
         || (o[0] == 100 && (o[1] & 0xc0) == 64)  // 100.64.0.0/10 CGNAT
         || (o[0] == 192 && o[1] == 0 && o[2] == 0) // 192.0.0.0/24 IETF
-        || (o[0] & 0xf0) == 240)      // 240.0.0.0/4 reserved
+        || (o[0] & 0xf0) == 240) // 240.0.0.0/4 reserved
 }
 
 fn is_public_v6(ip: Ipv6Addr) -> bool {
@@ -64,15 +64,15 @@ mod tests {
     #[test]
     fn private_and_special_v4_blocked() {
         for s in [
-            "127.0.0.1",      // loopback
-            "10.0.0.1",       // private
-            "172.16.0.1",     // private
-            "192.168.1.1",    // private
-            "169.254.0.1",    // link-local
-            "0.0.0.0",        // unspecified
-            "100.64.0.1",     // CGNAT (shared)
-            "224.0.0.1",      // multicast
-            "255.255.255.255",// broadcast
+            "127.0.0.1",       // loopback
+            "10.0.0.1",        // private
+            "172.16.0.1",      // private
+            "192.168.1.1",     // private
+            "169.254.0.1",     // link-local
+            "0.0.0.0",         // unspecified
+            "100.64.0.1",      // CGNAT (shared)
+            "224.0.0.1",       // multicast
+            "255.255.255.255", // broadcast
         ] {
             assert!(!is_public_ip(v4(s)), "{s} should be blocked");
         }
@@ -86,14 +86,14 @@ mod tests {
     #[test]
     fn private_and_special_v6_blocked() {
         for s in [
-            "::1",                 // loopback
-            "::",                  // unspecified
-            "fe80::1",             // link-local
-            "fc00::1",             // unique-local
-            "fd00::1",             // unique-local
-            "ff02::1",             // multicast
-            "::ffff:127.0.0.1",    // v4-mapped loopback
-            "::ffff:10.0.0.1",     // v4-mapped private
+            "::1",              // loopback
+            "::",               // unspecified
+            "fe80::1",          // link-local
+            "fc00::1",          // unique-local
+            "fd00::1",          // unique-local
+            "ff02::1",          // multicast
+            "::ffff:127.0.0.1", // v4-mapped loopback
+            "::ffff:10.0.0.1",  // v4-mapped private
         ] {
             assert!(!is_public_ip(v6(s)), "{s} should be blocked");
         }
