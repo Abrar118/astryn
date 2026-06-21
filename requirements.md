@@ -3,8 +3,8 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) shipped, with several workspace extensions beyond the original plan; F8–F9 remain.
-**Last updated:** 2026-06-21
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) + dependency graph (M5/F8) shipped, with several workspace extensions beyond the original plan; F9 (doc links) remains.
+**Last updated:** 2026-06-22
 
 ---
 
@@ -15,6 +15,8 @@
 - **M0 — Scaffold.** Tauri v2 + React 19 + Tailwind v4 + shadcn/ui, SQLite migrations, OS-keychain secret storage, the Rust Linear GraphQL proxy, the Home dual clock (Dhaka + Germany), and the Settings key-entry/connection flow.
 - **M1 — Calendar + Drawer + Drag (F1–F3).** Month/week calendar with filters and the unscheduled rail, drag-to-reschedule, the shared issue detail (drawer **and** full-page tab) with inline editing, and a Milkdown markdown editor (GFM, Mermaid, code blocks, proxied images, issue mentions).
 - **F4 — Activity timeline.** Per-issue chronological activity with semantic, color-coded event icons.
+- **M4 — GitHub PR dashboard (F7).** Viewer-centric dashboard (needs-my-review / mine / assigned / involved) with status/CI/conflict/review badges, the real GitHub contribution heatmap, classic-PAT auth, and an offline-first per-bucket cache.
+- **M5 — Dependency graph (F8).** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 
 **Delivered beyond the original M0/M1 scope**
 
@@ -25,7 +27,7 @@
 - **Inbox** — Linear notifications in the dock with a master-detail layout.
 - **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
 
-**Not yet built:** F8 (hierarchy/graph viz), F9 (doc links) — see §9 and §11.
+**Not yet built:** F9 (doc links) — see §9 and §11.
 
 ---
 
@@ -379,6 +381,8 @@ Each bucket is capped at the 300 most recently updated PRs. The `involved` bucke
 
 **Linear correlation** is demoted to an optional convenience chip: when a PR's `headRefName` or `title` contains a Linear issue identifier (matched case-insensitively with `\b[A-Z][A-Z0-9]*-\d+\b`, then normalized to uppercase), the row shows a chip that opens that issue's tab inside Astryn. The identifier is extracted at sync time and stored in `github_prs.linear_identifier`; the join to `issues.identifier` happens at read time in `list_github_prs`, so it automatically follows Linear cache rebuilds. If no GitHub token: the dashboard shows a "Connect GitHub" prompt; no error state.
 
+**Activity heatmap.** The page header renders the viewer's real GitHub **contribution calendar** (`viewer.contributionsCollection.contributionCalendar` — `totalContributions` + per-day counts for the last year), as a GitHub-style grid in the app's indigo palette, beside Open / Needs-review / Changes-requested / Conflict metric tiles. The calendar is fetched in Rust (`sync_github_contributions`) and cached as a JSON blob in `settings` (offline-first), wiped on token set/clear alongside the login.
+
 ---
 
 ## 9. Feature specs
@@ -424,11 +428,11 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 - **Frontend:** `src/features/agenda/`. Week-window math via a new `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). Grouping and rendering in the frontend; data assembly in Rust (`generators/` module, `get_week_agenda` command).
 - **AC:** groups match due dates in Dhaka time; Sunday week start; Overdue/Weekend sections shown only when non-empty; sub-issues threaded and deduped; relations shown per issue; clicking any row opens the F2 drawer; cache-only reads keep the view available offline.
 
-### F7 — GitHub PR dashboard `[REQ]`
-- A standalone view with four sections (needs-my-review, my open PRs, assigned, involved), each row showing title, #number, author, comments, repo, updated time, and status/CI/conflict/review badges; a Linear chip when the branch/title identifier matches a cached issue.
+### F7 — GitHub PR dashboard `[REQ]` ✅ Done (M4)
+- A standalone view with four sections (needs-my-review, my open PRs, assigned, involved), each row showing title, #number, author, comments, repo, updated time, and status/CI/conflict/review badges; a Linear chip when the branch/title identifier matches a cached issue. The header shows the viewer's real GitHub contribution heatmap (last year) plus Open / Needs-review / Changes-requested / Conflict metric tiles (see §8).
 - **AC:** with a token, sections populate; with none, a connect prompt shows without errors; a sync failure leaves the previous cache intact; setting/clearing the token never disturbs the Linear cache.
 
-### F8 — Issue web / hierarchy viz `[REQ]`
+### F8 — Issue web / hierarchy viz `[REQ]` ✅ Done (M5)
 - **Data:** `issues.parent_id` (tree) + `relations` (cross-links).
 - **Behavior:** React Flow graph. Parent→child as the primary tree; relations (blocks/blocked-by/related/duplicate) as styled edges. Node = issue card (identifier, title, state color). Click a node → F2 drawer. Start from a focused issue and expand neighbors, or render a whole project's tree.
 - **AC:** selecting an issue renders its parent/children and relations correctly; clicking a node opens its drawer; layout is readable for at least ~50 nodes.
@@ -474,8 +478,8 @@ src/                 # React frontend
 - **M1 — Calendar + Drawer + Drag (F1–F3). ✅ Done.** The core loop: see issues, open details, edit, reschedule. Shipped with extensions: list/board views, the full-page issue tab, the two-pane split workspace, the command palette + shortcuts, the inbox, sub-issues, and label create (see *Implementation status* near the top).
 - **M2 — Activity timeline (F4). ✅ Done.**
 - **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
-- **M4 — GitHub PR dashboard (F7).** Standalone viewer-centric PR dashboard; classic-PAT auth; offline-first per-bucket cache.
-- **M5 — Hierarchy/web viz (F8).** Not started.
+- **M4 — GitHub PR dashboard (F7). ✅ Done.** Standalone viewer-centric PR dashboard (four `@me` buckets, status/CI/conflict/review badges, the real GitHub contribution heatmap + metric tiles, the optional Linear chip); classic-PAT auth; offline-first per-bucket cache. See `docs/superpowers/specs/2026-06-22-github-pr-dashboard-design.md`.
+- **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 - **M6 — Doc links (F9).** Not started.
 
 Each milestone must be independently runnable and demoable. Don't start a milestone until the previous one builds and runs.
