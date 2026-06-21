@@ -186,6 +186,17 @@ describe("buildGroups", () => {
     const ghost = groups.find((g) => g.memberIds.includes("ghost"));
     expect(ghost?.label).toBe("No status");
   });
+  it("keeps same-numbered cycles from different teams in separate groups", () => {
+    const idx = buildIndex(
+      [
+        iss({ id: "A", teamId: "t1", cycleNumber: 3, cycleName: "Cycle 3" }),
+        iss({ id: "B", teamId: "t2", cycleNumber: 3, cycleName: "Cycle 3" }),
+      ],
+      [],
+    );
+    const groups = buildGroups(new Set(["A", "B"]), "cycle", idx);
+    expect(groups).toHaveLength(2);
+  });
 });
 
 describe("bulkStatusTeamId", () => {

@@ -35,10 +35,16 @@ export function BulkActionBar({
     return [...seen.values()].sort((a, b) => (STATE_RANK[a.type] ?? 9) - (STATE_RANK[b.type] ?? 9));
   }, [teamId, index]);
 
-  const apply = (patch: UpdateIssuePatch, label: string) => {
-    for (const id of selectedIds) update.mutate({ id, patch });
-    gooeyToast.success(`${label} · ${selectedIds.length} issue${selectedIds.length !== 1 ? "s" : ""}`);
+  const apply = async (patch: UpdateIssuePatch, label: string) => {
     setOpen(null);
+    const n = selectedIds.length;
+    const results = await Promise.allSettled(selectedIds.map((id) => update.mutateAsync({ id, patch })));
+    const failed = results.filter((r) => r.status === "rejected").length;
+    if (failed > 0) {
+      gooeyToast.error(`${label} · ${failed} of ${n} failed`);
+    } else {
+      gooeyToast.success(`${label} · ${n} issue${n !== 1 ? "s" : ""}`);
+    }
   };
 
   const toggle = (k: MenuKey) => setOpen((cur) => (cur === k ? null : k));

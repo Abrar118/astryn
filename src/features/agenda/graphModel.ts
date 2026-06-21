@@ -146,10 +146,12 @@ export function groupKeyOf(
       return issue.projectName
         ? { key: issue.projectId ?? "_none", label: issue.projectName }
         : { key: "_none", label: "No project" };
-    case "cycle":
-      if (issue.cycleName) return { key: `c${issue.cycleNumber ?? issue.cycleName}`, label: issue.cycleName };
-      if (issue.cycleNumber != null) return { key: `c${issue.cycleNumber}`, label: `Cycle ${issue.cycleNumber}` };
+    case "cycle": {
+      const t = issue.teamId ?? "_";
+      if (issue.cycleName) return { key: `${t}|c${issue.cycleNumber ?? issue.cycleName}`, label: issue.cycleName };
+      if (issue.cycleNumber != null) return { key: `${t}|c${issue.cycleNumber}`, label: `Cycle ${issue.cycleNumber}` };
       return { key: "_none", label: "No cycle" };
+    }
   }
 }
 
