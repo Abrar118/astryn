@@ -2,6 +2,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::path::Path;
 
+pub mod github;
 pub mod issues;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
