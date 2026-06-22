@@ -81,7 +81,7 @@ export function AgendaView() {
   const avatarOf = (id: string | null) => {
     if (!id) return null;
     const u = (users ?? []).find((x) => x.id === id);
-    return u ? { name: u.name } : null;
+    return u ? { name: u.name, avatarUrl: u.avatarUrl } : null;
   };
 
   // Arrow-key week navigation

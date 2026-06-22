@@ -234,7 +234,7 @@ export function SplitLayout() {
       <DragOverlay dropAnimation={null}>
         {activeDragTab ? (
           <div className="flex cursor-grabbing items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-xs text-foreground shadow-lg">
-            <span className="text-muted-foreground">{tabIcon(activeDragTab)}</span>
+            <span className="flex shrink-0">{tabIcon(activeDragTab, issues ?? [])}</span>
             <span className="max-w-[12rem] truncate">{tabLabel(activeDragTab, issues ?? [])}</span>
           </div>
         ) : null}

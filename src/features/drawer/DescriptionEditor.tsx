@@ -8,6 +8,7 @@ import {
   rootCtx,
   editorViewOptionsCtx,
   editorViewCtx,
+  serializerCtx,
 } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
@@ -20,6 +21,23 @@ import {
 import { descriptionMentionPlugin } from "./milkdownMention";
 import { descriptionPreviewView } from "./milkdownPreviewNode";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
+import type { User } from "@/lib/commands";
+
+/** Build a mention→user resolver: by our id first, then by display name / handle
+ * (Linear's mentions carry the user's handle as text and an id we may not cache,
+ * so always fall back to the name match rather than giving up on an id miss). */
+export function makeUserResolver(users: User[]) {
+  return ({ id, name }: { id: string | null; name: string }): User | undefined => {
+    if (id) {
+      const byId = users.find((u) => u.id === id);
+      if (byId) return byId;
+    }
+    const key = name.toLowerCase();
+    return users.find(
+      (u) => u.name.toLowerCase() === key || (u.displayName ?? "").toLowerCase() === key,
+    );
+  };
+}
 
 /**
  * Some Linear descriptions contain Markdown that ProseMirror rejects (e.g. a
@@ -52,18 +70,21 @@ export function ReadOnlyDescription({
   markdown,
   onOpenLink,
   resolveMention,
+  users,
 }: {
   markdown: string;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
 }) {
   const components = useMemo(
     () =>
       createMarkdownComponents({
         onActivateLink: onOpenLink,
         resolveMention: resolveMention ?? (() => undefined),
+        resolveUser: users ? makeUserResolver(users) : undefined,
       }),
-    [onOpenLink, resolveMention],
+    [onOpenLink, resolveMention, users],
   );
   return (
     <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
@@ -80,6 +101,8 @@ interface MilkdownEditorInnerProps {
   autosaveRef: React.RefObject<DescriptionAutosave | null>;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  /** Persist a checkbox toggle made outside edit mode (display instance). */
+  onPersist: (md: string) => void;
 }
 
 /**
@@ -92,9 +115,12 @@ function MilkdownEditorInner({
   autosaveRef,
   onOpenLink,
   resolveMention,
+  onPersist,
 }: MilkdownEditorInnerProps) {
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const onPersistRef = useRef(onPersist);
+  onPersistRef.current = onPersist;
 
   useEditor(
     (root) =>
@@ -104,8 +130,38 @@ function MilkdownEditorInner({
           ctx.set(defaultValueCtx, markdown);
           ctx.set(editorViewOptionsCtx, {
             editable: () => editable,
-            handleClickOn: (_view, _pos, _node, _nodePos, event) => {
-              const anchor = (event.target as HTMLElement | null)?.closest("a");
+            handleClickOn: (view, _pos, _node, _nodePos, event) => {
+              const target = event.target as HTMLElement | null;
+              // ── Task-list checkbox toggle ──────────────────────────────────
+              // The checkbox is a CSS ::before in the item's left padding, so a
+              // click on it lands on the <li>; toggle when the click x falls in
+              // that band. Works in display mode too (persist directly); in edit
+              // mode the markdownUpdated listener autosaves the change.
+              const li = target?.closest('li[data-item-type="task"]') as HTMLElement | null;
+              if (li) {
+                const rect = li.getBoundingClientRect();
+                if (event.clientX - rect.left <= 24) {
+                  const $pos = view.state.doc.resolve(view.posAtDOM(li, 0));
+                  for (let depth = $pos.depth; depth >= 1; depth--) {
+                    const item = $pos.node(depth);
+                    if (item.attrs?.checked != null) {
+                      view.dispatch(
+                        view.state.tr.setNodeMarkup($pos.before(depth), undefined, {
+                          ...item.attrs,
+                          checked: !item.attrs.checked,
+                        }),
+                      );
+                      if (!autosaveRef.current) {
+                        onPersistRef.current(ctx.get(serializerCtx)(view.state.doc));
+                      }
+                      event.preventDefault();
+                      return true;
+                    }
+                  }
+                }
+              }
+              // ── In-app link activation ─────────────────────────────────────
+              const anchor = target?.closest("a");
               const href = anchor?.getAttribute("href");
               if (href) {
                 event.preventDefault();
@@ -334,6 +390,7 @@ export function DescriptionEditor({
             autosaveRef={autosaveRef}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
+            onPersist={(md) => void onSaveRef.current(md)}
           />
         </MilkdownProvider>
       </div>

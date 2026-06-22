@@ -72,7 +72,11 @@ export function CommentCard({
   return (
     <div className={`group min-w-0 flex-1 ${isPending ? "opacity-60" : ""}`}>
       <div className="flex items-center gap-2">
-        <Avatar name={comment.userName ?? "?"} size={22} />
+        <Avatar
+          name={comment.userName ?? "?"}
+          src={(users.data ?? []).find((u) => u.id === comment.userId)?.avatarUrl}
+          size={22}
+        />
         <span className="text-sm font-medium text-foreground">{comment.userName ?? "Unknown"}</span>
         <span className="text-xs text-muted-foreground">
           {timeAgo(comment.createdAt)}{comment.editedAt ? " (edited)" : ""}
@@ -111,7 +115,7 @@ export function CommentCard({
             onSubmit={(md) => update.mutate({ issueId, id: comment.id, body: md }, { onSuccess: () => setEditing(false) })}
           />
         ) : (
-          <ReadOnlyDescription markdown={comment.body} onOpenLink={onOpenLink} resolveMention={resolveMention} />
+          <ReadOnlyDescription markdown={comment.body} onOpenLink={onOpenLink} resolveMention={resolveMention} users={users.data ?? []} />
         )}
       </div>
 

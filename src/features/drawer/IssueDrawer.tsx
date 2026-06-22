@@ -17,6 +17,7 @@ import {
   ExternalLink,
   FileText,
   Gauge,
+  GitBranch,
   GitPullRequest,
   IterationCcw,
   Link2,
@@ -63,7 +64,7 @@ import { buildActivity, mergeActivityTimeline, type ActivityItem } from "./drawe
 import { buildCommentThreads } from "./comments/commentThreads";
 import { CommentComposer } from "./comments/CommentComposer";
 import { CommentThread } from "./comments/CommentThread";
-import { DescriptionEditor } from "./DescriptionEditor";
+import { DescriptionEditor, makeUserResolver } from "./DescriptionEditor";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 import { timeAgo } from "./timeAgo";
 
@@ -384,6 +385,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
   const projectId = d.projectId;
   const url = "url" in d ? d.url : null;
   const projectName = "projectName" in d ? d.projectName : null;
+  const branchName = "branchName" in d ? d.branchName : null;
   const estimate = "estimate" in d ? d.estimate : null;
   const cycleName = "cycleName" in d ? d.cycleName : null;
   const cycleNumber = "cycleNumber" in d ? d.cycleNumber : null;
@@ -489,8 +491,13 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
   );
 
   const md = useMemo<Components>(
-    () => createMarkdownComponents({ onActivateLink: handleLink, resolveMention }),
-    [handleLink, resolveMention],
+    () =>
+      createMarkdownComponents({
+        onActivateLink: handleLink,
+        resolveMention,
+        resolveUser: makeUserResolver(users.data ?? []),
+      }),
+    [handleLink, resolveMention, users.data],
   );
 
   const saveDescription = async (markdown: string) => {
@@ -542,6 +549,11 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               <Maximize2 className="size-4" />
             </IconBtn>
           )}
+          {branchName && (
+            <IconBtn title="Copy git branch name" onClick={() => copyText(branchName, "Branch name")}>
+              <GitBranch className="size-4" />
+            </IconBtn>
+          )}
           <IconBtn title="Copy link" onClick={() => copyText(url ?? identifier, "Link")}>
             <Link2 className="size-4" />
           </IconBtn>
@@ -564,6 +576,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               <>
                 <PopoverItem icon={<Copy className="size-4" />} label="Copy ID" onClick={() => (copyText(identifier, "ID"), close())} />
                 <PopoverItem icon={<Link2 className="size-4" />} label="Copy link" onClick={() => (copyText(url ?? identifier, "Link"), close())} />
+                {branchName && <PopoverItem icon={<GitBranch className="size-4" />} label="Copy git branch name" onClick={() => (copyText(branchName, "Branch name"), close())} />}
                 {openLinear && <PopoverItem icon={<ExternalLink className="size-4" />} label="Open in Linear" onClick={() => (openLinear(), close())} />}
                 {editable && (
                   <>
@@ -598,8 +611,8 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
       )}
 
       <div className="flex min-h-0 flex-1">
-        {/* Main column */}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto">
+        {/* Main column (pb clears the floating dock that overlaps the bottom) */}
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto pb-20">
           {/* Page mode centers the reading column (Linear-style full-page);
               drawer mode keeps the original padded full-width layout. */}
           <div className={mode === "page" ? "mx-auto max-w-3xl px-8 py-8" : "px-7 py-6"}>

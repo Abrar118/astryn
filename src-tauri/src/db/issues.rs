@@ -263,6 +263,32 @@ pub async fn replace_relations(
     Ok(())
 }
 
+/// Insert a single relation for `issue_id` without disturbing its others
+/// (used after `issueRelationCreate`; a later sync reconciles the full set).
+pub async fn insert_relation(
+    pool: &SqlitePool,
+    issue_id: &str,
+    r: &RelationRecord,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "INSERT OR IGNORE INTO relations
+           (issue_id, related_issue_id, type, related_identifier, related_title,
+            related_state_name, related_state_type, related_state_color)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8)",
+    )
+    .bind(issue_id)
+    .bind(&r.related_issue_id)
+    .bind(&r.r#type)
+    .bind(&r.related_identifier)
+    .bind(&r.related_title)
+    .bind(&r.related_state_name)
+    .bind(&r.related_state_type)
+    .bind(&r.related_state_color)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn load_relations(pool: &SqlitePool) -> Result<Vec<RelationItem>, sqlx::Error> {
     sqlx::query_as(
         "SELECT issue_id, type, related_issue_id AS related_id, related_identifier, related_title,

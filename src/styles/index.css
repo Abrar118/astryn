@@ -508,8 +508,33 @@
 .milkdown .ProseMirror h3 { margin: 0.875rem 0 0.35rem; font-size: 1.05rem; font-weight: 650; }
 .milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; }
 .milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; }
-.milkdown .ProseMirror li[data-task-list-item] { list-style: none; display: flex; align-items: flex-start; gap: 0.5rem; padding-left: 0; }
-.milkdown .ProseMirror li[data-task-list-item] input[type="checkbox"] { margin-top: 0.25rem; flex-shrink: 0; accent-color: var(--primary); }
+/* GFM task lists: Milkdown's gfm renders `<li data-item-type="task" data-checked>`
+   with NO checkbox element, so draw the box via ::before keyed on data-checked.
+   The box is absolutely positioned (NOT flex) so a task item's paragraph, nested
+   sub-list and images keep flowing as normal blocks instead of side-by-side. */
+.milkdown .ProseMirror li[data-item-type="task"] { list-style: none; position: relative; padding-left: 1.6rem; }
+.milkdown .ProseMirror li[data-item-type="task"]::marker { content: none; }
+.milkdown .ProseMirror li[data-item-type="task"] > p:first-child { margin-top: 0; }
+.milkdown .ProseMirror li[data-item-type="task"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.18em;
+  width: 1.05rem;
+  height: 1.05rem;
+  border: 1.5px solid var(--muted-foreground);
+  border-radius: 4px;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+  border-color: var(--primary);
+  background-color: var(--primary);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 0.7rem;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+}
 .milkdown .ProseMirror blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
 .milkdown .ProseMirror pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
 .milkdown .ProseMirror code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; font-size: 0.875em; }
@@ -564,13 +589,18 @@
 .astryn-prose th { background: var(--secondary); font-weight: 600; }
 .astryn-prose hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 
-/* GFM task lists: inline checkbox + text, no bullet (matches Linear). */
+/* GFM task lists: checkbox + text, no bullet (matches Linear). Absolutely
+   positioned checkbox so nested sub-lists/images flow normally, not side-by-side. */
 .astryn-prose ul.contains-task-list { list-style: none; padding-left: 0; }
-.astryn-prose li.task-list-item { display: flex; align-items: flex-start; gap: 0.5rem; }
+.astryn-prose li.task-list-item { position: relative; padding-left: 1.6rem; list-style: none; }
 .astryn-prose li.task-list-item::marker { content: none; }
 .astryn-prose li.task-list-item > input[type="checkbox"] {
-  margin: 0.3rem 0 0;
-  flex-shrink: 0;
+  position: absolute;
+  left: 0;
+  top: 0.25em;
+  margin: 0;
+  width: 1.05rem;
+  height: 1.05rem;
   accent-color: var(--primary);
 }
 .astryn-prose li.task-list-item > p { margin: 0; }

@@ -54,7 +54,12 @@ export function Popover({
         close();
       }
     };
-    const onScroll = () => close();
+    const onScroll = (e: Event) => {
+      // Scrolling inside the panel's own list must not close it; only an
+      // ancestor scroll (which detaches the anchored panel) should.
+      if (panelRef.current?.contains(e.target as Node)) return;
+      close();
+    };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     window.addEventListener("resize", close);

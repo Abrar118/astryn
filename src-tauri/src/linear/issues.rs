@@ -76,6 +76,13 @@ pub struct OrgIdentity {
 pub struct ParsedUser {
     pub id: String,
     pub name: String,
+    /// Linear avatar image URL, when the user has uploaded one (else null).
+    pub avatar_url: Option<String>,
+    /// Short handle (e.g. "abrar"), IANA timezone, and primary team name — used
+    /// by the mention hover card. All optional; absent fields just hide a line.
+    pub display_name: Option<String>,
+    pub timezone: Option<String>,
+    pub team_name: Option<String>,
 }
 
 /// One inbox notification, flattened to the issue it points at. Only
@@ -288,6 +295,15 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
             Some(ParsedUser {
                 id: s(u, "id")?,
                 name: s(u, "name").unwrap_or_default(),
+                avatar_url: s(u, "avatarUrl"),
+                display_name: s(u, "displayName"),
+                timezone: s(u, "timezone"),
+                team_name: u
+                    .get("teams")
+                    .and_then(|t| t.get("nodes"))
+                    .and_then(|n| n.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|t| s(t, "name")),
             })
         })
         .collect())
@@ -453,6 +469,32 @@ pub fn parse_label_create(body: &str) -> Result<ParsedLabel, LinearError> {
         id: s(l, "id").unwrap_or_default(),
         name: s(l, "name"),
         color: s(l, "color"),
+    })
+}
+
+/// Parse `issueRelationCreate`, returning the new relation from the source
+/// issue's perspective (`relatedIssue` is the target, with display fields for
+/// the relations cache).
+pub fn parse_relation_create(body: &str) -> Result<ParsedRelation, LinearError> {
+    let data = extract_data(body)?;
+    let created = data
+        .get("issueRelationCreate")
+        .ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "issueRelationCreate returned success=false".into(),
+        ));
+    }
+    let rel = created.get("issueRelation").ok_or(LinearError::Malformed)?;
+    let ri = rel.get("relatedIssue").ok_or(LinearError::Malformed)?;
+    Ok(ParsedRelation {
+        related_id: s(ri, "id").unwrap_or_default(),
+        r#type: s(rel, "type").unwrap_or_default(),
+        related_identifier: s(ri, "identifier"),
+        related_title: s(ri, "title"),
+        related_state_name: nested(ri, "state", "name"),
+        related_state_type: nested(ri, "state", "type"),
+        related_state_color: nested(ri, "state", "color"),
     })
 }
 
@@ -688,6 +730,8 @@ pub struct DetailCycle {
 
 pub struct IssueDetailNode {
     pub issue: ParsedIssue,
+    /// Linear's git branch name for this issue (workspace-formatted).
+    pub branch_name: Option<String>,
     pub creator_name: Option<String>,
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
@@ -912,6 +956,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         .unwrap_or_default();
     Ok(IssueDetailNode {
         issue,
+        branch_name: s(n, "branchName"),
         creator_name: nested(n, "creator", "name"),
         team_states,
         cycle,
@@ -964,6 +1009,9 @@ pub struct UpdateIssuePatch {
     pub estimate: Option<Option<f64>>,
     #[serde(default, deserialize_with = "double_option")]
     pub cycle_id: Option<Option<String>>,
+    /// Re-parent the issue (sub-issue of / parent of). Some(None) detaches.
+    #[serde(default, deserialize_with = "double_option")]
+    pub parent_id: Option<Option<String>>,
 }
 
 /// Build the GraphQL `IssueUpdateInput`. Omitted => absent; Some(None) => null (clear).
@@ -1020,6 +1068,12 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
     if let Some(opt) = &p.cycle_id {
         m.insert(
             "cycleId".into(),
+            opt.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(opt) = &p.parent_id {
+        m.insert(
+            "parentId".into(),
             opt.clone().map(Value::String).unwrap_or(Value::Null),
         );
     }
@@ -1125,6 +1179,7 @@ fn issue_detail_query() -> String {
         "query Issue($id: String!) {{
            issue(id: $id) {{
              {ISSUE_NODE_FIELDS}
+             branchName
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
              creator {{ name }}
@@ -1146,7 +1201,7 @@ fn issue_detail_query() -> String {
     )
 }
 
-const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
+const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl displayName timezone teams(first: 1) { nodes { name } } } } }";
 const NOTIFICATIONS_QUERY: &str = "query { notifications(first: 50) {
     pageInfo { hasNextPage }
     nodes {
@@ -1200,6 +1255,16 @@ fn comment_update_mutation() -> String {
 
 fn label_create_mutation() -> String {
     "mutation L($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id name color } } }".to_string()
+}
+
+fn relation_create_mutation() -> String {
+    "mutation IRC($input: IssueRelationCreateInput!) { \
+       issueRelationCreate(input: $input) { \
+         success \
+         issueRelation { type relatedIssue { id identifier title state { name type color } } } \
+       } \
+     }"
+    .to_string()
 }
 
 impl LinearClient {
@@ -1256,6 +1321,28 @@ impl LinearClient {
     pub async fn delete_issue(&self, auth: &str, id: &str) -> Result<(), LinearError> {
         let body = serde_json::json!({ "query": ISSUE_DELETE_MUTATION, "variables": { "id": id } });
         parse_issue_delete(&self.post(auth, body).await?)
+    }
+
+    /// Create an issue relation. `type_` is the Linear `IssueRelationType`
+    /// (`related` | `blocks` | `duplicate`); the caller chooses `issue_id` /
+    /// `related_issue_id` to encode direction (e.g. "blocked by" = swap them).
+    pub async fn create_issue_relation(
+        &self,
+        auth: &str,
+        issue_id: &str,
+        related_issue_id: &str,
+        type_: &str,
+    ) -> Result<ParsedRelation, LinearError> {
+        let input = serde_json::json!({
+            "issueId": issue_id,
+            "relatedIssueId": related_issue_id,
+            "type": type_,
+        });
+        let req = serde_json::json!({
+            "query": relation_create_mutation(),
+            "variables": { "input": input }
+        });
+        parse_relation_create(&self.post(auth, req).await?)
     }
 
     pub async fn create_comment(
@@ -1417,6 +1504,59 @@ mod tests {
             p.relations[0].related_state_type.as_deref(),
             Some("started")
         );
+    }
+
+    #[test]
+    fn parse_users_extracts_profile_fields() {
+        let body = r##"{"data":{"users":{"nodes":[
+            {"id":"u1","name":"Abrar Mahir Esam","avatarUrl":"https://public.linear.app/a.png",
+             "displayName":"abrar","timezone":"Asia/Dhaka","teams":{"nodes":[{"name":"Psycloud"}]}},
+            {"id":"u2","name":"No Extras","avatarUrl":null,"displayName":null,"timezone":null,"teams":{"nodes":[]}}
+        ]}}}"##;
+        let users = parse_users(body).unwrap();
+        assert_eq!(users[0].avatar_url.as_deref(), Some("https://public.linear.app/a.png"));
+        assert_eq!(users[0].display_name.as_deref(), Some("abrar"));
+        assert_eq!(users[0].timezone.as_deref(), Some("Asia/Dhaka"));
+        assert_eq!(users[0].team_name.as_deref(), Some("Psycloud"));
+        // Nulls / empty team connection degrade to None, not a panic.
+        assert_eq!(users[1].display_name, None);
+        assert_eq!(users[1].team_name, None);
+    }
+
+    #[test]
+    fn patch_to_input_sets_and_clears_parent() {
+        let set = UpdateIssuePatch {
+            parent_id: Some(Some("p1".into())),
+            ..Default::default()
+        };
+        assert_eq!(patch_to_input(&set)["parentId"], serde_json::json!("p1"));
+
+        let clear = UpdateIssuePatch {
+            parent_id: Some(None),
+            ..Default::default()
+        };
+        assert_eq!(patch_to_input(&clear)["parentId"], Value::Null);
+
+        let absent = UpdateIssuePatch::default();
+        assert!(patch_to_input(&absent).get("parentId").is_none());
+    }
+
+    #[test]
+    fn parse_relation_create_extracts_target() {
+        let body = r##"{"data":{"issueRelationCreate":{"success":true,"issueRelation":{
+            "type":"blocks","relatedIssue":{"id":"2","identifier":"ENG-2","title":"Other",
+            "state":{"name":"Todo","type":"unstarted","color":"#abc"}}}}}}"##;
+        let r = parse_relation_create(body).unwrap();
+        assert_eq!(r.related_id, "2");
+        assert_eq!(r.r#type, "blocks");
+        assert_eq!(r.related_identifier.as_deref(), Some("ENG-2"));
+        assert_eq!(r.related_state_type.as_deref(), Some("unstarted"));
+    }
+
+    #[test]
+    fn parse_relation_create_rejects_failure() {
+        let body = r##"{"data":{"issueRelationCreate":{"success":false,"issueRelation":null}}}"##;
+        assert!(parse_relation_create(body).is_err());
     }
 
     #[test]

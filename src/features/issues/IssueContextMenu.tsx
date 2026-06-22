@@ -14,14 +14,22 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useWorkspace } from "@/lib/tabs";
 import { gooeyToast } from "goey-toast";
 import {
+  Ban,
   Box,
   Calendar,
   Check,
+  ChevronLeft,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  CircleSlash,
   Copy,
   ExternalLink,
+  Files,
+  Flag,
   Gauge,
   IterationCcw,
+  Link2,
   ListChecks,
   Maximize2,
   PanelRight,
@@ -33,6 +41,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  useCreateIssueRelation,
   useCycles,
   useDeleteIssue,
   useFilterOptions,
@@ -150,6 +159,99 @@ function SubMenu({ flip, children }: { flip: boolean; children: ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+/** One "Mark as" relation action; `run` fires once a target issue is picked. */
+type RelAction = { key: string; label: string; icon: ReactNode; run: (target: IssueListItem) => void };
+
+/**
+ * The "Mark as" submenu: first lists the six relation types, then (on selecting
+ * one) swaps to a searchable picker of other issues. Parent/sub-issue re-parent
+ * via issueUpdate; the rest create an issueRelation with direction baked in.
+ */
+function MarkAsSubmenu({
+  issue,
+  allIssues,
+  flip,
+  onClose,
+}: {
+  issue: IssueListItem;
+  allIssues: IssueListItem[];
+  flip: boolean;
+  onClose: () => void;
+}) {
+  const update = useUpdateIssue();
+  const createRel = useCreateIssueRelation();
+  const [action, setAction] = useState<RelAction | null>(null);
+  const [query, setQuery] = useState("");
+
+  const reparent = (id: string, parentId: string | null) => {
+    update.mutate({ id, patch: { parentId } });
+    onClose();
+  };
+  const relate = (issueId: string, relatedIssueId: string, type: "related" | "blocks" | "duplicate") => {
+    createRel.mutate({ issueId, relatedIssueId, type });
+    onClose();
+  };
+
+  const actions: RelAction[] = [
+    { key: "parent", label: "Parent of…", icon: <ChevronsUp className="size-4" />, run: (t) => reparent(t.id, issue.id) },
+    { key: "sub", label: "Sub-issue of…", icon: <ChevronsDown className="size-4" />, run: (t) => reparent(issue.id, t.id) },
+    { key: "related", label: "Related to…", icon: <Link2 className="size-4" />, run: (t) => relate(issue.id, t.id, "related") },
+    { key: "blocked_by", label: "Blocked by…", icon: <Ban className="size-4" />, run: (t) => relate(t.id, issue.id, "blocks") },
+    { key: "blocking", label: "Blocking…", icon: <CircleSlash className="size-4" />, run: (t) => relate(issue.id, t.id, "blocks") },
+    { key: "duplicate", label: "Duplicate of…", icon: <Files className="size-4" />, run: (t) => relate(issue.id, t.id, "duplicate") },
+  ];
+
+  if (!action) {
+    return (
+      <SubMenu flip={flip}>
+        {actions.map((a) => (
+          <Row key={a.key} icon={a.icon} label={a.label} hasSub onClick={() => { setAction(a); setQuery(""); }} />
+        ))}
+      </SubMenu>
+    );
+  }
+
+  const q = query.trim().toLowerCase();
+  const candidates = allIssues
+    .filter((i) => i.id !== issue.id)
+    .filter((i) => !q || i.identifier.toLowerCase().includes(q) || i.title.toLowerCase().includes(q))
+    .slice(0, 50);
+
+  return (
+    <SubMenu flip={flip}>
+      <button
+        type="button"
+        onClick={() => setAction(null)}
+        className="mb-1 flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent"
+      >
+        <ChevronLeft className="size-3.5" />
+        <span className="truncate">{action.label}</span>
+      </button>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search issues…"
+        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+      />
+      {candidates.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No issues</div>}
+      {candidates.map((c) => (
+        <Row
+          key={c.id}
+          icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: c.stateColor || "#6b7280" }} />}
+          label={
+            <span className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-muted-foreground">{c.identifier}</span>
+              <span className="truncate">{c.title}</span>
+            </span>
+          }
+          onClick={() => action.run(c)}
+        />
+      ))}
+    </SubMenu>
   );
 }
 
@@ -344,7 +446,7 @@ function Menu({
             {users.map((u) => (
               <Row
                 key={u.id}
-                icon={<Avatar name={u.name} size={16} />}
+                icon={<Avatar name={u.name} src={u.avatarUrl} size={16} />}
                 label={u.name}
                 active={u.id === issue.assigneeId}
                 onClick={() => patch({ assigneeId: u.id })}
@@ -450,6 +552,14 @@ function Menu({
               />
             ))}
           </SubMenu>
+        )}
+      </div>
+
+      {/* Mark as (relations: parent / sub-issue / related / blocked-by / blocking / duplicate) */}
+      <div className="relative" onMouseEnter={() => setSub("markas")}>
+        <Row icon={<Flag className="size-4" />} label="Mark as" hasSub />
+        {sub === "markas" && (
+          <MarkAsSubmenu issue={issue} allIssues={allIssues} flip={flip} onClose={onClose} />
         )}
       </div>
 

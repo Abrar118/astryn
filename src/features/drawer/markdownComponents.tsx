@@ -5,6 +5,8 @@ import { LinearMarkdownImage } from "./LinearMarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { USER_MENTION_PREFIX, userMentionFromHref } from "./comments/milkdownUserMention";
 import { IssueMentionPill } from "./comments/IssueMentionPill";
+import { MentionHoverCard } from "./comments/MentionHoverCard";
+import type { User } from "@/lib/commands";
 
 /**
  * `urlTransform` for ReactMarkdown that preserves `mention://user/…` hrefs
@@ -17,6 +19,15 @@ import { IssueMentionPill } from "./comments/IssueMentionPill";
 export function mentionAwareUrlTransform(url: string): string {
   if (url.startsWith(USER_MENTION_PREFIX)) return url;
   return defaultUrlTransform(url);
+}
+
+/** Flatten a react-markdown link's children to its plain text (for "@" detection). */
+function nodeText(node: ReactNode): string {
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (isValidElement(node)) return nodeText((node.props as { children?: ReactNode }).children);
+  return "";
 }
 
 /** Extract a Linear issue identifier (e.g. "PRO-153") from a link href, if any. */
@@ -53,20 +64,36 @@ export type MentionResolver = (identifier: string) => MentionTarget | undefined;
 export function createMarkdownComponents(opts: {
   onActivateLink: (href: string) => void;
   resolveMention: MentionResolver;
+  /** Resolve a user mention (by our `mention://user/<id>` or by "@Name" text) to
+   * a cached user, for the hover profile card. Omit to render a plain pill. */
+  resolveUser?: (key: { id: string | null; name: string }) => User | undefined;
 }): Components {
   return {
     a: ({ href, children }) => {
       // ── User-mention pill ─────────────────────────────────────────────────
-      const userId = href ? userMentionFromHref(href) : null;
-      if (href && userId) {
-        return (
+      // Match our own `mention://user/…` links AND Linear-returned mentions
+      // (which come back with a profile/permalink href, not our scheme). Both
+      // always render their label as "@Name", so the leading "@" is the reliable
+      // cross-platform signal — keying off the href alone misses Linear's form.
+      const mentionId = href ? userMentionFromHref(href) : null;
+      const text = nodeText(children).trim();
+      const isUserMention = (href != null && mentionId != null) || /^@\S/.test(text);
+      if (href && isUserMention) {
+        // Strip the leading "@" so the handle/name matches the cached user list.
+        const user = opts.resolveUser?.({ id: mentionId, name: text.replace(/^@/, "") });
+        // Linear-authored mentions come back as the user's handle (e.g.
+        // "@jakob.schwarz"); show the full display name once resolved so our
+        // and Linear's mentions read identically.
+        const label = user ? `@${user.name}` : children;
+        const pill = (
           <span
             data-mention-pill="user"
-            className="mx-px inline-flex items-center rounded-md border border-border bg-secondary/70 px-1.5 py-0.5 align-baseline text-[0.85em] font-medium text-foreground"
+            className="mx-px inline-flex items-center rounded bg-secondary/60 px-1 py-0.5 align-baseline text-[0.95em] font-medium text-foreground"
           >
-            {children}
+            {label}
           </span>
         );
+        return user ? <MentionHoverCard user={user}>{pill}</MentionHoverCard> : pill;
       }
 
       // ── Issue-mention pill ────────────────────────────────────────────────

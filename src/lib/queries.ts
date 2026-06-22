@@ -10,6 +10,7 @@ import { gooeyToast } from "goey-toast";
 import {
   createComment,
   createIssue,
+  createIssueRelation,
   createLabel,
   deleteComment,
   deleteIssue,
@@ -44,6 +45,7 @@ import {
   type Label,
   type LiveDetail,
   type Me,
+  type RelationType,
   type UpdateIssuePatch,
 } from "./commands";
 import {
@@ -249,6 +251,26 @@ export function useCreateIssue() {
       gooeyToast.success("Issue created");
     },
     onError: (err) => gooeyToast.error("Create failed", { description: errorText(err) }),
+  });
+}
+
+/** Create an issue relation, then refresh the relations cache (agenda/graph). */
+export function useCreateIssueRelation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ issueId, relatedIssueId, type }: {
+      issueId: string;
+      relatedIssueId: string;
+      type: RelationType;
+    }) => createIssueRelation(issueId, relatedIssueId, type),
+    onSuccess: (_data, { issueId, relatedIssueId }) => {
+      qc.invalidateQueries({ queryKey: ["relations"] });
+      // The drawer/full-page detail reads relations live, so refresh both ends.
+      qc.invalidateQueries({ queryKey: ["issue", issueId] });
+      qc.invalidateQueries({ queryKey: ["issue", relatedIssueId] });
+      gooeyToast.success("Relation added");
+    },
+    onError: (err) => gooeyToast.error("Couldn't add relation", { description: errorText(err) }),
   });
 }
 

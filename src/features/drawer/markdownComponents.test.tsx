@@ -127,4 +127,40 @@ describe("createMarkdownComponents", () => {
     (pill as HTMLElement)?.click();
     expect(onActivateLink).not.toHaveBeenCalled();
   });
+
+  it("renders a Linear-returned mention (profile href, not our scheme) as a pill, not a blue link", () => {
+    const onActivateLink = vi.fn();
+    renderMarkdown("cc [@Abrar Mahir Esam](https://linear.app/acme/profiles/abrar)", {
+      onActivateLink,
+      resolveMention: () => undefined,
+    });
+    const pill = document.querySelector("[data-mention-pill='user']");
+    expect(pill).not.toBeNull();
+    expect(pill?.tagName.toLowerCase()).not.toBe("a");
+    expect(pill?.textContent).toContain("@Abrar Mahir Esam");
+    (pill as HTMLElement)?.click();
+    expect(onActivateLink).not.toHaveBeenCalled();
+  });
+
+  it("shows the full name for a Linear handle mention once resolved", () => {
+    renderMarkdown("cc [@jakob.schwarz](https://linear.app/acme/profiles/jakob.schwarz)", {
+      onActivateLink: vi.fn(),
+      resolveMention: () => undefined,
+      resolveUser: ({ name }) =>
+        name === "jakob.schwarz" ? { id: "u2", name: "Jakob Schwarz", displayName: "jakob.schwarz" } : undefined,
+    });
+    const pill = document.querySelector("[data-mention-pill='user']");
+    expect(pill?.textContent).toBe("@Jakob Schwarz");
+  });
+
+  it("keeps an ordinary link (no leading @) as a navigating link, not a pill", () => {
+    const onActivateLink = vi.fn();
+    renderMarkdown("see [the docs](https://example.com/docs)", {
+      onActivateLink,
+      resolveMention: () => undefined,
+    });
+    expect(document.querySelector("[data-mention-pill='user']")).toBeNull();
+    const link = screen.getByText("the docs");
+    expect(link.tagName.toLowerCase()).toBe("a");
+  });
 });

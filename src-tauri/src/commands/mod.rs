@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::db;
 use crate::db::issues::{
-    self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
+    self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord, RelationRecord,
 };
 use crate::github::{GitHubClient, GitHubCredentialProvider, GitHubError};
 use crate::linear::issues::{
@@ -38,6 +38,7 @@ pub struct LabelOut {
 pub struct LiveDetail {
     #[serde(flatten)]
     pub issue: Issue,
+    pub branch_name: Option<String>,
     pub labels: Vec<LabelOut>,
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
@@ -358,6 +359,7 @@ fn node_to_live(n: IssueDetailNode) -> LiveDetail {
         .collect();
     LiveDetail {
         issue: parsed_to_issue(&n.issue),
+        branch_name: n.branch_name,
         labels,
         team_states: n.team_states,
         cycle: n.cycle,
@@ -919,6 +921,44 @@ pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), 
         move |auth, issue_id| async move { client.delete_issue(&auth, &issue_id).await },
     )
     .await
+}
+
+/// Create an issue relation (Linear `issueRelationCreate`) and cache the new
+/// row for the source issue. `type_` is the relation from `issue_id`'s view:
+/// `related` | `blocks` | `duplicate`. The frontend swaps the two ids to model
+/// "blocked by" (the other issue blocks this one).
+#[tauri::command]
+pub async fn create_issue_relation(
+    state: State<'_, AppState>,
+    issue_id: String,
+    related_issue_id: String,
+    r#type: String,
+) -> Result<(), CmdError> {
+    if !matches!(r#type.as_str(), "related" | "blocks" | "duplicate") {
+        return Err(CmdError::InvalidInput);
+    }
+    if related_issue_id == issue_id {
+        return Err(CmdError::InvalidInput);
+    }
+    let auth = authed(&state).await?;
+    let rel = state
+        .linear
+        .create_issue_relation(&auth, &issue_id, &related_issue_id, &r#type)
+        .await
+        .map_err(CmdError::from)?;
+    let record = RelationRecord {
+        related_issue_id: rel.related_id,
+        r#type: rel.r#type,
+        related_identifier: rel.related_identifier,
+        related_title: rel.related_title,
+        related_state_name: rel.related_state_name,
+        related_state_type: rel.related_state_type,
+        related_state_color: rel.related_state_color,
+    };
+    issues::insert_relation(&state.pool, &issue_id, &record)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(())
 }
 
 #[tauri::command]

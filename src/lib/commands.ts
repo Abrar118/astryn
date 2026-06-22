@@ -157,6 +157,7 @@ export type DetailHistory = {
 };
 
 export type LiveDetail = Issue & {
+  branchName: string | null;
   labels: Label[];
   teamStates: DetailState[];
   cycle: DetailCycle | null;
@@ -183,7 +184,14 @@ export type FilterOptions = {
   teams: { id: string; key: string }[];
   projects: { id: string; name: string }[];
 };
-export type User = { id: string; name: string };
+export type User = {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  displayName?: string | null;
+  timezone?: string | null;
+  teamName?: string | null;
+};
 
 /** An inbox notification, flattened to the issue it points at. */
 export type Notification = {
@@ -224,6 +232,7 @@ export type UpdateIssuePatch = {
   projectId?: string | null;
   estimate?: number | null;
   cycleId?: string | null;
+  parentId?: string | null;
 };
 
 export type Cycle = { id: string; number: number | null; name: string | null; teamId: string | null };
@@ -286,6 +295,15 @@ export const listCycles = (): Promise<Cycle[]> => invoke("list_cycles");
 export const listWorkflowStates = (): Promise<WorkflowState[]> => invoke("list_workflow_states");
 
 export const deleteIssue = (id: string): Promise<void> => invoke("delete_issue", { id });
+
+/** Linear relation type from the source issue's perspective. */
+export type RelationType = "related" | "blocks" | "duplicate";
+
+export const createIssueRelation = (
+  issueId: string,
+  relatedIssueId: string,
+  type: RelationType,
+): Promise<void> => invoke("create_issue_relation", { issueId, relatedIssueId, type });
 
 export const getMe = (): Promise<Me | null> => invoke("get_me");
 

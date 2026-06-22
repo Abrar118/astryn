@@ -87,6 +87,7 @@ pub fn run() {
             commands::list_cycles,
             commands::list_workflow_states,
             commands::delete_issue,
+            commands::create_issue_relation,
             commands::get_me,
             commands::create_comment,
             commands::update_comment,
