@@ -51,6 +51,7 @@ describe("calendarIssueFromList", () => {
   it("provides a base that can be inserted into a newly matching calendar cache", () => {
     const listItem = {
       ...mk("1", null), stateId: "s1", stateName: "Todo", assigneeName: "Me",
+      startedAt: null,
       description: null, url: "u", projectName: null, parentId: null, estimate: null,
       cycleName: null, cycleNumber: null, milestoneName: null, linkCount: 0, prCount: 0,
       attachmentsTruncated: false,

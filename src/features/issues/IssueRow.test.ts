@@ -4,7 +4,7 @@ import type { IssueListItem } from "@/lib/commands";
 
 const mk = (over: Partial<IssueListItem>): IssueListItem =>
   ({ id: "i", identifier: "X-1", title: "t", priority: 0, stateType: "started", stateColor: "#fff",
-     stateName: "S", dueDate: null, assigneeId: null, assigneeName: null, teamId: null, teamKey: null,
+     stateName: "S", dueDate: null, startedAt: null, assigneeId: null, assigneeName: null, teamId: null, teamKey: null,
      projectId: null, projectName: null, labels: [], estimate: null, cycleName: null, cycleNumber: null,
      milestoneName: null, linkCount: 0, prCount: 0, attachmentsTruncated: false, url: "", description: null,
      stateId: null, parentId: null, createdAt: "", updatedAt: "", ...over }) as IssueListItem;

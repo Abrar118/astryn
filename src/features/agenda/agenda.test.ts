@@ -16,6 +16,7 @@ function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
     title: over.title ?? "T",
     description: null,
     dueDate: over.dueDate ?? null,
+    startedAt: over.startedAt ?? null,
     priority: over.priority ?? 0,
     url: "u",
     stateId: null,
@@ -86,14 +87,29 @@ describe("buildAgenda", () => {
     expect(find(withWeekend, "weekend")!.items.map((i) => i.issue.id)).toEqual(["2"]);
   });
 
-  it("threads sub-issues and dedupes them from the top level", () => {
+  it("shows a sub-issue on its own due-date row, not nested under its parent", () => {
     const issues = [
       iss({ id: "p", dueDate: "2026-06-22" }),
       iss({ id: "c", dueDate: "2026-06-23", parentId: "p" }), // mine AND due this week
     ];
     const gs = buildAgenda({ issues, relations: [], viewerId: "me", window: WINDOW });
-    expect(find(gs, "2026-06-22")!.items[0].children.map((c) => c.id)).toEqual(["c"]);
-    expect(find(gs, "2026-06-23")!.items).toEqual([]); // 'c' not a standalone top-level row
+    expect(find(gs, "2026-06-22")!.items.map((i) => i.issue.id)).toEqual(["p"]);
+    expect(find(gs, "2026-06-23")!.items.map((i) => i.issue.id)).toEqual(["c"]);
+  });
+
+  it("places a dated sub-issue on its own day even when the parent is overdue/out of week (regression)", () => {
+    // Real chain: PSY-126 (06-11, overdue) -> PSY-355 (06-24) -> PSY-402/403 (06-23).
+    // The old dedup hoisted 355 under 126 and dropped 402/403 entirely.
+    const issues = [
+      iss({ id: "126", dueDate: "2026-06-11", stateType: "started" }),
+      iss({ id: "355", dueDate: "2026-06-24", parentId: "126" }),
+      iss({ id: "402", dueDate: "2026-06-23", parentId: "355" }),
+      iss({ id: "403", dueDate: "2026-06-23", parentId: "355" }),
+    ];
+    const gs = buildAgenda({ issues, relations: [], viewerId: "me", window: WINDOW });
+    expect(find(gs, "overdue")!.items.map((i) => i.issue.id)).toEqual(["126"]);
+    expect(find(gs, "2026-06-24")!.items.map((i) => i.issue.id)).toEqual(["355"]);
+    expect(find(gs, "2026-06-23")!.items.map((i) => i.issue.id)).toEqual(["402", "403"]);
   });
 
   it("attaches relations to their issue", () => {

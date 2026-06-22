@@ -48,6 +48,8 @@ export type Issue = {
   title: string;
   description: string | null;
   dueDate: string | null;
+  /** When the issue first entered a "started" state (Linear `startedAt`); null if never started. */
+  startedAt: string | null;
   priority: number;
   url: string;
   stateId: string | null;

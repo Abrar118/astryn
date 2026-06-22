@@ -7,6 +7,7 @@ import {
   IterationCcw,
   Link2,
   Milestone,
+  PlayCircle,
 } from "lucide-react";
 import { dhakaDateFromTimestamp, isOverdue } from "@/lib/dates";
 import type { IssueListItem, Label } from "@/lib/commands";
@@ -212,6 +213,8 @@ export function IssueRow({
   onOpen,
   onContextMenu,
   today,
+  size = "sm",
+  startedAt,
 }: {
   issue: IssueListItem;
   display: DisplayProps;
@@ -219,7 +222,12 @@ export function IssueRow({
   onOpen: (id: string) => void;
   onContextMenu: (e: ReactMouseEvent) => void;
   today: string;
+  /** Row text size. "base" gives a slightly larger title (used by the agenda). */
+  size?: "sm" | "base";
+  /** When set (a Linear timestamp), show an inline "Started {date}" pill on the row. */
+  startedAt?: string | null;
 }) {
+  const startedOn = startedAt ? fmtDate(dhakaDateFromTimestamp(startedAt)) : null;
   return (
     <div
       onClick={() => onOpen(issue.id)}
@@ -228,7 +236,9 @@ export function IssueRow({
     >
       {/* Per-row horizontal scroll: in a narrow (split) pane the dense meta
           cluster overflows this row alone, instead of shifting the whole list. */}
-      <div className="no-scrollbar flex items-center gap-3 overflow-x-auto px-4 py-2 text-sm">
+      <div
+        className={`no-scrollbar flex items-center gap-3 overflow-x-auto px-4 ${size === "base" ? "py-3 text-base" : "py-2 text-sm"}`}
+      >
         <span title={`Status: ${issue.stateName || issue.stateType || "No status"}`} className="flex shrink-0">
           <StatusIcon type={issue.stateType} color={issue.stateColor} />
         </span>
@@ -238,6 +248,12 @@ export function IssueRow({
           </span>
         )}
         <span className="min-w-[10rem] flex-1 truncate text-foreground">{issue.title}</span>
+        {startedOn && (
+          <Pill className="shrink-0 border-emerald-500/30 text-emerald-300/90" title={`Started working on ${startedOn}`}>
+            <PlayCircle className="size-3" />
+            Started {startedOn}
+          </Pill>
+        )}
         <MetaCluster issue={issue} display={display} avatar={avatar} today={today} />
       </div>
     </div>

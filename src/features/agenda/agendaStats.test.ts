@@ -10,6 +10,7 @@ function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
     title: over.title ?? "T",
     description: null,
     dueDate: over.dueDate ?? null,
+    startedAt: over.startedAt ?? null,
     priority: over.priority ?? 0,
     url: "u",
     stateId: null,
@@ -187,7 +188,6 @@ describe("priorityBreakdown", () => {
 describe("agendaCounts", () => {
   const item = (over: Partial<IssueListItem> & { id: string }): AgendaItem => ({
     issue: iss(over),
-    children: [],
     relations: [],
   });
   const group = (key: string, items: AgendaItem[]): AgendaGroup => ({

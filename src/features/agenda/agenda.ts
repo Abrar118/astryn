@@ -3,7 +3,6 @@ import type { WeekWindow } from "../../lib/dates";
 
 export type AgendaItem = {
   issue: IssueListItem;
-  children: IssueListItem[];
   relations: Relation[];
 };
 
@@ -45,44 +44,30 @@ export function buildAgenda(args: {
     relationsByIssue.set(r.issueId, list);
   }
 
-  const childrenByParent = new Map<string, IssueListItem[]>();
-  for (const i of issues) {
-    if (!i.parentId) continue;
-    const list = childrenByParent.get(i.parentId) ?? [];
-    list.push(i);
-    childrenByParent.set(i.parentId, list);
-  }
-
-  // Top-level candidates: the viewer's dated issues.
+  // Every dated issue assigned to the viewer is shown on its own due-date row.
+  // No parent/child hoisting: a sub-issue whose parent sits on another day (or
+  // is overdue / outside this week) must still appear on its own due date.
   const mine = issues.filter((i) => i.assigneeId === viewerId && i.dueDate);
-
-  // Dedup: a candidate that is a child of another candidate shows nested only.
-  const childIds = new Set<string>();
-  for (const c of mine) {
-    for (const kid of childrenByParent.get(c.id) ?? []) childIds.add(kid.id);
-  }
-  const topLevel = mine.filter((i) => !childIds.has(i.id));
 
   const toItem = (issue: IssueListItem): AgendaItem => ({
     issue,
-    children: childrenByParent.get(issue.id) ?? [],
     relations: relationsByIssue.get(issue.id) ?? [],
   });
 
-  const overdue = topLevel.filter(
+  const overdue = mine.filter(
     (i) =>
       i.dueDate! < window.weekStart &&
       i.stateType !== "completed" &&
       i.stateType !== "canceled",
   );
-  const weekendItems = topLevel.filter((i) => window.weekend.includes(i.dueDate!));
+  const weekendItems = mine.filter((i) => window.weekend.includes(i.dueDate!));
 
   const groups: AgendaGroup[] = [];
   if (includeOverdue && overdue.length) {
     groups.push({ key: "overdue", label: "Overdue", date: null, items: sortItems(overdue.map(toItem)) });
   }
   window.weekdays.forEach((date, idx) => {
-    const items = topLevel.filter((i) => i.dueDate === date).map(toItem);
+    const items = mine.filter((i) => i.dueDate === date).map(toItem);
     groups.push({ key: date, label: WEEKDAY_LABELS[idx], date, items: sortItems(items) });
   });
   if (weekendItems.length) {
