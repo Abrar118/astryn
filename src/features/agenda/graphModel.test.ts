@@ -19,6 +19,7 @@ function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
     title: over.title ?? "T",
     description: null,
     dueDate: over.dueDate ?? null,
+    startedAt: over.startedAt ?? null,
     priority: over.priority ?? 0,
     url: "u",
     stateId: over.stateId ?? (stateName ? `s_${stateName.replace(/\s+/g, "_")}` : null),

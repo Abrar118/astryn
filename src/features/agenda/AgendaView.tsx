@@ -146,20 +146,11 @@ export function AgendaView() {
         onOpen={open}
         onContextMenu={(e) => openMenu(e, item.issue.id)}
         today={today}
+        size="base"
+        startedAt={item.issue.startedAt}
       />
-      {(item.children.length > 0 || item.relations.length > 0) && (
+      {item.relations.length > 0 && (
         <div className="ml-5 border-l border-white/15 pl-1">
-          {item.children.map((child) => (
-            <IssueRow
-              key={child.id}
-              issue={child}
-              display={DEFAULT_DISPLAY}
-              avatar={avatarOf(child.assigneeId)}
-              onOpen={open}
-              onContextMenu={(e) => openMenu(e, child.id)}
-              today={today}
-            />
-          ))}
           {item.relations.map((r) => (
             <button
               key={`${r.type}-${r.relatedId}`}
@@ -255,9 +246,9 @@ export function AgendaView() {
           {groups.map((g) => (
             <section key={g.key}>
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-4 py-2.5 backdrop-blur">
-                <span className="text-[15px] font-semibold">{g.label}</span>
-                {g.date && <span className="text-xs text-muted-foreground">{g.date}</span>}
-                <span className="ml-auto text-xs text-muted-foreground">{g.items.length}</span>
+                <span className="text-base font-semibold">{g.label}</span>
+                {g.date && <span className="text-[13px] text-muted-foreground">{g.date}</span>}
+                <span className="ml-auto text-[13px] text-muted-foreground">{g.items.length}</span>
               </div>
               {g.items.length ? (
                 g.items.map(renderItem)

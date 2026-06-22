@@ -27,6 +27,7 @@ pub struct ParsedIssue {
     pub title: String,
     pub description: Option<String>,
     pub due_date: Option<String>,
+    pub started_at: Option<String>,
     pub priority: i64,
     pub url: String,
     pub state_id: Option<String>,
@@ -210,6 +211,7 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         title: s(n, "title").unwrap_or_default(),
         description: s(n, "description"),
         due_date: s(n, "dueDate"),
+        started_at: s(n, "startedAt"),
         priority: n.get("priority").and_then(|p| p.as_i64()).unwrap_or(0),
         url: s(n, "url").unwrap_or_default(),
         state_id: nested(n, "state", "id"),
@@ -1099,7 +1101,7 @@ pub fn validate_create_input(p: &CreateIssueInput) -> Result<(), &'static str> {
 }
 
 // ---- GraphQL query strings + LinearClient methods ----
-const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate priority url createdAt updatedAt archivedAt
+const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate startedAt priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
   attachments(first: 50) { pageInfo { hasNextPage } nodes { id title subtitle url sourceType createdAt } }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
@@ -1363,7 +1365,7 @@ mod tests {
     fn parses_issues_page_with_pageinfo() {
         let body = r##"{"data":{"issues":{"pageInfo":{"hasNextPage":true,"endCursor":"C1"},
           "nodes":[{"id":"i1","identifier":"ENG-1","title":"T","description":null,
-          "dueDate":"2026-06-10","priority":2,"url":"u","createdAt":"c","updatedAt":"u1","archivedAt":null,
+          "dueDate":"2026-06-10","startedAt":"2026-06-08T05:00:00Z","priority":2,"url":"u","createdAt":"c","updatedAt":"u1","archivedAt":null,
           "estimate":3,"cycle":{"id":"cy1","number":7,"name":"Sprint 7"},
           "projectMilestone":{"id":"m1","name":"Beta"},
           "attachments":{"nodes":[{"url":"https://github.com/o/r/pull/12"},
@@ -1379,6 +1381,7 @@ mod tests {
         let i = &page.issues[0];
         assert_eq!(i.identifier, "ENG-1");
         assert_eq!(i.priority, 2);
+        assert_eq!(i.started_at.as_deref(), Some("2026-06-08T05:00:00Z"));
         assert_eq!(i.team_key.as_deref(), Some("ENG"));
         assert_eq!(i.estimate, Some(3.0));
         assert_eq!(i.cycle_number, Some(7));
