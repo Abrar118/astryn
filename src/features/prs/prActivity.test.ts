@@ -6,8 +6,10 @@ function pr(over: Partial<GithubPr> & Pick<GithubPr, "id" | "bucket">): GithubPr
   return {
     repo: "o/r", number: 1, title: "t", draft: false, mergeable: "mergeable",
     ciStatus: "success", reviewDecision: null, authorLogin: "octocat", authorAvatar: null,
-    commentCount: 0, branch: "b", url: "u", linearIdentifier: null, linearIssueId: null,
-    updatedAt: "2026-06-18T10:00:00Z", ...over,
+    commentCount: 0, branch: "b", baseBranch: "main", url: "u", linearIdentifier: null, linearIssueId: null,
+    updatedAt: "2026-06-18T10:00:00Z", mergedAt: null, additions: 1, deletions: 0, changedFiles: 1,
+    linearStateName: null, linearStateType: null, linearStateColor: null, linearPriority: null, reviewers: [],
+    ...over,
   };
 }
 

@@ -58,9 +58,12 @@ function Pop({
     const onDoc = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    document.addEventListener("mousedown", onDoc);
+    // Capture phase: the modal card stops mousedown propagation to keep the
+    // backdrop from closing the modal, which would also stop this listener from
+    // firing in the bubble phase. Capturing runs before that stopPropagation.
+    document.addEventListener("mousedown", onDoc, true);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("mousedown", onDoc, true);
     };
   }, [open]);
   return (

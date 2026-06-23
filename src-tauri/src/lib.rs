@@ -17,10 +17,51 @@ const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 
+/// Build a macOS app menu mirroring the system default but WITHOUT the
+/// "Close Window" item, so Cmd+W is left for the webview (which closes the
+/// active tab). Keeps Quit and the Edit items so native shortcuts still work.
+#[cfg(target_os = "macos")]
+fn install_macos_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::{MenuBuilder, SubmenuBuilder};
+
+    let app_menu = SubmenuBuilder::new(app, "Astryn")
+        .about(None)
+        .separator()
+        .services()
+        .separator()
+        .hide()
+        .hide_others()
+        .show_all()
+        .separator()
+        .quit()
+        .build()?;
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .undo()
+        .redo()
+        .separator()
+        .cut()
+        .copy()
+        .paste()
+        .select_all()
+        .build()?;
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .minimize()
+        .maximize()
+        .separator()
+        .fullscreen()
+        .build()?;
+    let menu = MenuBuilder::new(app)
+        .items(&[&app_menu, &edit_menu, &window_menu])
+        .build()?;
+    app.set_menu(menu)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             // DB lives in the app data dir (~/Library/Application Support/com.orion.astryn
             // on macOS), created by init_pool if missing. NOT ~/Documents: that folder is
@@ -64,6 +105,13 @@ pub fn run() {
                 github_lock: tokio::sync::Mutex::new(()),
                 github_generation: std::sync::atomic::AtomicU64::new(0),
             });
+
+            // macOS: replace the default app menu with one that OMITS "Close
+            // Window" so its Cmd+W accelerator doesn't fire before the webview.
+            // The frontend binds Cmd/Ctrl+W to close the active tab instead.
+            #[cfg(target_os = "macos")]
+            install_macos_menu(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -87,6 +135,11 @@ pub fn run() {
             commands::list_cycles,
             commands::list_workflow_states,
             commands::delete_issue,
+            commands::create_issue_relation,
+            commands::create_attachment_link,
+            commands::update_attachment,
+            commands::delete_attachment,
+            commands::upload_file,
             commands::get_me,
             commands::create_comment,
             commands::update_comment,

@@ -14,14 +14,23 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { useWorkspace } from "@/lib/tabs";
 import { gooeyToast } from "goey-toast";
 import {
+  Ban,
   Box,
   Calendar,
   Check,
+  ChevronLeft,
   ChevronRight,
+  ChevronsDown,
+  ChevronsUp,
+  CircleSlash,
   Copy,
   ExternalLink,
+  Files,
+  Flag,
   Gauge,
+  GitPullRequest,
   IterationCcw,
+  Link2,
   ListChecks,
   Maximize2,
   PanelRight,
@@ -33,7 +42,10 @@ import {
   Users,
 } from "lucide-react";
 import {
+  useCreateAttachmentLink,
+  useCreateIssueRelation,
   useCycles,
+  useGithubPrs,
   useDeleteIssue,
   useFilterOptions,
   useIssues,
@@ -43,7 +55,7 @@ import {
 } from "@/lib/queries";
 import { dhakaToday } from "@/lib/dates";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
-import type { IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
+import type { GithubPr, IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
@@ -150,6 +162,206 @@ function SubMenu({ flip, children }: { flip: boolean; children: ReactNode }) {
     >
       {children}
     </div>
+  );
+}
+
+/** One "Mark as" relation action; `run` fires once a target issue is picked. */
+type RelAction = { key: string; label: string; icon: ReactNode; run: (target: IssueListItem) => void };
+
+/**
+ * The "Mark as" submenu: first lists the six relation types, then (on selecting
+ * one) swaps to a searchable picker of other issues. Parent/sub-issue re-parent
+ * via issueUpdate; the rest create an issueRelation with direction baked in.
+ */
+function MarkAsSubmenu({
+  issue,
+  allIssues,
+  flip,
+  onClose,
+}: {
+  issue: IssueListItem;
+  allIssues: IssueListItem[];
+  flip: boolean;
+  onClose: () => void;
+}) {
+  const update = useUpdateIssue();
+  const createRel = useCreateIssueRelation();
+  const [action, setAction] = useState<RelAction | null>(null);
+  const [query, setQuery] = useState("");
+
+  const reparent = (id: string, parentId: string | null) => {
+    update.mutate({ id, patch: { parentId } });
+    onClose();
+  };
+  const relate = (issueId: string, relatedIssueId: string, type: "related" | "blocks" | "duplicate") => {
+    createRel.mutate({ issueId, relatedIssueId, type });
+    onClose();
+  };
+
+  const actions: RelAction[] = [
+    { key: "parent", label: "Parent of…", icon: <ChevronsUp className="size-4" />, run: (t) => reparent(t.id, issue.id) },
+    { key: "sub", label: "Sub-issue of…", icon: <ChevronsDown className="size-4" />, run: (t) => reparent(issue.id, t.id) },
+    { key: "related", label: "Related to…", icon: <Link2 className="size-4" />, run: (t) => relate(issue.id, t.id, "related") },
+    { key: "blocked_by", label: "Blocked by…", icon: <Ban className="size-4" />, run: (t) => relate(t.id, issue.id, "blocks") },
+    { key: "blocking", label: "Blocking…", icon: <CircleSlash className="size-4" />, run: (t) => relate(issue.id, t.id, "blocks") },
+    { key: "duplicate", label: "Duplicate of…", icon: <Files className="size-4" />, run: (t) => relate(issue.id, t.id, "duplicate") },
+  ];
+
+  if (!action) {
+    return (
+      <SubMenu flip={flip}>
+        {actions.map((a) => (
+          <Row key={a.key} icon={a.icon} label={a.label} hasSub onClick={() => { setAction(a); setQuery(""); }} />
+        ))}
+      </SubMenu>
+    );
+  }
+
+  const q = query.trim().toLowerCase();
+  const candidates = allIssues
+    .filter((i) => i.id !== issue.id)
+    .filter((i) => !q || i.identifier.toLowerCase().includes(q) || i.title.toLowerCase().includes(q))
+    .slice(0, 50);
+
+  return (
+    <SubMenu flip={flip}>
+      <button
+        type="button"
+        onClick={() => setAction(null)}
+        className="mb-1 flex w-full items-center gap-1.5 rounded-md px-2.5 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent"
+      >
+        <ChevronLeft className="size-3.5" />
+        <span className="truncate">{action.label}</span>
+      </button>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search issues…"
+        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+      />
+      {candidates.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No issues</div>}
+      {candidates.map((c) => (
+        <Row
+          key={c.id}
+          icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: c.stateColor || "#6b7280" }} />}
+          label={
+            <span className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-muted-foreground">{c.identifier}</span>
+              <span className="truncate">{c.title}</span>
+            </span>
+          }
+          onClick={() => action.run(c)}
+        />
+      ))}
+    </SubMenu>
+  );
+}
+
+/** "Add link…": a small URL + optional-title form → Linear attachmentLinkUrl. */
+function AddLinkSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boolean; onClose: () => void }) {
+  const addLink = useCreateAttachmentLink();
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+
+  const submit = () => {
+    const u = url.trim();
+    if (!u) return;
+    addLink.mutate({ issueId, url: u, title: title.trim() || null });
+    onClose();
+  };
+
+  return (
+    <SubMenu flip={flip}>
+      <div className="px-1 py-0.5">
+        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">URL</label>
+        <input
+          autoFocus
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="https://…"
+          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        />
+        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Title (optional)</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="Title"
+          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!url.trim()}
+          className="w-full cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Add link
+        </button>
+      </div>
+    </SubMenu>
+  );
+}
+
+/** "Add pull request…": search the cached GitHub PRs, link the chosen PR's URL. */
+function AddPrSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boolean; onClose: () => void }) {
+  const addLink = useCreateAttachmentLink();
+  const { data: dashboard } = useGithubPrs();
+  const [query, setQuery] = useState("");
+
+  // PRs appear once per bucket; dedupe by URL (the linkable identity).
+  const prs = useMemo(() => {
+    const seen = new Map<string, GithubPr>();
+    for (const pr of dashboard?.prs ?? []) {
+      if (pr.url && !seen.has(pr.url)) seen.set(pr.url, pr);
+    }
+    return [...seen.values()];
+  }, [dashboard]);
+
+  const q = query.trim().toLowerCase();
+  const candidates = prs
+    .filter((pr) => {
+      if (!q) return true;
+      const hay = `${pr.repo} ${pr.number} ${pr.title ?? ""} ${pr.branch ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    })
+    .slice(0, 50);
+
+  const link = (pr: GithubPr) => {
+    if (!pr.url) return;
+    addLink.mutate({ issueId, url: pr.url, title: pr.title ?? `${pr.repo}#${pr.number}` });
+    onClose();
+  };
+
+  return (
+    <SubMenu flip={flip}>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search for pull request…"
+        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+      />
+      {candidates.length === 0 && (
+        <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">
+          {prs.length === 0 ? "No cached pull requests" : "No matches"}
+        </div>
+      )}
+      {candidates.map((pr) => (
+        <Row
+          key={pr.url}
+          icon={<GitPullRequest className="size-4" />}
+          label={
+            <span className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-muted-foreground">{pr.repo}#{pr.number}</span>
+              <span className="truncate">{pr.title ?? ""}</span>
+            </span>
+          }
+          onClick={() => link(pr)}
+        />
+      ))}
+    </SubMenu>
   );
 }
 
@@ -344,7 +556,7 @@ function Menu({
             {users.map((u) => (
               <Row
                 key={u.id}
-                icon={<Avatar name={u.name} size={16} />}
+                icon={<Avatar name={u.name} src={u.avatarUrl} size={16} />}
                 label={u.name}
                 active={u.id === issue.assigneeId}
                 onClick={() => patch({ assigneeId: u.id })}
@@ -451,6 +663,28 @@ function Menu({
             ))}
           </SubMenu>
         )}
+      </div>
+
+      {/* Mark as (relations: parent / sub-issue / related / blocked-by / blocking / duplicate) */}
+      <div className="relative" onMouseEnter={() => setSub("markas")}>
+        <Row icon={<Flag className="size-4" />} label="Mark as" hasSub />
+        {sub === "markas" && (
+          <MarkAsSubmenu issue={issue} allIssues={allIssues} flip={flip} onClose={onClose} />
+        )}
+      </div>
+
+      <div className="my-1 border-t border-border/60" />
+
+      {/* Add link (Linear attachment) */}
+      <div className="relative" onMouseEnter={() => setSub("addlink")}>
+        <Row icon={<Link2 className="size-4" />} label="Add link…" hasSub />
+        {sub === "addlink" && <AddLinkSubmenu issueId={issue.id} flip={flip} onClose={onClose} />}
+      </div>
+
+      {/* Add pull request (link a cached GitHub PR's URL) */}
+      <div className="relative" onMouseEnter={() => setSub("addpr")}>
+        <Row icon={<GitPullRequest className="size-4" />} label="Add pull request…" hasSub />
+        {sub === "addpr" && <AddPrSubmenu issueId={issue.id} flip={flip} onClose={onClose} />}
       </div>
 
       <div className="my-1 border-t border-border/60" />

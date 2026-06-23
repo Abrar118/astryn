@@ -8,9 +8,12 @@ import {
   rootCtx,
   editorViewOptionsCtx,
   editorViewCtx,
+  serializerCtx,
 } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
+import { Paperclip } from "lucide-react";
+import { pickAndUploadFiles, insertAssetsIntoView } from "./attachUpload";
 import { DescriptionAutosave, type SaveStatus } from "./descriptionAutosave";
 import { descriptionPlugins, applyDescriptionConfig } from "./milkdownEditor";
 import {
@@ -20,6 +23,24 @@ import {
 import { descriptionMentionPlugin } from "./milkdownMention";
 import { descriptionPreviewView } from "./milkdownPreviewNode";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
+import type { UploadedAsset, User } from "@/lib/commands";
+import { createUserMentionRemarkPlugin } from "./remarkUserMentions";
+
+type InsertAssets = (assets: UploadedAsset[]) => void;
+
+/** Build a mention→user resolver: by our id first, then by display name / handle. */
+export function makeUserResolver(users: User[]) {
+  return ({ id, name }: { id: string | null; name: string }): User | undefined => {
+    if (id) {
+      const byId = users.find((u) => u.id === id);
+      if (byId) return byId;
+    }
+    const key = name.toLowerCase();
+    return users.find(
+      (u) => u.name.toLowerCase() === key || (u.displayName ?? "").toLowerCase() === key,
+    );
+  };
+}
 
 /**
  * Some Linear descriptions contain Markdown that ProseMirror rejects (e.g. a
@@ -52,22 +73,29 @@ export function ReadOnlyDescription({
   markdown,
   onOpenLink,
   resolveMention,
+  users,
 }: {
   markdown: string;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
 }) {
   const components = useMemo(
     () =>
       createMarkdownComponents({
         onActivateLink: onOpenLink,
         resolveMention: resolveMention ?? (() => undefined),
+        resolveUser: users ? makeUserResolver(users) : undefined,
       }),
-    [onOpenLink, resolveMention],
+    [onOpenLink, resolveMention, users],
+  );
+  const userMentionPlugin = useMemo(
+    () => createUserMentionRemarkPlugin(users ?? []),
+    [users],
   );
   return (
     <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={mentionAwareUrlTransform}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, userMentionPlugin]} components={components} urlTransform={mentionAwareUrlTransform}>
         {markdown || "_No description_"}
       </ReactMarkdown>
     </div>
@@ -80,6 +108,10 @@ interface MilkdownEditorInnerProps {
   autosaveRef: React.RefObject<DescriptionAutosave | null>;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  /** Persist a checkbox toggle made outside edit mode (display instance). */
+  onPersist: (md: string) => void;
+  /** Set by the editable instance once mounted, so the toolbar can insert uploads. */
+  insertRef?: React.MutableRefObject<InsertAssets | null>;
 }
 
 /**
@@ -92,9 +124,17 @@ function MilkdownEditorInner({
   autosaveRef,
   onOpenLink,
   resolveMention,
+  onPersist,
+  insertRef,
 }: MilkdownEditorInnerProps) {
   const onOpenLinkRef = useRef(onOpenLink);
   onOpenLinkRef.current = onOpenLink;
+  const onPersistRef = useRef(onPersist);
+  onPersistRef.current = onPersist;
+
+  // Drop the insert handle on unmount/remount so a pending attach can't dispatch
+  // into a destroyed ProseMirror view (e.g. the issue changed mid-upload).
+  useEffect(() => () => { if (insertRef) insertRef.current = null; }, [insertRef]);
 
   useEditor(
     (root) =>
@@ -104,8 +144,38 @@ function MilkdownEditorInner({
           ctx.set(defaultValueCtx, markdown);
           ctx.set(editorViewOptionsCtx, {
             editable: () => editable,
-            handleClickOn: (_view, _pos, _node, _nodePos, event) => {
-              const anchor = (event.target as HTMLElement | null)?.closest("a");
+            handleClickOn: (view, _pos, _node, _nodePos, event) => {
+              const target = event.target as HTMLElement | null;
+              // ── Task-list checkbox toggle ──────────────────────────────────
+              // The checkbox is a CSS ::before in the item's left padding, so a
+              // click on it lands on the <li>; toggle when the click x falls in
+              // that band. Works in display mode too (persist directly); in edit
+              // mode the markdownUpdated listener autosaves the change.
+              const li = target?.closest('li[data-item-type="task"]') as HTMLElement | null;
+              if (li) {
+                const rect = li.getBoundingClientRect();
+                if (event.clientX - rect.left <= 24) {
+                  const $pos = view.state.doc.resolve(view.posAtDOM(li, 0));
+                  for (let depth = $pos.depth; depth >= 1; depth--) {
+                    const item = $pos.node(depth);
+                    if (item.attrs?.checked != null) {
+                      view.dispatch(
+                        view.state.tr.setNodeMarkup($pos.before(depth), undefined, {
+                          ...item.attrs,
+                          checked: !item.attrs.checked,
+                        }),
+                      );
+                      if (!autosaveRef.current) {
+                        onPersistRef.current(ctx.get(serializerCtx)(view.state.doc));
+                      }
+                      event.preventDefault();
+                      return true;
+                    }
+                  }
+                }
+              }
+              // ── In-app link activation ─────────────────────────────────────
+              const anchor = target?.closest("a");
               const href = anchor?.getAttribute("href");
               if (href) {
                 event.preventDefault();
@@ -126,6 +196,7 @@ function MilkdownEditorInner({
             // or scroll the drawer.
             if (!editable) return;
             const editorView = mountedCtx.get(editorViewCtx);
+            if (insertRef) insertRef.current = (assets) => insertAssetsIntoView(editorView, assets);
             editorView.focus();
           });
           // NOTE: We do NOT register a listenerCtx.blur() here.
@@ -168,6 +239,7 @@ interface DescriptionEditorProps {
   onSave: (md: string) => Promise<void>;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
   onSaveStateChange?: (s: SaveStatus) => void;
   /**
    * Fired when a save fails on unmount (e.g. the user switches issues, which
@@ -183,6 +255,7 @@ export function DescriptionEditor({
   onSave,
   onOpenLink,
   resolveMention,
+  users,
   onSaveStateChange,
   onSaveError,
 }: DescriptionEditorProps) {
@@ -194,6 +267,22 @@ export function DescriptionEditor({
   onSaveErrorRef.current = onSaveError;
   /** Guard against duplicate blur invocations while an async flush is in flight. */
   const blurInFlightRef = useRef(false);
+  const insertRef = useRef<InsertAssets | null>(null);
+  // True while the native file dialog is open: it blurs the webview, which would
+  // otherwise exit edit mode and discard the insertion target.
+  const attachingRef = useRef(false);
+
+  const handleAttach = async () => {
+    attachingRef.current = true;
+    try {
+      // Only insert if the same editor is still mounted when the upload resolves.
+      const insert = insertRef.current;
+      const assets = await pickAndUploadFiles();
+      if (assets.length > 0 && insertRef.current === insert) insert?.(assets);
+    } finally {
+      attachingRef.current = false;
+    }
+  };
 
   // Create autosave on first edit, destroy on exit
   useEffect(() => {
@@ -265,6 +354,7 @@ export function DescriptionEditor({
       markdown={markdown}
       onOpenLink={onOpenLink}
       resolveMention={resolveMention}
+      users={users}
     />
   );
 
@@ -317,6 +407,8 @@ export function DescriptionEditor({
         }}
         onBlur={(e) => {
           if (!editing) return;
+          // The native file dialog blurs the webview; keep the edit session alive.
+          if (attachingRef.current) return;
           const relatedTarget = e.relatedTarget as Element | null;
           // 1. Internal focus moves within the wrapper: ignore.
           if (e.currentTarget.contains(relatedTarget)) return;
@@ -334,8 +426,22 @@ export function DescriptionEditor({
             autosaveRef={autosaveRef}
             onOpenLink={onOpenLink}
             resolveMention={resolveMention}
+            onPersist={(md) => void onSaveRef.current(md)}
+            insertRef={insertRef}
           />
         </MilkdownProvider>
+        {editing && (
+          <button
+            type="button"
+            aria-label="Attach images, files, or videos"
+            title="Attach images, files, or videos"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleAttach}
+            className="absolute bottom-2 right-2 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Paperclip className="size-4" />
+          </button>
+        )}
       </div>
     </EditorErrorBoundary>
   );

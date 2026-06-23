@@ -36,7 +36,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
           {WEEKDAY_LETTERS.map((letter, i) => (
             <span
               key={i}
-              className="flex flex-1 items-center justify-center text-[9px] leading-none text-muted-foreground"
+              className="flex flex-1 items-center justify-center text-[10px] leading-none text-muted-foreground"
             >
               {letter}
             </span>
@@ -52,7 +52,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             const showMonth = thisMonth !== "" && (weekIdx === 0 || thisMonth !== prevMonth);
             return (
               <div key={weekIdx} className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                <span className="h-[14px] truncate text-center text-[9px] leading-none text-muted-foreground">
+                <span className="h-[14px] truncate text-center text-[10px] leading-none text-muted-foreground">
                   {showMonth ? thisMonth : ""}
                 </span>
                 {week.cells.map((cell: PrHeatCell, dayIdx) => {
@@ -84,7 +84,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
 
       {/* Legend */}
       <div className="flex items-center gap-1.5 pl-4">
-        <span className="text-[10px] text-muted-foreground">Less</span>
+        <span className="text-[11px] text-muted-foreground">Less</span>
         {LEGEND_OPACITIES.map((opacity, i) => (
           <span
             key={i}
@@ -96,7 +96,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             }
           />
         ))}
-        <span className="text-[10px] text-muted-foreground">More</span>
+        <span className="text-[11px] text-muted-foreground">More</span>
       </div>
     </div>
   );

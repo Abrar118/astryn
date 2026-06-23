@@ -141,6 +141,7 @@ describe("mergeActivityTimeline", () => {
     id: "",
     parentId: null,
     body: "",
+    quotedText: null,
     userId: null,
     userName: null,
     createdAt: "",

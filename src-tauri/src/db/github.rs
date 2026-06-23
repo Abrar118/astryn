@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 
-use crate::github::prs::ParsedPr;
+use crate::github::prs::{ParsedPr, Reviewer};
 
 pub const GITHUB_LOGIN_KEY: &str = "github_login";
 pub const GITHUB_CONTRIBUTIONS_KEY: &str = "github_contributions";
@@ -21,10 +21,26 @@ pub struct PrRow {
     pub author_avatar: Option<String>,
     pub comment_count: Option<i64>,
     pub branch: Option<String>,
+    pub base_branch: Option<String>,
     pub url: Option<String>,
     pub linear_identifier: Option<String>,
     pub linear_issue_id: Option<String>,
     pub updated_at: Option<String>,
+    pub merged_at: Option<String>,
+    pub additions: Option<i64>,
+    pub deletions: Option<i64>,
+    pub changed_files: Option<i64>,
+    // Linear issue state, resolved via the read-time join (nullable).
+    pub linear_state_name: Option<String>,
+    pub linear_state_type: Option<String>,
+    pub linear_state_color: Option<String>,
+    pub linear_priority: Option<i64>,
+    // Raw reviewers JSON from the column; parsed into `reviewers` after the query.
+    #[serde(skip)]
+    #[sqlx(rename = "reviewers")]
+    pub reviewers_raw: Option<String>,
+    #[sqlx(skip)]
+    pub reviewers: Vec<Reviewer>,
 }
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
@@ -55,9 +71,10 @@ pub async fn replace_bucket(
         sqlx::query(
             "INSERT INTO github_prs
                (id, bucket, repo, number, title, draft, mergeable, ci_status, review_decision,
-                author_login, author_avatar, comment_count, branch, url, linear_identifier,
-                updated_at, synced_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+                author_login, author_avatar, comment_count, branch, base_branch, url,
+                linear_identifier, updated_at, synced_at, merged_at, additions, deletions,
+                changed_files, reviewers)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
         )
         .bind(&p.id)
         .bind(bucket)
@@ -72,10 +89,16 @@ pub async fn replace_bucket(
         .bind(&p.author_avatar)
         .bind(p.comment_count)
         .bind(&p.branch)
+        .bind(&p.base_branch)
         .bind(&p.url)
         .bind(&p.linear_identifier)
         .bind(&p.updated_at)
         .bind(synced_at)
+        .bind(&p.merged_at)
+        .bind(p.additions)
+        .bind(p.deletions)
+        .bind(p.changed_files)
+        .bind(serde_json::to_string(&p.reviewers).ok())
         .execute(&mut *tx)
         .await?;
     }
@@ -134,16 +157,26 @@ pub async fn load_contributions_json(pool: &SqlitePool) -> Result<Option<String>
 }
 
 pub async fn list_prs(pool: &SqlitePool) -> Result<Vec<PrRow>, sqlx::Error> {
-    sqlx::query_as::<_, PrRow>(
+    let mut rows = sqlx::query_as::<_, PrRow>(
         "SELECT p.id, p.bucket, p.repo, p.number, p.title, p.draft, p.mergeable, p.ci_status,
                 p.review_decision, p.author_login, p.author_avatar, p.comment_count, p.branch,
-                p.url, p.linear_identifier, i.id AS linear_issue_id, p.updated_at
+                p.base_branch, p.url, p.linear_identifier, i.id AS linear_issue_id, p.updated_at,
+                p.merged_at, p.additions, p.deletions, p.changed_files,
+                i.state_name AS linear_state_name, i.state_type AS linear_state_type,
+                i.state_color AS linear_state_color, i.priority AS linear_priority,
+                p.reviewers
          FROM github_prs p
          LEFT JOIN issues i ON i.identifier = p.linear_identifier
          ORDER BY p.bucket, p.updated_at DESC",
     )
     .fetch_all(pool)
-    .await
+    .await?;
+    for r in &mut rows {
+        if let Some(json) = &r.reviewers_raw {
+            r.reviewers = serde_json::from_str(json).unwrap_or_default();
+        }
+    }
+    Ok(rows)
 }
 
 pub async fn load_sync_meta(pool: &SqlitePool) -> Result<Vec<SyncMeta>, sqlx::Error> {
@@ -180,9 +213,19 @@ mod tests {
             author_avatar: None,
             comment_count: Some(1),
             branch: Some("b".into()),
+            base_branch: Some("main".into()),
             url: Some("u".into()),
             linear_identifier: ident.map(|s| s.to_string()),
             updated_at: Some("2026-06-20T00:00:00Z".into()),
+            merged_at: None,
+            additions: Some(10),
+            deletions: Some(2),
+            changed_files: Some(3),
+            reviewers: vec![Reviewer {
+                login: "rev".into(),
+                avatar: None,
+                state: "approved".into(),
+            }],
         }
     }
 

@@ -120,6 +120,8 @@ export type DetailReaction = { id: string; emoji: string; userId: string | null;
 export type DetailComment = {
   id: string;
   body: string;
+  /** Document text the comment references (inline comments only, else null). */
+  quotedText: string | null;
   userId: string | null;
   userName: string | null;
   createdAt: string;
@@ -157,6 +159,7 @@ export type DetailHistory = {
 };
 
 export type LiveDetail = Issue & {
+  branchName: string | null;
   labels: Label[];
   teamStates: DetailState[];
   cycle: DetailCycle | null;
@@ -183,7 +186,14 @@ export type FilterOptions = {
   teams: { id: string; key: string }[];
   projects: { id: string; name: string }[];
 };
-export type User = { id: string; name: string };
+export type User = {
+  id: string;
+  name: string;
+  avatarUrl?: string | null;
+  displayName?: string | null;
+  timezone?: string | null;
+  teamName?: string | null;
+};
 
 /** An inbox notification, flattened to the issue it points at. */
 export type Notification = {
@@ -224,6 +234,7 @@ export type UpdateIssuePatch = {
   projectId?: string | null;
   estimate?: number | null;
   cycleId?: string | null;
+  parentId?: string | null;
 };
 
 export type Cycle = { id: string; number: number | null; name: string | null; teamId: string | null };
@@ -287,6 +298,50 @@ export const listWorkflowStates = (): Promise<WorkflowState[]> => invoke("list_w
 
 export const deleteIssue = (id: string): Promise<void> => invoke("delete_issue", { id });
 
+/** Linear relation type from the source issue's perspective. */
+export type RelationType = "related" | "blocks" | "duplicate";
+
+export const createIssueRelation = (
+  issueId: string,
+  relatedIssueId: string,
+  type: RelationType,
+): Promise<void> => invoke("create_issue_relation", { issueId, relatedIssueId, type });
+
+/** Link a URL (or a GitHub PR's URL) to an issue as a Linear attachment. */
+export const createAttachmentLink = (
+  issueId: string,
+  url: string,
+  title?: string | null,
+): Promise<DetailAttachment> =>
+  invoke("create_attachment_link", { issueId, url, title: title ?? null });
+
+/** A file uploaded to Linear storage, ready to embed in markdown. */
+export type UploadedAsset = {
+  url: string;
+  filename: string;
+  contentType: string;
+  isImage: boolean;
+  size: number;
+};
+
+/** Outcome of a (possibly multi-file) upload: successful assets + a count of
+ *  selected files that were skipped (failed), for partial-success warnings. */
+export type UploadOutcome = {
+  assets: UploadedAsset[];
+  skipped: number;
+};
+
+/** Open the native file picker and upload the chosen files to Linear storage.
+ *  The picker runs in Rust; no path is passed from the webview. */
+export const uploadFiles = (): Promise<UploadOutcome> => invoke("upload_file");
+
+/** Rename an attachment. */
+export const updateAttachment = (id: string, title: string): Promise<DetailAttachment> =>
+  invoke("update_attachment", { id, title });
+
+/** Delete an attachment. */
+export const deleteAttachment = (id: string): Promise<void> => invoke("delete_attachment", { id });
+
 export const getMe = (): Promise<Me | null> => invoke("get_me");
 
 export const createComment = (
@@ -327,7 +382,13 @@ export type GitHubStatus =
   | { state: "unverified" }
   | { state: "connected"; login: string };
 
-export type PrBucket = "needs_review" | "mine" | "assigned" | "involved";
+export type PrBucket = "needs_review" | "mine" | "assigned" | "involved" | "merged";
+
+export type PrReviewer = {
+  login: string;
+  avatar: string | null;
+  state: "approved" | "changes_requested" | "commented" | "dismissed" | "pending";
+};
 
 export type GithubPr = {
   id: string;
@@ -343,10 +404,20 @@ export type GithubPr = {
   authorAvatar: string | null;
   commentCount: number | null;
   branch: string | null;
+  baseBranch: string | null;
   url: string | null;
   linearIdentifier: string | null;
   linearIssueId: string | null;
   updatedAt: string | null;
+  mergedAt: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
+  linearStateName: string | null;
+  linearStateType: string | null;
+  linearStateColor: string | null;
+  linearPriority: number | null;
+  reviewers: PrReviewer[];
 };
 
 export type GithubSyncMeta = {

@@ -14,6 +14,7 @@ import {
   listItemSchema,
 } from "@milkdown/kit/preset/commonmark";
 import { gfm, extendListItemSchemaForTask } from "@milkdown/kit/preset/gfm";
+import { history } from "@milkdown/kit/plugin/history";
 import type { Ctx } from "@milkdown/ctx";
 import type { NodeSchema } from "@milkdown/transformer";
 import { descriptionImageView } from "./milkdownImageNode";
@@ -48,6 +49,7 @@ import {
 export const descriptionPlugins: unknown[] = [
   commonmark,
   gfm,
+  history, // undo/redo (cmd/ctrl+z, shift+cmd/ctrl+z) — not in the commonmark preset
   descriptionImageView,
   descriptionCodeBlockView,
   ...descriptionSlash,

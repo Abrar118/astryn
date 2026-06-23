@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::db;
 use crate::db::issues::{
-    self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord,
+    self as issues, CalendarIssue, FilterOptions, Issue, IssueRecord, LabelRecord, RelationRecord,
 };
 use crate::github::{GitHubClient, GitHubCredentialProvider, GitHubError};
 use crate::linear::issues::{
@@ -38,6 +38,7 @@ pub struct LabelOut {
 pub struct LiveDetail {
     #[serde(flatten)]
     pub issue: Issue,
+    pub branch_name: Option<String>,
     pub labels: Vec<LabelOut>,
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
@@ -110,6 +111,14 @@ pub enum CmdError {
     GitHubNotConfigured,
     #[error("GitHub rejected the request.")]
     GitHubApi,
+    #[error("That doesn't look like a valid URL.")]
+    InvalidUrl,
+    #[error("Couldn't read that file.")]
+    FileRead,
+    #[error("File is too large (max 50 MB).")]
+    FileTooLarge,
+    #[error("Couldn't upload the file.")]
+    UploadFailed,
 }
 
 impl serde::Serialize for CmdError {
@@ -358,6 +367,7 @@ fn node_to_live(n: IssueDetailNode) -> LiveDetail {
         .collect();
     LiveDetail {
         issue: parsed_to_issue(&n.issue),
+        branch_name: n.branch_name,
         labels,
         team_states: n.team_states,
         cycle: n.cycle,
@@ -921,6 +931,270 @@ pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), 
     .await
 }
 
+/// Create an issue relation (Linear `issueRelationCreate`) and cache the new
+/// row for the source issue. `type_` is the relation from `issue_id`'s view:
+/// `related` | `blocks` | `duplicate`. The frontend swaps the two ids to model
+/// "blocked by" (the other issue blocks this one).
+#[tauri::command]
+pub async fn create_issue_relation(
+    state: State<'_, AppState>,
+    issue_id: String,
+    related_issue_id: String,
+    r#type: String,
+) -> Result<(), CmdError> {
+    if !matches!(r#type.as_str(), "related" | "blocks" | "duplicate") {
+        return Err(CmdError::InvalidInput);
+    }
+    if related_issue_id == issue_id {
+        return Err(CmdError::InvalidInput);
+    }
+    let auth = authed(&state).await?;
+    let rel = state
+        .linear
+        .create_issue_relation(&auth, &issue_id, &related_issue_id, &r#type)
+        .await
+        .map_err(CmdError::from)?;
+    let record = RelationRecord {
+        related_issue_id: rel.related_id,
+        r#type: rel.r#type,
+        related_identifier: rel.related_identifier,
+        related_title: rel.related_title,
+        related_state_name: rel.related_state_name,
+        related_state_type: rel.related_state_type,
+        related_state_color: rel.related_state_color,
+    };
+    issues::insert_relation(&state.pool, &issue_id, &record)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(())
+}
+
+/// Normalize and validate a user-entered link URL. Trims, defaults a missing
+/// scheme to `https` (so a bare domain like `github.com/x` works, matching
+/// Linear's own link field), then verifies the result is a real http(s) URL with
+/// a host. `None` ⇒ not a valid URL (empty, has whitespace, non-http scheme, or
+/// unparseable — e.g. arbitrary pasted text), so we never send junk to Linear.
+fn normalize_attachment_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    // A real URL has no internal whitespace (it would be percent-encoded), so any
+    // whitespace means the input is free text, not a URL.
+    if raw.is_empty() || raw.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let candidate = if raw.starts_with("http://") || raw.starts_with("https://") {
+        raw.to_owned()
+    } else if raw.contains("://") {
+        return None; // some other scheme (ftp://, file://, …)
+    } else {
+        format!("https://{raw}")
+    };
+    let parsed = reqwest::Url::parse(&candidate).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    parsed.host_str().filter(|h| !h.is_empty())?;
+    Some(candidate)
+}
+
+/// Link a URL (or a GitHub PR's URL) to an issue as a Linear attachment.
+/// Returns the created attachment so the frontend can update its detail cache.
+#[tauri::command]
+pub async fn create_attachment_link(
+    state: State<'_, AppState>,
+    issue_id: String,
+    url: String,
+    title: Option<String>,
+) -> Result<DetailAttachment, CmdError> {
+    let url = normalize_attachment_url(&url).ok_or(CmdError::InvalidUrl)?;
+    let title = title.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .create_attachment_link(&auth, &issue_id, &url, title.as_deref())
+        .await
+        .map_err(CmdError::from)
+}
+
+/// Rename an attachment (Linear `attachmentUpdate`). Returns the updated entity.
+#[tauri::command]
+pub async fn update_attachment(
+    state: State<'_, AppState>,
+    id: String,
+    title: String,
+) -> Result<DetailAttachment, CmdError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(CmdError::InvalidInput);
+    }
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .update_attachment(&auth, &id, title)
+        .await
+        .map_err(CmdError::from)
+}
+
+/// Delete an attachment (Linear `attachmentDelete`).
+#[tauri::command]
+pub async fn delete_attachment(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .delete_attachment(&auth, &id)
+        .await
+        .map_err(CmdError::from)
+}
+
+/// A file uploaded to Linear's storage, ready to embed in markdown.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedAsset {
+    pub url: String,
+    pub filename: String,
+    pub content_type: String,
+    pub is_image: bool,
+    pub size: u64,
+}
+
+/// Result of a (possibly multi-file) upload: the assets that succeeded plus a
+/// count of selected files that failed, so the UI can warn on partial success.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadOutcome {
+    pub assets: Vec<UploadedAsset>,
+    pub skipped: usize,
+}
+
+const MAX_UPLOAD_BYTES: usize = 50 * 1024 * 1024;
+
+/// Best-effort content type from a filename's extension; used both for the
+/// `fileUpload` request and to decide image-vs-file embedding.
+fn guess_content_type(filename: &str) -> String {
+    let ext = filename
+        .rsplit('.')
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let mime = match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "avif" => "image/avif",
+        "svg" => "image/svg+xml",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
+        "mov" => "video/quicktime",
+        "pdf" => "application/pdf",
+        "zip" => "application/zip",
+        "json" => "application/json",
+        "csv" => "text/csv",
+        "txt" | "log" | "md" => "text/plain",
+        _ => "application/octet-stream",
+    };
+    mime.to_string()
+}
+
+/// Read one already-selected file and upload it to Linear storage.
+async fn upload_one(
+    linear: &crate::linear::LinearClient,
+    auth: &str,
+    path: std::path::PathBuf,
+) -> Result<UploadedAsset, CmdError> {
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .map(str::to_owned)
+        .ok_or(CmdError::FileRead)?;
+    // Check metadata BEFORE reading: reject non-regular files (dirs, devices) and
+    // oversized files up front, so we never buffer a huge/special file into memory.
+    let meta = tokio::fs::metadata(&path)
+        .await
+        .map_err(|_| CmdError::FileRead)?;
+    if !meta.is_file() {
+        return Err(CmdError::FileRead);
+    }
+    if meta.len() == 0 {
+        return Err(CmdError::FileRead);
+    }
+    if meta.len() > MAX_UPLOAD_BYTES as u64 {
+        return Err(CmdError::FileTooLarge);
+    }
+    let bytes = tokio::fs::read(&path)
+        .await
+        .map_err(|_| CmdError::FileRead)?;
+    // Re-check after read: a file can grow between stat and read (TOCTOU).
+    if bytes.len() > MAX_UPLOAD_BYTES {
+        return Err(CmdError::FileTooLarge);
+    }
+    let content_type = guess_content_type(&filename);
+    let byte_len = bytes.len() as u64;
+    let target = linear
+        .request_file_upload(auth, &filename, &content_type, byte_len as i64)
+        .await
+        .map_err(CmdError::from)?;
+    linear
+        .put_upload(&target.upload_url, &target.headers, &content_type, bytes)
+        .await
+        .map_err(|_| CmdError::UploadFailed)?;
+    let is_image = content_type.starts_with("image/");
+    Ok(UploadedAsset {
+        url: target.asset_url,
+        filename,
+        content_type,
+        is_image,
+        size: byte_len,
+    })
+}
+
+/// Open the native file picker and upload the chosen files to Linear storage.
+/// The picker runs here in Rust, so file paths NEVER cross the IPC boundary —
+/// the webview cannot supply a path, so only files the user selected in this
+/// dialog are read (closes any arbitrary-file-read / exfiltration via the webview).
+#[tauri::command]
+pub async fn upload_file(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<UploadOutcome, CmdError> {
+    use tauri_plugin_dialog::DialogExt;
+    // blocking_pick_files() must not run on the main thread.
+    let picked =
+        tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_files())
+            .await
+            .map_err(|_| CmdError::Internal)?;
+    let Some(files) = picked else {
+        return Ok(UploadOutcome {
+            assets: Vec::new(),
+            skipped: 0,
+        });
+    };
+    let auth = authed(&state).await?;
+    let mut assets = Vec::new();
+    let mut skipped = 0usize;
+    let mut first_err: Option<CmdError> = None;
+    for fp in files {
+        let result = match fp.into_path() {
+            Ok(path) => upload_one(&state.linear, &auth, path).await,
+            Err(_) => Err(CmdError::FileRead),
+        };
+        match result {
+            Ok(a) => assets.push(a),
+            Err(e) => {
+                skipped += 1;
+                first_err.get_or_insert(e);
+            }
+        }
+    }
+    // If nothing uploaded, surface the specific reason; otherwise report partial
+    // success with a skipped count so the UI can warn.
+    if assets.is_empty() {
+        if let Some(e) = first_err {
+            return Err(e);
+        }
+    }
+    Ok(UploadOutcome { assets, skipped })
+}
+
 #[tauri::command]
 pub async fn get_me(state: State<'_, AppState>) -> Result<Option<Me>, CmdError> {
     Ok(db::load_me(&state.pool)
@@ -1040,6 +1314,43 @@ mod status_tests {
     #[test]
     fn key_without_cache_is_unverified() {
         assert_eq!(compute_status(true, None), ConnectionStatus::Unverified);
+    }
+
+    #[test]
+    fn normalize_attachment_url_handles_scheme() {
+        assert_eq!(
+            normalize_attachment_url("https://x.com").as_deref(),
+            Some("https://x.com")
+        );
+        assert_eq!(
+            normalize_attachment_url("  http://x.com  ").as_deref(),
+            Some("http://x.com")
+        );
+        // Bare domain gets https:// (so a pasted host still works).
+        assert_eq!(
+            normalize_attachment_url("github.com/o/r/pull/1").as_deref(),
+            Some("https://github.com/o/r/pull/1")
+        );
+        assert_eq!(normalize_attachment_url(""), None);
+        assert_eq!(normalize_attachment_url("   "), None);
+        assert_eq!(normalize_attachment_url("ftp://x.com"), None);
+        // Free text (the bug): must be rejected, not turned into https://junk.
+        assert_eq!(
+            normalize_attachment_url("The resource was requested insecurely."),
+            None
+        );
+        assert_eq!(normalize_attachment_url("hello world"), None);
+        // Scheme present but no host.
+        assert_eq!(normalize_attachment_url("https://"), None);
+    }
+
+    #[test]
+    fn guess_content_type_maps_extensions() {
+        assert_eq!(guess_content_type("a.PNG"), "image/png");
+        assert_eq!(guess_content_type("clip.mp4"), "video/mp4");
+        assert_eq!(guess_content_type("doc.pdf"), "application/pdf");
+        assert_eq!(guess_content_type("noext"), "application/octet-stream");
+        assert!(guess_content_type("photo.jpeg").starts_with("image/"));
     }
 
     #[test]

@@ -76,6 +76,13 @@ pub struct OrgIdentity {
 pub struct ParsedUser {
     pub id: String,
     pub name: String,
+    /// Linear avatar image URL, when the user has uploaded one (else null).
+    pub avatar_url: Option<String>,
+    /// Short handle (e.g. "abrar"), IANA timezone, and primary team name — used
+    /// by the mention hover card. All optional; absent fields just hide a line.
+    pub display_name: Option<String>,
+    pub timezone: Option<String>,
+    pub team_name: Option<String>,
 }
 
 /// One inbox notification, flattened to the issue it points at. Only
@@ -288,6 +295,15 @@ pub fn parse_users(body: &str) -> Result<Vec<ParsedUser>, LinearError> {
             Some(ParsedUser {
                 id: s(u, "id")?,
                 name: s(u, "name").unwrap_or_default(),
+                avatar_url: s(u, "avatarUrl"),
+                display_name: s(u, "displayName"),
+                timezone: s(u, "timezone"),
+                team_name: u
+                    .get("teams")
+                    .and_then(|t| t.get("nodes"))
+                    .and_then(|n| n.as_array())
+                    .and_then(|arr| arr.first())
+                    .and_then(|t| s(t, "name")),
             })
         })
         .collect())
@@ -411,7 +427,7 @@ pub fn parse_cycles(body: &str) -> Result<Vec<ParsedCycle>, LinearError> {
 }
 
 const COMMENT_NODE_FIELDS: &str =
-    "id body createdAt editedAt parent { id } user { id name } reactions { id emoji user { id name } }";
+    "id body quotedText createdAt editedAt parent { id } user { id name } reactions { id emoji user { id name } }";
 
 fn parse_reaction_node(r: &Value) -> DetailReaction {
     DetailReaction {
@@ -431,6 +447,7 @@ fn parse_comment_node(c: &Value) -> DetailComment {
     DetailComment {
         id: s(c, "id").unwrap_or_default(),
         body: s(c, "body").unwrap_or_default(),
+        quoted_text: s(c, "quotedText"),
         user_id: nested(c, "user", "id"),
         user_name: nested(c, "user", "name"),
         created_at: s(c, "createdAt").unwrap_or_default(),
@@ -454,6 +471,101 @@ pub fn parse_label_create(body: &str) -> Result<ParsedLabel, LinearError> {
         name: s(l, "name"),
         color: s(l, "color"),
     })
+}
+
+/// Parse `issueRelationCreate`, returning the new relation from the source
+/// issue's perspective (`relatedIssue` is the target, with display fields for
+/// the relations cache).
+pub fn parse_relation_create(body: &str) -> Result<ParsedRelation, LinearError> {
+    let data = extract_data(body)?;
+    let created = data
+        .get("issueRelationCreate")
+        .ok_or(LinearError::Malformed)?;
+    if created.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(
+            "issueRelationCreate returned success=false".into(),
+        ));
+    }
+    let rel = created.get("issueRelation").ok_or(LinearError::Malformed)?;
+    let ri = rel.get("relatedIssue").ok_or(LinearError::Malformed)?;
+    Ok(ParsedRelation {
+        related_id: s(ri, "id").unwrap_or_default(),
+        r#type: s(rel, "type").unwrap_or_default(),
+        related_identifier: s(ri, "identifier"),
+        related_title: s(ri, "title"),
+        related_state_name: nested(ri, "state", "name"),
+        related_state_type: nested(ri, "state", "type"),
+        related_state_color: nested(ri, "state", "color"),
+    })
+}
+
+/// Parse an `attachment{Create,Update}` payload (`{ success, attachment }`).
+fn parse_attachment_payload(body: &str, field: &str) -> Result<DetailAttachment, LinearError> {
+    let data = extract_data(body)?;
+    let payload = data.get(field).ok_or(LinearError::Malformed)?;
+    if payload.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(format!("{field} returned success=false")));
+    }
+    let a = payload.get("attachment").ok_or(LinearError::Malformed)?;
+    Ok(detail_attachment(a))
+}
+
+/// Parse `attachmentCreate`, returning the newly created link attachment.
+pub fn parse_attachment_create(body: &str) -> Result<DetailAttachment, LinearError> {
+    parse_attachment_payload(body, "attachmentCreate")
+}
+
+/// Parse `attachmentUpdate`, returning the updated attachment.
+pub fn parse_attachment_update(body: &str) -> Result<DetailAttachment, LinearError> {
+    parse_attachment_payload(body, "attachmentUpdate")
+}
+
+/// Where to PUT an upload's bytes, plus the final asset URL to reference it by.
+pub struct LinearUploadTarget {
+    pub upload_url: String,
+    pub asset_url: String,
+    pub headers: Vec<(String, String)>,
+}
+
+/// Parse `fileUpload`, returning the storage target + the headers to PUT with.
+pub fn parse_file_upload(body: &str) -> Result<LinearUploadTarget, LinearError> {
+    let data = extract_data(body)?;
+    let payload = data.get("fileUpload").ok_or(LinearError::Malformed)?;
+    if payload.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api("fileUpload returned success=false".into()));
+    }
+    let f = payload.get("uploadFile").ok_or(LinearError::Malformed)?;
+    let headers = f
+        .get("headers")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|h| Some((s(h, "key")?, s(h, "value")?)))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(LinearUploadTarget {
+        upload_url: s(f, "uploadUrl").ok_or(LinearError::Malformed)?,
+        asset_url: s(f, "assetUrl").ok_or(LinearError::Malformed)?,
+        headers,
+    })
+}
+
+/// Parse `attachmentDelete`, succeeding only on `success: true`.
+pub fn parse_attachment_delete(body: &str) -> Result<(), LinearError> {
+    let data = extract_data(body)?;
+    let ok = data
+        .get("attachmentDelete")
+        .and_then(|d| d.get("success"))
+        .and_then(|b| b.as_bool())
+        == Some(true);
+    if ok {
+        Ok(())
+    } else {
+        Err(LinearError::Api(
+            "attachmentDelete returned success=false".into(),
+        ))
+    }
 }
 
 pub fn parse_issue_delete(body: &str) -> Result<(), LinearError> {
@@ -621,6 +733,8 @@ pub struct DetailReaction {
 pub struct DetailComment {
     pub id: String,
     pub body: String,
+    /// The document text this comment references (inline comments only, else null).
+    pub quoted_text: Option<String>,
     pub user_id: Option<String>,
     pub user_name: Option<String>,
     pub created_at: String,
@@ -688,6 +802,8 @@ pub struct DetailCycle {
 
 pub struct IssueDetailNode {
     pub issue: ParsedIssue,
+    /// Linear's git branch name for this issue (workspace-formatted).
+    pub branch_name: Option<String>,
     pub creator_name: Option<String>,
     pub team_states: Vec<DetailState>,
     pub cycle: Option<DetailCycle>,
@@ -852,12 +968,30 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                 .collect()
         })
         .unwrap_or_default();
-    let comments = n
+    let mut comments: Vec<DetailComment> = n
         .get("comments")
         .and_then(|c| c.get("nodes"))
         .and_then(|x| x.as_array())
         .map(|arr| arr.iter().map(parse_comment_node).collect())
         .unwrap_or_default();
+    // Inline/document comments are NOT on `issue.comments` (their `issue` is
+    // null); they only appear on the root `comments` connection filtered by
+    // `documentContent.issue` (the aliased `documentComments`). Merge them in,
+    // deduped by id, so anchored comments + their quotedText render in the thread.
+    let mut seen: std::collections::HashSet<String> =
+        comments.iter().map(|c| c.id.clone()).collect();
+    if let Some(arr) = data
+        .get("documentComments")
+        .and_then(|c| c.get("nodes"))
+        .and_then(Value::as_array)
+    {
+        for node in arr {
+            let comment = parse_comment_node(node);
+            if seen.insert(comment.id.clone()) {
+                comments.push(comment);
+            }
+        }
+    }
     let attachments = n
         .get("attachments")
         .and_then(|a| a.get("nodes"))
@@ -912,6 +1046,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         .unwrap_or_default();
     Ok(IssueDetailNode {
         issue,
+        branch_name: s(n, "branchName"),
         creator_name: nested(n, "creator", "name"),
         team_states,
         cycle,
@@ -924,7 +1059,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         has_more_children: conn_has_next(n, "children"),
         has_more_relations: conn_has_next(n, "relations"),
         has_more_history: conn_has_next(n, "history"),
-        has_more_comments: conn_has_next(n, "comments"),
+        has_more_comments: conn_has_next(n, "comments") || conn_has_next(&data, "documentComments"),
     })
 }
 
@@ -964,6 +1099,9 @@ pub struct UpdateIssuePatch {
     pub estimate: Option<Option<f64>>,
     #[serde(default, deserialize_with = "double_option")]
     pub cycle_id: Option<Option<String>>,
+    /// Re-parent the issue (sub-issue of / parent of). Some(None) detaches.
+    #[serde(default, deserialize_with = "double_option")]
+    pub parent_id: Option<Option<String>>,
 }
 
 /// Build the GraphQL `IssueUpdateInput`. Omitted => absent; Some(None) => null (clear).
@@ -1020,6 +1158,12 @@ pub fn patch_to_input(p: &UpdateIssuePatch) -> Value {
     if let Some(opt) = &p.cycle_id {
         m.insert(
             "cycleId".into(),
+            opt.clone().map(Value::String).unwrap_or(Value::Null),
+        );
+    }
+    if let Some(opt) = &p.parent_id {
+        m.insert(
+            "parentId".into(),
             opt.clone().map(Value::String).unwrap_or(Value::Null),
         );
     }
@@ -1122,9 +1266,10 @@ fn issues_query() -> String {
 
 fn issue_detail_query() -> String {
     format!(
-        "query Issue($id: String!) {{
+        "query Issue($id: String!, $issueId: ID!) {{
            issue(id: $id) {{
              {ISSUE_NODE_FIELDS}
+             branchName
              team {{ id key states(first: 50) {{ nodes {{ id name type color }} }} }}
              parent {{ id identifier title }}
              creator {{ name }}
@@ -1142,11 +1287,16 @@ fn issue_detail_query() -> String {
              }} }}
              comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ {COMMENT_NODE_FIELDS} }} }}
            }}
+           documentComments: comments(
+             first: 50
+             includeArchived: true
+             filter: {{ documentContent: {{ issue: {{ id: {{ eq: $issueId }} }} }} }}
+           ) {{ pageInfo {{ hasNextPage }} nodes {{ {COMMENT_NODE_FIELDS} }} }}
          }}"
     )
 }
 
-const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name } } }";
+const USERS_QUERY: &str = "query { users(first: 250) { nodes { id name avatarUrl displayName timezone teams(first: 1) { nodes { name } } } } }";
 const NOTIFICATIONS_QUERY: &str = "query { notifications(first: 50) {
     pageInfo { hasNextPage }
     nodes {
@@ -1202,6 +1352,53 @@ fn label_create_mutation() -> String {
     "mutation L($input: IssueLabelCreateInput!) { issueLabelCreate(input: $input) { success issueLabel { id name color } } }".to_string()
 }
 
+fn relation_create_mutation() -> String {
+    "mutation IRC($input: IssueRelationCreateInput!) { \
+       issueRelationCreate(input: $input) { \
+         success \
+         issueRelation { type relatedIssue { id identifier title state { name type color } } } \
+       } \
+     }"
+    .to_string()
+}
+
+// `attachmentCreate` stores the link as-is. (We deliberately avoid
+// `attachmentLinkUrl`, which makes Linear's server fetch the URL to build a rich
+// preview — that fetch is rejected with "The resource was requested insecurely".)
+fn attachment_link_mutation() -> String {
+    "mutation AC($input: AttachmentCreateInput!) { \
+       attachmentCreate(input: $input) { \
+         success \
+         attachment { id title subtitle url sourceType createdAt } \
+       } \
+     }"
+    .to_string()
+}
+
+fn attachment_update_mutation() -> String {
+    "mutation AU($id: String!, $input: AttachmentUpdateInput!) { \
+       attachmentUpdate(id: $id, input: $input) { \
+         success \
+         attachment { id title subtitle url sourceType createdAt } \
+       } \
+     }"
+    .to_string()
+}
+
+fn attachment_delete_mutation() -> String {
+    "mutation AD($id: String!) { attachmentDelete(id: $id) { success } }".to_string()
+}
+
+fn file_upload_mutation() -> String {
+    "mutation FU($contentType: String!, $filename: String!, $size: Int!) { \
+       fileUpload(contentType: $contentType, filename: $filename, size: $size) { \
+         success \
+         uploadFile { uploadUrl assetUrl headers { key value } } \
+       } \
+     }"
+    .to_string()
+}
+
 impl LinearClient {
     async fn post(&self, auth: &str, body: serde_json::Value) -> Result<String, LinearError> {
         self.http_post(auth, body).await
@@ -1224,7 +1421,10 @@ impl LinearClient {
     }
 
     pub async fn issue_detail(&self, auth: &str, id: &str) -> Result<IssueDetailNode, LinearError> {
-        let body = serde_json::json!({ "query": issue_detail_query(), "variables": { "id": id } });
+        let body = serde_json::json!({
+            "query": issue_detail_query(),
+            "variables": { "id": id, "issueId": id }
+        });
         parse_issue_detail(&self.post(auth, body).await?)
     }
 
@@ -1256,6 +1456,88 @@ impl LinearClient {
     pub async fn delete_issue(&self, auth: &str, id: &str) -> Result<(), LinearError> {
         let body = serde_json::json!({ "query": ISSUE_DELETE_MUTATION, "variables": { "id": id } });
         parse_issue_delete(&self.post(auth, body).await?)
+    }
+
+    /// Create an issue relation. `type_` is the Linear `IssueRelationType`
+    /// (`related` | `blocks` | `duplicate`); the caller chooses `issue_id` /
+    /// `related_issue_id` to encode direction (e.g. "blocked by" = swap them).
+    pub async fn create_issue_relation(
+        &self,
+        auth: &str,
+        issue_id: &str,
+        related_issue_id: &str,
+        type_: &str,
+    ) -> Result<ParsedRelation, LinearError> {
+        let input = serde_json::json!({
+            "issueId": issue_id,
+            "relatedIssueId": related_issue_id,
+            "type": type_,
+        });
+        let req = serde_json::json!({
+            "query": relation_create_mutation(),
+            "variables": { "input": input }
+        });
+        parse_relation_create(&self.post(auth, req).await?)
+    }
+
+    /// Link a URL (or a PR's URL) to an issue as a Linear attachment.
+    pub async fn create_attachment_link(
+        &self,
+        auth: &str,
+        issue_id: &str,
+        url: &str,
+        title: Option<&str>,
+    ) -> Result<DetailAttachment, LinearError> {
+        // attachmentCreate wants a title; fall back to the URL when none is given.
+        let input = serde_json::json!({
+            "issueId": issue_id,
+            "url": url,
+            "title": title.unwrap_or(url),
+        });
+        let req = serde_json::json!({
+            "query": attachment_link_mutation(),
+            "variables": { "input": input }
+        });
+        parse_attachment_create(&self.post(auth, req).await?)
+    }
+
+    /// Update an attachment's title.
+    pub async fn update_attachment(
+        &self,
+        auth: &str,
+        id: &str,
+        title: &str,
+    ) -> Result<DetailAttachment, LinearError> {
+        let req = serde_json::json!({
+            "query": attachment_update_mutation(),
+            "variables": { "id": id, "input": { "title": title } }
+        });
+        parse_attachment_update(&self.post(auth, req).await?)
+    }
+
+    /// Request an upload slot for a file (Linear `fileUpload`). Returns where to
+    /// PUT the bytes and the final asset URL to reference it by.
+    pub async fn request_file_upload(
+        &self,
+        auth: &str,
+        filename: &str,
+        content_type: &str,
+        size: i64,
+    ) -> Result<LinearUploadTarget, LinearError> {
+        let req = serde_json::json!({
+            "query": file_upload_mutation(),
+            "variables": { "contentType": content_type, "filename": filename, "size": size }
+        });
+        parse_file_upload(&self.post(auth, req).await?)
+    }
+
+    /// Delete an attachment.
+    pub async fn delete_attachment(&self, auth: &str, id: &str) -> Result<(), LinearError> {
+        let req = serde_json::json!({
+            "query": attachment_delete_mutation(),
+            "variables": { "id": id }
+        });
+        parse_attachment_delete(&self.post(auth, req).await?)
     }
 
     pub async fn create_comment(
@@ -1416,6 +1698,125 @@ mod tests {
         assert_eq!(
             p.relations[0].related_state_type.as_deref(),
             Some("started")
+        );
+    }
+
+    #[test]
+    fn parse_users_extracts_profile_fields() {
+        let body = r##"{"data":{"users":{"nodes":[
+            {"id":"u1","name":"Abrar Mahir Esam","avatarUrl":"https://public.linear.app/a.png",
+             "displayName":"abrar","timezone":"Asia/Dhaka","teams":{"nodes":[{"name":"Psycloud"}]}},
+            {"id":"u2","name":"No Extras","avatarUrl":null,"displayName":null,"timezone":null,"teams":{"nodes":[]}}
+        ]}}}"##;
+        let users = parse_users(body).unwrap();
+        assert_eq!(
+            users[0].avatar_url.as_deref(),
+            Some("https://public.linear.app/a.png")
+        );
+        assert_eq!(users[0].display_name.as_deref(), Some("abrar"));
+        assert_eq!(users[0].timezone.as_deref(), Some("Asia/Dhaka"));
+        assert_eq!(users[0].team_name.as_deref(), Some("Psycloud"));
+        // Nulls / empty team connection degrade to None, not a panic.
+        assert_eq!(users[1].display_name, None);
+        assert_eq!(users[1].team_name, None);
+    }
+
+    #[test]
+    fn patch_to_input_sets_and_clears_parent() {
+        let set = UpdateIssuePatch {
+            parent_id: Some(Some("p1".into())),
+            ..Default::default()
+        };
+        assert_eq!(patch_to_input(&set)["parentId"], serde_json::json!("p1"));
+
+        let clear = UpdateIssuePatch {
+            parent_id: Some(None),
+            ..Default::default()
+        };
+        assert_eq!(patch_to_input(&clear)["parentId"], Value::Null);
+
+        let absent = UpdateIssuePatch::default();
+        assert!(patch_to_input(&absent).get("parentId").is_none());
+    }
+
+    #[test]
+    fn parse_relation_create_extracts_target() {
+        let body = r##"{"data":{"issueRelationCreate":{"success":true,"issueRelation":{
+            "type":"blocks","relatedIssue":{"id":"2","identifier":"ENG-2","title":"Other",
+            "state":{"name":"Todo","type":"unstarted","color":"#abc"}}}}}}"##;
+        let r = parse_relation_create(body).unwrap();
+        assert_eq!(r.related_id, "2");
+        assert_eq!(r.r#type, "blocks");
+        assert_eq!(r.related_identifier.as_deref(), Some("ENG-2"));
+        assert_eq!(r.related_state_type.as_deref(), Some("unstarted"));
+    }
+
+    #[test]
+    fn parse_relation_create_rejects_failure() {
+        let body = r##"{"data":{"issueRelationCreate":{"success":false,"issueRelation":null}}}"##;
+        assert!(parse_relation_create(body).is_err());
+    }
+
+    #[test]
+    fn parse_attachment_create_extracts_link() {
+        let body = r##"{"data":{"attachmentCreate":{"success":true,"attachment":{
+            "id":"a1","title":"Design doc","subtitle":"figma.com","url":"https://figma.com/x",
+            "sourceType":null,"createdAt":"2026-06-23T10:00:00Z"}}}}"##;
+        let a = parse_attachment_create(body).unwrap();
+        assert_eq!(a.id, "a1");
+        assert_eq!(a.title, "Design doc");
+        assert_eq!(a.url, "https://figma.com/x");
+    }
+
+    #[test]
+    fn parse_attachment_create_rejects_failure() {
+        let body = r##"{"data":{"attachmentCreate":{"success":false,"attachment":null}}}"##;
+        assert!(parse_attachment_create(body).is_err());
+    }
+
+    #[test]
+    fn parse_attachment_update_extracts_attachment() {
+        let body = r##"{"data":{"attachmentUpdate":{"success":true,"attachment":{
+            "id":"a1","title":"Renamed","subtitle":null,"url":"https://x.com",
+            "sourceType":null,"createdAt":"2026-06-23T10:00:00Z"}}}}"##;
+        let a = parse_attachment_update(body).unwrap();
+        assert_eq!(a.title, "Renamed");
+    }
+
+    #[test]
+    fn parse_file_upload_extracts_target_and_headers() {
+        let body = r##"{"data":{"fileUpload":{"success":true,"uploadFile":{
+            "uploadUrl":"https://uploads.linear.app/put/abc?sig=1",
+            "assetUrl":"https://uploads.linear.app/asset/abc",
+            "headers":[{"key":"Content-Type","value":"image/png"},{"key":"Cache-Control","value":"public"}]}}}}"##;
+        let t = parse_file_upload(body).unwrap();
+        assert_eq!(t.upload_url, "https://uploads.linear.app/put/abc?sig=1");
+        assert_eq!(t.asset_url, "https://uploads.linear.app/asset/abc");
+        assert_eq!(
+            t.headers,
+            vec![
+                ("Content-Type".to_string(), "image/png".to_string()),
+                ("Cache-Control".to_string(), "public".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_file_upload_rejects_failure() {
+        assert!(parse_file_upload(
+            r##"{"data":{"fileUpload":{"success":false,"uploadFile":null}}}"##
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn parse_attachment_delete_ok_and_failure() {
+        assert!(
+            parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":true}}}"##).is_ok()
+        );
+        assert!(
+            parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":false}}}"##)
+                .is_err()
         );
     }
 
@@ -1685,12 +2086,44 @@ mod tests {
     #[test]
     fn parses_comment_create() {
         let body = r##"{"data":{"commentCreate":{"success":true,"comment":{
-          "id":"cm9","body":"Hi","createdAt":"2026-06-20T09:00:00Z","editedAt":null,
+          "id":"cm9","body":"Hi","quotedText":null,"createdAt":"2026-06-20T09:00:00Z","editedAt":null,
           "parent":null,"user":{"id":"u1","name":"Abrar"},"reactions":[]}}}}"##;
         let c = parse_comment_create(body).unwrap();
         assert_eq!(c.id, "cm9");
         assert_eq!(c.body, "Hi");
+        assert_eq!(c.quoted_text, None);
         assert!(parse_comment_create(r#"{"data":{"commentCreate":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn parse_comment_node_extracts_quoted_text() {
+        let c = parse_comment_node(&serde_json::json!({
+            "id": "cm1", "body": "agreed", "quotedText": "the old plan text",
+            "createdAt": "t", "user": { "id": "u1", "name": "Jakob" }, "reactions": []
+        }));
+        assert_eq!(c.quoted_text.as_deref(), Some("the old plan text"));
+    }
+
+    #[test]
+    fn parse_issue_detail_merges_inline_document_comments() {
+        // issue.comments holds regular comments; the aliased `documentComments`
+        // (root connection filtered by documentContent.issue) holds inline ones,
+        // which carry quotedText. They must merge, deduped by id.
+        let body = r##"{"data":{
+          "issue":{"id":"i1","identifier":"PSY-1","title":"T","url":"u","createdAt":"c","updatedAt":"u",
+            "attachments":{"nodes":[]},"labels":{"nodes":[]},
+            "comments":{"pageInfo":{"hasNextPage":false},"nodes":[
+              {"id":"c1","body":"regular","quotedText":null,"createdAt":"t1","user":{"id":"u1","name":"A"},"reactions":[]}
+            ]}},
+          "documentComments":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"c2","body":"inline","quotedText":"the anchor","createdAt":"t2","user":{"id":"u2","name":"B"},"reactions":[]},
+            {"id":"c1","body":"dup","quotedText":null,"createdAt":"t1","user":{"id":"u1","name":"A"},"reactions":[]}
+          ]}
+        }}"##;
+        let node = parse_issue_detail(body).unwrap();
+        assert_eq!(node.comments.len(), 2); // c1 (deduped) + the inline c2
+        let inline = node.comments.iter().find(|c| c.id == "c2").unwrap();
+        assert_eq!(inline.quoted_text.as_deref(), Some("the anchor"));
     }
 
     #[test]

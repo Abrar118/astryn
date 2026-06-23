@@ -5,27 +5,37 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import { useWorkspace, type Pane, type Tab, type ViewKind } from "@/lib/tabs";
 import { useIssues } from "@/lib/queries";
+import type { IssueListItem } from "@/lib/commands";
+import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { DualClock } from "@/features/home/DualClock";
 import { TabContextMenu } from "./TabContextMenu";
 
 const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
-  calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
-  list: { label: "Issues", icon: <List className="size-3.5" /> },
-  "this-week": { label: "Overview", icon: <CalendarRange className="size-3.5" /> },
-  graph: { label: "Dependencies", icon: <Network className="size-3.5" /> },
-  inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
-  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5" /> },
-  settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
+  calendar: { label: "Calendar", icon: <Calendar className="size-3.5 text-sky-400" /> },
+  list: { label: "Issues", icon: <List className="size-3.5 text-indigo-400" /> },
+  "this-week": { label: "Overview", icon: <CalendarRange className="size-3.5 text-violet-400" /> },
+  graph: { label: "Dependencies", icon: <Network className="size-3.5 text-teal-400" /> },
+  inbox: { label: "Inbox", icon: <Inbox className="size-3.5 text-amber-400" /> },
+  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5 text-emerald-400" /> },
+  settings: { label: "Settings", icon: <SettingsIcon className="size-3.5 text-slate-400" /> },
 };
 
-/** Display label + icon for a tab (issue tabs resolve the identifier from cache). */
-export function tabLabel(tab: Tab, issues: { id: string; identifier: string }[]): string {
-  if (tab.view === "issue") return issues.find((i) => i.id === tab.issueId)?.identifier ?? "Issue";
-  return META[tab.view].label;
+/** Display label for a tab. Issue tabs read "<ID> <title>" from the cache. */
+export function tabLabel(tab: Tab, issues: Pick<IssueListItem, "id" | "identifier" | "title">[]): string {
+  if (tab.view !== "issue") return META[tab.view].label;
+  const issue = issues.find((i) => i.id === tab.issueId);
+  if (!issue) return "Issue";
+  return issue.title ? `${issue.identifier} ${issue.title}` : issue.identifier;
 }
 
-export function tabIcon(tab: Tab): ReactNode {
-  return tab.view === "issue" ? <FileText className="size-3.5" /> : META[tab.view].icon;
+/** Tab icon. Issue tabs show the issue's workflow-state glyph (else a document). */
+export function tabIcon(
+  tab: Tab,
+  issues: Pick<IssueListItem, "id" | "stateType" | "stateColor">[],
+): ReactNode {
+  if (tab.view !== "issue") return META[tab.view].icon;
+  const issue = issues.find((i) => i.id === tab.issueId);
+  return issue ? <StatusIcon type={issue.stateType} color={issue.stateColor} /> : <FileText className="size-3.5" />;
 }
 
 function SortableTab({
@@ -58,7 +68,7 @@ function SortableTab({
         isActive ? "bg-card text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
       }`}
     >
-      <span className="text-muted-foreground">{icon}</span>
+      <span className="flex shrink-0">{icon}</span>
       <span className="max-w-[12rem] truncate">{label}</span>
       {canClose && (
         <button
@@ -125,7 +135,7 @@ export function PaneTabStrip({
               isActive={t.id === pane.activeTabId}
               canClose={canClose}
               label={tabLabel(t, issues ?? [])}
-              icon={tabIcon(t)}
+              icon={tabIcon(t, issues ?? [])}
               onMenu={openMenu}
             />
           ))}
@@ -140,7 +150,10 @@ export function PaneTabStrip({
         </div>
       </SortableContext>
       {showClock && (
-        <div className="shrink-0">
+        <div
+          data-clock-slot
+          className="ml-3 shrink-0 rounded-md border border-border/60 bg-card/60 px-2.5 py-1"
+        >
           <DualClock compact />
         </div>
       )}

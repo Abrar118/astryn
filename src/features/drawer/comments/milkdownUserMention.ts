@@ -109,16 +109,17 @@ class UserMentionView implements PluginView {
     const view = this.#ctx.get(editorViewCtx);
     const { state } = view;
     const cursorPos = state.selection.from;
-    const mention = `${formatUserMention(user)} `;
-    let tr = state.tr;
-    if (this.#triggerFrom >= 0 && this.#triggerFrom < cursorPos) {
-      // Delete the `@query` trigger, then insert AT the trigger position
-      // explicitly (after the delete, `#triggerFrom` is where the range started).
-      tr = tr.delete(this.#triggerFrom, cursorPos).insertText(mention, this.#triggerFrom);
-    } else {
-      tr = tr.insertText(mention);
-    }
-    view.dispatch(tr);
+    // Insert the mention as a real link mark (not literal markdown text):
+    // a text node carrying the schema's `link` mark serializes to a clean
+    // `[@Name](mention://user/id)` link that round-trips, whereas inserting the
+    // raw `[...](...)` string gets its brackets escaped (`\[…\]`) on save.
+    const href = `${USER_MENTION_PREFIX}${user.id}`;
+    const linkMark = state.schema.marks.link;
+    const label = state.schema.text(`@${user.name}`, linkMark ? [linkMark.create({ href })] : undefined);
+    const space = state.schema.text(" ");
+    const from =
+      this.#triggerFrom >= 0 && this.#triggerFrom < cursorPos ? this.#triggerFrom : cursorPos;
+    view.dispatch(state.tr.replaceWith(from, cursorPos, [label, space]));
     this.#provider.hide();
   }
 

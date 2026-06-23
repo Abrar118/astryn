@@ -136,7 +136,7 @@ function groupIssues(
 
 // ── Rows & cards ─────────────────────────────────────────────────────────────
 
-type AvatarInfo = { name: string } | null;
+type AvatarInfo = { name: string; avatarUrl?: string | null } | null;
 
 /** Pure visual for a board card (used both in columns and the drag overlay). */
 function BoardCardView({
@@ -158,7 +158,7 @@ function BoardCardView({
         <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
         {display.assignee &&
           (avatar ? (
-            <Avatar name={avatar.name} size={18} />
+            <Avatar name={avatar.name} src={avatar.avatarUrl} size={18} />
           ) : (
             <span className="size-[18px] shrink-0 rounded-full border border-dashed border-border" />
           ))}
@@ -392,7 +392,7 @@ export function IssuesView() {
   const avatarOf = (id: string | null): AvatarInfo => {
     if (!id) return null;
     const u = (users ?? []).find((x) => x.id === id);
-    return u ? { name: u.name } : null;
+    return u ? { name: u.name, avatarUrl: u.avatarUrl } : null;
   };
 
   const visible = useMemo(() => {

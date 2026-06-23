@@ -1,16 +1,19 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import type { MilkdownPlugin } from "@milkdown/ctx";
 import { Editor, defaultValueCtx, rootCtx, editorViewOptionsCtx, editorViewCtx } from "@milkdown/kit/core";
 import { listener, listenerCtx } from "@milkdown/kit/plugin/listener";
 import { Milkdown, MilkdownProvider, useEditor } from "@milkdown/react";
-import { ArrowUp } from "lucide-react";
+import { ArrowUp, Paperclip } from "lucide-react";
+import { pickAndUploadFiles, insertAssetsIntoView } from "../attachUpload";
 import { descriptionPlugins, applyDescriptionConfig } from "../milkdownEditor";
 import { configureDescriptionSlash, configureDescriptionTooltip } from "../milkdownMenus";
 import { descriptionMentionPlugin } from "../milkdownMention";
 import { type MentionResolver } from "../markdownComponents";
 import { EditorErrorBoundary } from "../DescriptionEditor";
 import { configureUserMention, userMentionTypeahead } from "./milkdownUserMention";
-import type { User } from "@/lib/commands";
+import type { UploadedAsset, User } from "@/lib/commands";
+
+type InsertAssets = (assets: UploadedAsset[]) => void;
 
 type Variant = "pinned" | "reply" | "edit";
 
@@ -26,8 +29,9 @@ interface Props {
   users?: User[];
 }
 
-function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMention, users = [] }: {
+function ComposerInner({ markdownRef, insertRef, initialMarkdown, onOpenLink, resolveMention, users = [] }: {
   markdownRef: React.MutableRefObject<string>;
+  insertRef: React.MutableRefObject<InsertAssets | null>;
   initialMarkdown: string;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
@@ -37,6 +41,10 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
   onOpenLinkRef.current = onOpenLink;
   const usersRef = useRef(users);
   usersRef.current = users;
+
+  // Drop the insert handle when this editor unmounts so a pending attach can't
+  // dispatch into a destroyed ProseMirror view.
+  useEffect(() => () => { insertRef.current = null; }, [insertRef]);
 
   useEditor(
     (root) =>
@@ -54,7 +62,11 @@ function ComposerInner({ markdownRef, initialMarkdown, onOpenLink, resolveMentio
           });
           applyDescriptionConfig(ctx);
           ctx.get(listenerCtx).markdownUpdated((_c, md) => { markdownRef.current = md; });
-          ctx.get(listenerCtx).mounted((c) => c.get(editorViewCtx).focus());
+          ctx.get(listenerCtx).mounted((c) => {
+            const view = c.get(editorViewCtx);
+            insertRef.current = (assets) => insertAssetsIntoView(view, assets);
+            view.focus();
+          });
           configureDescriptionSlash(ctx);
           configureDescriptionTooltip(ctx);
           configureUserMention(ctx, () => usersRef.current);
@@ -75,11 +87,20 @@ export function CommentComposer({
   variant, initialMarkdown = "", placeholder, submitting, onSubmit, onCancel, onOpenLink, resolveMention, users = [],
 }: Props) {
   const markdownRef = useRef(initialMarkdown);
+  const insertRef = useRef<InsertAssets | null>(null);
 
   const submit = () => {
     const md = markdownRef.current.trim();
     if (!md || submitting) return;
     onSubmit(md);
+  };
+
+  const attach = async () => {
+    // Capture the live insert handle; only use it if the SAME editor is still
+    // mounted when the upload resolves (the composer may have remounted).
+    const insert = insertRef.current;
+    const assets = await pickAndUploadFiles();
+    if (assets.length > 0 && insertRef.current === insert) insert?.(assets);
   };
 
   return (
@@ -99,6 +120,7 @@ export function CommentComposer({
           <MilkdownProvider>
             <ComposerInner
               markdownRef={markdownRef}
+              insertRef={insertRef}
               initialMarkdown={initialMarkdown}
               onOpenLink={onOpenLink}
               resolveMention={resolveMention}
@@ -106,7 +128,18 @@ export function CommentComposer({
             />
           </MilkdownProvider>
         </div>
-        <div className="flex items-center justify-end gap-2 px-2 pb-2">
+        <div className="flex items-center gap-2 px-2 pb-2">
+          <button
+            type="button"
+            aria-label="Attach images, files, or videos"
+            title="Attach images, files, or videos"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={attach}
+            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <Paperclip className="size-4" />
+          </button>
+          <div className="flex-1" />
           {onCancel && (
             <button type="button" onClick={onCancel}
               className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">

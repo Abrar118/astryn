@@ -104,7 +104,7 @@ export function LabelPills({ labels, max = 2 }: { labels: Label[]; max?: number 
   );
 }
 
-type AvatarInfo = { name: string } | null;
+type AvatarInfo = { name: string; avatarUrl?: string | null } | null;
 
 export function MetaCluster({
   issue,
@@ -197,7 +197,7 @@ export function MetaCluster({
       {display.assignee &&
         (avatar ? (
           <span title={`Assignee: ${avatar.name}`} className="flex">
-            <Avatar name={avatar.name} size={20} />
+            <Avatar name={avatar.name} src={avatar.avatarUrl} size={20} />
           </span>
         ) : (
           <span title="Unassigned" className="size-5 shrink-0 rounded-full border border-dashed border-border" />

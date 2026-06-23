@@ -109,9 +109,15 @@ mod tests {
             author_avatar: None,
             comment_count: Some(0),
             branch: Some("b".into()),
+            base_branch: Some("main".into()),
             url: Some("u".into()),
             linear_identifier: None,
             updated_at: Some("2026-06-20T00:00:00Z".into()),
+            merged_at: None,
+            additions: Some(1),
+            deletions: Some(0),
+            changed_files: Some(1),
+            reviewers: Vec::new(),
         }
     }
 
@@ -132,11 +138,11 @@ mod tests {
         })
         .await
         .unwrap();
-        assert_eq!(results.len(), 4);
+        assert_eq!(results.len(), 5);
         assert!(results.iter().all(|r| r.ok && !r.truncated));
         let dash = list_github_prs_logic(&pool).await.unwrap();
-        assert_eq!(dash.prs.len(), 4); // one PR per bucket
-        assert_eq!(dash.meta.len(), 4);
+        assert_eq!(dash.prs.len(), 5); // one PR per bucket
+        assert_eq!(dash.meta.len(), 5);
     }
 
     #[tokio::test]
@@ -197,7 +203,7 @@ mod tests {
         .await
         .unwrap();
         let dash = list_github_prs_logic(&pool).await.unwrap();
-        assert_eq!(dash.prs.len(), 1200); // capped at 300 per bucket × 4 buckets
+        assert_eq!(dash.prs.len(), 1500); // capped at 300 per bucket × 5 buckets
         assert!(dash.meta.iter().all(|m| m.truncated));
     }
 

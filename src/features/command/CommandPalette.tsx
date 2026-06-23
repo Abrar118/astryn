@@ -80,7 +80,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<null | "palette" | "create">(null);
-  const { addTab } = useWorkspace();
+  const { addTab, closeTab, active } = useWorkspace();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
@@ -97,8 +97,8 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 
   // A single stable keydown listener reads the latest handlers via this ref, so
   // the global shortcuts never re-subscribe on every render.
-  const handlers = useRef({ mode, addTab, navigate, resync });
-  handlers.current = { mode, addTab, navigate, resync };
+  const handlers = useRef({ mode, addTab, navigate, resync, closeTab, activeId: active.id });
+  handlers.current = { mode, addTab, navigate, resync, closeTab, activeId: active.id };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -113,6 +113,13 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
       if (mod && !e.altKey && (e.key === "t" || e.key === "T")) {
         e.preventDefault();
         handlers.current.addTab("calendar");
+        return;
+      }
+      // Cmd/Ctrl+W closes the active tab (NOT the window/app). The macOS native
+      // "Close Window" item is removed in lib.rs so this reaches the webview.
+      if (mod && !e.altKey && (e.key === "w" || e.key === "W")) {
+        e.preventDefault();
+        handlers.current.closeTab(handlers.current.activeId);
         return;
       }
       // Cmd/Ctrl+[ navigates back.

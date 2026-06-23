@@ -7,16 +7,23 @@ import { paragraphSchema } from "@milkdown/kit/preset/commonmark";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { safeExternalUrl } from "@/lib/links";
 import { classifyUrlParagraph, hostLabel } from "./urlPreview";
+import { isUploadAttachment } from "./markdownComponents";
+import { FileAttachmentCard } from "./FileAttachmentCard";
 import { fetchLinkPreview, type LinkPreview } from "@/lib/commands";
 
-/** Read the sole text + its link href from a paragraph node, or null shape. */
-export function readParagraph(node: ProseMirrorNode): { text: string; linkHref: string | null } {
-  if (node.childCount !== 1) return { text: "", linkHref: null };
+/** Read the sole text + its link href/title from a paragraph node, or null shape. */
+export function readParagraph(node: ProseMirrorNode): {
+  text: string;
+  linkHref: string | null;
+  linkTitle: string | null;
+} {
+  if (node.childCount !== 1) return { text: "", linkHref: null, linkTitle: null };
   const child = node.child(0);
-  if (!child.isText) return { text: "", linkHref: null };
+  if (!child.isText) return { text: "", linkHref: null, linkTitle: null };
   const linkMark = child.marks.find((m) => m.type.name === "link");
   const href = (linkMark?.attrs.href as string | undefined) ?? null;
-  return { text: child.text ?? "", linkHref: href };
+  const linkTitle = (linkMark?.attrs.title as string | undefined) ?? null;
+  return { text: child.text ?? "", linkHref: href, linkTitle };
 }
 
 function openExternal(href: string) {
@@ -86,35 +93,56 @@ function PreviewCard({ url }: { url: string }) {
  * so the embed doesn't re-render/re-fetch per keystroke while a URL is typed.
  * The `view.editable` guards are defensive — this view should never run editable.
  */
+/** Read-only classification of a paragraph: an uploaded-file card, a bare-URL
+ *  preview card, or a normal paragraph. Editable always stays "default". */
+function classifyParagraph(node: ProseMirrorNode, view: EditorView): "attachment" | "preview" | "default" {
+  if (view.editable) return "default";
+  const para = readParagraph(node);
+  if (para.linkHref && isUploadAttachment(para.linkHref)) return "attachment";
+  if (classifyUrlParagraph(para) === "preview") return "preview";
+  return "default";
+}
+
 export function createPreviewNodeView(): NodeViewConstructor {
   return (node: ProseMirrorNode, view: EditorView) => {
-    const isPreview =
-      !view.editable && classifyUrlParagraph(readParagraph(node)) === "preview";
-
-    if (!isPreview) {
-      // Non-preview (or editable): default paragraph rendering.
+    if (classifyParagraph(node, view) === "default") {
+      // Default paragraph rendering (editable, plain text, or a normal link).
       const p = document.createElement("p");
       return {
         dom: p,
         contentDOM: p,
         update: (updated: ProseMirrorNode) =>
-          updated.type === node.type &&
-          !(!view.editable && classifyUrlParagraph(readParagraph(updated)) === "preview"),
+          updated.type === node.type && classifyParagraph(updated, view) === "default",
       };
     }
 
-    // Read-only preview: opaque presentation card, no contentDOM.
+    // Read-only island: an opaque presentation card, no contentDOM.
     const dom = document.createElement("div");
     dom.setAttribute("data-milkdown-preview", "");
     const root = createRoot(dom);
-    root.render(<PreviewCard url={readParagraph(node).text.trim()} />);
+    const render = (n: ProseMirrorNode) => {
+      const para = readParagraph(n);
+      if (para.linkHref && isUploadAttachment(para.linkHref)) {
+        const href = para.linkHref;
+        root.render(
+          <FileAttachmentCard
+            filename={para.text.trim()}
+            size={para.linkTitle}
+            title={href}
+            onOpen={() => openExternal(href)}
+          />,
+        );
+      } else {
+        root.render(<PreviewCard url={para.text.trim()} />);
+      }
+    };
+    render(node);
     return {
       dom,
       ignoreMutation: () => true,
       update(updated: ProseMirrorNode) {
-        if (updated.type !== node.type) return false;
-        if (view.editable || classifyUrlParagraph(readParagraph(updated)) !== "preview") return false;
-        root.render(<PreviewCard url={readParagraph(updated).text.trim()} />);
+        if (updated.type !== node.type || classifyParagraph(updated, view) === "default") return false;
+        render(updated);
         return true;
       },
       destroy() {
