@@ -8,16 +8,20 @@ import { Card } from "@/components/ui/card";
 import {
   clearGithubToken,
   clearLinearKey,
+  clearSlackToken,
   errorText,
   getConnectionStatus,
   getGithubStatus,
+  getSlackStatus,
   setGithubToken,
   setLinearKey,
+  setSlackToken,
   syncIssues,
   testGithubConnection,
   testLinearConnection,
+  testSlackConnection,
 } from "@/lib/commands";
-import { clearGithubQueries, clearWorkspaceQueries, invalidateWorkspaceQueries } from "@/lib/queries";
+import { clearGithubQueries, clearSlackQueries, clearWorkspaceQueries, invalidateWorkspaceQueries } from "@/lib/queries";
 
 export function Settings() {
   const qc = useQueryClient();
@@ -115,6 +119,48 @@ export function Settings() {
       gooeyToast.error("Could not save the token", { description: errorText(err) });
     } finally {
       setGhSaving(false);
+    }
+  };
+
+  const [slackInput, setSlackInput] = useState("");
+  const [slackSaving, setSlackSaving] = useState(false);
+  const invalidateSlackStatus = () => qc.invalidateQueries({ queryKey: ["slack-status"] });
+  const { data: slackStatus } = useQuery({ queryKey: ["slack-status"], queryFn: getSlackStatus });
+
+  const slackTestMut = useMutation({
+    mutationFn: () => testSlackConnection(),
+    onSuccess: (s) => {
+      if (s.state === "connected") gooeyToast.success(`Connected as ${s.userName}`);
+      invalidateSlackStatus();
+    },
+    onError: (err) => gooeyToast.error("Slack connection failed", { description: errorText(err) }),
+  });
+
+  const slackClearMut = useMutation({
+    mutationFn: () => clearSlackToken(),
+    onSuccess: () => { clearSlackQueries(qc); gooeyToast.success("Slack token cleared"); invalidateSlackStatus(); },
+    onError: (err) => { clearSlackQueries(qc); gooeyToast.error("Could not clear the token", { description: errorText(err) }); },
+  });
+
+  const slackBusy = slackSaving || slackTestMut.isPending || slackClearMut.isPending;
+
+  const handleSlackSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (slackBusy) return;
+    const token = slackInput.trim();
+    if (!token) return;
+    setSlackInput(""); // clear the secret from component state immediately
+    setSlackSaving(true);
+    try {
+      await setSlackToken(token);
+      clearSlackQueries(qc);
+      gooeyToast.success("Slack token saved");
+      invalidateSlackStatus();
+    } catch (err) {
+      clearSlackQueries(qc);
+      gooeyToast.error("Could not save the token", { description: errorText(err) });
+    } finally {
+      setSlackSaving(false);
     }
   };
 
@@ -235,6 +281,30 @@ export function Settings() {
             <Button type="button" variant="ghost" disabled={ghBusy} onClick={() => ghClearMut.mutate()}>
               Clear token
             </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-6">
+        <p className="text-sm text-muted-foreground">
+          {slackStatus === undefined
+            ? "Checking…"
+            : slackStatus.state === "connected"
+              ? `Connected as ${slackStatus.userName}${slackStatus.workspaceName ? ` · ${slackStatus.workspaceName}` : ""}`
+              : slackStatus.state === "unverified"
+                ? "Token saved — not verified"
+                : "Not connected"}
+        </p>
+        <form className="flex flex-col gap-3" onSubmit={handleSlackSave}>
+          <Label htmlFor="slack-token">Slack user token</Label>
+          <Input id="slack-token" type="password" autoComplete="off" placeholder="xoxp-…" value={slackInput} onChange={(e) => setSlackInput(e.currentTarget.value)} disabled={slackBusy} />
+          <p className="text-xs text-muted-foreground">
+            Create a Slack app, add the read scopes (<code>channels:read</code>, <code>groups:read</code>, <code>im:read</code>, <code>mpim:read</code>, the matching <code>*:history</code> scopes, <code>users:read</code>, <code>team:read</code>), install it, and paste the user token. Read-only — Astryn never posts or marks anything read.
+          </p>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={slackBusy}>Save Slack token</Button>
+            <Button type="button" variant="secondary" disabled={slackBusy} onClick={() => slackTestMut.mutate()}>Test connection</Button>
+            <Button type="button" variant="ghost" disabled={slackBusy} onClick={() => slackClearMut.mutate()}>Clear token</Button>
           </div>
         </form>
       </Card>

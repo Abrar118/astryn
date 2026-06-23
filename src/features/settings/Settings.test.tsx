@@ -7,15 +7,20 @@ import type { ReactNode } from "react";
 const cmd = vi.hoisted(() => ({
   getConnectionStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getGithubStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
+  getSlackStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
   clearGithubToken: vi.fn(),
   testGithubConnection: vi.fn(),
   setLinearKey: vi.fn(), clearLinearKey: vi.fn(), testLinearConnection: vi.fn(),
+  setSlackToken: vi.fn().mockResolvedValue(undefined),
+  clearSlackToken: vi.fn(),
+  testSlackConnection: vi.fn(),
   syncIssues: vi.fn(), errorText: (e: unknown) => String(e),
 }));
 vi.mock("@/lib/commands", () => cmd);
 vi.mock("@/lib/queries", () => ({
   clearWorkspaceQueries: vi.fn(), invalidateWorkspaceQueries: vi.fn(), clearGithubQueries: vi.fn(),
+  clearSlackQueries: vi.fn(),
 }));
 vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
 
