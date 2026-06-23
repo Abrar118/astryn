@@ -35,12 +35,21 @@ pub struct ExtractedCreds {
     pub workspace_hint: Option<String>,
 }
 
-/// First `xoxc-…` token embedded in raw leveldb bytes, if any.
+/// Longest `xoxc-…` token embedded in raw leveldb bytes, if any.
+///
+/// LevelDB is append-only, so a single scan sees many `xoxc-…` runs: the live
+/// session token plus short stale fragments left by prior writes/compaction. A
+/// real token is ~110+ chars while fragments are far shorter, so we return the
+/// longest match rather than whichever the regex happens to hit first (position
+/// is not a reliable discriminator; length is).
 pub fn scan_xoxc(bytes: &[u8]) -> Option<String> {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"xoxc-[0-9A-Za-z-]+").unwrap());
     let text = String::from_utf8_lossy(bytes);
-    re.find(&text).map(|m| m.as_str().to_string())
+    re.find_iter(&text)
+        .map(|m| m.as_str())
+        .max_by_key(|s| s.len())
+        .map(str::to_string)
 }
 
 /// Chromium cookie key: PBKDF2-HMAC-SHA1(password, "saltysalt", iters, 16).
@@ -108,26 +117,42 @@ pub async fn read_d_cookie_blob(db_path: &std::path::Path) -> Result<Vec<u8>, Ex
     row.map(|r| r.0).ok_or(ExtractError::CookieUnavailable)
 }
 
-/// Scan a Slack data dir's `Local Storage/leveldb` for the first `xoxc-…` token.
-/// Shared by the macOS and Linux extractors (the leveldb layout is identical).
+/// Shortest plausible `xoxc-…` session token. Real tokens are ~110+ chars; the
+/// stale leveldb fragments we must reject are ~30. This floor turns a scan that
+/// found only fragments into a clean `TokenUnavailable` rather than handing a
+/// junk token to `auth.test`.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+const MIN_XOXC_LEN: usize = 40;
+
+/// Scan a Slack data dir's `Local Storage/leveldb` for the live `xoxc-…` token.
+/// The token can sit in any `.ldb`/`.log` file (and a file may also hold stale
+/// fragments), so we scan every file and keep the longest match across all of
+/// them, then reject it if it's too short to be a real token. Shared by the
+/// macOS and Linux extractors (the leveldb layout is identical).
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 async fn scan_dir_for_xoxc(dir: &std::path::Path) -> Result<String, ExtractError> {
     let ls = dir.join("Local Storage/leveldb");
     let mut rd = tokio::fs::read_dir(&ls)
         .await
         .map_err(|_| ExtractError::TokenUnavailable)?;
+    let mut best: Option<String> = None;
     while let Ok(Some(ent)) = rd.next_entry().await {
         let p = ent.path();
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
         if ext == "ldb" || ext == "log" {
             if let Ok(bytes) = tokio::fs::read(&p).await {
                 if let Some(t) = scan_xoxc(&bytes) {
-                    return Ok(t);
+                    if best.as_ref().is_none_or(|b| t.len() > b.len()) {
+                        best = Some(t);
+                    }
                 }
             }
         }
     }
-    Err(ExtractError::TokenUnavailable)
+    match best {
+        Some(t) if t.len() >= MIN_XOXC_LEN => Ok(t),
+        _ => Err(ExtractError::TokenUnavailable),
+    }
 }
 
 #[cfg(not(any(target_os = "macos", target_os = "linux")))]
@@ -330,6 +355,52 @@ mod tests {
     #[test]
     fn scan_returns_none_when_absent() {
         assert_eq!(scan_xoxc(b"no token here"), None);
+    }
+
+    #[test]
+    fn scan_returns_the_longest_xoxc_match() {
+        // leveldb keeps stale short `xoxc-` fragments alongside the real (long)
+        // session token. We must return the long one, not whichever the regex
+        // hits first — even when the fragment appears earlier in the buffer.
+        let real = "xoxc-this-is-the-real-and-much-longer-session-token-value";
+        let blob = format!("junk xoxc-short-frag then {real} here");
+        assert_eq!(scan_xoxc(blob.as_bytes()).as_deref(), Some(real));
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[tokio::test]
+    async fn scan_dir_picks_longest_token_across_files() {
+        // The fragment lives in one file, the real token in another — the scan
+        // must read every file and return the longest, not stop at the first hit.
+        let dir = tempfile::tempdir().unwrap();
+        let ls = dir.path().join("Local Storage/leveldb");
+        tokio::fs::create_dir_all(&ls).await.unwrap();
+        let real = "xoxc-aaaaaaaaaa-bbbbbbbbbb-cccccccccc-dddddddddd-session";
+        tokio::fs::write(ls.join("000001.ldb"), b"..xoxc-shortfrag..")
+            .await
+            .unwrap();
+        tokio::fs::write(ls.join("000002.log"), format!("..{real}..").as_bytes())
+            .await
+            .unwrap();
+        assert!(real.len() >= MIN_XOXC_LEN);
+        assert_eq!(scan_dir_for_xoxc(dir.path()).await.unwrap(), real);
+    }
+
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
+    #[tokio::test]
+    async fn scan_dir_rejects_when_only_short_fragments_present() {
+        // A leveldb holding only stale fragments must yield TokenUnavailable,
+        // never a too-short junk token that auth.test would reject anyway.
+        let dir = tempfile::tempdir().unwrap();
+        let ls = dir.path().join("Local Storage/leveldb");
+        tokio::fs::create_dir_all(&ls).await.unwrap();
+        tokio::fs::write(ls.join("000001.ldb"), b"..xoxc-tooshort..")
+            .await
+            .unwrap();
+        assert!(matches!(
+            scan_dir_for_xoxc(dir.path()).await,
+            Err(ExtractError::TokenUnavailable)
+        ));
     }
 
     #[test]

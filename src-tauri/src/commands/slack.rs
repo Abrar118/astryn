@@ -222,15 +222,6 @@ where
     FFut: std::future::Future<Output = Result<AuthTest, SlackError>>,
 {
     let creds = extract().await.map_err(map_extract_err)?;
-    // Diagnostic (no secrets): confirms extraction succeeded and the decrypted
-    // values have the expected shapes before we try them against auth.test.
-    eprintln!(
-        "[astryn] Slack extract ok: xoxc {} chars (prefix ok: {}), xoxd {} chars (prefix ok: {})",
-        creds.xoxc.len(),
-        creds.xoxc.starts_with("xoxc-"),
-        creds.xoxd.len(),
-        creds.xoxd.starts_with("xoxd-"),
-    );
     set_slack_credentials_logic(
         store,
         pool,
