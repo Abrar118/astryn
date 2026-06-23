@@ -13,7 +13,7 @@ use commands::AppState;
 use github::{GitHubClient, GitHubCredentialProvider, PatProvider};
 use linear::{LinearClient, LinearCredentialProvider, PersonalKeyProvider};
 use secrets::{KeyringSecretStore, SecretStore};
-use slack::{SlackClient, SlackCredentialProvider, PersonalTokenProvider};
+use slack::{PersonalTokenProvider, SlackClient, SlackCredentialProvider};
 
 const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
@@ -88,9 +88,12 @@ pub fn run() {
             let github_credentials: Arc<dyn GitHubCredentialProvider> =
                 Arc::new(PatProvider::new(store.clone(), GITHUB_TOKEN_ACCOUNT));
             let github = GitHubClient::new().expect("failed to build GitHub HTTP client");
-            let slack_credentials: Arc<dyn SlackCredentialProvider> = Arc::new(
-                PersonalTokenProvider::new(store.clone(), SLACK_TOKEN_ACCOUNT, SLACK_COOKIE_ACCOUNT),
-            );
+            let slack_credentials: Arc<dyn SlackCredentialProvider> =
+                Arc::new(PersonalTokenProvider::new(
+                    store.clone(),
+                    SLACK_TOKEN_ACCOUNT,
+                    SLACK_COOKIE_ACCOUNT,
+                ));
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
 
             app.manage(AppState {

@@ -104,9 +104,15 @@ pub async fn replace_catchup(
     synced_at: &str,
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM slack_conversations").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM slack_messages").execute(&mut *tx).await?;
-    sqlx::query("DELETE FROM slack_users").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM slack_conversations")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM slack_messages")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM slack_users")
+        .execute(&mut *tx)
+        .await?;
     for c in conversations {
         sqlx::query(
             "INSERT INTO slack_conversations
@@ -114,10 +120,19 @@ pub async fn replace_catchup(
                 last_read_ts, latest_ts, latest_snippet, synced_at)
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         )
-        .bind(&c.id).bind(&c.kind).bind(&c.name).bind(&c.partner_user_id)
-        .bind(c.unread_count).bind(c.has_mention).bind(c.unread_threads)
-        .bind(&c.last_read_ts).bind(&c.latest_ts).bind(&c.latest_snippet).bind(synced_at)
-        .execute(&mut *tx).await?;
+        .bind(&c.id)
+        .bind(&c.kind)
+        .bind(&c.name)
+        .bind(&c.partner_user_id)
+        .bind(c.unread_count)
+        .bind(c.has_mention)
+        .bind(c.unread_threads)
+        .bind(&c.last_read_ts)
+        .bind(&c.latest_ts)
+        .bind(&c.latest_snippet)
+        .bind(synced_at)
+        .execute(&mut *tx)
+        .await?;
     }
     for m in messages {
         sqlx::query(
@@ -127,10 +142,20 @@ pub async fn replace_catchup(
              VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
              ON CONFLICT(conversation_id, ts) DO NOTHING",
         )
-        .bind(&m.conversation_id).bind(&m.ts).bind(&m.thread_ts).bind(&m.user_id)
-        .bind(&m.user_name).bind(&m.user_avatar).bind(&m.text).bind(m.is_mention)
-        .bind(m.is_unread).bind(&m.linear_identifier).bind(&m.created_at).bind(&m.raw_json)
-        .execute(&mut *tx).await?;
+        .bind(&m.conversation_id)
+        .bind(&m.ts)
+        .bind(&m.thread_ts)
+        .bind(&m.user_id)
+        .bind(&m.user_name)
+        .bind(&m.user_avatar)
+        .bind(&m.text)
+        .bind(m.is_mention)
+        .bind(m.is_unread)
+        .bind(&m.linear_identifier)
+        .bind(&m.created_at)
+        .bind(&m.raw_json)
+        .execute(&mut *tx)
+        .await?;
     }
     for u in users {
         sqlx::query(
@@ -144,8 +169,10 @@ pub async fn replace_catchup(
         "INSERT INTO slack_sync_meta (key, value) VALUES (?1, ?2)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
     )
-    .bind(SLACK_SYNCED_AT_KEY).bind(synced_at)
-    .execute(&mut *tx).await?;
+    .bind(SLACK_SYNCED_AT_KEY)
+    .bind(synced_at)
+    .execute(&mut *tx)
+    .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -153,12 +180,23 @@ pub async fn replace_catchup(
 /// Drop all Slack cache + identity. Leaves Linear and GitHub untouched.
 pub async fn wipe_slack_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    for t in ["slack_conversations", "slack_messages", "slack_users", "slack_sync_meta"] {
-        sqlx::query(&format!("DELETE FROM {t}")).execute(&mut *tx).await?;
+    for t in [
+        "slack_conversations",
+        "slack_messages",
+        "slack_users",
+        "slack_sync_meta",
+    ] {
+        sqlx::query(&format!("DELETE FROM {t}"))
+            .execute(&mut *tx)
+            .await?;
     }
     sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2, ?3, ?4)")
-        .bind(SLACK_USER_ID_KEY).bind(SLACK_TEAM_ID_KEY).bind(SLACK_URL_KEY).bind(SLACK_WORKSPACE_NAME_KEY)
-        .execute(&mut *tx).await?;
+        .bind(SLACK_USER_ID_KEY)
+        .bind(SLACK_TEAM_ID_KEY)
+        .bind(SLACK_URL_KEY)
+        .bind(SLACK_WORKSPACE_NAME_KEY)
+        .execute(&mut *tx)
+        .await?;
     tx.commit().await?;
     Ok(())
 }
@@ -193,7 +231,12 @@ pub async fn load_slack_identity(pool: &SqlitePool) -> Result<Option<SlackIdenti
     let url = crate::db::load_setting(pool, SLACK_URL_KEY).await?;
     let workspace_name = crate::db::load_setting(pool, SLACK_WORKSPACE_NAME_KEY).await?;
     Ok(match (user_id, team_id, url) {
-        (Some(user_id), Some(team_id), Some(url)) => Some(SlackIdentity { user_id, team_id, url, workspace_name }),
+        (Some(user_id), Some(team_id), Some(url)) => Some(SlackIdentity {
+            user_id,
+            team_id,
+            url,
+            workspace_name,
+        }),
         _ => None,
     })
 }
@@ -209,14 +252,26 @@ pub async fn list_conversations(pool: &SqlitePool) -> Result<Vec<ConversationRow
 }
 
 pub async fn list_mentions(pool: &SqlitePool) -> Result<Vec<MessageRow>, sqlx::Error> {
-    message_rows(pool, "m.is_mention = 1 AND m.is_unread = 1", "m.ts DESC", None).await
+    message_rows(
+        pool,
+        "m.is_mention = 1 AND m.is_unread = 1",
+        "m.ts DESC",
+        None,
+    )
+    .await
 }
 
 pub async fn list_conversation_messages(
     pool: &SqlitePool,
     conversation_id: &str,
 ) -> Result<Vec<MessageRow>, sqlx::Error> {
-    message_rows(pool, "m.conversation_id = ?1 AND m.is_unread = 1", "m.ts ASC", Some(conversation_id)).await
+    message_rows(
+        pool,
+        "m.conversation_id = ?1 AND m.is_unread = 1",
+        "m.ts ASC",
+        Some(conversation_id),
+    )
+    .await
 }
 
 async fn message_rows(
@@ -260,7 +315,9 @@ mod tests {
 
     async fn pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
-        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db")).await.unwrap();
+        let pool = crate::db::init_pool(&dir.path().join("astryn/t.db"))
+            .await
+            .unwrap();
         (dir, pool)
     }
 
@@ -279,7 +336,13 @@ mod tests {
         }
     }
 
-    fn msg(conv: &str, ts: &str, mention: bool, thread: Option<&str>, linear: Option<&str>) -> MessageInsert {
+    fn msg(
+        conv: &str,
+        ts: &str,
+        mention: bool,
+        thread: Option<&str>,
+        linear: Option<&str>,
+    ) -> MessageInsert {
         MessageInsert {
             conversation_id: conv.into(),
             ts: ts.into(),
@@ -302,21 +365,36 @@ mod tests {
         replace_catchup(
             &pool,
             &[conv("C1", "channel", 2)],
-            &[msg("C1", "10.0", true, None, Some("ENG-1")), msg("C1", "11.0", false, Some("9.0"), None)],
-            &[UserInsert { id: "U2".into(), name: Some("Bob".into()), avatar: None }],
+            &[
+                msg("C1", "10.0", true, None, Some("ENG-1")),
+                msg("C1", "11.0", false, Some("9.0"), None),
+            ],
+            &[UserInsert {
+                id: "U2".into(),
+                name: Some("Bob".into()),
+                avatar: None,
+            }],
             "now",
         )
         .await
         .unwrap();
         assert_eq!(list_conversations(&pool).await.unwrap().len(), 1);
-        assert_eq!(list_conversation_messages(&pool, "C1").await.unwrap().len(), 2);
+        assert_eq!(
+            list_conversation_messages(&pool, "C1").await.unwrap().len(),
+            2
+        );
 
         // A second replace wipes the prior dataset (whole-cache replace).
-        replace_catchup(&pool, &[conv("C2", "dm", 1)], &[], &[], "now2").await.unwrap();
+        replace_catchup(&pool, &[conv("C2", "dm", 1)], &[], &[], "now2")
+            .await
+            .unwrap();
         let convs = list_conversations(&pool).await.unwrap();
         assert_eq!(convs.len(), 1);
         assert_eq!(convs[0].id, "C2");
-        assert!(list_conversation_messages(&pool, "C1").await.unwrap().is_empty());
+        assert!(list_conversation_messages(&pool, "C1")
+            .await
+            .unwrap()
+            .is_empty());
     }
 
     #[tokio::test]
@@ -326,7 +404,7 @@ mod tests {
             &pool,
             &[conv("C1", "channel", 3)],
             &[
-                msg("C1", "10.0", true, None, None),       // mention, top-level
+                msg("C1", "10.0", true, None, None),         // mention, top-level
                 msg("C1", "11.0", false, Some("9.0"), None), // thread reply
                 msg("C1", "12.0", true, Some("9.0"), None),  // thread reply + mention
             ],
@@ -348,7 +426,15 @@ mod tests {
         let (_d, pool) = pool().await;
         sqlx::query("INSERT INTO issues (id, identifier, title, url, created_at, updated_at, synced_at) VALUES ('iss-1','ENG-1','x','u','t','t','t')")
             .execute(&pool).await.unwrap();
-        replace_catchup(&pool, &[conv("C1", "channel", 1)], &[msg("C1", "10.0", false, None, Some("ENG-1"))], &[], "now").await.unwrap();
+        replace_catchup(
+            &pool,
+            &[conv("C1", "channel", 1)],
+            &[msg("C1", "10.0", false, None, Some("ENG-1"))],
+            &[],
+            "now",
+        )
+        .await
+        .unwrap();
         let rows = list_conversation_messages(&pool, "C1").await.unwrap();
         assert_eq!(rows[0].linear_issue_id.as_deref(), Some("iss-1"));
     }
@@ -356,14 +442,31 @@ mod tests {
     #[tokio::test]
     async fn identity_roundtrips_and_wipe_clears_everything() {
         let (_d, pool) = pool().await;
-        save_slack_identity(&pool, "U1", "T1", "https://w.slack.com/", Some("Acme")).await.unwrap();
-        replace_catchup(&pool, &[conv("C1", "channel", 1)], &[msg("C1", "10.0", false, None, None)], &[UserInsert { id: "U2".into(), name: None, avatar: None }], "now").await.unwrap();
+        save_slack_identity(&pool, "U1", "T1", "https://w.slack.com/", Some("Acme"))
+            .await
+            .unwrap();
+        replace_catchup(
+            &pool,
+            &[conv("C1", "channel", 1)],
+            &[msg("C1", "10.0", false, None, None)],
+            &[UserInsert {
+                id: "U2".into(),
+                name: None,
+                avatar: None,
+            }],
+            "now",
+        )
+        .await
+        .unwrap();
         let id = load_slack_identity(&pool).await.unwrap().unwrap();
         assert_eq!((id.user_id.as_str(), id.team_id.as_str()), ("U1", "T1"));
 
         wipe_slack_cache(&pool).await.unwrap();
         assert!(list_conversations(&pool).await.unwrap().is_empty());
-        assert!(list_conversation_messages(&pool, "C1").await.unwrap().is_empty());
+        assert!(list_conversation_messages(&pool, "C1")
+            .await
+            .unwrap()
+            .is_empty());
         assert_eq!(load_slack_identity(&pool).await.unwrap(), None);
     }
 }
