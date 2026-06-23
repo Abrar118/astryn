@@ -507,7 +507,9 @@ export type SlackCatchup = {
 export type SlackSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
 export type SlackDeepLink = { app: string; web: string };
 
-export const setSlackToken = (token: string): Promise<void> => invoke("set_slack_token", { token });
+export const setSlackCredentials = (token: string, cookie?: string | null): Promise<void> =>
+  invoke("set_slack_credentials", { token, cookie: cookie ?? null });
+export const detectSlackCredentials = (): Promise<SlackStatus> => invoke("detect_slack_credentials");
 export const clearSlackToken = (): Promise<void> => invoke("clear_slack_token");
 export const getSlackStatus = (): Promise<SlackStatus> => invoke("get_slack_status");
 export const testSlackConnection = (): Promise<SlackStatus> => invoke("test_slack_connection");

@@ -12,7 +12,8 @@ const cmd = vi.hoisted(() => ({
   clearGithubToken: vi.fn(),
   testGithubConnection: vi.fn(),
   setLinearKey: vi.fn(), clearLinearKey: vi.fn(), testLinearConnection: vi.fn(),
-  setSlackToken: vi.fn().mockResolvedValue(undefined),
+  setSlackCredentials: vi.fn().mockResolvedValue(undefined),
+  detectSlackCredentials: vi.fn().mockResolvedValue({ state: "not_configured" }),
   clearSlackToken: vi.fn(),
   testSlackConnection: vi.fn(),
   syncIssues: vi.fn(), errorText: (e: unknown) => String(e),
@@ -41,5 +42,30 @@ describe("Settings GitHub card", () => {
     fireEvent.click(screen.getByRole("button", { name: /save github token/i }));
     await waitFor(() => expect(cmd.setGithubToken).toHaveBeenCalledWith("ghp_secret"));
     expect(input.value).toBe("");
+  });
+});
+
+describe("Settings Slack card", () => {
+  it("calls detectSlackCredentials when the Detect button is clicked", async () => {
+    render(<Settings />, { wrapper });
+    fireEvent.click(screen.getByRole("button", { name: /detect from slack app/i }));
+    await waitFor(() => expect(cmd.detectSlackCredentials).toHaveBeenCalled());
+  });
+
+  it("manual fallback: calls setSlackCredentials with typed values and clears both inputs", async () => {
+    render(<Settings />, { wrapper });
+    // Open the manual entry disclosure
+    fireEvent.click(screen.getByRole("button", { name: /enter manually/i }));
+    const tokenInput = screen.getByLabelText(/xoxc token/i) as HTMLInputElement;
+    const cookieInput = screen.getByLabelText(/xoxd cookie/i) as HTMLInputElement;
+    fireEvent.change(tokenInput, { target: { value: "xoxc-test-token" } });
+    fireEvent.change(cookieInput, { target: { value: "xoxd-test-cookie" } });
+    fireEvent.click(screen.getByRole("button", { name: /save credentials/i }));
+    await waitFor(() =>
+      expect(cmd.setSlackCredentials).toHaveBeenCalledWith("xoxc-test-token", "xoxd-test-cookie")
+    );
+    // Both inputs must be cleared before the async call resolves (secret hygiene)
+    expect(tokenInput.value).toBe("");
+    expect(cookieInput.value).toBe("");
   });
 });
