@@ -60,6 +60,9 @@ pub fn decrypt_cookie(encrypted: &[u8], key: &[u8]) -> Result<String, ExtractErr
     if encrypted.len() <= 3 {
         return Err(ExtractError::CookieUnavailable);
     }
+    if &encrypted[..3] != b"v10" && &encrypted[..3] != b"v11" {
+        return Err(ExtractError::CookieUnavailable);
+    }
     let ct = &encrypted[3..];
     let iv = [0x20u8; 16];
     let pt = Aes128CbcDec::new(key.into(), (&iv).into())
@@ -212,6 +215,18 @@ mod tests {
     fn decrypt_rejects_short_input() {
         assert!(matches!(
             decrypt_cookie(b"v1", &[0u8; 16]),
+            Err(ExtractError::CookieUnavailable)
+        ));
+    }
+
+    #[test]
+    fn decrypt_rejects_unknown_prefix() {
+        // 3-byte unknown prefix + 16 bytes of padding — long enough to pass the
+        // length check but must fail the version guard before touching AES.
+        let mut blob = b"v99".to_vec();
+        blob.extend_from_slice(&[0u8; 16]);
+        assert!(matches!(
+            decrypt_cookie(&blob, &[0u8; 16]),
             Err(ExtractError::CookieUnavailable)
         ));
     }
