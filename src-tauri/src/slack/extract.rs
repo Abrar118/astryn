@@ -4,6 +4,15 @@ use regex::Regex;
 use sha1::Sha1;
 use std::sync::OnceLock;
 
+/// Removes its temp file when dropped, so `read_d_cookie_blob` never leaks a
+/// copy of the Cookies DB on an early-return error path.
+struct TempFileGuard(std::path::PathBuf);
+impl Drop for TempFileGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ExtractError {
     #[error("Slack desktop app not found")]
@@ -67,13 +76,13 @@ pub async fn read_d_cookie_blob(db_path: &std::path::Path) -> Result<Vec<u8>, Ex
     let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     let tmp = std::env::temp_dir().join(format!("astryn-slack-cookies-{}-{}", std::process::id(), n));
     tokio::fs::write(&tmp, &bytes).await.map_err(|_| ExtractError::CookieUnavailable)?;
+    let _guard = TempFileGuard(tmp.clone());
     let url = format!("sqlite://{}?mode=ro", tmp.display());
     let pool = sqlx::SqlitePool::connect(&url).await.map_err(|_| ExtractError::CookieUnavailable)?;
     let row: Option<(Vec<u8>,)> =
         sqlx::query_as("SELECT encrypted_value FROM cookies WHERE name = 'd' LIMIT 1")
             .fetch_optional(&pool).await.map_err(|_| ExtractError::CookieUnavailable)?;
     pool.close().await;
-    let _ = tokio::fs::remove_file(&tmp).await;
     row.map(|r| r.0).ok_or(ExtractError::CookieUnavailable)
 }
 
