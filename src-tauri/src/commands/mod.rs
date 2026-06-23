@@ -22,6 +22,7 @@ use crate::secrets::SecretStore;
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod github;
+pub mod slack;
 
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 
@@ -111,6 +112,10 @@ pub enum CmdError {
     GitHubNotConfigured,
     #[error("GitHub rejected the request.")]
     GitHubApi,
+    #[error("No Slack token is configured.")]
+    SlackNotConfigured,
+    #[error("Slack rejected the request.")]
+    SlackApi,
     #[error("That doesn't look like a valid URL.")]
     InvalidUrl,
     #[error("Couldn't read that file.")]
@@ -187,6 +192,12 @@ pub struct AppState {
     pub github_lock: tokio::sync::Mutex<()>,
     /// Bumped by every GitHub cache wipe; guards a late sync write.
     pub github_generation: AtomicU64,
+    pub slack_credentials: Arc<dyn crate::slack::SlackCredentialProvider>,
+    pub slack: crate::slack::SlackClient,
+    /// Serializes Slack credential mutations and sync (set/clear/test/sync).
+    pub slack_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every Slack cache wipe; guards a late sync write.
+    pub slack_generation: AtomicU64,
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
