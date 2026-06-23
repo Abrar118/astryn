@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub mod github;
 pub mod issues;
+pub mod slack;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Fail loudly if the data directory cannot be created (no silent .ok()).
