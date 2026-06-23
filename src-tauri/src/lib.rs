@@ -19,6 +19,7 @@ const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 const SLACK_TOKEN_ACCOUNT: &str = "slack_user_token";
+const SLACK_COOKIE_ACCOUNT: &str = "slack_cookie_d";
 
 /// Build a macOS app menu mirroring the system default but WITHOUT the
 /// "Close Window" item, so Cmd+W is left for the webview (which closes the
@@ -87,8 +88,9 @@ pub fn run() {
             let github_credentials: Arc<dyn GitHubCredentialProvider> =
                 Arc::new(PatProvider::new(store.clone(), GITHUB_TOKEN_ACCOUNT));
             let github = GitHubClient::new().expect("failed to build GitHub HTTP client");
-            let slack_credentials: Arc<dyn SlackCredentialProvider> =
-                Arc::new(PersonalTokenProvider::new(store.clone(), SLACK_TOKEN_ACCOUNT));
+            let slack_credentials: Arc<dyn SlackCredentialProvider> = Arc::new(
+                PersonalTokenProvider::new(store.clone(), SLACK_TOKEN_ACCOUNT, SLACK_COOKIE_ACCOUNT),
+            );
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
 
             app.manage(AppState {

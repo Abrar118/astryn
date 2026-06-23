@@ -83,9 +83,9 @@ pub async fn get_slack_status_logic(
     Ok(compute_slack_status(has_token, identity))
 }
 
-async fn authorize(credentials: &Arc<dyn SlackCredentialProvider>) -> Result<String, CmdError> {
+async fn authorize(credentials: &Arc<dyn SlackCredentialProvider>) -> Result<crate::slack::SlackAuth, CmdError> {
     let c = credentials.clone();
-    tokio::task::spawn_blocking(move || c.authorization())
+    tokio::task::spawn_blocking(move || c.auth())
         .await
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
@@ -98,7 +98,7 @@ pub async fn test_slack_connection_logic<F, Fut>(
     fetch_auth: F,
 ) -> Result<SlackStatus, CmdError>
 where
-    F: FnOnce(String) -> Fut,
+    F: FnOnce(crate::slack::SlackAuth) -> Fut,
     Fut: std::future::Future<Output = Result<AuthTest, SlackError>>,
 {
     let auth = authorize(&credentials).await?;
@@ -132,7 +132,7 @@ pub fn map_slack_err(e: SlackError) -> CmdError {
 }
 
 /// Live `auth.test`.
-async fn fetch_auth_test(client: &crate::slack::SlackClient, auth: String) -> Result<AuthTest, SlackError> {
+async fn fetch_auth_test(client: &crate::slack::SlackClient, auth: crate::slack::SlackAuth) -> Result<AuthTest, SlackError> {
     let body = client.call(&auth, "auth.test", &[]).await?;
     catchup::parse_auth_test(&body)
 }
@@ -217,9 +217,9 @@ pub async fn sync_slack_catchup_logic<L, LF, C, CF>(
     fetch_conv: C,
 ) -> Result<SlackSyncSummary, CmdError>
 where
-    L: FnOnce(String) -> LF,
+    L: FnOnce(crate::slack::SlackAuth) -> LF,
     LF: std::future::Future<Output = Result<Vec<catchup::ParsedConversation>, SlackError>>,
-    C: Fn(String, String, Option<String>) -> CF,
+    C: Fn(crate::slack::SlackAuth, String, Option<String>) -> CF,
     CF: std::future::Future<Output = Result<ConversationData, SlackError>>,
 {
     let auth = authorize(&credentials).await?;
@@ -384,7 +384,7 @@ pub fn slack_deep_link_logic(
 /// users.conversations (member channels + DMs + group DMs), paged to completion.
 async fn list_member_conversations(
     client: &crate::slack::SlackClient,
-    auth: String,
+    auth: crate::slack::SlackAuth,
 ) -> Result<Vec<catchup::ParsedConversation>, SlackError> {
     let mut out = Vec::new();
     let mut cursor: Option<String> = None;
@@ -409,7 +409,7 @@ async fn list_member_conversations(
 /// conversations.info + history (+ thread replies) for one conversation.
 async fn fetch_conversation_data(
     client: &crate::slack::SlackClient,
-    auth: String,
+    auth: crate::slack::SlackAuth,
     conversation_id: String,
 ) -> Result<ConversationData, SlackError> {
     let info_body = client
@@ -553,7 +553,7 @@ mod tests {
     #[tokio::test]
     async fn test_connection_caches_identity() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some(crate::slack::SlackAuth { authorization: "Bearer x".into(), cookie: None })));
         let status = test_slack_connection_logic(creds, &pool, |_auth| async {
             Ok(AuthTest { user_id: "U1".into(), team_id: "T1".into(), url: "https://acme.slack.com/".into(), user: "abrar".into() })
         })
@@ -582,7 +582,7 @@ mod tests {
     #[tokio::test]
     async fn sync_populates_cache_and_derives_views() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some(crate::slack::SlackAuth { authorization: "Bearer x".into(), cookie: None })));
         let gen = AtomicU64::new(0);
         let convs = vec![ParsedConversation { id: "C1".into(), kind: ConvKind::Channel, name: Some("eng".into()), is_member: true, partner_user_id: None }];
         let summary = sync_slack_catchup_logic(
@@ -614,7 +614,7 @@ mod tests {
             id: "OLD".into(), kind: "channel".into(), name: Some("old".into()), partner_user_id: None,
             unread_count: 1, has_mention: false, unread_threads: 0, last_read_ts: None, latest_ts: Some("1.0".into()), latest_snippet: None,
         }], &[], &[], "old").await.unwrap();
-        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some(crate::slack::SlackAuth { authorization: "Bearer x".into(), cookie: None })));
         let gen = AtomicU64::new(0);
         let r = sync_slack_catchup_logic(
             creds, &pool, &gen, "U1".into(), "now".into(),
@@ -629,7 +629,7 @@ mod tests {
     #[tokio::test]
     async fn sync_aborts_on_generation_change() {
         let (_d, pool) = pool().await;
-        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some("Bearer x".into())));
+        let creds: Arc<dyn SlackCredentialProvider> = Arc::new(FakeSlackCreds(Some(crate::slack::SlackAuth { authorization: "Bearer x".into(), cookie: None })));
         let gen = AtomicU64::new(0);
         let convs = vec![ParsedConversation { id: "C1".into(), kind: ConvKind::Channel, name: None, is_member: true, partner_user_id: None }];
         // Bump the generation on the first per-conversation fetch (simulating a

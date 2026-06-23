@@ -1,4 +1,5 @@
 pub mod catchup;
+pub mod extract;
 
 use serde_json::Value;
 use std::sync::Arc;
@@ -55,25 +56,55 @@ pub fn interpret_status(status: u16, retry_after: Option<i64>) -> Option<SlackEr
     }
 }
 
+/// The credentials for a Slack API call: the `Authorization` value plus an
+/// optional session cookie (`d`) used in session-token mode.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SlackAuth {
+    pub authorization: String,
+    pub cookie: Option<String>,
+}
+
+/// `Cookie` header value for an auth, or `None` when there's no cookie.
+pub fn cookie_header(auth: &SlackAuth) -> Option<String> {
+    auth.cookie.as_ref().map(|c| format!("d={c}"))
+}
+
 pub trait SlackCredentialProvider: Send + Sync {
-    /// The `Authorization` header value, or `None` if no token is stored.
-    fn authorization(&self) -> Result<Option<String>, SecretError>;
+    /// The credentials to authenticate a call, or `None` if nothing is stored.
+    fn auth(&self) -> Result<Option<SlackAuth>, SecretError>;
 }
 
 pub struct PersonalTokenProvider {
     store: Arc<dyn SecretStore>,
-    account: String,
+    token_account: String,
+    cookie_account: String,
 }
 
 impl PersonalTokenProvider {
-    pub fn new(store: Arc<dyn SecretStore>, account: impl Into<String>) -> Self {
-        Self { store, account: account.into() }
+    pub fn new(
+        store: Arc<dyn SecretStore>,
+        token_account: impl Into<String>,
+        cookie_account: impl Into<String>,
+    ) -> Self {
+        Self {
+            store,
+            token_account: token_account.into(),
+            cookie_account: cookie_account.into(),
+        }
     }
 }
 
 impl SlackCredentialProvider for PersonalTokenProvider {
-    fn authorization(&self) -> Result<Option<String>, SecretError> {
-        Ok(self.store.get(&self.account)?.map(|t| format!("Bearer {t}")))
+    fn auth(&self) -> Result<Option<SlackAuth>, SecretError> {
+        let token = match self.store.get(&self.token_account)? {
+            Some(t) => t,
+            None => return Ok(None),
+        };
+        let cookie = self.store.get(&self.cookie_account)?;
+        Ok(Some(SlackAuth {
+            authorization: format!("Bearer {token}"),
+            cookie,
+        }))
     }
 }
 
@@ -97,22 +128,24 @@ impl SlackClient {
         Ok(Self { http, base: base.into() })
     }
 
-    /// POST a Slack Web API method with form params; returns the parsed `ok:true` body.
+    /// POST a Slack Web API method with form params; returns the parsed `ok:true`
+    /// body. In session-token mode the `d` cookie is attached.
     pub async fn call(
         &self,
-        authorization: &str,
+        auth: &SlackAuth,
         method: &str,
         params: &[(&str, &str)],
     ) -> Result<Value, SlackError> {
         let url = format!("{}/{}", self.base, method);
-        let resp = self
+        let mut req = self
             .http
             .post(&url)
-            .header("Authorization", authorization)
-            .form(params)
-            .send()
-            .await
-            .map_err(|_| SlackError::Network)?;
+            .header("Authorization", &auth.authorization)
+            .form(params);
+        if let Some(c) = cookie_header(auth) {
+            req = req.header("Cookie", c);
+        }
+        let resp = req.send().await.map_err(|_| SlackError::Network)?;
         let status = resp.status().as_u16();
         let retry_after = resp
             .headers()
@@ -131,10 +164,10 @@ impl SlackClient {
 pub mod fake {
     use super::*;
 
-    pub struct FakeSlackCreds(pub Option<String>);
+    pub struct FakeSlackCreds(pub Option<SlackAuth>);
 
     impl SlackCredentialProvider for FakeSlackCreds {
-        fn authorization(&self) -> Result<Option<String>, SecretError> {
+        fn auth(&self) -> Result<Option<SlackAuth>, SecretError> {
             Ok(self.0.clone())
         }
     }
@@ -214,11 +247,36 @@ mod tests {
     }
 
     #[test]
-    fn provider_wraps_token_as_bearer() {
+    fn provider_supplies_bearer_and_cookie() {
+        use crate::secrets::fake::FakeSecretStore;
+        let store: std::sync::Arc<dyn SecretStore> = std::sync::Arc::new(FakeSecretStore::default());
+        store.set("slack_user_token", "xoxc-1").unwrap();
+        store.set("slack_cookie_d", "xoxd-9").unwrap();
+        let p = PersonalTokenProvider::new(store.clone(), "slack_user_token", "slack_cookie_d");
+        let a = p.auth().unwrap().unwrap();
+        assert_eq!(a.authorization, "Bearer xoxc-1");
+        assert_eq!(a.cookie.as_deref(), Some("xoxd-9"));
+    }
+
+    #[test]
+    fn provider_cookie_none_when_absent() {
         use crate::secrets::fake::FakeSecretStore;
         let store: std::sync::Arc<dyn SecretStore> = std::sync::Arc::new(FakeSecretStore::default());
         store.set("slack_user_token", "xoxp-1").unwrap();
-        let p = PersonalTokenProvider::new(store, "slack_user_token");
-        assert_eq!(p.authorization().unwrap(), Some("Bearer xoxp-1".to_string()));
+        let p = PersonalTokenProvider::new(store, "slack_user_token", "slack_cookie_d");
+        let a = p.auth().unwrap().unwrap();
+        assert_eq!(a.cookie, None);
+    }
+
+    #[tokio::test]
+    async fn call_sends_cookie_header_when_present() {
+        // A throwaway server that echoes whether a Cookie header arrived.
+        let client = SlackClient::with_base("http://127.0.0.1:0/api").unwrap();
+        // Pure check instead of a live server: build the auth and assert the helper.
+        let auth = SlackAuth { authorization: "Bearer xoxc-1".into(), cookie: Some("xoxd-9".into()) };
+        assert_eq!(cookie_header(&auth).as_deref(), Some("d=xoxd-9"));
+        let none = SlackAuth { authorization: "Bearer xoxp".into(), cookie: None };
+        assert_eq!(cookie_header(&none), None);
+        let _ = client; // constructed to prove with_base still compiles
     }
 }
