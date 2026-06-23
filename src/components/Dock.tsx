@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { Calendar, CalendarRange, GitPullRequest, Inbox, List, Network, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Calendar, CalendarRange, GitPullRequest, Inbox, List, MessageSquare, Network, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 
 function DockButton({
@@ -42,10 +42,11 @@ const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[
   { view: "graph", label: "Dependencies", icon: <Network className="size-5" /> },
   { view: "inbox", label: "Inbox", icon: <Inbox className="size-5" /> },
   { view: "prs", label: "Pull Requests", icon: <GitPullRequest className="size-5" /> },
+  { view: "slack", label: "Slack", icon: <MessageSquare className="size-5" /> },
   { view: "settings", label: "Settings", icon: <SettingsIcon className="size-5" /> },
 ];
 
-const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", "this-week": "Overview", graph: "Dependencies", inbox: "Inbox", prs: "Pull Requests", settings: "Settings" };
+const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", "this-week": "Overview", graph: "Dependencies", inbox: "Inbox", prs: "Pull Requests", slack: "Slack", settings: "Settings" };
 
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();

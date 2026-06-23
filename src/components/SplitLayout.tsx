@@ -27,6 +27,7 @@ import { IssuePage } from "@/features/drawer/IssuePage";
 import { AgendaView } from "@/features/agenda/AgendaView";
 import { DependencyGraphPage } from "@/features/agenda/DependencyGraphPage";
 import { PrsPage } from "@/features/prs/PrsPage";
+import { SlackPage } from "@/features/slack/SlackPage";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
@@ -46,6 +47,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <InboxView />;
     case "prs":
       return <PrsPage />;
+    case "slack":
+      return <SlackPage />;
     case "settings":
       return <Settings />;
     case "issue":

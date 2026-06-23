@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { parsePersisted, nextPaneId, clampRatio, FALLBACK } from "./paneModel";
+import { parsePersisted, nextPaneId, clampRatio, FALLBACK, VIEWS } from "./paneModel";
 import {
   addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, moveTab, swapPanes,
   selectTabIn, openIssueTabAcross, openIssueInRightSplit, assertInvariants,
 } from "./paneModel";
 import type { Pane, WorkspaceState } from "./paneModel";
+
+describe("VIEWS", () => {
+  it("includes the slack view", () => {
+    expect(VIEWS).toContain("slack");
+  });
+});
 
 describe("clampRatio", () => {
   it("keeps both panes >= min when wide", () => {
