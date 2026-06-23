@@ -12,15 +12,17 @@ pub enum Bucket {
     Mine,
     Assigned,
     Involved,
+    Merged,
 }
 
 impl Bucket {
-    pub fn all() -> [Bucket; 4] {
+    pub fn all() -> [Bucket; 5] {
         [
             Bucket::NeedsReview,
             Bucket::Mine,
             Bucket::Assigned,
             Bucket::Involved,
+            Bucket::Merged,
         ]
     }
 
@@ -30,6 +32,7 @@ impl Bucket {
             Bucket::Mine => "mine",
             Bucket::Assigned => "assigned",
             Bucket::Involved => "involved",
+            Bucket::Merged => "merged",
         }
     }
 
@@ -41,6 +44,8 @@ impl Bucket {
             Bucket::Involved => {
                 "is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me"
             }
+            // Recently-merged authored PRs; the UI windows this to the last N days.
+            Bucket::Merged => "is:pr is:merged author:@me",
         };
         format!("{base} sort:updated-desc")
     }
@@ -51,13 +56,16 @@ const SEARCH_QUERY: &str = r#"query($q:String!,$first:Int!,$after:String){
     pageInfo{ hasNextPage endCursor }
     nodes{
       ... on PullRequest {
-        number title url isDraft mergeable reviewDecision updatedAt
+        number title url isDraft mergeable reviewDecision updatedAt mergedAt
+        additions deletions changedFiles
         repository{ nameWithOwner }
         headRefName
         baseRefName
         author{ login avatarUrl }
         comments{ totalCount }
         statusCheckRollup{ state }
+        latestOpinionatedReviews(first:10){ nodes{ state author{ login avatarUrl } } }
+        reviewRequests(first:10){ nodes{ requestedReviewer{ ... on User{ login avatarUrl } } } }
       }
     }
   }
@@ -86,6 +94,15 @@ pub fn extract_linear_identifier(branch: &str, title: &str) -> Option<String> {
     None
 }
 
+/// One reviewer's relationship to a PR: an opinionated review (approved /
+/// changes_requested / commented) or a still-pending requested review.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Reviewer {
+    pub login: String,
+    pub avatar: Option<String>,
+    pub state: String, // approved | changes_requested | commented | dismissed | pending
+}
+
 #[derive(Debug, Clone)]
 pub struct ParsedPr {
     pub id: String,
@@ -104,6 +121,65 @@ pub struct ParsedPr {
     pub url: Option<String>,
     pub linear_identifier: Option<String>,
     pub updated_at: Option<String>,
+    pub merged_at: Option<String>,
+    pub additions: Option<i64>,
+    pub deletions: Option<i64>,
+    pub changed_files: Option<i64>,
+    pub reviewers: Vec<Reviewer>,
+}
+
+/// Combine a PR's opinionated reviews with its still-pending review requests
+/// into one deduped list (an explicit review wins over a pending request).
+fn parse_reviewers(n: &Value) -> Vec<Reviewer> {
+    let mut out: Vec<Reviewer> = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    let reviews = n
+        .get("latestOpinionatedReviews")
+        .and_then(|r| r.get("nodes"))
+        .and_then(Value::as_array);
+    for r in reviews.into_iter().flatten() {
+        let author = r.get("author");
+        let login = author.and_then(|a| str_at(a, "login"));
+        let state = r.get("state").and_then(Value::as_str).map(map_review_state);
+        if let (Some(login), Some(state)) = (login, state) {
+            if seen.insert(login.clone()) {
+                out.push(Reviewer {
+                    avatar: author.and_then(|a| str_at(a, "avatarUrl")),
+                    login,
+                    state,
+                });
+            }
+        }
+    }
+    let pending = n
+        .get("reviewRequests")
+        .and_then(|r| r.get("nodes"))
+        .and_then(Value::as_array);
+    for r in pending.into_iter().flatten() {
+        let user = r.get("requestedReviewer");
+        let login = user.and_then(|u| str_at(u, "login"));
+        if let Some(login) = login {
+            if seen.insert(login.clone()) {
+                out.push(Reviewer {
+                    avatar: user.and_then(|u| str_at(u, "avatarUrl")),
+                    login,
+                    state: "pending".into(),
+                });
+            }
+        }
+    }
+    out
+}
+
+fn map_review_state(s: &str) -> String {
+    match s {
+        "APPROVED" => "approved",
+        "CHANGES_REQUESTED" => "changes_requested",
+        "COMMENTED" => "commented",
+        "DISMISSED" => "dismissed",
+        _ => "pending",
+    }
+    .into()
 }
 
 #[derive(Debug, Clone)]
@@ -190,6 +266,11 @@ fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
         url: str_at(n, "url"),
         linear_identifier,
         updated_at: str_at(n, "updatedAt"),
+        merged_at: str_at(n, "mergedAt"),
+        additions: n.get("additions").and_then(Value::as_i64),
+        deletions: n.get("deletions").and_then(Value::as_i64),
+        changed_files: n.get("changedFiles").and_then(Value::as_i64),
+        reviewers: parse_reviewers(n),
     })
 }
 
@@ -224,7 +305,10 @@ mod tests {
     #[test]
     fn bucket_keys_are_stable() {
         let keys: Vec<_> = Bucket::all().iter().map(|b| b.key()).collect();
-        assert_eq!(keys, ["needs_review", "mine", "assigned", "involved"]);
+        assert_eq!(
+            keys,
+            ["needs_review", "mine", "assigned", "involved", "merged"]
+        );
     }
 
     #[test]
@@ -232,8 +316,12 @@ mod tests {
         for b in Bucket::all() {
             let q = b.search_query();
             assert!(q.contains("is:pr"), "{q}");
-            assert!(q.contains("is:open"), "{q}");
             assert!(q.contains("sort:updated-desc"), "{q}");
+            // Triage buckets are open PRs; the merged bucket is explicitly merged.
+            match b {
+                Bucket::Merged => assert!(q.contains("is:merged"), "{q}"),
+                _ => assert!(q.contains("is:open"), "{q}"),
+            }
         }
     }
 
@@ -310,12 +398,19 @@ mod tests {
                         "number": 42, "title": "Add widget", "url": "https://github.com/o/r/pull/42",
                         "isDraft": false, "mergeable": "CONFLICTING", "reviewDecision": "CHANGES_REQUESTED",
                         "updatedAt": "2026-06-20T10:00:00Z",
+                        "additions": 120, "deletions": 8, "changedFiles": 5,
                         "repository": { "nameWithOwner": "o/r" },
                         "headRefName": "eng-9-widget",
                         "baseRefName": "main",
                         "author": { "login": "octocat", "avatarUrl": "https://a/x.png" },
                         "comments": { "totalCount": 3 },
-                        "statusCheckRollup": { "state": "FAILURE" }
+                        "statusCheckRollup": { "state": "FAILURE" },
+                        "latestOpinionatedReviews": { "nodes": [
+                            { "state": "CHANGES_REQUESTED", "author": { "login": "abrar", "avatarUrl": "https://a/abrar.png" } }
+                        ] },
+                        "reviewRequests": { "nodes": [
+                            { "requestedReviewer": { "login": "pending-rev", "avatarUrl": "https://a/p.png" } }
+                        ] }
                     }
                 ]
             }
@@ -336,6 +431,13 @@ mod tests {
         assert_eq!(p.comment_count, Some(3));
         assert_eq!(p.branch.as_deref(), Some("eng-9-widget"));
         assert_eq!(p.base_branch.as_deref(), Some("main"));
+        assert_eq!(p.additions, Some(120));
+        assert_eq!(p.deletions, Some(8));
+        assert_eq!(p.changed_files, Some(5));
+        assert_eq!(p.reviewers.len(), 2);
+        assert_eq!(p.reviewers[0].login, "abrar");
+        assert_eq!(p.reviewers[0].state, "changes_requested");
+        assert_eq!(p.reviewers[1].state, "pending");
         assert_eq!(p.linear_identifier.as_deref(), Some("ENG-9"));
         assert_eq!(page.has_next_page, true);
         assert_eq!(page.end_cursor.as_deref(), Some("CUR1"));

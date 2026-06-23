@@ -382,7 +382,13 @@ export type GitHubStatus =
   | { state: "unverified" }
   | { state: "connected"; login: string };
 
-export type PrBucket = "needs_review" | "mine" | "assigned" | "involved";
+export type PrBucket = "needs_review" | "mine" | "assigned" | "involved" | "merged";
+
+export type PrReviewer = {
+  login: string;
+  avatar: string | null;
+  state: "approved" | "changes_requested" | "commented" | "dismissed" | "pending";
+};
 
 export type GithubPr = {
   id: string;
@@ -403,6 +409,15 @@ export type GithubPr = {
   linearIdentifier: string | null;
   linearIssueId: string | null;
   updatedAt: string | null;
+  mergedAt: string | null;
+  additions: number | null;
+  deletions: number | null;
+  changedFiles: number | null;
+  linearStateName: string | null;
+  linearStateType: string | null;
+  linearStateColor: string | null;
+  linearPriority: number | null;
+  reviewers: PrReviewer[];
 };
 
 export type GithubSyncMeta = {

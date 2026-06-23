@@ -21,8 +21,8 @@ function accentFor(pr: GithubPr): string {
 function Glyph({ accent, draft }: { accent: string; draft: boolean }) {
   return (
     <svg
-      width="46"
-      height="22"
+      width="54"
+      height="26"
       viewBox="0 0 46 22"
       fill="none"
       aria-hidden
@@ -48,13 +48,13 @@ export function BranchGraph({ pr }: { pr: GithubPr }) {
   if (!pr.branch) return null;
   const accent = accentFor(pr);
   return (
-    <span className="flex min-w-0 items-center gap-1 text-[11px]" title={pr.baseBranch ? `${pr.branch} → ${pr.baseBranch}` : pr.branch}>
+    <span className="flex min-w-0 items-center gap-1.5 text-xs" title={pr.baseBranch ? `${pr.branch} → ${pr.baseBranch}` : pr.branch}>
       <Glyph accent={accent} draft={pr.draft} />
-      <span className="max-w-[150px] truncate font-medium text-foreground/85">{pr.branch}</span>
+      <span className="max-w-[200px] truncate font-medium text-foreground/85">{pr.branch}</span>
       {pr.baseBranch && (
         <>
-          <ChevronRight className="size-3 shrink-0 text-muted-foreground/70" />
-          <span className="max-w-[110px] truncate text-muted-foreground">{pr.baseBranch}</span>
+          <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <span className="max-w-[150px] truncate text-muted-foreground">{pr.baseBranch}</span>
         </>
       )}
     </span>

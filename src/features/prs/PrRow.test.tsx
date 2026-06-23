@@ -14,6 +14,8 @@ const base: GithubPr = {
   mergeable: "mergeable", ciStatus: "success", reviewDecision: "changes_requested",
   authorLogin: "octocat", authorAvatar: "https://a/x.png", commentCount: 3, branch: "eng-9", baseBranch: "main",
   url: "https://x", linearIdentifier: "ENG-9", linearIssueId: "iss-1", updatedAt: "2026-06-20T00:00:00Z",
+  mergedAt: null, additions: 120, deletions: 8, changedFiles: 5,
+  linearStateName: null, linearStateType: null, linearStateColor: null, linearPriority: null, reviewers: [],
 };
 
 afterEach(cleanup);
@@ -79,7 +81,34 @@ describe("PrRow", () => {
   });
 
   it("renders no review label when null", () => {
-    render(<PrRow pr={{ ...base, reviewDecision: null }} />);
+    render(<PrRow pr={{ ...base, reviewDecision: null, reviewers: [] }} />);
     expect(screen.queryByText(/approved|changes requested|review required/i)).toBeNull();
+  });
+
+  it("shows the viewer's own review verdict over the aggregate decision", () => {
+    // PR aggregate still says review_required, but the viewer requested changes.
+    render(
+      <PrRow
+        pr={{
+          ...base,
+          reviewDecision: "review_required",
+          reviewers: [{ login: "me", avatar: null, state: "changes_requested" }],
+        }}
+        viewerLogin="me"
+      />,
+    );
+    expect(screen.getByText(/you requested changes/i)).toBeInTheDocument();
+    expect(screen.queryByText(/review required/i)).toBeNull();
+  });
+
+  it("renders a diff stat with additions and deletions", () => {
+    render(<PrRow pr={base} />);
+    expect(screen.getByText("+120")).toBeInTheDocument();
+    expect(screen.getByText("−8")).toBeInTheDocument();
+  });
+
+  it("shows the linked Linear issue state when present", () => {
+    render(<PrRow pr={{ ...base, linearStateName: "In Review", linearStateType: "started", linearStateColor: "#f2c94c" }} />);
+    expect(screen.getByText("In Review")).toBeInTheDocument();
   });
 });

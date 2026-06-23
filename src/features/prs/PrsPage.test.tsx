@@ -25,7 +25,8 @@ function pr(id: string, bucket: GithubPr["bucket"]): GithubPr {
     id, bucket, repo: "o/r", number: 1, title: "Add widget", draft: false, mergeable: "mergeable",
     ciStatus: "success", reviewDecision: null, authorLogin: "octocat", authorAvatar: null,
     commentCount: 0, branch: "b", baseBranch: "main", url: "https://x", linearIdentifier: null, linearIssueId: null,
-    updatedAt: "2026-06-20T00:00:00Z",
+    updatedAt: "2026-06-20T00:00:00Z", mergedAt: null, additions: 1, deletions: 0, changedFiles: 1,
+    linearStateName: null, linearStateType: null, linearStateColor: null, linearPriority: null, reviewers: [],
   };
 }
 
