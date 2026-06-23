@@ -4,6 +4,7 @@ mod github;
 mod linear;
 mod link_preview;
 mod secrets;
+mod slack;
 
 use std::sync::Arc;
 use tauri::Manager;
