@@ -107,10 +107,11 @@ pub fn parse_conversations(
             id,
             kind,
             name: str_field(c, "name"),
-            is_member: c
-                .get("is_member")
-                .and_then(|b| b.as_bool())
-                .unwrap_or(is_im || is_mpim),
+            // users.conversations returns only conversations the caller belongs
+            // to, so it omits is_member on channels. An absent flag therefore
+            // means "joined"; defaulting to false would silently drop every
+            // channel (DMs/mpims happened to survive via a truthy default).
+            is_member: c.get("is_member").and_then(|b| b.as_bool()).unwrap_or(true),
             partner_user_id: if is_im { str_field(c, "user") } else { None },
         });
     }
@@ -363,6 +364,20 @@ mod parse_tests {
         assert_eq!(rows[1].partner_user_id.as_deref(), Some("U2"));
         assert_eq!(rows[2].kind, ConvKind::GroupDm);
         assert_eq!(cursor.as_deref(), Some("abc"));
+    }
+
+    #[test]
+    fn channel_without_is_member_field_defaults_to_member() {
+        // users.conversations omits is_member (the endpoint only ever returns
+        // conversations the caller belongs to), so an absent flag must mean
+        // "joined" — otherwise every channel is silently dropped downstream.
+        let v = json!({"ok":true,"channels":[
+            {"id":"C1","name":"eng","is_channel":true,"is_private":true,"is_im":false,"is_mpim":false}
+        ]});
+        let (rows, _) = parse_conversations(&v).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].kind, ConvKind::Channel);
+        assert!(rows[0].is_member);
     }
 
     #[test]
