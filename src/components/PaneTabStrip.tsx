@@ -150,7 +150,10 @@ export function PaneTabStrip({
         </div>
       </SortableContext>
       {showClock && (
-        <div className="shrink-0">
+        <div
+          data-clock-slot
+          className="ml-3 shrink-0 rounded-md border border-border/60 bg-card/60 px-2.5 py-1"
+        >
           <DualClock compact />
         </div>
       )}

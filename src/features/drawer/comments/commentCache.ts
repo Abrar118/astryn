@@ -80,6 +80,7 @@ export function makePendingComment(
   return {
     id,
     body,
+    quotedText: null,
     userId: me?.viewerId ?? null,
     userName: me?.viewerName ?? null,
     createdAt: new Date().toISOString(),

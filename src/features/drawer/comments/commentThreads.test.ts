@@ -3,7 +3,7 @@ import { buildCommentThreads } from "./commentThreads";
 import type { DetailComment } from "@/lib/commands";
 
 const c = (id: string, createdAt: string, parentId: string | null = null): DetailComment => ({
-  id, body: id, userId: "u", userName: "U", createdAt, editedAt: null, parentId, reactions: [],
+  id, body: id, quotedText: null, userId: "u", userName: "U", createdAt, editedAt: null, parentId, reactions: [],
 });
 
 describe("buildCommentThreads", () => {

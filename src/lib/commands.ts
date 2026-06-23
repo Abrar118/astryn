@@ -120,6 +120,8 @@ export type DetailReaction = { id: string; emoji: string; userId: string | null;
 export type DetailComment = {
   id: string;
   body: string;
+  /** Document text the comment references (inline comments only, else null). */
+  quotedText: string | null;
   userId: string | null;
   userName: string | null;
   createdAt: string;
@@ -304,6 +306,21 @@ export const createIssueRelation = (
   relatedIssueId: string,
   type: RelationType,
 ): Promise<void> => invoke("create_issue_relation", { issueId, relatedIssueId, type });
+
+/** Link a URL (or a GitHub PR's URL) to an issue as a Linear attachment. */
+export const createAttachmentLink = (
+  issueId: string,
+  url: string,
+  title?: string | null,
+): Promise<DetailAttachment> =>
+  invoke("create_attachment_link", { issueId, url, title: title ?? null });
+
+/** Rename an attachment. */
+export const updateAttachment = (id: string, title: string): Promise<DetailAttachment> =>
+  invoke("update_attachment", { id, title });
+
+/** Delete an attachment. */
+export const deleteAttachment = (id: string): Promise<void> => invoke("delete_attachment", { id });
 
 export const getMe = (): Promise<Me | null> => invoke("get_me");
 

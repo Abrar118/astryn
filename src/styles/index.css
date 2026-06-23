@@ -476,7 +476,7 @@
   border-radius: 0.5rem;
   padding: 0.5rem 0;
   color: var(--foreground);
-  font-size: 0.875rem;
+  font-size: 0.9375rem;
   line-height: 1.65;
   outline: none;
   font-family: var(--font-sans);
@@ -571,7 +571,7 @@
    is installed), so Preflight would otherwise flatten headings and strip list
    markers. Mirror the Milkdown editor's element styling so the read-only view
    matches the editor exactly. */
-.astryn-prose { color: var(--foreground); font-size: 0.875rem; line-height: 1.65; }
+.astryn-prose { color: var(--foreground); font-size: 0.9375rem; line-height: 1.65; }
 .astryn-prose p { margin: 0.5rem 0; }
 .astryn-prose strong { font-weight: 650; }
 .astryn-prose h1 { margin: 1.25rem 0 0.5rem; font-size: 1.5rem; font-weight: 650; }
@@ -584,7 +584,11 @@
 .astryn-prose blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
 .astryn-prose pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; margin: 0.75rem 0; }
 .astryn-prose code:not(pre code) { border-radius: 0.25rem; background: var(--secondary); padding: 0.1rem 0.3rem; font-size: 0.875em; }
-.astryn-prose table { width: 100%; border-collapse: collapse; margin: 0.75rem 0; }
+/* Read-only tables can be wider than the column (long inline code, slash-strings).
+   A `display: table` element can't scroll its own overflow, so it spills out of the
+   view box. `display: block` + `max-width: 100%` + `overflow-x: auto` makes the
+   table size to its content but cap at the container and scroll, like code blocks. */
+.astryn-prose table { display: block; width: max-content; max-width: 100%; overflow-x: auto; border-collapse: collapse; margin: 0.75rem 0; }
 .astryn-prose th, .astryn-prose td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
 .astryn-prose th { background: var(--secondary); font-weight: 600; }
 .astryn-prose hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }

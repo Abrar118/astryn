@@ -102,6 +102,13 @@ export function CommentCard({
         )}
       </div>
 
+      {/* Inline comment: the document text this comment was anchored to. */}
+      {comment.quotedText && (
+        <blockquote className="mt-1.5 border-l-2 border-border pl-3 text-sm italic text-muted-foreground">
+          {comment.quotedText}
+        </blockquote>
+      )}
+
       <div className="mt-1">
         {editing ? (
           <CommentComposer

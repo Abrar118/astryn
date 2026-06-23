@@ -111,6 +111,8 @@ pub enum CmdError {
     GitHubNotConfigured,
     #[error("GitHub rejected the request.")]
     GitHubApi,
+    #[error("That doesn't look like a valid URL.")]
+    InvalidUrl,
 }
 
 impl serde::Serialize for CmdError {
@@ -961,6 +963,82 @@ pub async fn create_issue_relation(
     Ok(())
 }
 
+/// Normalize and validate a user-entered link URL. Trims, defaults a missing
+/// scheme to `https` (so a bare domain like `github.com/x` works, matching
+/// Linear's own link field), then verifies the result is a real http(s) URL with
+/// a host. `None` ⇒ not a valid URL (empty, has whitespace, non-http scheme, or
+/// unparseable — e.g. arbitrary pasted text), so we never send junk to Linear.
+fn normalize_attachment_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    // A real URL has no internal whitespace (it would be percent-encoded), so any
+    // whitespace means the input is free text, not a URL.
+    if raw.is_empty() || raw.chars().any(char::is_whitespace) {
+        return None;
+    }
+    let candidate = if raw.starts_with("http://") || raw.starts_with("https://") {
+        raw.to_owned()
+    } else if raw.contains("://") {
+        return None; // some other scheme (ftp://, file://, …)
+    } else {
+        format!("https://{raw}")
+    };
+    let parsed = reqwest::Url::parse(&candidate).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    parsed.host_str().filter(|h| !h.is_empty())?;
+    Some(candidate)
+}
+
+/// Link a URL (or a GitHub PR's URL) to an issue as a Linear attachment.
+/// Returns the created attachment so the frontend can update its detail cache.
+#[tauri::command]
+pub async fn create_attachment_link(
+    state: State<'_, AppState>,
+    issue_id: String,
+    url: String,
+    title: Option<String>,
+) -> Result<DetailAttachment, CmdError> {
+    let url = normalize_attachment_url(&url).ok_or(CmdError::InvalidUrl)?;
+    let title = title.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .create_attachment_link(&auth, &issue_id, &url, title.as_deref())
+        .await
+        .map_err(CmdError::from)
+}
+
+/// Rename an attachment (Linear `attachmentUpdate`). Returns the updated entity.
+#[tauri::command]
+pub async fn update_attachment(
+    state: State<'_, AppState>,
+    id: String,
+    title: String,
+) -> Result<DetailAttachment, CmdError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(CmdError::InvalidInput);
+    }
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .update_attachment(&auth, &id, title)
+        .await
+        .map_err(CmdError::from)
+}
+
+/// Delete an attachment (Linear `attachmentDelete`).
+#[tauri::command]
+pub async fn delete_attachment(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    let auth = authed(&state).await?;
+    state
+        .linear
+        .delete_attachment(&auth, &id)
+        .await
+        .map_err(CmdError::from)
+}
+
 #[tauri::command]
 pub async fn get_me(state: State<'_, AppState>) -> Result<Option<Me>, CmdError> {
     Ok(db::load_me(&state.pool)
@@ -1080,6 +1158,22 @@ mod status_tests {
     #[test]
     fn key_without_cache_is_unverified() {
         assert_eq!(compute_status(true, None), ConnectionStatus::Unverified);
+    }
+
+    #[test]
+    fn normalize_attachment_url_handles_scheme() {
+        assert_eq!(normalize_attachment_url("https://x.com").as_deref(), Some("https://x.com"));
+        assert_eq!(normalize_attachment_url("  http://x.com  ").as_deref(), Some("http://x.com"));
+        // Bare domain gets https:// (so a pasted host still works).
+        assert_eq!(normalize_attachment_url("github.com/o/r/pull/1").as_deref(), Some("https://github.com/o/r/pull/1"));
+        assert_eq!(normalize_attachment_url(""), None);
+        assert_eq!(normalize_attachment_url("   "), None);
+        assert_eq!(normalize_attachment_url("ftp://x.com"), None);
+        // Free text (the bug): must be rejected, not turned into https://junk.
+        assert_eq!(normalize_attachment_url("The resource was requested insecurely."), None);
+        assert_eq!(normalize_attachment_url("hello world"), None);
+        // Scheme present but no host.
+        assert_eq!(normalize_attachment_url("https://"), None);
     }
 
     #[test]

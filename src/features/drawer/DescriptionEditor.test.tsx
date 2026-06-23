@@ -205,4 +205,17 @@ describe("ReadOnlyDescription", () => {
     expect(screen.getByRole("heading", { level: 2, name: "Title" })).toBeTruthy();
     expect(screen.getByText("bold").tagName).toBe("STRONG");
   });
+
+  it("renders a Linear-authored plain handle mention with the user's full name", () => {
+    render(
+      <ReadOnlyDescription
+        markdown="@abrar"
+        onOpenLink={vi.fn()}
+        users={[{ id: "u1", name: "Abrar Mahir Esam", displayName: "abrar" }]}
+      />,
+    );
+
+    const pill = document.querySelector("[data-mention-pill='user']");
+    expect(pill?.textContent).toBe("@Abrar Mahir Esam");
+  });
 });

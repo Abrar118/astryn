@@ -28,6 +28,7 @@ import {
   Files,
   Flag,
   Gauge,
+  GitPullRequest,
   IterationCcw,
   Link2,
   ListChecks,
@@ -41,8 +42,10 @@ import {
   Users,
 } from "lucide-react";
 import {
+  useCreateAttachmentLink,
   useCreateIssueRelation,
   useCycles,
+  useGithubPrs,
   useDeleteIssue,
   useFilterOptions,
   useIssues,
@@ -52,7 +55,7 @@ import {
 } from "@/lib/queries";
 import { dhakaToday } from "@/lib/dates";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
-import type { IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
+import type { GithubPr, IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
@@ -249,6 +252,113 @@ function MarkAsSubmenu({
             </span>
           }
           onClick={() => action.run(c)}
+        />
+      ))}
+    </SubMenu>
+  );
+}
+
+/** "Add link…": a small URL + optional-title form → Linear attachmentLinkUrl. */
+function AddLinkSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boolean; onClose: () => void }) {
+  const addLink = useCreateAttachmentLink();
+  const [url, setUrl] = useState("");
+  const [title, setTitle] = useState("");
+
+  const submit = () => {
+    const u = url.trim();
+    if (!u) return;
+    addLink.mutate({ issueId, url: u, title: title.trim() || null });
+    onClose();
+  };
+
+  return (
+    <SubMenu flip={flip}>
+      <div className="px-1 py-0.5">
+        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">URL</label>
+        <input
+          autoFocus
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="https://…"
+          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        />
+        <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Title (optional)</label>
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="Title"
+          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!url.trim()}
+          className="w-full cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Add link
+        </button>
+      </div>
+    </SubMenu>
+  );
+}
+
+/** "Add pull request…": search the cached GitHub PRs, link the chosen PR's URL. */
+function AddPrSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boolean; onClose: () => void }) {
+  const addLink = useCreateAttachmentLink();
+  const { data: dashboard } = useGithubPrs();
+  const [query, setQuery] = useState("");
+
+  // PRs appear once per bucket; dedupe by URL (the linkable identity).
+  const prs = useMemo(() => {
+    const seen = new Map<string, GithubPr>();
+    for (const pr of dashboard?.prs ?? []) {
+      if (pr.url && !seen.has(pr.url)) seen.set(pr.url, pr);
+    }
+    return [...seen.values()];
+  }, [dashboard]);
+
+  const q = query.trim().toLowerCase();
+  const candidates = prs
+    .filter((pr) => {
+      if (!q) return true;
+      const hay = `${pr.repo} ${pr.number} ${pr.title ?? ""} ${pr.branch ?? ""}`.toLowerCase();
+      return hay.includes(q);
+    })
+    .slice(0, 50);
+
+  const link = (pr: GithubPr) => {
+    if (!pr.url) return;
+    addLink.mutate({ issueId, url: pr.url, title: pr.title ?? `${pr.repo}#${pr.number}` });
+    onClose();
+  };
+
+  return (
+    <SubMenu flip={flip}>
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Search for pull request…"
+        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+      />
+      {candidates.length === 0 && (
+        <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">
+          {prs.length === 0 ? "No cached pull requests" : "No matches"}
+        </div>
+      )}
+      {candidates.map((pr) => (
+        <Row
+          key={pr.url}
+          icon={<GitPullRequest className="size-4" />}
+          label={
+            <span className="flex items-center gap-1.5">
+              <span className="shrink-0 text-[11px] text-muted-foreground">{pr.repo}#{pr.number}</span>
+              <span className="truncate">{pr.title ?? ""}</span>
+            </span>
+          }
+          onClick={() => link(pr)}
         />
       ))}
     </SubMenu>
@@ -561,6 +671,20 @@ function Menu({
         {sub === "markas" && (
           <MarkAsSubmenu issue={issue} allIssues={allIssues} flip={flip} onClose={onClose} />
         )}
+      </div>
+
+      <div className="my-1 border-t border-border/60" />
+
+      {/* Add link (Linear attachment) */}
+      <div className="relative" onMouseEnter={() => setSub("addlink")}>
+        <Row icon={<Link2 className="size-4" />} label="Add link…" hasSub />
+        {sub === "addlink" && <AddLinkSubmenu issueId={issue.id} flip={flip} onClose={onClose} />}
+      </div>
+
+      {/* Add pull request (link a cached GitHub PR's URL) */}
+      <div className="relative" onMouseEnter={() => setSub("addpr")}>
+        <Row icon={<GitPullRequest className="size-4" />} label="Add pull request…" hasSub />
+        {sub === "addpr" && <AddPrSubmenu issueId={issue.id} flip={flip} onClose={onClose} />}
       </div>
 
       <div className="my-1 border-t border-border/60" />

@@ -52,6 +52,10 @@ describe("PaneTabStrip", () => {
       </DndContext>,
     );
     expect(screen.getByTestId("clock")).toBeTruthy();
+    const clockSlot = document.querySelector("[data-clock-slot]");
+    expect(clockSlot).not.toBeNull();
+    expect((clockSlot as HTMLElement).className).toContain("ml-3");
+    expect((clockSlot as HTMLElement).className).toContain("bg-card/60");
   });
 
   it("clicking a tab selects it", () => {

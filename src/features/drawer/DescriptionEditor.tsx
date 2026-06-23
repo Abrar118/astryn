@@ -22,10 +22,9 @@ import { descriptionMentionPlugin } from "./milkdownMention";
 import { descriptionPreviewView } from "./milkdownPreviewNode";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 import type { User } from "@/lib/commands";
+import { createUserMentionRemarkPlugin } from "./remarkUserMentions";
 
-/** Build a mention→user resolver: by our id first, then by display name / handle
- * (Linear's mentions carry the user's handle as text and an id we may not cache,
- * so always fall back to the name match rather than giving up on an id miss). */
+/** Build a mention→user resolver: by our id first, then by display name / handle. */
 export function makeUserResolver(users: User[]) {
   return ({ id, name }: { id: string | null; name: string }): User | undefined => {
     if (id) {
@@ -86,9 +85,13 @@ export function ReadOnlyDescription({
       }),
     [onOpenLink, resolveMention, users],
   );
+  const userMentionPlugin = useMemo(
+    () => createUserMentionRemarkPlugin(users ?? []),
+    [users],
+  );
   return (
     <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-      <ReactMarkdown remarkPlugins={[remarkGfm]} components={components} urlTransform={mentionAwareUrlTransform}>
+      <ReactMarkdown remarkPlugins={[remarkGfm, userMentionPlugin]} components={components} urlTransform={mentionAwareUrlTransform}>
         {markdown || "_No description_"}
       </ReactMarkdown>
     </div>
@@ -224,6 +227,7 @@ interface DescriptionEditorProps {
   onSave: (md: string) => Promise<void>;
   onOpenLink: (href: string) => void;
   resolveMention?: MentionResolver;
+  users?: User[];
   onSaveStateChange?: (s: SaveStatus) => void;
   /**
    * Fired when a save fails on unmount (e.g. the user switches issues, which
@@ -239,6 +243,7 @@ export function DescriptionEditor({
   onSave,
   onOpenLink,
   resolveMention,
+  users,
   onSaveStateChange,
   onSaveError,
 }: DescriptionEditorProps) {
@@ -321,6 +326,7 @@ export function DescriptionEditor({
       markdown={markdown}
       onOpenLink={onOpenLink}
       resolveMention={resolveMention}
+      users={users}
     />
   );
 

@@ -8,10 +8,12 @@ import {
 } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import {
+  createAttachmentLink,
   createComment,
   createIssue,
   createIssueRelation,
   createLabel,
+  deleteAttachment,
   deleteComment,
   deleteIssue,
   addReaction,
@@ -35,10 +37,12 @@ import {
   syncGithubContributions,
   syncGithubPrs,
   syncIssues,
+  updateAttachment,
   updateComment,
   updateIssue,
   type CalendarIssue,
   type CreateIssueInput,
+  type DetailAttachment,
   type IssueDetailResult,
   type IssueFilters,
   type IssueListItem,
@@ -478,6 +482,69 @@ export function useDeleteComment() {
       if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
       gooeyToast.error("Couldn't delete comment", { description: errorText(err) });
     },
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+/** Apply `fn` to a cached live detail's attachment list; non-live passes through. */
+function withAttachments(
+  result: IssueDetailResult,
+  fn: (attachments: DetailAttachment[]) => DetailAttachment[],
+): IssueDetailResult {
+  if (result.source !== "live") return result;
+  return { ...result, detail: { ...result.detail, attachments: fn(result.detail.attachments) } };
+}
+
+export function useCreateAttachmentLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ issueId, url, title }: { issueId: string; url: string; title?: string | null }) =>
+      createAttachmentLink(issueId, url, title),
+    onSuccess: (attachment, { issueId }) => {
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) {
+        qc.setQueryData(["issue", issueId], withAttachments(cur, (as) =>
+          as.some((a) => a.id === attachment.id) ? as : [...as, attachment]));
+      }
+      gooeyToast.success("Link added");
+    },
+    onError: (err) => gooeyToast.error("Couldn't add link", { description: errorText(err) }),
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useUpdateAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, title }: { issueId: string; id: string; title: string }) => updateAttachment(id, title),
+    onSuccess: (updated, { issueId }) => {
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) {
+        qc.setQueryData(["issue", issueId], withAttachments(cur, (as) =>
+          as.map((a) => (a.id === updated.id ? updated : a))));
+      }
+    },
+    onError: (err) => gooeyToast.error("Couldn't update link", { description: errorText(err) }),
+    onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
+  });
+}
+
+export function useDeleteAttachment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id }: { issueId: string; id: string }) => deleteAttachment(id),
+    onMutate: async ({ issueId, id }) => {
+      await qc.cancelQueries({ queryKey: ["issue", issueId] });
+      const snap = snapshotDetail(qc, issueId);
+      const cur = qc.getQueryData<IssueDetailResult>(["issue", issueId]);
+      if (cur) qc.setQueryData(["issue", issueId], withAttachments(cur, (as) => as.filter((a) => a.id !== id)));
+      return { snap };
+    },
+    onError: (err, _vars, ctx) => {
+      if (ctx) qc.setQueryData(ctx.snap.key, ctx.snap.data);
+      gooeyToast.error("Couldn't remove link", { description: errorText(err) });
+    },
+    onSuccess: () => gooeyToast.success("Link removed"),
     onSettled: (_d, _e, { issueId }) => qc.invalidateQueries({ queryKey: ["issue", issueId] }),
   });
 }

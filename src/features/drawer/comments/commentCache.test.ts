@@ -6,7 +6,7 @@ import {
 import type { DetailComment, IssueDetailResult, LiveDetail } from "@/lib/commands";
 
 const comment = (id: string, parentId: string | null = null): DetailComment => ({
-  id, body: id, userId: "u1", userName: "U", createdAt: "t", editedAt: null, parentId, reactions: [],
+  id, body: id, quotedText: null, userId: "u1", userName: "U", createdAt: "t", editedAt: null, parentId, reactions: [],
 });
 const live = (comments: DetailComment[]): IssueDetailResult =>
   ({ source: "live", detail: { comments } as unknown as LiveDetail });

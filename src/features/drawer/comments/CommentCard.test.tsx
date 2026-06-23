@@ -23,7 +23,7 @@ vi.mock("../DescriptionEditor", () => ({ ReadOnlyDescription: ({ markdown }: { m
 import { CommentCard } from "./CommentCard";
 
 const base: DetailComment = {
-  id: "c1", body: "the body", userId: "u1", userName: "Abrar",
+  id: "c1", body: "the body", quotedText: null, userId: "u1", userName: "Abrar",
   createdAt: "2026-06-19T10:00:00Z", editedAt: "2026-06-19T10:05:00Z", parentId: null,
   reactions: [{ id: "r1", emoji: "👍", userId: "u2", userName: "Jakob" }],
 };

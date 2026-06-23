@@ -427,7 +427,7 @@ pub fn parse_cycles(body: &str) -> Result<Vec<ParsedCycle>, LinearError> {
 }
 
 const COMMENT_NODE_FIELDS: &str =
-    "id body createdAt editedAt parent { id } user { id name } reactions { id emoji user { id name } }";
+    "id body quotedText createdAt editedAt parent { id } user { id name } reactions { id emoji user { id name } }";
 
 fn parse_reaction_node(r: &Value) -> DetailReaction {
     DetailReaction {
@@ -447,6 +447,7 @@ fn parse_comment_node(c: &Value) -> DetailComment {
     DetailComment {
         id: s(c, "id").unwrap_or_default(),
         body: s(c, "body").unwrap_or_default(),
+        quoted_text: s(c, "quotedText"),
         user_id: nested(c, "user", "id"),
         user_name: nested(c, "user", "name"),
         created_at: s(c, "createdAt").unwrap_or_default(),
@@ -496,6 +497,44 @@ pub fn parse_relation_create(body: &str) -> Result<ParsedRelation, LinearError> 
         related_state_type: nested(ri, "state", "type"),
         related_state_color: nested(ri, "state", "color"),
     })
+}
+
+/// Parse an `attachment{Create,Update}` payload (`{ success, attachment }`).
+fn parse_attachment_payload(body: &str, field: &str) -> Result<DetailAttachment, LinearError> {
+    let data = extract_data(body)?;
+    let payload = data.get(field).ok_or(LinearError::Malformed)?;
+    if payload.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api(format!("{field} returned success=false")));
+    }
+    let a = payload.get("attachment").ok_or(LinearError::Malformed)?;
+    Ok(detail_attachment(a))
+}
+
+/// Parse `attachmentCreate`, returning the newly created link attachment.
+pub fn parse_attachment_create(body: &str) -> Result<DetailAttachment, LinearError> {
+    parse_attachment_payload(body, "attachmentCreate")
+}
+
+/// Parse `attachmentUpdate`, returning the updated attachment.
+pub fn parse_attachment_update(body: &str) -> Result<DetailAttachment, LinearError> {
+    parse_attachment_payload(body, "attachmentUpdate")
+}
+
+/// Parse `attachmentDelete`, succeeding only on `success: true`.
+pub fn parse_attachment_delete(body: &str) -> Result<(), LinearError> {
+    let data = extract_data(body)?;
+    let ok = data
+        .get("attachmentDelete")
+        .and_then(|d| d.get("success"))
+        .and_then(|b| b.as_bool())
+        == Some(true);
+    if ok {
+        Ok(())
+    } else {
+        Err(LinearError::Api(
+            "attachmentDelete returned success=false".into(),
+        ))
+    }
 }
 
 pub fn parse_issue_delete(body: &str) -> Result<(), LinearError> {
@@ -663,6 +702,8 @@ pub struct DetailReaction {
 pub struct DetailComment {
     pub id: String,
     pub body: String,
+    /// The document text this comment references (inline comments only, else null).
+    pub quoted_text: Option<String>,
     pub user_id: Option<String>,
     pub user_name: Option<String>,
     pub created_at: String,
@@ -896,12 +937,30 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
                 .collect()
         })
         .unwrap_or_default();
-    let comments = n
+    let mut comments: Vec<DetailComment> = n
         .get("comments")
         .and_then(|c| c.get("nodes"))
         .and_then(|x| x.as_array())
         .map(|arr| arr.iter().map(parse_comment_node).collect())
         .unwrap_or_default();
+    // Inline/document comments are NOT on `issue.comments` (their `issue` is
+    // null); they only appear on the root `comments` connection filtered by
+    // `documentContent.issue` (the aliased `documentComments`). Merge them in,
+    // deduped by id, so anchored comments + their quotedText render in the thread.
+    let mut seen: std::collections::HashSet<String> =
+        comments.iter().map(|c| c.id.clone()).collect();
+    if let Some(arr) = data
+        .get("documentComments")
+        .and_then(|c| c.get("nodes"))
+        .and_then(Value::as_array)
+    {
+        for node in arr {
+            let comment = parse_comment_node(node);
+            if seen.insert(comment.id.clone()) {
+                comments.push(comment);
+            }
+        }
+    }
     let attachments = n
         .get("attachments")
         .and_then(|a| a.get("nodes"))
@@ -969,7 +1028,8 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         has_more_children: conn_has_next(n, "children"),
         has_more_relations: conn_has_next(n, "relations"),
         has_more_history: conn_has_next(n, "history"),
-        has_more_comments: conn_has_next(n, "comments"),
+        has_more_comments: conn_has_next(n, "comments")
+            || conn_has_next(&data, "documentComments"),
     })
 }
 
@@ -1176,7 +1236,7 @@ fn issues_query() -> String {
 
 fn issue_detail_query() -> String {
     format!(
-        "query Issue($id: String!) {{
+        "query Issue($id: String!, $issueId: ID!) {{
            issue(id: $id) {{
              {ISSUE_NODE_FIELDS}
              branchName
@@ -1197,6 +1257,11 @@ fn issue_detail_query() -> String {
              }} }}
              comments(first: 50) {{ pageInfo {{ hasNextPage }} nodes {{ {COMMENT_NODE_FIELDS} }} }}
            }}
+           documentComments: comments(
+             first: 50
+             includeArchived: true
+             filter: {{ documentContent: {{ issue: {{ id: {{ eq: $issueId }} }} }} }}
+           ) {{ pageInfo {{ hasNextPage }} nodes {{ {COMMENT_NODE_FIELDS} }} }}
          }}"
     )
 }
@@ -1267,6 +1332,33 @@ fn relation_create_mutation() -> String {
     .to_string()
 }
 
+// `attachmentCreate` stores the link as-is. (We deliberately avoid
+// `attachmentLinkUrl`, which makes Linear's server fetch the URL to build a rich
+// preview — that fetch is rejected with "The resource was requested insecurely".)
+fn attachment_link_mutation() -> String {
+    "mutation AC($input: AttachmentCreateInput!) { \
+       attachmentCreate(input: $input) { \
+         success \
+         attachment { id title subtitle url sourceType createdAt } \
+       } \
+     }"
+    .to_string()
+}
+
+fn attachment_update_mutation() -> String {
+    "mutation AU($id: String!, $input: AttachmentUpdateInput!) { \
+       attachmentUpdate(id: $id, input: $input) { \
+         success \
+         attachment { id title subtitle url sourceType createdAt } \
+       } \
+     }"
+    .to_string()
+}
+
+fn attachment_delete_mutation() -> String {
+    "mutation AD($id: String!) { attachmentDelete(id: $id) { success } }".to_string()
+}
+
 impl LinearClient {
     async fn post(&self, auth: &str, body: serde_json::Value) -> Result<String, LinearError> {
         self.http_post(auth, body).await
@@ -1289,7 +1381,10 @@ impl LinearClient {
     }
 
     pub async fn issue_detail(&self, auth: &str, id: &str) -> Result<IssueDetailNode, LinearError> {
-        let body = serde_json::json!({ "query": issue_detail_query(), "variables": { "id": id } });
+        let body = serde_json::json!({
+            "query": issue_detail_query(),
+            "variables": { "id": id, "issueId": id }
+        });
         parse_issue_detail(&self.post(auth, body).await?)
     }
 
@@ -1343,6 +1438,50 @@ impl LinearClient {
             "variables": { "input": input }
         });
         parse_relation_create(&self.post(auth, req).await?)
+    }
+
+    /// Link a URL (or a PR's URL) to an issue as a Linear attachment.
+    pub async fn create_attachment_link(
+        &self,
+        auth: &str,
+        issue_id: &str,
+        url: &str,
+        title: Option<&str>,
+    ) -> Result<DetailAttachment, LinearError> {
+        // attachmentCreate wants a title; fall back to the URL when none is given.
+        let input = serde_json::json!({
+            "issueId": issue_id,
+            "url": url,
+            "title": title.unwrap_or(url),
+        });
+        let req = serde_json::json!({
+            "query": attachment_link_mutation(),
+            "variables": { "input": input }
+        });
+        parse_attachment_create(&self.post(auth, req).await?)
+    }
+
+    /// Update an attachment's title.
+    pub async fn update_attachment(
+        &self,
+        auth: &str,
+        id: &str,
+        title: &str,
+    ) -> Result<DetailAttachment, LinearError> {
+        let req = serde_json::json!({
+            "query": attachment_update_mutation(),
+            "variables": { "id": id, "input": { "title": title } }
+        });
+        parse_attachment_update(&self.post(auth, req).await?)
+    }
+
+    /// Delete an attachment.
+    pub async fn delete_attachment(&self, auth: &str, id: &str) -> Result<(), LinearError> {
+        let req = serde_json::json!({
+            "query": attachment_delete_mutation(),
+            "variables": { "id": id }
+        });
+        parse_attachment_delete(&self.post(auth, req).await?)
     }
 
     pub async fn create_comment(
@@ -1557,6 +1696,38 @@ mod tests {
     fn parse_relation_create_rejects_failure() {
         let body = r##"{"data":{"issueRelationCreate":{"success":false,"issueRelation":null}}}"##;
         assert!(parse_relation_create(body).is_err());
+    }
+
+    #[test]
+    fn parse_attachment_create_extracts_link() {
+        let body = r##"{"data":{"attachmentCreate":{"success":true,"attachment":{
+            "id":"a1","title":"Design doc","subtitle":"figma.com","url":"https://figma.com/x",
+            "sourceType":null,"createdAt":"2026-06-23T10:00:00Z"}}}}"##;
+        let a = parse_attachment_create(body).unwrap();
+        assert_eq!(a.id, "a1");
+        assert_eq!(a.title, "Design doc");
+        assert_eq!(a.url, "https://figma.com/x");
+    }
+
+    #[test]
+    fn parse_attachment_create_rejects_failure() {
+        let body = r##"{"data":{"attachmentCreate":{"success":false,"attachment":null}}}"##;
+        assert!(parse_attachment_create(body).is_err());
+    }
+
+    #[test]
+    fn parse_attachment_update_extracts_attachment() {
+        let body = r##"{"data":{"attachmentUpdate":{"success":true,"attachment":{
+            "id":"a1","title":"Renamed","subtitle":null,"url":"https://x.com",
+            "sourceType":null,"createdAt":"2026-06-23T10:00:00Z"}}}}"##;
+        let a = parse_attachment_update(body).unwrap();
+        assert_eq!(a.title, "Renamed");
+    }
+
+    #[test]
+    fn parse_attachment_delete_ok_and_failure() {
+        assert!(parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":true}}}"##).is_ok());
+        assert!(parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":false}}}"##).is_err());
     }
 
     #[test]
@@ -1825,12 +1996,44 @@ mod tests {
     #[test]
     fn parses_comment_create() {
         let body = r##"{"data":{"commentCreate":{"success":true,"comment":{
-          "id":"cm9","body":"Hi","createdAt":"2026-06-20T09:00:00Z","editedAt":null,
+          "id":"cm9","body":"Hi","quotedText":null,"createdAt":"2026-06-20T09:00:00Z","editedAt":null,
           "parent":null,"user":{"id":"u1","name":"Abrar"},"reactions":[]}}}}"##;
         let c = parse_comment_create(body).unwrap();
         assert_eq!(c.id, "cm9");
         assert_eq!(c.body, "Hi");
+        assert_eq!(c.quoted_text, None);
         assert!(parse_comment_create(r#"{"data":{"commentCreate":{"success":false}}}"#).is_err());
+    }
+
+    #[test]
+    fn parse_comment_node_extracts_quoted_text() {
+        let c = parse_comment_node(&serde_json::json!({
+            "id": "cm1", "body": "agreed", "quotedText": "the old plan text",
+            "createdAt": "t", "user": { "id": "u1", "name": "Jakob" }, "reactions": []
+        }));
+        assert_eq!(c.quoted_text.as_deref(), Some("the old plan text"));
+    }
+
+    #[test]
+    fn parse_issue_detail_merges_inline_document_comments() {
+        // issue.comments holds regular comments; the aliased `documentComments`
+        // (root connection filtered by documentContent.issue) holds inline ones,
+        // which carry quotedText. They must merge, deduped by id.
+        let body = r##"{"data":{
+          "issue":{"id":"i1","identifier":"PSY-1","title":"T","url":"u","createdAt":"c","updatedAt":"u",
+            "attachments":{"nodes":[]},"labels":{"nodes":[]},
+            "comments":{"pageInfo":{"hasNextPage":false},"nodes":[
+              {"id":"c1","body":"regular","quotedText":null,"createdAt":"t1","user":{"id":"u1","name":"A"},"reactions":[]}
+            ]}},
+          "documentComments":{"pageInfo":{"hasNextPage":false},"nodes":[
+            {"id":"c2","body":"inline","quotedText":"the anchor","createdAt":"t2","user":{"id":"u2","name":"B"},"reactions":[]},
+            {"id":"c1","body":"dup","quotedText":null,"createdAt":"t1","user":{"id":"u1","name":"A"},"reactions":[]}
+          ]}
+        }}"##;
+        let node = parse_issue_detail(body).unwrap();
+        assert_eq!(node.comments.len(), 2); // c1 (deduped) + the inline c2
+        let inline = node.comments.iter().find(|c| c.id == "c2").unwrap();
+        assert_eq!(inline.quoted_text.as_deref(), Some("the anchor"));
     }
 
     #[test]

@@ -39,11 +39,13 @@ import {
   useCreateComment,
   useCreateLabel,
   useCycles,
+  useDeleteAttachment,
   useDeleteIssue,
   useFilterOptions,
   useIssueDetail,
   useIssues,
   useLabels,
+  useUpdateAttachment,
   useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
@@ -54,7 +56,7 @@ import { type Ordering, type Completed, type DisplayKey, type DisplayProps } fro
 import { loadSubIssueDisplay, saveSubIssueDisplay, type SubIssueDisplay } from "./subIssueDisplay";
 import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
-import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch } from "@/lib/commands";
+import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch, User as LinearUser } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
@@ -67,6 +69,7 @@ import { CommentThread } from "./comments/CommentThread";
 import { DescriptionEditor, makeUserResolver } from "./DescriptionEditor";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 import { timeAgo } from "./timeAgo";
+import { createUserMentionRemarkPlugin } from "./remarkUserMentions";
 
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
 
@@ -204,6 +207,130 @@ function relationGroupLabel(type: string): string {
     default:
       return type.charAt(0).toUpperCase() + type.slice(1);
   }
+}
+
+/**
+ * A resource's icon: the site's favicon (allowlisted host loaded directly per
+ * the CSP), falling back to a brand/link glyph on error or an unparseable URL.
+ */
+function ResourceIcon({ url, sourceType }: { url: string; sourceType: string | null }) {
+  const [failed, setFailed] = useState(false);
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {
+    /* leave host empty → fall through to the glyph */
+  }
+  const Glyph = sourceType === "github" ? GitPullRequest : Link2;
+  if (!host || failed) {
+    return <Glyph className="size-4 shrink-0 text-muted-foreground" />;
+  }
+  return (
+    <img
+      src={`https://icons.duckduckgo.com/ip3/${host}.ico`}
+      alt=""
+      aria-hidden
+      width={16}
+      height={16}
+      loading="lazy"
+      onError={() => setFailed(true)}
+      className="size-4 shrink-0 rounded-sm"
+    />
+  );
+}
+
+/**
+ * The "…" menu for a resource: Expand / Open, plus (when editable) inline Edit
+ * (rename) and a two-click Remove. Lives in the Popover render-prop, holding its
+ * own mode/confirm state so the menu can swap to a rename field in place.
+ */
+function ResourceActionsMenu({
+  attachment,
+  issueId,
+  editable,
+  close,
+  onExpand,
+  onOpenOriginal,
+}: {
+  attachment: DetailAttachment;
+  issueId: string;
+  editable: boolean;
+  close: () => void;
+  onExpand: () => void;
+  onOpenOriginal: () => void;
+}) {
+  const updateAtt = useUpdateAttachment();
+  const deleteAtt = useDeleteAttachment();
+  const [mode, setMode] = useState<"menu" | "edit">("menu");
+  const [title, setTitle] = useState(attachment.title);
+  const [confirmRemove, setConfirmRemove] = useState(false);
+
+  if (mode === "edit") {
+    const save = () => {
+      const t = title.trim();
+      if (!t) return;
+      updateAtt.mutate({ issueId, id: attachment.id, title: t });
+      close();
+    };
+    return (
+      <div className="p-1">
+        <input
+          autoFocus
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") setMode("menu");
+          }}
+          placeholder="Title"
+          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        />
+        <div className="flex gap-1.5">
+          <button
+            type="button"
+            onClick={() => setMode("menu")}
+            className="flex-1 cursor-pointer rounded-md border border-border px-2 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!title.trim()}
+            className="flex-1 cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <PopoverItem icon={<Maximize2 className="size-4" />} label="Expand in Linear" onClick={onExpand} />
+      <PopoverItem icon={<ExternalLink className="size-4" />} label="Open original" onClick={onOpenOriginal} />
+      {editable && (
+        <>
+          <div className="my-1 border-t border-border/60" />
+          <PopoverItem icon={<Pencil className="size-4" />} label="Edit" onClick={() => { setTitle(attachment.title); setMode("edit"); }} />
+          <PopoverItem
+            icon={<Trash2 className="size-4" />}
+            label={confirmRemove ? "Confirm remove" : "Remove"}
+            danger
+            onClick={() => {
+              if (!confirmRemove) {
+                setConfirmRemove(true);
+                return;
+              }
+              deleteAtt.mutate({ issueId, id: attachment.id });
+              close();
+            }}
+          />
+        </>
+      )}
+    </>
+  );
 }
 
 function FallbackChildRow({
@@ -645,6 +772,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               onSave={saveDescription}
               onOpenLink={handleLink}
               resolveMention={resolveMention}
+              users={users.data ?? []}
               onSaveStateChange={setSaveState}
               onSaveError={() => gooeyToast.error("Couldn't save description")}
             />
@@ -733,11 +861,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                       onClick={() => setExpandedResource(attachment)}
                       className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
-                      {attachment.sourceType === "github" ? (
-                        <GitPullRequest className="size-4 shrink-0 text-muted-foreground" />
-                      ) : (
-                        <Link2 className="size-4 shrink-0 text-muted-foreground" />
-                      )}
+                      <ResourceIcon url={attachment.url} sourceType={attachment.sourceType} />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{attachment.title}</span>
                       {attachment.subtitle && <span className="max-w-52 truncate text-xs text-muted-foreground">{attachment.subtitle}</span>}
                       <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
@@ -750,19 +874,19 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                       panelClassName="w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl"
                     >
                       {(close) => (
-                        <>
-                          <PopoverItem icon={<Maximize2 className="size-4" />} label="Expand in Linear" onClick={() => (setExpandedResource(attachment), close())} />
-                          <PopoverItem
-                            icon={<ExternalLink className="size-4" />}
-                            label="Open original"
-                            onClick={() => {
-                              close();
-                              const external = safeExternalUrl(attachment.url);
-                              if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
-                              else gooeyToast.error("Blocked unsafe link");
-                            }}
-                          />
-                        </>
+                        <ResourceActionsMenu
+                          attachment={attachment}
+                          issueId={id}
+                          editable={editable}
+                          close={close}
+                          onExpand={() => (setExpandedResource(attachment), close())}
+                          onOpenOriginal={() => {
+                            close();
+                            const external = safeExternalUrl(attachment.url);
+                            if (external) openUrl(external).catch(() => gooeyToast.error("Couldn't open the resource"));
+                            else gooeyToast.error("Blocked unsafe link");
+                          }}
+                        />
                       )}
                     </Popover>
                   </div>
@@ -975,6 +1099,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
         <ResourceModal
           attachment={expandedResource}
           markdownComponents={md}
+          users={users.data ?? []}
           onClose={() => setExpandedResource(null)}
         />
       )}
@@ -985,13 +1110,16 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
 function ResourceModal({
   attachment,
   markdownComponents,
+  users,
   onClose,
 }: {
   attachment: DetailAttachment;
   markdownComponents: Components;
+  users: LinearUser[];
   onClose: () => void;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
+  const userMentionPlugin = useMemo(() => createUserMentionRemarkPlugin(users), [users]);
   useEffect(() => {
     closeRef.current?.focus();
   }, []);
@@ -1029,7 +1157,7 @@ function ResourceModal({
         <div className="drawer-scrollbar min-h-0 overflow-y-auto px-6 py-5">
           {attachment.body ? (
             <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents} urlTransform={mentionAwareUrlTransform}>{attachment.body}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm, userMentionPlugin]} components={markdownComponents} urlTransform={mentionAwareUrlTransform}>{attachment.body}</ReactMarkdown>
             </div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
