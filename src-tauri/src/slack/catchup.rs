@@ -152,6 +152,131 @@ pub fn parse_user(v: &Value) -> Option<ParsedUser> {
     })
 }
 
+/// System/automated message subtypes that should never count as "unread for me".
+const SYSTEM_SUBTYPES: &[&str] = &[
+    "channel_join", "channel_leave", "channel_topic", "channel_purpose", "channel_name",
+    "channel_archive", "channel_unarchive", "group_join", "group_leave",
+];
+
+pub fn is_system_message(m: &ParsedMessage) -> bool {
+    matches!(&m.subtype, Some(s) if SYSTEM_SUBTYPES.contains(&s.as_str()))
+}
+
+/// Messages the viewer hasn't read and didn't author: drop self-authored + system.
+pub fn unread_messages<'a>(messages: &'a [ParsedMessage], viewer_id: &str) -> Vec<&'a ParsedMessage> {
+    messages
+        .iter()
+        .filter(|m| m.user_id.as_deref() != Some(viewer_id))
+        .filter(|m| !is_system_message(m))
+        .collect()
+}
+
+/// True if `text` directly @-mentions the viewer or carries a broadcast mention.
+pub fn detect_mention(text: &str, viewer_id: &str) -> bool {
+    text.contains(&format!("<@{viewer_id}>"))
+        || text.contains("<!here>")
+        || text.contains("<!channel>")
+        || text.contains("<!everyone>")
+}
+
+/// Numeric comparison of Slack ts strings ("secs.micros"); false if either is unparseable.
+pub fn ts_gt(a: &str, b: &str) -> bool {
+    match (a.parse::<f64>(), b.parse::<f64>()) {
+        (Ok(x), Ok(y)) => x > y,
+        _ => false,
+    }
+}
+
+/// Thread parents whose latest reply is newer than `last_read` (best-effort:
+/// the channel marker stands in for the unavailable per-thread read marker).
+pub fn thread_parents<'a>(
+    messages: &'a [ParsedMessage],
+    last_read: Option<&str>,
+) -> Vec<&'a ParsedMessage> {
+    messages
+        .iter()
+        .filter(|m| m.reply_count.unwrap_or(0) > 0)
+        .filter(|m| match (&m.latest_reply, last_read) {
+            (Some(latest), Some(lr)) => ts_gt(latest, lr),
+            (Some(_), None) => true,
+            _ => false,
+        })
+        .collect()
+}
+
+/// Uppercase Linear identifier embedded in message text, if any (reuses the
+/// GitHub dashboard's boundary-aware extractor).
+pub fn linear_id(text: &str) -> Option<String> {
+    crate::github::prs::extract_linear_identifier(text, "")
+}
+
+#[cfg(test)]
+mod logic_tests {
+    use super::*;
+
+    fn msg(ts: &str, user: Option<&str>, text: &str, subtype: Option<&str>) -> ParsedMessage {
+        ParsedMessage {
+            ts: ts.into(),
+            thread_ts: None,
+            user_id: user.map(str::to_string),
+            text: text.into(),
+            subtype: subtype.map(str::to_string),
+            reply_count: None,
+            latest_reply: None,
+        }
+    }
+
+    #[test]
+    fn unread_excludes_self_and_system() {
+        let msgs = vec![
+            msg("3.0", Some("U2"), "hello", None),       // kept
+            msg("4.0", Some("U1"), "my own msg", None),  // excluded: self
+            msg("5.0", Some("U2"), "joined", Some("channel_join")), // excluded: system
+        ];
+        let unread = unread_messages(&msgs, "U1");
+        assert_eq!(unread.len(), 1);
+        assert_eq!(unread[0].ts, "3.0");
+    }
+
+    #[test]
+    fn detects_direct_and_broadcast_mentions() {
+        assert!(detect_mention("hey <@U1> look", "U1"));
+        assert!(detect_mention("ping <!here>", "U1"));
+        assert!(detect_mention("all <!channel>", "U1"));
+        assert!(detect_mention("<!everyone> hi", "U1"));
+        assert!(!detect_mention("hey <@U2> look", "U1"));
+        assert!(!detect_mention("no mention", "U1"));
+    }
+
+    #[test]
+    fn ts_gt_is_numeric_not_lexical() {
+        assert!(ts_gt("1623456789.000200", "1623456789.000100"));
+        assert!(ts_gt("100.0", "99.0")); // lexical "100" < "99" but numeric 100 > 99
+        assert!(!ts_gt("99.0", "100.0"));
+    }
+
+    #[test]
+    fn thread_parents_need_replies_after_last_read() {
+        let mut a = msg("10.0", Some("U2"), "root", None);
+        a.reply_count = Some(3);
+        a.latest_reply = Some("20.0".into());
+        let mut b = msg("11.0", Some("U2"), "root old", None);
+        b.reply_count = Some(1);
+        b.latest_reply = Some("12.0".into());
+        let c = msg("13.0", Some("U2"), "no thread", None); // reply_count None
+        let all = [a, b, c];
+        let parents = thread_parents(&all, Some("15.0"));
+        assert_eq!(parents.len(), 1);
+        assert_eq!(parents[0].ts, "10.0"); // latest_reply 20 > 15; b's 12 <= 15; c has none
+    }
+
+    #[test]
+    fn linear_id_reuses_uppercase_extractor() {
+        assert_eq!(linear_id("see eng-123 thanks").as_deref(), Some("ENG-123"));
+        assert_eq!(linear_id("no id here"), None);
+    }
+}
+
 #[cfg(test)]
 mod parse_tests {
     use super::*;
