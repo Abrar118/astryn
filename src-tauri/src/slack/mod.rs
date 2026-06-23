@@ -125,7 +125,10 @@ impl SlackClient {
             .connect_timeout(Duration::from_secs(10))
             .build()
             .map_err(|_| SlackError::Network)?;
-        Ok(Self { http, base: base.into() })
+        Ok(Self {
+            http,
+            base: base.into(),
+        })
     }
 
     /// POST a Slack Web API method with form params; returns the parsed `ok:true`
@@ -238,7 +241,10 @@ mod tests {
 
     #[test]
     fn status_5xx_is_server() {
-        assert!(matches!(interpret_status(503, None), Some(SlackError::Server)));
+        assert!(matches!(
+            interpret_status(503, None),
+            Some(SlackError::Server)
+        ));
     }
 
     #[test]
@@ -249,7 +255,8 @@ mod tests {
     #[test]
     fn provider_supplies_bearer_and_cookie() {
         use crate::secrets::fake::FakeSecretStore;
-        let store: std::sync::Arc<dyn SecretStore> = std::sync::Arc::new(FakeSecretStore::default());
+        let store: std::sync::Arc<dyn SecretStore> =
+            std::sync::Arc::new(FakeSecretStore::default());
         store.set("slack_user_token", "xoxc-1").unwrap();
         store.set("slack_cookie_d", "xoxd-9").unwrap();
         let p = PersonalTokenProvider::new(store.clone(), "slack_user_token", "slack_cookie_d");
@@ -261,7 +268,8 @@ mod tests {
     #[test]
     fn provider_cookie_none_when_absent() {
         use crate::secrets::fake::FakeSecretStore;
-        let store: std::sync::Arc<dyn SecretStore> = std::sync::Arc::new(FakeSecretStore::default());
+        let store: std::sync::Arc<dyn SecretStore> =
+            std::sync::Arc::new(FakeSecretStore::default());
         store.set("slack_user_token", "xoxp-1").unwrap();
         let p = PersonalTokenProvider::new(store, "slack_user_token", "slack_cookie_d");
         let a = p.auth().unwrap().unwrap();
@@ -273,9 +281,15 @@ mod tests {
         // A throwaway server that echoes whether a Cookie header arrived.
         let client = SlackClient::with_base("http://127.0.0.1:0/api").unwrap();
         // Pure check instead of a live server: build the auth and assert the helper.
-        let auth = SlackAuth { authorization: "Bearer xoxc-1".into(), cookie: Some("xoxd-9".into()) };
+        let auth = SlackAuth {
+            authorization: "Bearer xoxc-1".into(),
+            cookie: Some("xoxd-9".into()),
+        };
         assert_eq!(cookie_header(&auth).as_deref(), Some("d=xoxd-9"));
-        let none = SlackAuth { authorization: "Bearer xoxp".into(), cookie: None };
+        let none = SlackAuth {
+            authorization: "Bearer xoxp".into(),
+            cookie: None,
+        };
         assert_eq!(cookie_header(&none), None);
         let _ = client; // constructed to prove with_base still compiles
     }

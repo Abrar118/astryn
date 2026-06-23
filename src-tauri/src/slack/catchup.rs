@@ -58,10 +58,10 @@ pub struct ParsedMessage {
     pub latest_reply: Option<String>,
 }
 
-// Reserved for the iteration-2 users.info name/avatar enrichment (spec §11).
-#[allow(dead_code)]
+/// A resolved Slack user (from `users.info`), used to fill message author names/avatars.
 #[derive(Debug, Clone)]
 pub struct ParsedUser {
+    #[allow(dead_code)] // parsed for completeness; consumers key by the requested user id
     pub id: String,
     pub name: Option<String>,
     pub avatar: Option<String>,
@@ -157,8 +157,7 @@ pub fn parse_messages(v: &Value) -> Vec<ParsedMessage> {
         .unwrap_or_default()
 }
 
-// Reserved for the iteration-2 users.info name/avatar enrichment (spec §11).
-#[allow(dead_code)]
+/// Parse a `users.info` response into a resolved user (name/avatar).
 pub fn parse_user(v: &Value) -> Option<ParsedUser> {
     let u = v.get("user")?;
     let id = str_field(u, "id")?;

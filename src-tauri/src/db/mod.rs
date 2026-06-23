@@ -163,7 +163,12 @@ mod tests {
     #[tokio::test]
     async fn migration_creates_slack_tables() {
         let (_dir, pool) = temp_pool().await;
-        for table in ["slack_conversations", "slack_messages", "slack_users", "slack_sync_meta"] {
+        for table in [
+            "slack_conversations",
+            "slack_messages",
+            "slack_users",
+            "slack_sync_meta",
+        ] {
             let n: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table}"))
                 .fetch_one(&pool)
                 .await
