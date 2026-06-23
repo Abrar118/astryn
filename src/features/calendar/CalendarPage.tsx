@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
@@ -122,6 +122,13 @@ export function CalendarPage() {
   const { data: unscheduled } = useUnscheduled(filters);
   const { data: allIssues } = useIssues({});
 
+  // FullCalendar caches its size and only re-measures on window resize, so it
+  // won't reclaim space when the unscheduled rail collapses. Nudge it directly.
+  const calendarRef = useRef<FullCalendar>(null);
+  const handleRailLayout = useCallback(() => {
+    calendarRef.current?.getApi().updateSize();
+  }, []);
+
   // Cached full issues power the hover-card (calendar/unscheduled shapes lack
   // assignee/project/state names).
   const issuesById = useMemo(() => new Map((allIssues ?? []).map((i) => [i.id, i])), [allIssues]);
@@ -192,6 +199,7 @@ export function CalendarPage() {
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         <div className="min-h-0 min-w-0 flex-1 p-3 pb-20">
           <FullCalendar
+            ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             firstDay={0}
@@ -223,6 +231,7 @@ export function CalendarPage() {
           issues={unscheduled ?? []}
           onOpen={(id) => setParams({ issue: id })}
           onContextMenu={(e, id) => openMenu(e, id)}
+          onCollapseChange={handleRailLayout}
         />
       </div>
     </div>
