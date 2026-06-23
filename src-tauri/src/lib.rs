@@ -169,7 +169,11 @@ pub fn run() {
             commands::slack::set_slack_token,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,
-            commands::slack::test_slack_connection
+            commands::slack::test_slack_connection,
+            commands::slack::sync_slack_catchup,
+            commands::slack::get_slack_catchup,
+            commands::slack::get_slack_conversation_messages,
+            commands::slack::slack_deep_link
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
