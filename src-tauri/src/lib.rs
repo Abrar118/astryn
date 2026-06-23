@@ -168,7 +168,7 @@ pub fn run() {
             commands::github::list_github_prs,
             commands::github::get_github_contributions,
             commands::github::sync_github_contributions,
-            commands::slack::set_slack_token,
+            commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,
             commands::slack::test_slack_connection,

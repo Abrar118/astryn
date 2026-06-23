@@ -11,6 +11,7 @@ use crate::slack::{SlackCredentialProvider, SlackError};
 use crate::secrets::SecretStore;
 
 use super::super::SLACK_TOKEN_ACCOUNT;
+use super::super::SLACK_COOKIE_ACCOUNT;
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(tag = "state", rename_all = "snake_case")]
@@ -36,21 +37,28 @@ pub fn compute_slack_status(has_token: bool, identity: Option<sdb::SlackIdentity
     }
 }
 
-pub async fn set_slack_token_logic(
+pub async fn set_slack_credentials_logic(
     store: Arc<dyn SecretStore>,
     pool: &SqlitePool,
     generation: &AtomicU64,
     token: String,
+    cookie: Option<String>,
 ) -> Result<(), CmdError> {
-    // Wipe + bump BEFORE the keyring write so a keyring failure leaves an empty
-    // cache (safe), never the new token paired with the prior account's data.
+    // Wipe + bump BEFORE the keyring writes (fail-safe ordering).
     sdb::wipe_slack_cache(pool).await.map_err(|_| CmdError::Internal)?;
     generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
-    tokio::task::spawn_blocking(move || s.set(SLACK_TOKEN_ACCOUNT, &token))
-        .await
-        .map_err(|_| CmdError::Internal)?
-        .map_err(|_| CmdError::SecretStore)?;
+    tokio::task::spawn_blocking(move || {
+        s.set(SLACK_TOKEN_ACCOUNT, &token)?;
+        match cookie {
+            Some(c) => s.set(SLACK_COOKIE_ACCOUNT, &c)?,
+            None => s.delete(SLACK_COOKIE_ACCOUNT)?,
+        }
+        Ok::<(), crate::secrets::SecretError>(())
+    })
+    .await
+    .map_err(|_| CmdError::Internal)?
+    .map_err(|_| CmdError::SecretStore)?;
     Ok(())
 }
 
@@ -62,10 +70,14 @@ pub async fn clear_slack_token_logic(
     sdb::wipe_slack_cache(pool).await.map_err(|_| CmdError::Internal)?;
     generation.fetch_add(1, Ordering::SeqCst);
     let s = store.clone();
-    tokio::task::spawn_blocking(move || s.delete(SLACK_TOKEN_ACCOUNT))
-        .await
-        .map_err(|_| CmdError::Internal)?
-        .map_err(|_| CmdError::SecretStore)?;
+    tokio::task::spawn_blocking(move || {
+        s.delete(SLACK_TOKEN_ACCOUNT)?;
+        s.delete(SLACK_COOKIE_ACCOUNT)?;
+        Ok::<(), crate::secrets::SecretError>(())
+    })
+    .await
+    .map_err(|_| CmdError::Internal)?
+    .map_err(|_| CmdError::SecretStore)?;
     Ok(())
 }
 
@@ -138,9 +150,20 @@ async fn fetch_auth_test(client: &crate::slack::SlackClient, auth: crate::slack:
 }
 
 #[tauri::command]
-pub async fn set_slack_token(state: State<'_, AppState>, token: String) -> Result<(), CmdError> {
+pub async fn set_slack_credentials(
+    state: State<'_, AppState>,
+    token: String,
+    cookie: Option<String>,
+) -> Result<(), CmdError> {
     let _g = state.slack_lock.lock().await;
-    set_slack_token_logic(state.secret_store.clone(), &state.pool, &state.slack_generation, token).await
+    set_slack_credentials_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.slack_generation,
+        token,
+        cookie,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -530,7 +553,7 @@ mod tests {
         crate::db::slack::save_slack_identity(&pool, "old", "T", "u", None).await.unwrap();
         let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
         let gen = AtomicU64::new(0);
-        set_slack_token_logic(store.clone(), &pool, &gen, "xoxp-new".into()).await.unwrap();
+        set_slack_credentials_logic(store.clone(), &pool, &gen, "xoxp-new".into(), None).await.unwrap();
         assert_eq!(crate::db::slack::load_slack_identity(&pool).await.unwrap(), None);
         assert_eq!(gen.load(Ordering::SeqCst), 1);
         assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), Some("xoxp-new".into()));
@@ -653,5 +676,39 @@ mod tests {
         let (app, web) = slack_deep_link_logic(&id, "C1", Some("123.456"));
         assert_eq!(app, "slack://channel?team=T1&id=C1&message=123.456");
         assert_eq!(web, "https://acme.slack.com/archives/C1/p123456");
+    }
+
+    #[tokio::test]
+    async fn set_credentials_stores_token_and_cookie() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        let gen = AtomicU64::new(0);
+        set_slack_credentials_logic(store.clone(), &pool, &gen, "xoxc-1".into(), Some("xoxd-9".into()))
+            .await
+            .unwrap();
+        assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), Some("xoxc-1".into()));
+        assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), Some("xoxd-9".into()));
+    }
+
+    #[tokio::test]
+    async fn set_credentials_without_cookie_clears_stale_cookie() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(SLACK_COOKIE_ACCOUNT, "xoxd-old").unwrap();
+        let gen = AtomicU64::new(0);
+        set_slack_credentials_logic(store.clone(), &pool, &gen, "xoxp-1".into(), None).await.unwrap();
+        assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn clear_deletes_both_secrets() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(SLACK_TOKEN_ACCOUNT, "xoxc-1").unwrap();
+        store.set(SLACK_COOKIE_ACCOUNT, "xoxd-9").unwrap();
+        let gen = AtomicU64::new(0);
+        clear_slack_token_logic(store.clone(), &pool, &gen).await.unwrap();
+        assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), None);
+        assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), None);
     }
 }
