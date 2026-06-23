@@ -133,16 +133,33 @@ Phase 1 uses a **Linear personal API key** (user generates it at Linear → Sett
 - Endpoint: `https://api.linear.app/graphql`.
 - `[EXT]` OAuth2 flow for multi-account later. Don't build it now, but keep the auth module behind a trait/interface so a second provider can slot in.
 
-### Slack `[CHOICE: user token]`
+### Slack `[CHOICE: session-token auto-extraction (macOS); xoxp manual fallback]`
 
-Phase 2 iteration 1 uses a **Slack user token** (`xoxp-…` or a classic user token with the required scopes — not a bot token, because bot tokens cannot read DMs the user is in). The user generates it via a Slack app's OAuth install or by using the legacy token page; they paste it into Settings once.
+Phase 2 iteration 1 uses **two complementary auth modes**:
 
-- Store the token in the OS keychain (account `slack_user_token`, same service name `com.orion.astryn`).
-- Send it as `Authorization: Bearer <token>` on all Slack Web API calls.
-- Required read scopes: `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`, `users:read` (optional; used for the iteration-2 name/avatar enrichment), `team:read`.
-- `SlackCredentialProvider` is the auth seam (mirrors `LinearCredentialProvider` / `GithubCredentialProvider`): it reads the token from `SecretStore` and surfaces it to `SlackClient`. This is the OAuth-later seam — iteration 2 can swap the implementation without changing call sites. `[EXT]` Full Slack OAuth2 flow; multi-workspace support.
-- The token **never** reaches the webview, is never persisted in SQLite or logs, and Settings clears the input immediately after saving — the same rules as §4 Linear / GitHub.
-- Optional — the app degrades gracefully if no token is set (the Slack dock entry shows a "Connect Slack" prompt).
+**Primary — session-token (xoxc/xoxd) auto-extraction (macOS)** `[REQ]`
+
+On macOS the app can extract credentials automatically from the locally installed Slack desktop app without any manual token entry:
+
+- **`xoxc`** — the session token, stored in Slack's Chromium-based local storage (LevelDB files under `~/Library/Application Support/Slack/Local Storage/leveldb/`). The `slack/extract.rs` module scans `.ldb`/`.log` files for the first `xoxc-…` match.
+- **`xoxd`** — the `d` session cookie, stored encrypted in `~/Library/Application Support/Slack/Cookies` (a Chromium SQLite DB). The cookie is AES-128-CBC decrypted using the "Slack Safe Storage" key from the macOS login keychain (PBKDF2-HMAC-SHA1, salt `saltysalt`, 1003 iterations, 16-byte key, IV = 16×`0x20`).
+- Both values are stored in the OS keychain: `xoxc` under account `slack_user_token`, `xoxd` under account `slack_cookie_d` (same service `com.orion.astryn`).
+- All Slack Web API calls send **both**: `Authorization: Bearer <xoxc>` header **and** `Cookie: d=<xoxd>` header (required by the internal API that underpins the desktop app; the `d` cookie carries the session context without which the bearer token is rejected).
+- **`SlackAuth { authorization, cookie }`** is the credential struct passed from `SlackCredentialProvider` to `SlackClient`; `PersonalTokenProvider::new(store, token_acct, cookie_acct)` is the concrete provider.
+- **Self-healing rotation:** the `detect_slack_credentials` Tauri command (called from the Settings "Detect from Slack app" button, and can be re-invoked on rotation) re-extracts and overwrites the stored values. If a Slack API call returns HTTP 401, the app surfaces a "reconnect" toast rather than silently failing.
+- **ToS/employer caveat** `[REQ]`: auto-extraction reads files the user owns on their local machine but Slack's Terms of Service do not officially support this access pattern — this is a power-user tool for a personal desktop client. Users should be aware their employer's Slack policies may also apply. The caveat is noted here; the app does not gate or warn at runtime.
+
+**Alternate — `xoxp` manual token (installable-workspace mode)** `[CHOICE]`
+
+If the user has an installable Slack app and an `xoxp-…` user token with the required scopes, they can paste it into Settings as the `slack_user_token` (no `slack_cookie_d` required). In this mode the `d` cookie field is empty and the client sends only `Authorization: Bearer <xoxp>`. Required scopes: `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`, `users:read` (optional; name/avatar enrichment), `team:read`.
+
+**Common rules (both modes)**
+
+- `SlackCredentialProvider` is the auth seam (mirrors `LinearCredentialProvider` / `GithubCredentialProvider`): it reads credentials from `SecretStore` and surfaces them to `SlackClient`. This is the OAuth-later seam — a future implementation can swap in without changing call sites. `[EXT]` Full Slack OAuth2 flow; multi-workspace support.
+- Credentials **never** reach the webview, are never persisted in SQLite or logs, and Settings clears inputs immediately after saving — the same rules as §4 Linear / GitHub.
+- The app degrades gracefully if no credentials are set (the Slack dock entry shows a "Connect Slack" prompt).
+
+`[EXT]` Windows/Linux auto-extraction (those platforms use a different key-derivation path); huddles (live socket). The manual `xoxp` fallback covers Windows/Linux users today.
 
 ### GitHub `[CHOICE: classic PAT]`
 
@@ -335,6 +352,8 @@ CREATE TABLE settings (
 
 `[REQ]` Secrets are **never** stored in these tables. Keychain only.
 
+> **Slack keychain accounts (no new tables):** the session-token auth uses two keychain entries under service `com.orion.astryn`: `slack_user_token` (the `xoxc-…` session token) and `slack_cookie_d` (the AES-decrypted `xoxd-…` cookie value). Neither is cached in SQLite; the existing `slack_sync_meta` / `slack_conversations` / `slack_messages` / `slack_users` tables cover sync state only.
+
 ---
 
 ## 6. Sync strategy
@@ -517,7 +536,7 @@ src-tauri/
     secrets/         # keychain wrapper (trait-backed for future providers)
     activity/        # history->activity transformer
     generators/      # This Week agenda builder (get_week_agenda)
-    slack/           # Slack Web API client, catch-up sync (replace_catchup), parsers, credential provider
+    slack/           # Slack Web API client, catch-up sync (replace_catchup), parsers, credential provider; extract.rs (macOS auto-extraction: LevelDB xoxc scan + Chromium cookie decrypt)
   migrations/
 src/                 # React frontend
   features/
@@ -543,6 +562,7 @@ src/                 # React frontend
 - **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 - **M6 — Doc links (F9).** Not started.
 - **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackPage` with stacked sections (Mentions / DMs / Threads / Channels) rendered via a `Section` component and a `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.
+- **Slack session-token auth (local-app auto-extraction, macOS). ✅ Done.** `SlackAuth { authorization, cookie }` credential struct + `PersonalTokenProvider` with two keychain accounts (`slack_user_token` / `slack_cookie_d`); `slack/extract.rs` (LevelDB `xoxc` scan + Chromium AES-128-CBC `xoxd` cookie decryption using "Slack Safe Storage" keychain key); `detect_slack_credentials` Tauri command with self-healing rotation; Settings "Detect from Slack app" button; dual-header transport (`Authorization: Bearer <xoxc>` + `Cookie: d=<xoxd>`). macOS real-app smoke (live cookie decryption + xoxc transport) deferred to user.
 
 Each milestone must be independently runnable and demoable. Don't start a milestone until the previous one builds and runs.
 
@@ -577,4 +597,4 @@ Resolved during build:
 
 ## 14. Non-goals restated `[EXT]`
 
-The following remain out of scope: **Slack huddles** (live socket), **reply/compose** in Slack from within Astryn, **mark-as-read** write-back, **multi-workspace** Slack, **Slack/Discord OAuth** (the Phase 2 iter 1 flow uses a user-pasted token), **Discord integration**, **multi-user / team sharing**, **OAuth-based Linear auth**, and **local-LLM polish** (the `polish` hook was removed in M3). Leave clean seams (provider trait for auth, source-agnostic `activity` table, `SlackCredentialProvider` for a future OAuth swap) but implement none of the above yet. **LLM integration is a future phase** once the Linear and Slack builds stabilize.
+The following remain out of scope: **Slack huddles** (live socket), **reply/compose** in Slack from within Astryn, **mark-as-read** write-back, **multi-workspace** Slack, **Slack/Discord OAuth** (the Phase 2 iter 1 flow uses session-token auto-extraction on macOS or a user-pasted `xoxp` token), **Windows/Linux Slack auto-extraction** (different DPAPI/libsecret key-derivation path; the manual `xoxp` fallback covers these platforms today), **Discord integration**, **multi-user / team sharing**, **OAuth-based Linear auth**, and **local-LLM polish** (the `polish` hook was removed in M3). Leave clean seams (provider trait for auth, source-agnostic `activity` table, `SlackCredentialProvider` for a future OAuth swap) but implement none of the above yet. **LLM integration is a future phase** once the Linear and Slack builds stabilize.
