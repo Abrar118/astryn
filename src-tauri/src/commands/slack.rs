@@ -177,14 +177,111 @@ pub async fn get_slack_status(state: State<'_, AppState>) -> Result<SlackStatus,
     get_slack_status_logic(state.secret_store.clone(), &state.pool).await
 }
 
+fn map_extract_err(_e: crate::slack::extract::ExtractError) -> CmdError {
+    // Sanitized: any extraction failure reads as "not configured / reconnect".
+    CmdError::SlackNotConfigured
+}
+
+pub async fn detect_slack_credentials_logic<E, EFut, F, FFut>(
+    store: Arc<dyn SecretStore>,
+    pool: &SqlitePool,
+    generation: &AtomicU64,
+    extract: E,
+    fetch_auth: F,
+) -> Result<SlackStatus, CmdError>
+where
+    E: FnOnce() -> EFut,
+    EFut: std::future::Future<Output = Result<crate::slack::extract::ExtractedCreds, crate::slack::extract::ExtractError>>,
+    F: FnOnce(crate::slack::SlackAuth) -> FFut,
+    FFut: std::future::Future<Output = Result<AuthTest, SlackError>>,
+{
+    let creds = extract().await.map_err(map_extract_err)?;
+    set_slack_credentials_logic(store, pool, generation, creds.xoxc.clone(), Some(creds.xoxd.clone())).await?;
+    let auth = crate::slack::SlackAuth { authorization: format!("Bearer {}", creds.xoxc), cookie: Some(creds.xoxd) };
+    let a = fetch_auth(auth).await.map_err(map_slack_err)?;
+    let workspace_name = workspace_name_from_url(&a.url);
+    sdb::save_slack_identity(pool, &a.user_id, &a.team_id, &a.url, workspace_name.as_deref())
+        .await.map_err(|_| CmdError::Internal)?;
+    Ok(SlackStatus::Connected { workspace_name, user_name: a.user_id })
+}
+
+/// Update the two Slack secrets in place — used by self-healing rotation. The
+/// account is unchanged (same user, refreshed session), so this does NOT wipe
+/// the cache or bump the generation.
+pub async fn store_slack_secrets_logic(
+    store: Arc<dyn SecretStore>,
+    token: String,
+    cookie: Option<String>,
+) -> Result<(), CmdError> {
+    tokio::task::spawn_blocking(move || {
+        store.set(SLACK_TOKEN_ACCOUNT, &token)?;
+        if let Some(c) = cookie {
+            store.set(SLACK_COOKIE_ACCOUNT, &c)?;
+        }
+        Ok::<(), crate::secrets::SecretError>(())
+    })
+    .await
+    .map_err(|_| CmdError::Internal)?
+    .map_err(|_| CmdError::SecretStore)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn detect_slack_credentials(state: State<'_, AppState>) -> Result<SlackStatus, CmdError> {
+    let _g = state.slack_lock.lock().await;
+    let client = state.slack.clone();
+    detect_slack_credentials_logic(
+        state.secret_store.clone(),
+        &state.pool,
+        &state.slack_generation,
+        || async { crate::slack::extract::extract_credentials().await },
+        move |auth| async move { fetch_auth_test(&client, auth).await },
+    )
+    .await
+}
+
+async fn redetect_secrets(state: &AppState) -> Result<(), CmdError> {
+    let extracted = crate::slack::extract::extract_credentials().await.map_err(map_extract_err)?;
+    store_slack_secrets_logic(state.secret_store.clone(), extracted.xoxc, Some(extracted.xoxd)).await
+}
+
+async fn run_sync(state: &AppState) -> Result<SlackSyncSummary, CmdError> {
+    let identity = sdb::load_slack_identity(&state.pool).await.map_err(|_| CmdError::Internal)?;
+    let viewer_id = identity.map(|i| i.user_id).ok_or(CmdError::SlackNotConfigured)?;
+    let client_l = state.slack.clone();
+    let client_c = state.slack.clone();
+    sync_slack_catchup_logic(
+        state.slack_credentials.clone(), &state.pool, &state.slack_generation, viewer_id, now_iso_slack(),
+        move |auth| { let c = client_l.clone(); async move { list_member_conversations(&c, auth).await } },
+        move |auth, conv_id, _lr| { let c = client_c.clone(); async move { fetch_conversation_data(&c, auth, conv_id).await } },
+    ).await
+}
+
+async fn run_test(state: &AppState) -> Result<SlackStatus, CmdError> {
+    let client = state.slack.clone();
+    test_slack_connection_logic(
+        state.slack_credentials.clone(), &state.pool,
+        move |auth| async move { fetch_auth_test(&client, auth).await },
+    ).await
+}
+
+#[tauri::command]
+pub async fn sync_slack_catchup(state: State<'_, AppState>) -> Result<SlackSyncSummary, CmdError> {
+    let _g = state.slack_lock.lock().await;
+    match run_sync(&state).await {
+        // map_slack_err maps SlackError::Auth -> SlackNotConfigured, so this is the rotation signal.
+        Err(CmdError::SlackNotConfigured) => { redetect_secrets(&state).await?; run_sync(&state).await }
+        other => other,
+    }
+}
+
 #[tauri::command]
 pub async fn test_slack_connection(state: State<'_, AppState>) -> Result<SlackStatus, CmdError> {
     let _g = state.slack_lock.lock().await;
-    let client = state.slack.clone();
-    test_slack_connection_logic(state.slack_credentials.clone(), &state.pool, move |auth| async move {
-        fetch_auth_test(&client, auth).await
-    })
-    .await
+    match run_test(&state).await {
+        Err(CmdError::SlackNotConfigured) => { redetect_secrets(&state).await?; run_test(&state).await }
+        other => other,
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -456,25 +553,6 @@ async fn fetch_conversation_data(
 }
 
 #[tauri::command]
-pub async fn sync_slack_catchup(state: State<'_, AppState>) -> Result<SlackSyncSummary, CmdError> {
-    let _g = state.slack_lock.lock().await;
-    let identity = sdb::load_slack_identity(&state.pool).await.map_err(|_| CmdError::Internal)?;
-    let viewer_id = identity.map(|i| i.user_id).ok_or(CmdError::SlackNotConfigured)?;
-    let client_l = state.slack.clone();
-    let client_c = state.slack.clone();
-    sync_slack_catchup_logic(
-        state.slack_credentials.clone(),
-        &state.pool,
-        &state.slack_generation,
-        viewer_id,
-        now_iso_slack(),
-        move |auth| { let c = client_l.clone(); async move { list_member_conversations(&c, auth).await } },
-        move |auth, conv_id, _last_read| { let c = client_c.clone(); async move { fetch_conversation_data(&c, auth, conv_id).await } },
-    )
-    .await
-}
-
-#[tauri::command]
 pub async fn get_slack_catchup(state: State<'_, AppState>) -> Result<SlackCatchup, CmdError> {
     get_slack_catchup_logic(&state.pool).await
 }
@@ -710,5 +788,51 @@ mod tests {
         clear_slack_token_logic(store.clone(), &pool, &gen).await.unwrap();
         assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), None);
         assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), None);
+    }
+
+    use crate::slack::extract::{ExtractError, ExtractedCreds};
+
+    #[tokio::test]
+    async fn detect_stores_creds_and_verifies_identity() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        let gen = AtomicU64::new(0);
+        let status = detect_slack_credentials_logic(
+            store.clone(), &pool, &gen,
+            || async { Ok(ExtractedCreds { xoxc: "xoxc-1".into(), xoxd: "xoxd-9".into(), workspace_hint: None }) },
+            |_auth| async { Ok(AuthTest { user_id: "U1".into(), team_id: "T1".into(), url: "https://acme.slack.com/".into(), user: "x".into() }) },
+        ).await.unwrap();
+        assert!(matches!(status, SlackStatus::Connected { .. }));
+        assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), Some("xoxc-1".into()));
+        assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), Some("xoxd-9".into()));
+    }
+
+    #[tokio::test]
+    async fn detect_surfaces_extract_failure() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        let gen = AtomicU64::new(0);
+        let r = detect_slack_credentials_logic(
+            store, &pool, &gen,
+            || async { Err(ExtractError::NotInstalled) },
+            |_auth| async { Ok(AuthTest { user_id: "U1".into(), team_id: "T1".into(), url: "u".into(), user: "x".into() }) },
+        ).await;
+        assert!(matches!(r, Err(CmdError::SlackNotConfigured)));
+    }
+
+    #[tokio::test]
+    async fn store_secrets_updates_both_without_wiping_cache() {
+        let (_d, pool) = pool().await;
+        // Seed a cached conversation; rotation must NOT clear it.
+        crate::db::slack::replace_catchup(&pool, &[crate::db::slack::ConversationInsert {
+            id: "C1".into(), kind: "channel".into(), name: Some("eng".into()), partner_user_id: None,
+            unread_count: 1, has_mention: false, unread_threads: 0, last_read_ts: None, latest_ts: Some("2.0".into()), latest_snippet: None,
+        }], &[], &[], "now").await.unwrap();
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store_slack_secrets_logic(store.clone(), "xoxc-2".into(), Some("xoxd-2".into())).await.unwrap();
+        assert_eq!(store.get(SLACK_TOKEN_ACCOUNT).unwrap(), Some("xoxc-2".into()));
+        assert_eq!(store.get(SLACK_COOKIE_ACCOUNT).unwrap(), Some("xoxd-2".into()));
+        // Cache survived (rotation is not an account switch).
+        assert_eq!(get_slack_catchup_logic(&pool).await.unwrap().conversations.len(), 1);
     }
 }
