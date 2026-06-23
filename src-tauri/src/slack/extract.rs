@@ -43,11 +43,17 @@ pub fn scan_xoxc(bytes: &[u8]) -> Option<String> {
     re.find(&text).map(|m| m.as_str().to_string())
 }
 
+/// Chromium cookie key: PBKDF2-HMAC-SHA1(password, "saltysalt", iters, 16).
+/// Chromium uses 1003 iterations on macOS and 1 on Linux.
+pub fn derive_key_iters(password: &[u8], iters: u32) -> [u8; 16] {
+    let mut key = [0u8; 16];
+    pbkdf2_hmac::<Sha1>(password, b"saltysalt", iters, &mut key);
+    key
+}
+
 /// macOS Chromium key: PBKDF2-HMAC-SHA1(password, "saltysalt", 1003, 16).
 pub fn derive_key(password: &[u8]) -> [u8; 16] {
-    let mut key = [0u8; 16];
-    pbkdf2_hmac::<Sha1>(password, b"saltysalt", 1003, &mut key);
-    key
+    derive_key_iters(password, 1003)
 }
 
 type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
@@ -102,7 +108,29 @@ pub async fn read_d_cookie_blob(db_path: &std::path::Path) -> Result<Vec<u8>, Ex
     row.map(|r| r.0).ok_or(ExtractError::CookieUnavailable)
 }
 
-#[cfg(not(target_os = "macos"))]
+/// Scan a Slack data dir's `Local Storage/leveldb` for the first `xoxc-…` token.
+/// Shared by the macOS and Linux extractors (the leveldb layout is identical).
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+async fn scan_dir_for_xoxc(dir: &std::path::Path) -> Result<String, ExtractError> {
+    let ls = dir.join("Local Storage/leveldb");
+    let mut rd = tokio::fs::read_dir(&ls)
+        .await
+        .map_err(|_| ExtractError::TokenUnavailable)?;
+    while let Ok(Some(ent)) = rd.next_entry().await {
+        let p = ent.path();
+        let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
+        if ext == "ldb" || ext == "log" {
+            if let Ok(bytes) = tokio::fs::read(&p).await {
+                if let Some(t) = scan_xoxc(&bytes) {
+                    return Ok(t);
+                }
+            }
+        }
+    }
+    Err(ExtractError::TokenUnavailable)
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "linux")))]
 pub async fn extract_credentials() -> Result<ExtractedCreds, ExtractError> {
     Err(ExtractError::Unsupported)
 }
@@ -111,13 +139,38 @@ pub async fn extract_credentials() -> Result<ExtractedCreds, ExtractError> {
 mod macos {
     use super::*;
 
+    /// Candidate Slack data directories, checked in order: the direct-download
+    /// location first, then the sandboxed Mac App Store container (the MAS build
+    /// runs with `--user-data-dir` pointed at its `Containers/…` sandbox).
+    fn slack_dirs(home: &std::path::Path) -> Vec<std::path::PathBuf> {
+        vec![
+            home.join("Library/Application Support/Slack"),
+            home.join(
+                "Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack",
+            ),
+        ]
+    }
+
     fn slack_dir() -> Result<std::path::PathBuf, ExtractError> {
         let home = std::env::var("HOME").map_err(|_| ExtractError::NotInstalled)?;
-        let dir = std::path::Path::new(&home).join("Library/Application Support/Slack");
-        if dir.is_dir() {
-            Ok(dir)
-        } else {
-            Err(ExtractError::NotInstalled)
+        slack_dirs(std::path::Path::new(&home))
+            .into_iter()
+            .find(|d| d.is_dir())
+            .ok_or(ExtractError::NotInstalled)
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn slack_dirs_cover_direct_download_and_mac_app_store() {
+            let home = std::path::Path::new("/Users/x");
+            let dirs = slack_dirs(home);
+            assert_eq!(dirs[0], home.join("Library/Application Support/Slack"));
+            assert!(dirs.iter().any(|d| d.ends_with(
+                "Library/Containers/com.tinyspeck.slackmacgap/Data/Library/Application Support/Slack"
+            )));
         }
     }
 
@@ -143,24 +196,7 @@ mod macos {
         let dir = slack_dir()?;
 
         // xoxc: scan every leveldb .ldb/.log under Local Storage.
-        let ls = dir.join("Local Storage/leveldb");
-        let mut rd = tokio::fs::read_dir(&ls)
-            .await
-            .map_err(|_| ExtractError::TokenUnavailable)?;
-        let mut xoxc = None;
-        while let Ok(Some(ent)) = rd.next_entry().await {
-            let p = ent.path();
-            let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("");
-            if ext == "ldb" || ext == "log" {
-                if let Ok(bytes) = tokio::fs::read(&p).await {
-                    if let Some(t) = scan_xoxc(&bytes) {
-                        xoxc = Some(t);
-                        break;
-                    }
-                }
-            }
-        }
-        let xoxc = xoxc.ok_or(ExtractError::TokenUnavailable)?;
+        let xoxc = scan_dir_for_xoxc(&dir).await?;
 
         // xoxd: decrypt the d cookie.
         let encrypted = read_d_cookie_blob(&dir.join("Cookies")).await?;
@@ -181,6 +217,103 @@ mod macos {
 #[cfg(target_os = "macos")]
 pub async fn extract_credentials() -> Result<ExtractedCreds, ExtractError> {
     macos::extract().await
+}
+
+#[cfg(target_os = "linux")]
+mod linux {
+    use super::*;
+
+    /// Candidate Slack data dirs, checked in order: a direct `.deb` install, the
+    /// confined snap (Ubuntu's App Center default), then a flatpak.
+    fn slack_dirs(home: &std::path::Path) -> Vec<std::path::PathBuf> {
+        vec![
+            home.join(".config/Slack"),
+            home.join("snap/slack/current/.config/Slack"),
+            home.join("snap/slack/common/.config/Slack"),
+            home.join(".var/app/com.slack.Slack/config/Slack"),
+        ]
+    }
+
+    fn slack_dir() -> Result<std::path::PathBuf, ExtractError> {
+        let home = std::env::var("HOME").map_err(|_| ExtractError::NotInstalled)?;
+        slack_dirs(std::path::Path::new(&home))
+            .into_iter()
+            .find(|d| d.is_dir())
+            .ok_or(ExtractError::NotInstalled)
+    }
+
+    /// Chromium "Slack Safe Storage" password from the Secret Service (used only
+    /// for `v11` cookies), looked up via libsecret's `secret-tool`. Runs in
+    /// spawn_blocking. A missing `secret-tool` or entry yields CookieUnavailable.
+    fn safe_storage_password() -> Result<String, ExtractError> {
+        let out = std::process::Command::new("secret-tool")
+            .args(["lookup", "application", "Slack"])
+            .output()
+            .map_err(|_| ExtractError::CookieUnavailable)?;
+        if !out.status.success() {
+            return Err(ExtractError::CookieUnavailable);
+        }
+        let pw = String::from_utf8_lossy(&out.stdout)
+            .trim_end_matches('\n')
+            .to_string();
+        if pw.is_empty() {
+            Err(ExtractError::CookieUnavailable)
+        } else {
+            Ok(pw)
+        }
+    }
+
+    pub async fn extract() -> Result<ExtractedCreds, ExtractError> {
+        let dir = slack_dir()?;
+        let xoxc = scan_dir_for_xoxc(&dir).await?;
+
+        // xoxd: on Linux the key depends on the cookie's version prefix —
+        // `v10` uses the hardcoded "peanuts" password (basic store), `v11` uses
+        // the keyring password. Both derive with PBKDF2 iterations = 1.
+        let encrypted = read_d_cookie_blob(&dir.join("Cookies")).await?;
+        let key = if encrypted.len() < 3 {
+            return Err(ExtractError::CookieUnavailable);
+        } else if &encrypted[..3] == b"v10" {
+            derive_key_iters(b"peanuts", 1)
+        } else if &encrypted[..3] == b"v11" {
+            let pw = tokio::task::spawn_blocking(safe_storage_password)
+                .await
+                .map_err(|_| ExtractError::CookieUnavailable)??;
+            derive_key_iters(pw.as_bytes(), 1)
+        } else {
+            return Err(ExtractError::CookieUnavailable);
+        };
+        let xoxd = decrypt_cookie(&encrypted, &key)?;
+
+        Ok(ExtractedCreds {
+            xoxc,
+            xoxd,
+            workspace_hint: None,
+        })
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn slack_dirs_cover_deb_snap_and_flatpak() {
+            let home = std::path::Path::new("/home/x");
+            let dirs = slack_dirs(home);
+            assert_eq!(dirs[0], home.join(".config/Slack"));
+            assert!(dirs
+                .iter()
+                .any(|d| d.ends_with("snap/slack/current/.config/Slack")));
+            assert!(dirs
+                .iter()
+                .any(|d| d.ends_with(".var/app/com.slack.Slack/config/Slack")));
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub async fn extract_credentials() -> Result<ExtractedCreds, ExtractError> {
+    linux::extract().await
 }
 
 #[cfg(test)]
@@ -209,6 +342,22 @@ mod tests {
         let mut encrypted = b"v10".to_vec();
         encrypted.extend_from_slice(&ct);
         assert_eq!(decrypt_cookie(&encrypted, &key).unwrap(), "xoxd-secret");
+    }
+
+    #[test]
+    fn decrypt_round_trips_a_linux_v10_peanuts_cookie() {
+        // Linux basic-store cookie: PBKDF2 iters=1 over the hardcoded "peanuts".
+        let key = derive_key_iters(b"peanuts", 1);
+        let iv = [0x20u8; 16];
+        type Enc = cbc::Encryptor<aes::Aes128>;
+        let ct =
+            Enc::new(&key.into(), &iv.into()).encrypt_padded_vec_mut::<Pkcs7>(b"xoxd-linux-secret");
+        let mut encrypted = b"v10".to_vec();
+        encrypted.extend_from_slice(&ct);
+        assert_eq!(
+            decrypt_cookie(&encrypted, &key).unwrap(),
+            "xoxd-linux-secret"
+        );
     }
 
     #[test]
