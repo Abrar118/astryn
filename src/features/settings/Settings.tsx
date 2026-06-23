@@ -207,7 +207,9 @@ export function Settings() {
   };
 
   return (
-    <main className="mx-auto flex max-w-2xl flex-col gap-8 p-10">
+    <main className="h-full overflow-y-auto">
+      {/* pb-28 keeps the last card clear of the floating dock that overlaps the bottom */}
+      <div className="mx-auto flex max-w-2xl flex-col gap-8 px-10 pt-10 pb-28">
       <header className="flex items-center justify-between">
         <h1 className="text-lg font-semibold">Settings</h1>
       </header>
@@ -345,6 +347,7 @@ export function Settings() {
           )}
         </div>
       </Card>
+      </div>
     </main>
   );
 }
