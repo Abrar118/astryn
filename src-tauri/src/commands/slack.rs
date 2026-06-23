@@ -701,12 +701,20 @@ async fn fetch_conversation_data(
         .await?;
     let info = catchup::parse_conversation_info(&info_body);
 
+    // Only a real ts is a valid `oldest` bound. A never-read DM's last_read is the
+    // sentinel 0000000000.000000, which Slack rejects with `invalid_ts_oldest` —
+    // and that one error would otherwise abort the entire sync.
+    let oldest = info
+        .last_read
+        .as_deref()
+        .filter(|lr| catchup::is_real_ts(lr));
+
     let mut hist_params: Vec<(&str, &str)> = vec![
         ("channel", &conversation_id),
         ("limit", "100"),
         ("inclusive", "false"),
     ];
-    if let Some(lr) = &info.last_read {
+    if let Some(lr) = oldest {
         hist_params.push(("oldest", lr));
     }
     let hist_body = client
@@ -721,7 +729,7 @@ async fn fetch_conversation_data(
             ("ts", &parent.ts),
             ("limit", "100"),
         ];
-        if let Some(lr) = &info.last_read {
+        if let Some(lr) = oldest {
             rparams.push(("oldest", lr));
         }
         let rbody = client

@@ -218,6 +218,16 @@ pub fn ts_gt(a: &str, b: &str) -> bool {
     }
 }
 
+/// True if `ts` is a real Slack timestamp (non-zero seconds). A never-read DM
+/// reports `last_read` as the sentinel `0000000000.000000`, which Slack rejects
+/// as a `conversations.history` `oldest` bound (`invalid_ts_oldest`) — so a
+/// sentinel must never be used as a lower bound.
+pub fn is_real_ts(ts: &str) -> bool {
+    ts.split('.')
+        .next()
+        .is_some_and(|secs| secs.bytes().any(|b| b != b'0'))
+}
+
 /// Thread parents whose latest reply is newer than `last_read` (best-effort:
 /// the channel marker stands in for the unavailable per-thread read marker).
 pub fn thread_parents<'a>(
@@ -284,6 +294,14 @@ mod logic_tests {
         assert!(ts_gt("1623456789.000200", "1623456789.000100"));
         assert!(ts_gt("100.0", "99.0")); // lexical "100" < "99" but numeric 100 > 99
         assert!(!ts_gt("99.0", "100.0"));
+    }
+
+    #[test]
+    fn is_real_ts_rejects_never_read_sentinel() {
+        assert!(!is_real_ts("0000000000.000000")); // never-read DM marker
+        assert!(!is_real_ts("0"));
+        assert!(is_real_ts("1623456789.000200"));
+        assert!(is_real_ts("100.0"));
     }
 
     #[test]
