@@ -4,6 +4,7 @@ mod github;
 mod linear;
 mod link_preview;
 mod secrets;
+mod slack;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -12,10 +13,13 @@ use commands::AppState;
 use github::{GitHubClient, GitHubCredentialProvider, PatProvider};
 use linear::{LinearClient, LinearCredentialProvider, PersonalKeyProvider};
 use secrets::{KeyringSecretStore, SecretStore};
+use slack::{PersonalTokenProvider, SlackClient, SlackCredentialProvider};
 
 const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
+const SLACK_TOKEN_ACCOUNT: &str = "slack_user_token";
+const SLACK_COOKIE_ACCOUNT: &str = "slack_cookie_d";
 
 /// Build a macOS app menu mirroring the system default but WITHOUT the
 /// "Close Window" item, so Cmd+W is left for the webview (which closes the
@@ -84,6 +88,13 @@ pub fn run() {
             let github_credentials: Arc<dyn GitHubCredentialProvider> =
                 Arc::new(PatProvider::new(store.clone(), GITHUB_TOKEN_ACCOUNT));
             let github = GitHubClient::new().expect("failed to build GitHub HTTP client");
+            let slack_credentials: Arc<dyn SlackCredentialProvider> =
+                Arc::new(PersonalTokenProvider::new(
+                    store.clone(),
+                    SLACK_TOKEN_ACCOUNT,
+                    SLACK_COOKIE_ACCOUNT,
+                ));
+            let slack = SlackClient::new().expect("failed to build Slack HTTP client");
 
             app.manage(AppState {
                 pool,
@@ -104,6 +115,10 @@ pub fn run() {
                 github,
                 github_lock: tokio::sync::Mutex::new(()),
                 github_generation: std::sync::atomic::AtomicU64::new(0),
+                slack_credentials,
+                slack,
+                slack_lock: tokio::sync::Mutex::new(()),
+                slack_generation: std::sync::atomic::AtomicU64::new(0),
             });
 
             // macOS: replace the default app menu with one that OMITS "Close
@@ -155,7 +170,16 @@ pub fn run() {
             commands::github::sync_github_prs,
             commands::github::list_github_prs,
             commands::github::get_github_contributions,
-            commands::github::sync_github_contributions
+            commands::github::sync_github_contributions,
+            commands::slack::set_slack_credentials,
+            commands::slack::clear_slack_token,
+            commands::slack::get_slack_status,
+            commands::slack::detect_slack_credentials,
+            commands::slack::test_slack_connection,
+            commands::slack::sync_slack_catchup,
+            commands::slack::get_slack_catchup,
+            commands::slack::get_slack_conversation_messages,
+            commands::slack::slack_deep_link
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

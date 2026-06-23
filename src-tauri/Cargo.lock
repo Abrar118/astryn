@@ -81,13 +81,18 @@ checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 name = "astryn"
 version = "0.1.1"
 dependencies = [
+ "aes",
  "base64 0.22.1",
+ "cbc",
+ "hmac",
  "keyring",
+ "pbkdf2",
  "regex",
  "reqwest 0.12.28",
  "scraper",
  "serde",
  "serde_json",
+ "sha1",
  "sqlx",
  "tauri",
  "tauri-build",
@@ -2913,6 +2918,16 @@ name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+
+[[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest",
+ "hmac",
+]
 
 [[package]]
 name = "pem-rfc7468"

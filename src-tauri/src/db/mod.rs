@@ -4,6 +4,7 @@ use std::path::Path;
 
 pub mod github;
 pub mod issues;
+pub mod slack;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Fail loudly if the data directory cannot be created (no silent .ok()).
@@ -157,5 +158,22 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((prs.0, meta.0), (0, 0));
+    }
+
+    #[tokio::test]
+    async fn migration_creates_slack_tables() {
+        let (_dir, pool) = temp_pool().await;
+        for table in [
+            "slack_conversations",
+            "slack_messages",
+            "slack_users",
+            "slack_sync_meta",
+        ] {
+            let n: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap_or_else(|e| panic!("table {table} missing: {e}"));
+            assert_eq!(n.0, 0);
+        }
     }
 }
