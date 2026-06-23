@@ -1,10 +1,10 @@
 # Astryn — Design & Handoff Doc
 
-**Product:** Astryn — a local-first Linear power client (Phase 1 of a personal command center)
+**Product:** Astryn — a local-first Linear power client (Phase 1) and Slack catch-up board (Phase 2, iteration 1)
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) + dependency graph (M5/F8) shipped, with several workspace extensions beyond the original plan; F9 (doc links) remains.
-**Last updated:** 2026-06-22
+**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) + dependency graph (M5/F8) shipped, with several workspace extensions beyond the original plan; F9 (doc links) remains. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
+**Last updated:** 2026-06-23
 
 ---
 
@@ -45,7 +45,7 @@ When the Linear or GitHub API shape in this doc disagrees with reality, **the li
 
 ## 1. Goal & context
 
-**Astryn** is a local-first desktop app that acts as a **power client for Linear** — covering workflows Linear's own UI and existing third-party tools (LinCal, Morgen, Reclaim) don't. It is Phase 1 of a larger personal "command center" that will later add Slack and Discord activity tracking. **Those are not part of this build** (`[EXT]`), but the data layer should not assume Linear is the only source forever.
+**Astryn** is a local-first desktop app that acts as a **power client for Linear** — covering workflows Linear's own UI and existing third-party tools (LinCal, Morgen, Reclaim) don't. It is Phase 1 of a larger personal "command center". Phase 2 iteration 1 ships a read-only Slack catch-up board (unread mentions, DMs, threads, and channels for one workspace). The data layer does not assume Linear is the only source forever.
 
 The user already lives in Linear for issue tracking at work. The point of this app is a faster, richer, single-pane view: a real calendar, inline detail editing, a due-date "This Week" agenda, GitHub PR status tied to issues, and issue-graph visualization.
 
@@ -64,11 +64,16 @@ The user already lives in Linear for issue tracking at work. The point of this a
 7. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
 8. **Related docs & link storage** per issue (local-first).
 
+### In scope (Phase 2, iteration 1) `[REQ]`
+
+9. **Slack catch-up board** — read-only unread mentions/DMs/threads/channels for one workspace. Surfaces what needs attention since last session, with Linear issue chips on relevant messages and an "Open in Slack" deep link. Auth is a Slack user token (classic or xoxp); no OAuth server required.
+
 ### Out of scope `[EXT]`
 
-- Slack and Discord integration (Phase 2).
+- Slack huddles (live socket), reply/compose, mark-as-read, multi-workspace Slack, and Slack/Discord OAuth.
+- Discord integration.
 - Multi-user / team sharing. This is a single-user personal tool.
-- Posting agenda/standup text to Slack/Discord (Phase 2; the M3 "This Week" view is in-app only).
+- Posting agenda/standup text to Slack/Discord (the M3 "This Week" view is in-app only).
 - OAuth-based Linear auth (Phase 1 uses a personal API key — see §4).
 
 ---
@@ -127,6 +132,17 @@ Phase 1 uses a **Linear personal API key** (user generates it at Linear → Sett
 - Send it as the `Authorization` header (the raw key, no `Bearer` prefix — Linear personal keys are sent as-is; verify against current docs).
 - Endpoint: `https://api.linear.app/graphql`.
 - `[EXT]` OAuth2 flow for multi-account later. Don't build it now, but keep the auth module behind a trait/interface so a second provider can slot in.
+
+### Slack `[CHOICE: user token]`
+
+Phase 2 iteration 1 uses a **Slack user token** (`xoxp-…` or a classic user token with the required scopes — not a bot token, because bot tokens cannot read DMs the user is in). The user generates it via a Slack app's OAuth install or by using the legacy token page; they paste it into Settings once.
+
+- Store the token in the OS keychain (account `slack_user_token`, same service name `com.orion.astryn`).
+- Send it as `Authorization: Bearer <token>` on all Slack Web API calls.
+- Required read scopes: `channels:history`, `channels:read`, `groups:history`, `groups:read`, `im:history`, `im:read`, `mpim:history`, `mpim:read`, `users:read` (optional; used for the iteration-2 name/avatar enrichment), `team:read`.
+- `SlackCredentialProvider` is the auth seam (mirrors `LinearCredentialProvider` / `GithubCredentialProvider`): it reads the token from `SecretStore` and surfaces it to `SlackClient`. This is the OAuth-later seam — iteration 2 can swap the implementation without changing call sites. `[EXT]` Full Slack OAuth2 flow; multi-workspace support.
+- The token **never** reaches the webview, is never persisted in SQLite or logs, and Settings clears the input immediately after saving — the same rules as §4 Linear / GitHub.
+- Optional — the app degrades gracefully if no token is set (the Slack dock entry shows a "Connect Slack" prompt).
 
 ### GitHub `[CHOICE: classic PAT]`
 
@@ -260,6 +276,49 @@ CREATE TABLE github_sync_meta (
   last_synced_at TEXT
 );
 
+-- Slack catch-up board (Phase 2, iteration 1)
+CREATE TABLE slack_conversations (
+  id               TEXT PRIMARY KEY,     -- Slack channel/DM/group-DM id
+  kind             TEXT NOT NULL,        -- channel | dm | group_dm
+  name             TEXT,                 -- channel name or NULL for DMs
+  partner_user_id  TEXT,                 -- for DMs: the other user's id
+  is_member        INTEGER NOT NULL,     -- bool
+  last_read        TEXT,                 -- Slack ts watermark
+  unread_count     INTEGER,              -- display count from conversations.info
+  synced_at        TEXT NOT NULL
+);
+
+CREATE TABLE slack_messages (
+  ts              TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  user_id         TEXT,
+  user_name       TEXT,                  -- NULL until iteration-2 users.info enrichment
+  user_avatar     TEXT,                  -- NULL until iteration-2
+  text            TEXT NOT NULL,
+  thread_ts       TEXT,
+  reply_count     INTEGER,
+  latest_reply    TEXT,                  -- ts of the most recent reply
+  has_mention     INTEGER NOT NULL,      -- bool: viewer is @-mentioned or broadcast
+  linear_id       TEXT,                  -- normalized Linear identifier, e.g. "ENG-123"
+  synced_at       TEXT NOT NULL,
+  PRIMARY KEY (ts, conversation_id)
+);
+CREATE INDEX idx_slack_messages_conv ON slack_messages(conversation_id);
+CREATE INDEX idx_slack_messages_thread ON slack_messages(thread_ts);
+CREATE INDEX idx_slack_messages_linear ON slack_messages(linear_id);
+
+CREATE TABLE slack_users (
+  id        TEXT PRIMARY KEY,
+  name      TEXT,                        -- display_name preferred, real_name fallback
+  avatar    TEXT                         -- image_48 URL
+);
+
+-- Per-workspace sync metadata (workspace = one token for now)
+CREATE TABLE slack_sync_meta (
+  key        TEXT PRIMARY KEY,           -- e.g. "last_synced_at", "viewer_id", "workspace_name"
+  value      TEXT
+);
+
 -- Sync bookkeeping
 CREATE TABLE sync_cursors (
   source TEXT NOT NULL,               -- "linear_issues" | "github" | ...
@@ -285,6 +344,7 @@ CREATE TABLE settings (
 - **Trigger:** manual "refresh" button + a configurable interval poll (default 5 min) `[CHOICE]`. `[EXT]` Linear webhooks via a relay later — not now.
 - **GitHub sync:** background refresh on dashboard open + a 5-minute poll while open; each bucket is fetched to completion (cap 300, `sort:updated-desc`) and committed in one transaction (delete+insert+meta), so a partial/failed fetch never empties a bucket. Rate limits: parse GraphQL `errors` on HTTP 200, treat throttled 403 as rate-limited.
 - **Rate limits:** Linear uses complexity-based rate limiting — keep query depth modest, request only needed fields, and back off on `429`. Surface a non-blocking toast if throttled.
+- **Slack sync (Phase 2 iter 1):** triggered on catch-up board open and by a 5-minute background poll while the board is visible. The sync runs `replace_catchup`: paginate `conversations.list` → for each member conversation call `conversations.info` (unread count + `last_read`) → for conversations with unreads fetch `conversations.history` since `last_read` → assemble mentions/threads. The entire result is written in one SQLite transaction (delete-then-insert across all four Slack tables) so a partial/failed sync never leaves the board in a half-updated state. `auth.test` is called first; if it fails the board shows a "Connect Slack" prompt rather than an error. Rate limits: Slack Tier-2/3 methods; back off on 429 with the `Retry-After` header. Offline-first: the board reads the cache and shows data even without network.
 
 ---
 
@@ -457,6 +517,7 @@ src-tauri/
     secrets/         # keychain wrapper (trait-backed for future providers)
     activity/        # history->activity transformer
     generators/      # This Week agenda builder (get_week_agenda)
+    slack/           # Slack Web API client, catch-up sync (replace_catchup), parsers, credential provider
   migrations/
 src/                 # React frontend
   features/
@@ -481,6 +542,7 @@ src/                 # React frontend
 - **M4 — GitHub PR dashboard (F7). ✅ Done.** Standalone viewer-centric PR dashboard (four `@me` buckets, status/CI/conflict/review badges, the real GitHub contribution heatmap + metric tiles, the optional Linear chip); classic-PAT auth; offline-first per-bucket cache. See `docs/superpowers/specs/2026-06-22-github-pr-dashboard-design.md`.
 - **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 - **M6 — Doc links (F9).** Not started.
+- **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackBoard` with section tabs, `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.
 
 Each milestone must be independently runnable and demoable. Don't start a milestone until the previous one builds and runs.
 
@@ -515,4 +577,4 @@ Resolved during build:
 
 ## 14. Non-goals restated `[EXT]`
 
-Slack, Discord, multi-user, OAuth, and local-LLM polish are **not** in this build. Leave clean seams (provider trait for auth, source-agnostic activity table) but implement none of them now. **LLM integration is the immediate next phase** once this Linear build is done. Note: the no-op `polish` hook was removed in M3 when the text generators were replaced by the "This Week" structured view.
+The following remain out of scope: **Slack huddles** (live socket), **reply/compose** in Slack from within Astryn, **mark-as-read** write-back, **multi-workspace** Slack, **Slack/Discord OAuth** (the Phase 2 iter 1 flow uses a user-pasted token), **Discord integration**, **multi-user / team sharing**, **OAuth-based Linear auth**, and **local-LLM polish** (the `polish` hook was removed in M3). Leave clean seams (provider trait for auth, source-agnostic `activity` table, `SlackCredentialProvider` for a future OAuth swap) but implement none of the above yet. **LLM integration is a future phase** once the Linear and Slack builds stabilize.

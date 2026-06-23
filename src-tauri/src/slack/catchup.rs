@@ -24,6 +24,8 @@ pub struct AuthTest {
     pub user_id: String,
     pub team_id: String,
     pub url: String,
+    // Parsed from Slack but unused in v1; kept for logging/debug in future enrichment.
+    #[allow(dead_code)]
     pub user: String,
 }
 
@@ -40,6 +42,8 @@ pub struct ParsedConversation {
 pub struct ParsedInfo {
     pub last_read: Option<String>,
     pub unread_count_display: Option<i64>,
+    // Parsed from Slack but unused in v1; the sync computes its own latest_ts from messages.
+    #[allow(dead_code)]
     pub latest_ts: Option<String>,
 }
 
@@ -54,6 +58,8 @@ pub struct ParsedMessage {
     pub latest_reply: Option<String>,
 }
 
+// Reserved for the iteration-2 users.info name/avatar enrichment (spec §11).
+#[allow(dead_code)]
 #[derive(Debug, Clone)]
 pub struct ParsedUser {
     pub id: String,
@@ -75,8 +81,13 @@ pub fn parse_auth_test(v: &Value) -> Result<AuthTest, SlackError> {
 }
 
 /// Returns parsed member conversations plus the (non-empty) pagination cursor.
-pub fn parse_conversations(v: &Value) -> Result<(Vec<ParsedConversation>, Option<String>), SlackError> {
-    let channels = v.get("channels").and_then(|c| c.as_array()).ok_or(SlackError::Malformed)?;
+pub fn parse_conversations(
+    v: &Value,
+) -> Result<(Vec<ParsedConversation>, Option<String>), SlackError> {
+    let channels = v
+        .get("channels")
+        .and_then(|c| c.as_array())
+        .ok_or(SlackError::Malformed)?;
     let mut rows = Vec::with_capacity(channels.len());
     for c in channels {
         let id = match str_field(c, "id") {
@@ -96,7 +107,10 @@ pub fn parse_conversations(v: &Value) -> Result<(Vec<ParsedConversation>, Option
             id,
             kind,
             name: str_field(c, "name"),
-            is_member: c.get("is_member").and_then(|b| b.as_bool()).unwrap_or(is_im || is_mpim),
+            is_member: c
+                .get("is_member")
+                .and_then(|b| b.as_bool())
+                .unwrap_or(is_im || is_mpim),
             partner_user_id: if is_im { str_field(c, "user") } else { None },
         });
     }
@@ -114,7 +128,11 @@ pub fn parse_conversation_info(v: &Value) -> ParsedInfo {
     ParsedInfo {
         last_read: str_field(&ch, "last_read"),
         unread_count_display: ch.get("unread_count_display").and_then(|n| n.as_i64()),
-        latest_ts: ch.get("latest").and_then(|l| l.get("ts")).and_then(|t| t.as_str()).map(str::to_string),
+        latest_ts: ch
+            .get("latest")
+            .and_then(|l| l.get("ts"))
+            .and_then(|t| t.as_str())
+            .map(str::to_string),
     }
 }
 
@@ -139,12 +157,16 @@ pub fn parse_messages(v: &Value) -> Vec<ParsedMessage> {
         .unwrap_or_default()
 }
 
+// Reserved for the iteration-2 users.info name/avatar enrichment (spec §11).
+#[allow(dead_code)]
 pub fn parse_user(v: &Value) -> Option<ParsedUser> {
     let u = v.get("user")?;
     let id = str_field(u, "id")?;
     let profile = u.get("profile").cloned().unwrap_or(Value::Null);
     let display = str_field(&profile, "display_name").filter(|s| !s.is_empty());
-    let name = display.or_else(|| str_field(u, "real_name")).filter(|s| !s.is_empty());
+    let name = display
+        .or_else(|| str_field(u, "real_name"))
+        .filter(|s| !s.is_empty());
     Some(ParsedUser {
         id,
         name,
@@ -154,8 +176,15 @@ pub fn parse_user(v: &Value) -> Option<ParsedUser> {
 
 /// System/automated message subtypes that should never count as "unread for me".
 const SYSTEM_SUBTYPES: &[&str] = &[
-    "channel_join", "channel_leave", "channel_topic", "channel_purpose", "channel_name",
-    "channel_archive", "channel_unarchive", "group_join", "group_leave",
+    "channel_join",
+    "channel_leave",
+    "channel_topic",
+    "channel_purpose",
+    "channel_name",
+    "channel_archive",
+    "channel_unarchive",
+    "group_join",
+    "group_leave",
 ];
 
 pub fn is_system_message(m: &ParsedMessage) -> bool {
@@ -163,7 +192,10 @@ pub fn is_system_message(m: &ParsedMessage) -> bool {
 }
 
 /// Messages the viewer hasn't read and didn't author: drop self-authored + system.
-pub fn unread_messages<'a>(messages: &'a [ParsedMessage], viewer_id: &str) -> Vec<&'a ParsedMessage> {
+pub fn unread_messages<'a>(
+    messages: &'a [ParsedMessage],
+    viewer_id: &str,
+) -> Vec<&'a ParsedMessage> {
     messages
         .iter()
         .filter(|m| m.user_id.as_deref() != Some(viewer_id))
@@ -229,8 +261,8 @@ mod logic_tests {
     #[test]
     fn unread_excludes_self_and_system() {
         let msgs = vec![
-            msg("3.0", Some("U2"), "hello", None),       // kept
-            msg("4.0", Some("U1"), "my own msg", None),  // excluded: self
+            msg("3.0", Some("U2"), "hello", None),                  // kept
+            msg("4.0", Some("U1"), "my own msg", None),             // excluded: self
             msg("5.0", Some("U2"), "joined", Some("channel_join")), // excluded: system
         ];
         let unread = unread_messages(&msgs, "U1");
@@ -286,12 +318,18 @@ mod parse_tests {
     fn parses_auth_test() {
         let v = json!({"ok":true,"user_id":"U1","team_id":"T1","url":"https://w.slack.com/","user":"abrar"});
         let a = parse_auth_test(&v).unwrap();
-        assert_eq!((a.user_id.as_str(), a.team_id.as_str(), a.user.as_str()), ("U1", "T1", "abrar"));
+        assert_eq!(
+            (a.user_id.as_str(), a.team_id.as_str(), a.user.as_str()),
+            ("U1", "T1", "abrar")
+        );
     }
 
     #[test]
     fn parse_auth_test_missing_fields_is_malformed() {
-        assert!(matches!(parse_auth_test(&json!({"ok":true})), Err(SlackError::Malformed)));
+        assert!(matches!(
+            parse_auth_test(&json!({"ok":true})),
+            Err(SlackError::Malformed)
+        ));
     }
 
     #[test]
