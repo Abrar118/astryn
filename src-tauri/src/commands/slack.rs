@@ -199,8 +199,10 @@ pub async fn get_slack_status(state: State<'_, AppState>) -> Result<SlackStatus,
     get_slack_status_logic(state.secret_store.clone(), &state.pool).await
 }
 
-fn map_extract_err(_e: crate::slack::extract::ExtractError) -> CmdError {
-    // Sanitized: any extraction failure reads as "not configured / reconnect".
+fn map_extract_err(e: crate::slack::extract::ExtractError) -> CmdError {
+    // The UI message is sanitized to "not configured / reconnect"; the real
+    // reason is logged to stderr (visible in `tauri dev`) for diagnostics.
+    eprintln!("[astryn] Slack auto-detect failed: {e:?}");
     CmdError::SlackNotConfigured
 }
 
