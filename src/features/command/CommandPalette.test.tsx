@@ -7,7 +7,7 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn() }));
+const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn(), closeTab: vi.fn(), active: { id: "tab-1", view: "calendar" } }));
 const setParams = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
 vi.mock("@/lib/queries", () => ({
@@ -92,5 +92,15 @@ describe("CommandPalette navigation + shortcuts", () => {
     );
     fireEvent.keyDown(document, { key: "t", ctrlKey: true });
     expect(ws.addTab).toHaveBeenCalledWith("calendar");
+  });
+
+  it("Cmd/Ctrl+W closes the active tab (not the window)", () => {
+    render(
+      <CommandPaletteProvider>
+        <div>app</div>
+      </CommandPaletteProvider>,
+    );
+    fireEvent.keyDown(document, { key: "w", metaKey: true });
+    expect(ws.closeTab).toHaveBeenCalledWith("tab-1");
   });
 });

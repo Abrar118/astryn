@@ -315,6 +315,26 @@ export const createAttachmentLink = (
 ): Promise<DetailAttachment> =>
   invoke("create_attachment_link", { issueId, url, title: title ?? null });
 
+/** A file uploaded to Linear storage, ready to embed in markdown. */
+export type UploadedAsset = {
+  url: string;
+  filename: string;
+  contentType: string;
+  isImage: boolean;
+  size: number;
+};
+
+/** Outcome of a (possibly multi-file) upload: successful assets + a count of
+ *  selected files that were skipped (failed), for partial-success warnings. */
+export type UploadOutcome = {
+  assets: UploadedAsset[];
+  skipped: number;
+};
+
+/** Open the native file picker and upload the chosen files to Linear storage.
+ *  The picker runs in Rust; no path is passed from the webview. */
+export const uploadFiles = (): Promise<UploadOutcome> => invoke("upload_file");
+
 /** Rename an attachment. */
 export const updateAttachment = (id: string, title: string): Promise<DetailAttachment> =>
   invoke("update_attachment", { id, title });
@@ -378,6 +398,7 @@ export type GithubPr = {
   authorAvatar: string | null;
   commentCount: number | null;
   branch: string | null;
+  baseBranch: string | null;
   url: string | null;
   linearIdentifier: string | null;
   linearIssueId: string | null;

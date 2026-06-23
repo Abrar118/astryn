@@ -37,6 +37,18 @@ pub fn validate_linear_upload_url(value: &str) -> Result<reqwest::Url, LinearErr
     Ok(url)
 }
 
+/// Validate a presigned upload (PUT) destination before sending bytes: require
+/// https and reject embedded credentials. The host is intentionally NOT
+/// allowlisted — Linear hands back either `uploads.linear.app` or a direct S3
+/// URL — but the scheme/credential checks stop obviously-hostile targets.
+pub fn validate_upload_put_url(value: &str) -> Result<(), LinearError> {
+    let url = reqwest::Url::parse(value).map_err(|_| LinearError::Asset)?;
+    if url.scheme() != "https" || !url.username().is_empty() || url.password().is_some() {
+        return Err(LinearError::Asset);
+    }
+    Ok(())
+}
+
 pub fn image_data_url(content_type: &str, bytes: &[u8]) -> Result<String, LinearError> {
     let mime = content_type
         .split(';')
@@ -137,6 +149,7 @@ impl LinearCredentialProvider for PersonalKeyProvider {
 pub struct LinearClient {
     http: reqwest::Client,
     assets: reqwest::Client,
+    uploads: reqwest::Client,
     endpoint: String,
 }
 
@@ -158,11 +171,54 @@ impl LinearClient {
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .map_err(|_| LinearError::Network)?;
+        // Uploads (PUT to the storage URL) get a longer timeout for large files.
+        // Redirects are disabled: a presigned PUT must hit exactly the URL Linear
+        // returned, never a redirect target (which could relocate the bytes).
+        let uploads = reqwest::Client::builder()
+            .timeout(Duration::from_secs(120))
+            .connect_timeout(Duration::from_secs(10))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| LinearError::Network)?;
         Ok(Self {
             http,
             assets,
+            uploads,
             endpoint: endpoint.into(),
         })
+    }
+
+    /// PUT raw bytes to a Linear-provided upload URL, applying the headers the
+    /// `fileUpload` mutation returned (they carry Content-Type / Cache-Control /
+    /// signing). Adds Content-Type only if the headers didn't already include it.
+    pub async fn put_upload(
+        &self,
+        upload_url: &str,
+        headers: &[(String, String)],
+        content_type: &str,
+        bytes: Vec<u8>,
+    ) -> Result<(), LinearError> {
+        validate_upload_put_url(upload_url)?;
+        let mut req = self.uploads.put(upload_url);
+        let has_ct = headers
+            .iter()
+            .any(|(k, _)| k.eq_ignore_ascii_case("content-type"));
+        if !has_ct {
+            req = req.header("Content-Type", content_type);
+        }
+        for (k, v) in headers {
+            req = req.header(k, v);
+        }
+        let resp = req
+            .body(bytes)
+            .send()
+            .await
+            .map_err(|_| LinearError::Network)?;
+        if resp.status().is_success() {
+            Ok(())
+        } else {
+            Err(LinearError::Asset)
+        }
     }
 
     /// POST a GraphQL body, returning the raw response text. Maps unambiguous
@@ -296,6 +352,16 @@ mod tests {
         assert!(validate_linear_upload_url("https://uploads.linear.app.evil.test/asset").is_err());
         assert!(validate_linear_upload_url("https://user@uploads.linear.app/asset").is_err());
         assert!(validate_linear_upload_url("https://uploads.linear.app:444/asset").is_err());
+    }
+
+    #[test]
+    fn upload_put_urls_require_https_without_credentials() {
+        // S3 or uploads.linear.app — host is open, but scheme/credentials are checked.
+        assert!(validate_upload_put_url("https://s3.amazonaws.com/bucket/key?sig=1").is_ok());
+        assert!(validate_upload_put_url("https://uploads.linear.app/put/abc").is_ok());
+        assert!(validate_upload_put_url("http://s3.amazonaws.com/bucket/key").is_err());
+        assert!(validate_upload_put_url("https://user:pw@s3.amazonaws.com/key").is_err());
+        assert!(validate_upload_put_url("not a url").is_err());
     }
 
     #[test]

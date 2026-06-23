@@ -38,12 +38,12 @@ const METRICS: { key: keyof PrStats; label: string; icon: LucideIcon; tint: stri
 
 function MetricTile({ value, label, Icon, tint }: { value: number; label: string; Icon: LucideIcon; tint: string }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border border-border/60 bg-background/40 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-muted-foreground">
+    <div className="flex flex-col justify-between gap-2 rounded-lg border border-border/60 bg-background/40 px-3 py-2.5 transition-colors hover:border-border">
+      <div className="flex items-center justify-between text-muted-foreground">
+        <span className="text-[10px] font-medium uppercase tracking-wider">{label}</span>
         <Icon className={`size-3.5 ${tint}`} />
-        <span className="text-[11px] font-medium uppercase tracking-wide">{label}</span>
       </div>
-      <span className="text-xl font-semibold tabular-nums text-foreground">{value}</span>
+      <span className="text-2xl font-semibold leading-none tabular-nums text-foreground">{value}</span>
     </div>
   );
 }
@@ -97,13 +97,13 @@ function Section({
   stale: boolean;
 }) {
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center gap-2.5">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/50">
-          <Icon className={`size-4 ${tint}`} />
+    <section className="flex flex-col gap-2.5">
+      <header className="flex items-center gap-2.5 px-0.5">
+        <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-muted/50">
+          <Icon className={`size-3.5 ${tint}`} />
         </span>
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium tabular-nums text-muted-foreground">
+        <h2 className="text-[13px] font-semibold tracking-tight text-foreground">{title}</h2>
+        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-[11px] font-medium tabular-nums text-muted-foreground">
           {prs.length}
         </span>
         {meta?.truncated && (
@@ -112,11 +112,12 @@ function Section({
         {stale && <span className="text-[11px] text-amber-400">couldn't refresh — cached</span>}
       </header>
       {prs.length === 0 ? (
-        <p className="rounded-lg border border-dashed border-border/60 px-4 py-6 text-center text-xs text-muted-foreground">
-          {empty}
-        </p>
+        <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-card/40 px-4 py-3.5 text-xs text-muted-foreground">
+          <Icon className="size-3.5 shrink-0 opacity-50" />
+          <span>{empty}</span>
+        </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-border/60 bg-card">
+        <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
           {prs.map((pr) => (
             <PrRow key={`${pr.bucket}:${pr.id}`} pr={pr} />
           ))}
@@ -180,7 +181,7 @@ export function PrsPage() {
         </Button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-6">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-6">
         <ActivityCard contributions={contributions} stats={stats} />
         {SECTIONS.map((s) => (
           <Section

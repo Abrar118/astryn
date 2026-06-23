@@ -12,7 +12,7 @@ import { PrRow } from "./PrRow";
 const base: GithubPr = {
   id: "o/r#42", bucket: "mine", repo: "o/r", number: 42, title: "Add widget", draft: false,
   mergeable: "mergeable", ciStatus: "success", reviewDecision: "changes_requested",
-  authorLogin: "octocat", authorAvatar: "https://a/x.png", commentCount: 3, branch: "eng-9",
+  authorLogin: "octocat", authorAvatar: "https://a/x.png", commentCount: 3, branch: "eng-9", baseBranch: "main",
   url: "https://x", linearIdentifier: "ENG-9", linearIssueId: "iss-1", updatedAt: "2026-06-20T00:00:00Z",
 };
 

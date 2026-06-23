@@ -109,6 +109,7 @@ mod tests {
             author_avatar: None,
             comment_count: Some(0),
             branch: Some("b".into()),
+            base_branch: Some("main".into()),
             url: Some("u".into()),
             linear_identifier: None,
             updated_at: Some("2026-06-20T00:00:00Z".into()),

@@ -1,6 +1,7 @@
 import { isValidElement, type ReactNode } from "react";
 import type { Components } from "react-markdown";
 import { defaultUrlTransform } from "react-markdown";
+import { FileAttachmentCard } from "./FileAttachmentCard";
 import { LinearMarkdownImage } from "./LinearMarkdownImage";
 import { MermaidDiagram } from "./MermaidDiagram";
 import { USER_MENTION_PREFIX, userMentionFromHref } from "./comments/milkdownUserMention";
@@ -28,6 +29,16 @@ function nodeText(node: ReactNode): string {
   if (Array.isArray(node)) return node.map(nodeText).join("");
   if (isValidElement(node)) return nodeText((node.props as { children?: ReactNode }).children);
   return "";
+}
+
+/** True for links to an uploaded file on Linear's storage (rendered as a card).
+ *  Images arrive via the `img` renderer, so any such `<a>` is a non-image file. */
+export function isUploadAttachment(href: string): boolean {
+  try {
+    return new URL(href).hostname === "uploads.linear.app";
+  } catch {
+    return false;
+  }
 }
 
 /** Extract a Linear issue identifier (e.g. "PRO-153") from a link href, if any. */
@@ -69,7 +80,7 @@ export function createMarkdownComponents(opts: {
   resolveUser?: (key: { id: string | null; name: string }) => User | undefined;
 }): Components {
   return {
-    a: ({ href, children }) => {
+    a: ({ href, children, title }) => {
       // ── User-mention pill ─────────────────────────────────────────────────
       // Match our own `mention://user/…` links AND Linear-returned mentions
       // (which come back with a profile/permalink href, not our scheme). Both
@@ -94,6 +105,21 @@ export function createMarkdownComponents(opts: {
           </span>
         );
         return user ? <MentionHoverCard user={user}>{pill}</MentionHoverCard> : pill;
+      }
+
+      // ── Uploaded-file card ────────────────────────────────────────────────
+      // A link to Linear storage is an attached file; render Linear's card (icon
+      // + name + size) instead of a bare link. Size rides in the link title when
+      // we attached it; Linear-attached files have none, so it's just hidden.
+      if (href && isUploadAttachment(href)) {
+        return (
+          <FileAttachmentCard
+            filename={text}
+            size={title}
+            title={href}
+            onOpen={() => opts.onActivateLink(href)}
+          />
+        );
       }
 
       // ── Issue-mention pill ────────────────────────────────────────────────

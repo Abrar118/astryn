@@ -21,6 +21,7 @@ pub struct PrRow {
     pub author_avatar: Option<String>,
     pub comment_count: Option<i64>,
     pub branch: Option<String>,
+    pub base_branch: Option<String>,
     pub url: Option<String>,
     pub linear_identifier: Option<String>,
     pub linear_issue_id: Option<String>,
@@ -55,9 +56,9 @@ pub async fn replace_bucket(
         sqlx::query(
             "INSERT INTO github_prs
                (id, bucket, repo, number, title, draft, mergeable, ci_status, review_decision,
-                author_login, author_avatar, comment_count, branch, url, linear_identifier,
-                updated_at, synced_at)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+                author_login, author_avatar, comment_count, branch, base_branch, url,
+                linear_identifier, updated_at, synced_at)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
         )
         .bind(&p.id)
         .bind(bucket)
@@ -72,6 +73,7 @@ pub async fn replace_bucket(
         .bind(&p.author_avatar)
         .bind(p.comment_count)
         .bind(&p.branch)
+        .bind(&p.base_branch)
         .bind(&p.url)
         .bind(&p.linear_identifier)
         .bind(&p.updated_at)
@@ -137,7 +139,7 @@ pub async fn list_prs(pool: &SqlitePool) -> Result<Vec<PrRow>, sqlx::Error> {
     sqlx::query_as::<_, PrRow>(
         "SELECT p.id, p.bucket, p.repo, p.number, p.title, p.draft, p.mergeable, p.ci_status,
                 p.review_decision, p.author_login, p.author_avatar, p.comment_count, p.branch,
-                p.url, p.linear_identifier, i.id AS linear_issue_id, p.updated_at
+                p.base_branch, p.url, p.linear_identifier, i.id AS linear_issue_id, p.updated_at
          FROM github_prs p
          LEFT JOIN issues i ON i.identifier = p.linear_identifier
          ORDER BY p.bucket, p.updated_at DESC",
@@ -180,6 +182,7 @@ mod tests {
             author_avatar: None,
             comment_count: Some(1),
             branch: Some("b".into()),
+            base_branch: Some("main".into()),
             url: Some("u".into()),
             linear_identifier: ident.map(|s| s.to_string()),
             updated_at: Some("2026-06-20T00:00:00Z".into()),

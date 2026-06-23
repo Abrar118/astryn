@@ -54,6 +54,7 @@ const SEARCH_QUERY: &str = r#"query($q:String!,$first:Int!,$after:String){
         number title url isDraft mergeable reviewDecision updatedAt
         repository{ nameWithOwner }
         headRefName
+        baseRefName
         author{ login avatarUrl }
         comments{ totalCount }
         statusCheckRollup{ state }
@@ -99,6 +100,7 @@ pub struct ParsedPr {
     pub author_avatar: Option<String>,
     pub comment_count: Option<i64>,
     pub branch: Option<String>,
+    pub base_branch: Option<String>,
     pub url: Option<String>,
     pub linear_identifier: Option<String>,
     pub updated_at: Option<String>,
@@ -158,6 +160,7 @@ fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
         .and_then(|r| str_at(r, "nameWithOwner"))
         .ok_or(GitHubError::Malformed)?;
     let branch = str_at(n, "headRefName");
+    let base_branch = str_at(n, "baseRefName");
     let title = str_at(n, "title");
     let linear_identifier = extract_linear_identifier(
         branch.as_deref().unwrap_or(""),
@@ -183,6 +186,7 @@ fn node_to_pr(n: &Value) -> Result<ParsedPr, GitHubError> {
             .and_then(|c| c.get("totalCount"))
             .and_then(Value::as_i64),
         branch,
+        base_branch,
         url: str_at(n, "url"),
         linear_identifier,
         updated_at: str_at(n, "updatedAt"),
@@ -308,6 +312,7 @@ mod tests {
                         "updatedAt": "2026-06-20T10:00:00Z",
                         "repository": { "nameWithOwner": "o/r" },
                         "headRefName": "eng-9-widget",
+                        "baseRefName": "main",
                         "author": { "login": "octocat", "avatarUrl": "https://a/x.png" },
                         "comments": { "totalCount": 3 },
                         "statusCheckRollup": { "state": "FAILURE" }
@@ -329,6 +334,8 @@ mod tests {
         assert_eq!(p.ci_status.as_deref(), Some("failure"));
         assert_eq!(p.review_decision.as_deref(), Some("changes_requested"));
         assert_eq!(p.comment_count, Some(3));
+        assert_eq!(p.branch.as_deref(), Some("eng-9-widget"));
+        assert_eq!(p.base_branch.as_deref(), Some("main"));
         assert_eq!(p.linear_identifier.as_deref(), Some("ENG-9"));
         assert_eq!(page.has_next_page, true);
         assert_eq!(page.end_cursor.as_deref(), Some("CUR1"));

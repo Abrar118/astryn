@@ -520,6 +520,37 @@ pub fn parse_attachment_update(body: &str) -> Result<DetailAttachment, LinearErr
     parse_attachment_payload(body, "attachmentUpdate")
 }
 
+/// Where to PUT an upload's bytes, plus the final asset URL to reference it by.
+pub struct LinearUploadTarget {
+    pub upload_url: String,
+    pub asset_url: String,
+    pub headers: Vec<(String, String)>,
+}
+
+/// Parse `fileUpload`, returning the storage target + the headers to PUT with.
+pub fn parse_file_upload(body: &str) -> Result<LinearUploadTarget, LinearError> {
+    let data = extract_data(body)?;
+    let payload = data.get("fileUpload").ok_or(LinearError::Malformed)?;
+    if payload.get("success").and_then(|b| b.as_bool()) != Some(true) {
+        return Err(LinearError::Api("fileUpload returned success=false".into()));
+    }
+    let f = payload.get("uploadFile").ok_or(LinearError::Malformed)?;
+    let headers = f
+        .get("headers")
+        .and_then(Value::as_array)
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|h| Some((s(h, "key")?, s(h, "value")?)))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(LinearUploadTarget {
+        upload_url: s(f, "uploadUrl").ok_or(LinearError::Malformed)?,
+        asset_url: s(f, "assetUrl").ok_or(LinearError::Malformed)?,
+        headers,
+    })
+}
+
 /// Parse `attachmentDelete`, succeeding only on `success: true`.
 pub fn parse_attachment_delete(body: &str) -> Result<(), LinearError> {
     let data = extract_data(body)?;
@@ -1028,8 +1059,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
         has_more_children: conn_has_next(n, "children"),
         has_more_relations: conn_has_next(n, "relations"),
         has_more_history: conn_has_next(n, "history"),
-        has_more_comments: conn_has_next(n, "comments")
-            || conn_has_next(&data, "documentComments"),
+        has_more_comments: conn_has_next(n, "comments") || conn_has_next(&data, "documentComments"),
     })
 }
 
@@ -1359,6 +1389,16 @@ fn attachment_delete_mutation() -> String {
     "mutation AD($id: String!) { attachmentDelete(id: $id) { success } }".to_string()
 }
 
+fn file_upload_mutation() -> String {
+    "mutation FU($contentType: String!, $filename: String!, $size: Int!) { \
+       fileUpload(contentType: $contentType, filename: $filename, size: $size) { \
+         success \
+         uploadFile { uploadUrl assetUrl headers { key value } } \
+       } \
+     }"
+    .to_string()
+}
+
 impl LinearClient {
     async fn post(&self, auth: &str, body: serde_json::Value) -> Result<String, LinearError> {
         self.http_post(auth, body).await
@@ -1473,6 +1513,22 @@ impl LinearClient {
             "variables": { "id": id, "input": { "title": title } }
         });
         parse_attachment_update(&self.post(auth, req).await?)
+    }
+
+    /// Request an upload slot for a file (Linear `fileUpload`). Returns where to
+    /// PUT the bytes and the final asset URL to reference it by.
+    pub async fn request_file_upload(
+        &self,
+        auth: &str,
+        filename: &str,
+        content_type: &str,
+        size: i64,
+    ) -> Result<LinearUploadTarget, LinearError> {
+        let req = serde_json::json!({
+            "query": file_upload_mutation(),
+            "variables": { "contentType": content_type, "filename": filename, "size": size }
+        });
+        parse_file_upload(&self.post(auth, req).await?)
     }
 
     /// Delete an attachment.
@@ -1653,7 +1709,10 @@ mod tests {
             {"id":"u2","name":"No Extras","avatarUrl":null,"displayName":null,"timezone":null,"teams":{"nodes":[]}}
         ]}}}"##;
         let users = parse_users(body).unwrap();
-        assert_eq!(users[0].avatar_url.as_deref(), Some("https://public.linear.app/a.png"));
+        assert_eq!(
+            users[0].avatar_url.as_deref(),
+            Some("https://public.linear.app/a.png")
+        );
         assert_eq!(users[0].display_name.as_deref(), Some("abrar"));
         assert_eq!(users[0].timezone.as_deref(), Some("Asia/Dhaka"));
         assert_eq!(users[0].team_name.as_deref(), Some("Psycloud"));
@@ -1725,9 +1784,40 @@ mod tests {
     }
 
     #[test]
+    fn parse_file_upload_extracts_target_and_headers() {
+        let body = r##"{"data":{"fileUpload":{"success":true,"uploadFile":{
+            "uploadUrl":"https://uploads.linear.app/put/abc?sig=1",
+            "assetUrl":"https://uploads.linear.app/asset/abc",
+            "headers":[{"key":"Content-Type","value":"image/png"},{"key":"Cache-Control","value":"public"}]}}}}"##;
+        let t = parse_file_upload(body).unwrap();
+        assert_eq!(t.upload_url, "https://uploads.linear.app/put/abc?sig=1");
+        assert_eq!(t.asset_url, "https://uploads.linear.app/asset/abc");
+        assert_eq!(
+            t.headers,
+            vec![
+                ("Content-Type".to_string(), "image/png".to_string()),
+                ("Cache-Control".to_string(), "public".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_file_upload_rejects_failure() {
+        assert!(parse_file_upload(
+            r##"{"data":{"fileUpload":{"success":false,"uploadFile":null}}}"##
+        )
+        .is_err());
+    }
+
+    #[test]
     fn parse_attachment_delete_ok_and_failure() {
-        assert!(parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":true}}}"##).is_ok());
-        assert!(parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":false}}}"##).is_err());
+        assert!(
+            parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":true}}}"##).is_ok()
+        );
+        assert!(
+            parse_attachment_delete(r##"{"data":{"attachmentDelete":{"success":false}}}"##)
+                .is_err()
+        );
     }
 
     #[test]
