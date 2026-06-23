@@ -32,8 +32,8 @@ export function SlackPage() {
   const conversations = catchup?.conversations ?? [];
   const mentions = catchup?.mentions ?? [];
   const threads = catchup?.threads ?? [];
-  const dms = conversations.filter((c) => c.kind === "dm" || c.kind === "group_dm");
-  const channels = conversations.filter((c) => c.kind === "channel");
+  const dms = conversations.filter((c) => (c.kind === "dm" || c.kind === "group_dm") && c.unreadCount > 0);
+  const channels = conversations.filter((c) => c.kind === "channel" && c.unreadCount > 0);
   const workspaceName = status?.state === "connected" ? status.workspaceName : null;
 
   return (
