@@ -454,3 +454,66 @@ export const getGithubContributions = (): Promise<Contributions | null> =>
 
 export const syncGithubContributions = (): Promise<Contributions> =>
   invoke("sync_github_contributions");
+
+// ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
+
+export type SlackStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; workspaceName: string | null; userName: string };
+
+export type SlackConversation = {
+  id: string;
+  kind: "channel" | "dm" | "group_dm";
+  name: string | null;
+  partnerUserId: string | null;
+  unreadCount: number;
+  hasMention: boolean;
+  unreadThreads: number;
+  latestTs: string | null;
+  latestSnippet: string | null;
+};
+
+export type SlackMessage = {
+  conversationId: string;
+  ts: string;
+  threadTs: string | null;
+  userId: string | null;
+  userName: string | null;
+  userAvatar: string | null;
+  text: string | null;
+  isMention: boolean;
+  linearIdentifier: string | null;
+  linearIssueId: string | null;
+  createdAt: string;
+};
+
+export type SlackThread = {
+  conversationId: string;
+  conversationName: string | null;
+  threadTs: string;
+  unreadReplies: number;
+  hasMention: boolean;
+  latestTs: string;
+};
+
+export type SlackCatchup = {
+  conversations: SlackConversation[];
+  mentions: SlackMessage[];
+  threads: SlackThread[];
+  lastSyncedAt: string | null;
+};
+
+export type SlackSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
+export type SlackDeepLink = { app: string; web: string };
+
+export const setSlackToken = (token: string): Promise<void> => invoke("set_slack_token", { token });
+export const clearSlackToken = (): Promise<void> => invoke("clear_slack_token");
+export const getSlackStatus = (): Promise<SlackStatus> => invoke("get_slack_status");
+export const testSlackConnection = (): Promise<SlackStatus> => invoke("test_slack_connection");
+export const syncSlackCatchup = (): Promise<SlackSyncSummary> => invoke("sync_slack_catchup");
+export const getSlackCatchup = (): Promise<SlackCatchup> => invoke("get_slack_catchup");
+export const getSlackConversationMessages = (conversationId: string): Promise<SlackMessage[]> =>
+  invoke("get_slack_conversation_messages", { conversationId });
+export const slackDeepLink = (conversationId: string, ts?: string | null): Promise<SlackDeepLink> =>
+  invoke("slack_deep_link", { conversationId, ts: ts ?? null });

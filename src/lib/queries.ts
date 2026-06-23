@@ -20,6 +20,8 @@ import {
   errorText,
   getGithubContributions,
   getGithubStatus,
+  getSlackCatchup,
+  getSlackStatus,
   getIssueDetail,
   getMe,
   listCalendarIssues,
@@ -37,6 +39,7 @@ import {
   syncGithubContributions,
   syncGithubPrs,
   syncIssues,
+  syncSlackCatchup,
   updateAttachment,
   updateComment,
   updateIssue,
@@ -681,6 +684,46 @@ export function clearGithubQueries(qc: QueryClient) {
     ["github-contributions"],
     ["github-contributions-sync"],
   ]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
+}
+
+export function useSlackStatus() {
+  return useQuery({ queryKey: ["slack-status"], queryFn: getSlackStatus });
+}
+
+export function useSlackCatchup() {
+  return useQuery({ queryKey: ["slack-catchup"], queryFn: getSlackCatchup });
+}
+
+/**
+ * Background Slack sync: on mount + every 5 min while a token is present, then
+ * invalidate the cached catch-up so fresh rows render. Disabled when not
+ * configured (no token -> no network).
+ */
+export function useSlackSync(enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["slack-sync"],
+    enabled,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      try {
+        const summary = await syncSlackCatchup();
+        await qc.invalidateQueries({ queryKey: ["slack-catchup"] });
+        return summary;
+      } catch (err) {
+        gooeyToast.error("Couldn't refresh Slack", { description: errorText(err) });
+        throw err;
+      }
+    },
+  });
+}
+
+export function clearSlackQueries(qc: QueryClient) {
+  for (const key of [["slack-status"], ["slack-catchup"], ["slack-sync"]]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }
