@@ -172,6 +172,47 @@ impl GitHubClient {
             other => other,
         }
     }
+
+    /// GET a GitHub REST path (e.g. "/repos/o/r/git/trees/main?recursive=1") and
+    /// return the parsed JSON body. Shares this client's auth + rate-limit handling
+    /// with `graphql`; any non-2xx status (404/422/…) becomes an `Api` error so a
+    /// JSON error body is never mistaken for a success payload.
+    pub async fn rest_get(&self, authorization: &str, path: &str) -> Result<Value, GitHubError> {
+        let url = format!("https://api.github.com{path}");
+        let resp = self
+            .http
+            .get(&url)
+            .header("Authorization", authorization)
+            .header("User-Agent", "astryn")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .map_err(|_| GitHubError::Network)?;
+        let status = resp.status().as_u16();
+        let h = resp.headers();
+        let num = |name: &str| {
+            h.get(name)
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<i64>().ok())
+        };
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let hint = rate_limit_hint(num("retry-after"), num("x-ratelimit-reset"), now);
+        let throttled = hint.is_some() || num("x-ratelimit-remaining") == Some(0);
+        let text = resp.text().await.map_err(|_| GitHubError::Network)?;
+        if let Some(e) = interpret_status(status, throttled) {
+            return Err(match e {
+                GitHubError::RateLimited(_) => GitHubError::RateLimited(hint),
+                other => other,
+            });
+        }
+        if !(200..300).contains(&status) {
+            return Err(GitHubError::Api(format!("github rest status {status}")));
+        }
+        serde_json::from_str(&text).map_err(|_| GitHubError::Malformed)
+    }
 }
 
 #[cfg(test)]
