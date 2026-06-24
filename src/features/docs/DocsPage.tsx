@@ -96,11 +96,14 @@ export function DocsPage() {
 
   return (
     <main className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 py-3">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-base font-semibold text-foreground">Docs</h1>
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-background/60 px-4 py-2.5 backdrop-blur">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
+            <BookText className="size-3.5" />
+          </span>
+          <h1 className="text-sm font-semibold tracking-tight text-foreground">Docs</h1>
           {sync.isError && (
-            <span className="text-xs text-amber-400">Sync failed — showing cached docs.</span>
+            <span className="text-xs text-amber-400">Sync failed — showing cached.</span>
           )}
         </div>
         <Button
@@ -117,15 +120,27 @@ export function DocsPage() {
       <div ref={rowRef} className="flex min-h-0 flex-1">
         <aside
           style={{ width: sidebarWidth }}
-          className="shrink-0 overflow-y-auto border-r border-border/60 bg-sidebar/30 py-3"
+          className="flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar/40"
         >
-          {tree.length === 0 ? (
-            <p className="px-4 py-6 text-xs text-muted-foreground">
-              {sync.isFetching ? "Loading docs…" : "No docs cached yet."}
-            </p>
-          ) : (
-            <DocsTree tree={tree} selectedPath={selected} onSelect={setSelected} />
-          )}
+          <div className="flex shrink-0 items-center justify-between px-3.5 pb-1.5 pt-3">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+              Contents
+            </span>
+            {(status?.fileCount ?? 0) > 0 && (
+              <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                {status?.fileCount}
+              </span>
+            )}
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+            {tree.length === 0 ? (
+              <p className="px-4 py-6 text-xs text-muted-foreground">
+                {sync.isFetching ? "Loading docs…" : "No docs cached yet."}
+              </p>
+            ) : (
+              <DocsTree tree={tree} selectedPath={selected} onSelect={setSelected} />
+            )}
+          </div>
         </aside>
         <div
           role="separator"
@@ -137,9 +152,11 @@ export function DocsPage() {
           tabIndex={0}
           onPointerDown={startResize}
           onKeyDown={onDividerKey}
-          className="w-1.5 shrink-0 cursor-col-resize bg-border/60 outline-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/60"
-        />
-        <div className="min-w-0 flex-1 overflow-y-auto">
+          className="group relative w-1 shrink-0 cursor-col-resize outline-none"
+        >
+          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary/60" />
+        </div>
+        <div className="min-w-0 flex-1 overflow-y-auto bg-card">
           {!selected ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Select a document to read.
