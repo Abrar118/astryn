@@ -25,7 +25,7 @@ export function DocsPage() {
     }
   }, [flat, selected]);
 
-  const { data: content } = useDocContent(selected);
+  const docQuery = useDocContent(selected);
 
   if (status && !tokenPresent) {
     return (
@@ -75,12 +75,21 @@ export function DocsPage() {
           )}
         </aside>
         <div className="min-w-0 flex-1 overflow-y-auto">
-          {selected && content != null ? (
-            <DocViewer markdown={content} />
-          ) : (
+          {!selected ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
               Select a document to read.
             </div>
+          ) : docQuery.isPending || docQuery.data === undefined ? (
+            <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+              <RefreshCw className="size-4 animate-spin" />
+              Loading…
+            </div>
+          ) : docQuery.data === null ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              This document isn't cached.
+            </div>
+          ) : (
+            <DocViewer markdown={docQuery.data} />
           )}
         </div>
       </div>
