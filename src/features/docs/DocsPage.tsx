@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { BookText, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
@@ -6,6 +13,11 @@ import { useDocContent, useDocsStatus, useDocsSync, useDocsTree } from "@/lib/qu
 import { buildDocTree, defaultDocPath } from "./docsTree";
 import { DocsTree } from "./DocsTree";
 import { DocViewer } from "./DocViewer";
+
+const SIDEBAR_MIN = 180;
+const SIDEBAR_MAX = 560;
+const SIDEBAR_DEFAULT = 288; // matches the old w-72
+const SIDEBAR_STEP = 16;
 
 export function DocsPage() {
   const { setActiveView } = useWorkspace();
@@ -26,6 +38,44 @@ export function DocsPage() {
   }, [flat, selected]);
 
   const docQuery = useDocContent(selected);
+
+  // Resizable left panel: drag the divider (or arrow-key it when focused).
+  const rowRef = useRef<HTMLDivElement>(null);
+  const resizeCleanup = useRef<(() => void) | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const clampWidth = (px: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px));
+
+  // Tear down an in-flight drag if the page unmounts mid-resize.
+  useEffect(() => () => resizeCleanup.current?.(), []);
+
+  const startResize = (e: ReactPointerEvent) => {
+    e.preventDefault();
+    const move = (ev: globalThis.PointerEvent) => {
+      const rect = rowRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setSidebarWidth(clampWidth(ev.clientX - rect.left));
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+      resizeCleanup.current = null;
+    };
+    resizeCleanup.current = stop;
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
+  const onDividerKey = (e: ReactKeyboardEvent) => {
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      setSidebarWidth((w) => clampWidth(w - SIDEBAR_STEP));
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      setSidebarWidth((w) => clampWidth(w + SIDEBAR_STEP));
+    }
+  };
 
   if (status && !tokenPresent) {
     return (
@@ -64,8 +114,11 @@ export function DocsPage() {
         </Button>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-72 shrink-0 overflow-y-auto border-r border-border/60 bg-sidebar/30 py-3">
+      <div ref={rowRef} className="flex min-h-0 flex-1">
+        <aside
+          style={{ width: sidebarWidth }}
+          className="shrink-0 overflow-y-auto border-r border-border/60 bg-sidebar/30 py-3"
+        >
           {tree.length === 0 ? (
             <p className="px-4 py-6 text-xs text-muted-foreground">
               {sync.isFetching ? "Loading docs…" : "No docs cached yet."}
@@ -74,6 +127,18 @@ export function DocsPage() {
             <DocsTree tree={tree} selectedPath={selected} onSelect={setSelected} />
           )}
         </aside>
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize sidebar"
+          aria-valuenow={Math.round(sidebarWidth)}
+          aria-valuemin={SIDEBAR_MIN}
+          aria-valuemax={SIDEBAR_MAX}
+          tabIndex={0}
+          onPointerDown={startResize}
+          onKeyDown={onDividerKey}
+          className="w-1.5 shrink-0 cursor-col-resize bg-border/60 outline-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/60"
+        />
         <div className="min-w-0 flex-1 overflow-y-auto">
           {!selected ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

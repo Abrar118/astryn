@@ -60,7 +60,7 @@ export function DocViewer({ markdown }: { markdown: string }) {
   );
   return (
     <EditorErrorBoundary key={markdown} fallback={fallback}>
-      <article className="astryn-prose prose prose-sm prose-invert max-w-3xl px-8 py-6 prose-headings:font-semibold prose-a:text-primary">
+      <article className="astryn-prose prose prose-sm prose-invert max-w-none px-8 py-6 prose-headings:font-semibold prose-a:text-primary">
         <MilkdownProvider key={markdown}>
           <DocMilkdown markdown={markdown} />
         </MilkdownProvider>
