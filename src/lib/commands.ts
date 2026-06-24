@@ -455,6 +455,36 @@ export const getGithubContributions = (): Promise<Contributions | null> =>
 export const syncGithubContributions = (): Promise<Contributions> =>
   invoke("sync_github_contributions");
 
+// ── Docs viewer (F-Docs) ─────────────────────────────────────────────────────
+
+export type DocNode = {
+  path: string;
+  name: string;
+  kind: "blob" | "tree";
+  parentPath: string;
+};
+
+export type DocsStatus = {
+  tokenPresent: boolean;
+  lastSyncedAt: string | null;
+  fileCount: number;
+  truncated: boolean;
+};
+
+export type DocsSyncResult = { fileCount: number; truncated: boolean };
+
+/** Fetch the docs repo tree + markdown into the SQLite cache. Reuses the GitHub token. */
+export const syncDocs = (): Promise<DocsSyncResult> => invoke("sync_docs");
+
+/** The cached flat list of folders + files (frontend nests it). */
+export const listDocsTree = (): Promise<DocNode[]> => invoke("list_docs_tree");
+
+/** Cached markdown for one file (`null` if unknown / not yet synced). */
+export const getDocContent = (path: string): Promise<string | null> =>
+  invoke("get_doc_content", { path });
+
+export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
+
 // ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
 
 export type SlackStatus =
