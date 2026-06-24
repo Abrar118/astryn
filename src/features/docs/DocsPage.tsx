@@ -6,7 +6,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { BookText, RefreshCw } from "lucide-react";
+import { BookText, PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
 import { useDocContent, useDocsStatus, useDocsSync, useDocsTree } from "@/lib/queries";
@@ -45,6 +45,7 @@ export function DocsPage({ docPath }: { docPath?: string } = {}) {
   const rowRef = useRef<HTMLDivElement>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const [collapsed, setCollapsed] = useState(false);
   const clampWidth = (px: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px));
 
   // Tear down an in-flight drag if the page unmounts mid-resize.
@@ -99,7 +100,16 @@ export function DocsPage({ docPath }: { docPath?: string } = {}) {
   return (
     <main className="flex h-full min-h-0 flex-col">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-background/60 px-4 py-2.5 backdrop-blur">
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={collapsed ? "Show sidebar" : "Hide sidebar"}
+            aria-pressed={!collapsed}
+            onClick={() => setCollapsed((c) => !c)}
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </Button>
           <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary">
             <BookText className="size-3.5" />
           </span>
@@ -120,44 +130,48 @@ export function DocsPage({ docPath }: { docPath?: string } = {}) {
       </header>
 
       <div ref={rowRef} className="flex min-h-0 flex-1">
-        <aside
-          style={{ width: sidebarWidth }}
-          className="flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar/40"
-        >
-          <div className="flex shrink-0 items-center justify-between px-3.5 pb-1.5 pt-3">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-              Contents
-            </span>
-            {(status?.fileCount ?? 0) > 0 && (
-              <span className="text-[10px] tabular-nums text-muted-foreground/60">
-                {status?.fileCount}
-              </span>
-            )}
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pb-3">
-            {tree.length === 0 ? (
-              <p className="px-4 py-6 text-xs text-muted-foreground">
-                {sync.isFetching ? "Loading docs…" : "No docs cached yet."}
-              </p>
-            ) : (
-              <DocsTree tree={tree} selectedPath={selected} onSelect={setSelected} />
-            )}
-          </div>
-        </aside>
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize sidebar"
-          aria-valuenow={Math.round(sidebarWidth)}
-          aria-valuemin={SIDEBAR_MIN}
-          aria-valuemax={SIDEBAR_MAX}
-          tabIndex={0}
-          onPointerDown={startResize}
-          onKeyDown={onDividerKey}
-          className="group relative w-1 shrink-0 cursor-col-resize outline-none"
-        >
-          <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary/60" />
-        </div>
+        {!collapsed && (
+          <>
+            <aside
+              style={{ width: sidebarWidth }}
+              className="flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar/40"
+            >
+              <div className="flex shrink-0 items-center justify-between px-3.5 pb-1.5 pt-3">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                  Contents
+                </span>
+                {(status?.fileCount ?? 0) > 0 && (
+                  <span className="text-[10px] tabular-nums text-muted-foreground/60">
+                    {status?.fileCount}
+                  </span>
+                )}
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+                {tree.length === 0 ? (
+                  <p className="px-4 py-6 text-xs text-muted-foreground">
+                    {sync.isFetching ? "Loading docs…" : "No docs cached yet."}
+                  </p>
+                ) : (
+                  <DocsTree tree={tree} selectedPath={selected} onSelect={setSelected} />
+                )}
+              </div>
+            </aside>
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize sidebar"
+              aria-valuenow={Math.round(sidebarWidth)}
+              aria-valuemin={SIDEBAR_MIN}
+              aria-valuemax={SIDEBAR_MAX}
+              tabIndex={0}
+              onPointerDown={startResize}
+              onKeyDown={onDividerKey}
+              className="group relative w-1 shrink-0 cursor-col-resize outline-none"
+            >
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary/60" />
+            </div>
+          </>
+        )}
         <div className="min-w-0 flex-1 overflow-y-auto bg-card">
           {!selected ? (
             <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
