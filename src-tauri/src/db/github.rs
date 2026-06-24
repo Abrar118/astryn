@@ -121,6 +121,8 @@ pub async fn replace_bucket(
 }
 
 /// Drop all GitHub cache state (rows + meta + cached login). Leaves Linear alone.
+/// The docs cache shares the GitHub credential (private repo content), so it is
+/// wiped on the same seam as the PR cache.
 pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM github_prs")
@@ -132,6 +134,13 @@ pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2)")
         .bind(GITHUB_LOGIN_KEY)
         .bind(GITHUB_CONTRIBUTIONS_KEY)
+        .execute(&mut *tx)
+        .await?;
+    // Docs cache shares the GitHub credential, so it is wiped on the same seam as the PR cache.
+    sqlx::query("DELETE FROM docs_files")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM docs_sync_meta")
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
@@ -275,9 +284,27 @@ mod tests {
             .await
             .unwrap();
         save_github_login(&pool, "octocat").await.unwrap();
+        // Docs cache shares the GitHub credential, so it must be wiped too.
+        crate::db::docs::replace_docs(
+            &pool,
+            &[crate::db::docs::DocFile {
+                path: "a.md".into(),
+                name: "a.md".into(),
+                kind: "blob".into(),
+                parent_path: "".into(),
+                sha: "s".into(),
+                content: Some("a".into()),
+            }],
+            "now",
+            None,
+            false,
+        )
+        .await
+        .unwrap();
         wipe_github_cache(&pool).await.unwrap();
         assert!(list_prs(&pool).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
         assert_eq!(load_github_login(&pool).await.unwrap(), None);
+        assert!(crate::db::docs::list_docs(&pool).await.unwrap().is_empty());
     }
 }
