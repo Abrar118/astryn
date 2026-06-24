@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowUpDown, Layers, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, LayoutGrid, LayoutList, Layers, XCircle } from "lucide-react";
 import type { GithubPr } from "@/lib/commands";
 import { waitingLabel, type PrSort } from "./prDisplay";
 
 export type PrFilter = "all" | "conflicts" | "ci_failing";
+export type PrLayout = "board" | "stack";
 
 function Segmented<T extends string>({
   value,
@@ -98,6 +99,8 @@ export function PrToolbar({
   setFilter,
   groupByRepo,
   setGroupByRepo,
+  layout,
+  setLayout,
 }: {
   prs: GithubPr[];
   sort: PrSort;
@@ -106,6 +109,8 @@ export function PrToolbar({
   setFilter: (v: PrFilter) => void;
   groupByRepo: boolean;
   setGroupByRepo: (v: boolean) => void;
+  layout: PrLayout;
+  setLayout: (v: PrLayout) => void;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border border-border/50 bg-card/40 px-5 py-3">
@@ -132,6 +137,26 @@ export function PrToolbar({
             ]}
           />
         </span>
+        <div className="flex items-center rounded-lg border border-border/60 bg-background/40 p-0.5">
+          {([
+            { value: "board", label: "Board view", Icon: LayoutGrid },
+            { value: "stack", label: "List view", Icon: LayoutList },
+          ] as const).map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              aria-label={o.label}
+              aria-pressed={layout === o.value}
+              title={o.label}
+              onClick={() => setLayout(o.value)}
+              className={`flex items-center rounded-md px-2 py-1.5 transition-colors ${
+                layout === o.value ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <o.Icon className="size-4" />
+            </button>
+          ))}
+        </div>
         <button
           type="button"
           aria-pressed={groupByRepo}
