@@ -21,6 +21,7 @@ use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
+pub mod docs;
 pub mod github;
 pub mod slack;
 
