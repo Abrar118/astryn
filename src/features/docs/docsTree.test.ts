@@ -10,14 +10,14 @@ const node = (path: string, kind: "blob" | "tree", parentPath: string): DocNode 
 });
 
 describe("displayLabel", () => {
-  it("strips numeric prefixes and .md", () => {
-    expect(displayLabel("01-architecture.md")).toBe("architecture");
-    expect(displayLabel("00-overview")).toBe("overview");
+  it("hides the .md extension but keeps the ordering prefix", () => {
+    expect(displayLabel("01-architecture.md")).toBe("01-architecture");
+    expect(displayLabel("00-overview")).toBe("00-overview");
     expect(displayLabel("README.md")).toBe("README");
     expect(displayLabel("backend")).toBe("backend");
   });
-  it("keeps the name when stripping would empty it", () => {
-    expect(displayLabel("01-.md")).toBe("01-.md");
+  it("strips .md case-insensitively", () => {
+    expect(displayLabel("Notes.MD")).toBe("Notes");
   });
 });
 

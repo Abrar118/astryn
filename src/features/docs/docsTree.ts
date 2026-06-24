@@ -8,10 +8,13 @@ export type DocTreeNode = {
   children: DocTreeNode[];
 };
 
-/** Strip a leading "NN-"/"NN_"/"NN." ordering prefix and a trailing ".md". */
+/**
+ * Hide only the `.md` extension for display. The leading "NN-" ordering prefix
+ * (e.g. "01-architecture") is kept — it's meaningful structure in the source
+ * repo — and is what `sortKey` orders siblings by.
+ */
 export function displayLabel(name: string): string {
-  const stripped = name.replace(/\.md$/i, "").replace(/^\d+[-_.]\s*/, "");
-  return stripped.length > 0 ? stripped : name;
+  return name.replace(/\.md$/i, "");
 }
 
 /** Sort key per node: README first, then numeric prefix, then case-insensitive name. */

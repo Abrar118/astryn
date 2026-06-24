@@ -19,14 +19,16 @@ const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 288; // matches the old w-72
 const SIDEBAR_STEP = 16;
 
-export function DocsPage() {
+export function DocsPage({ docPath }: { docPath?: string } = {}) {
   const { setActiveView } = useWorkspace();
   const { data: status } = useDocsStatus();
   const tokenPresent = status?.tokenPresent ?? false;
   const { data: flat } = useDocsTree();
   const sync = useDocsSync(tokenPresent);
 
-  const [selected, setSelected] = useState<string | null>(null);
+  // Seed from the tab's docPath when opened via the tree's "new tab" / "to the
+  // side" actions; otherwise fall back to the root README once the tree loads.
+  const [selected, setSelected] = useState<string | null>(docPath ?? null);
   const tree = useMemo(() => buildDocTree(flat ?? []), [flat]);
 
   // Auto-select the root README (or first file) once the tree is available.

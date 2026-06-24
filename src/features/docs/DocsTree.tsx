@@ -1,17 +1,20 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import type { DocTreeNode } from "./docsTree";
+import { DocContextMenu } from "./DocContextMenu";
 
 function TreeRow({
   node,
   depth,
   selectedPath,
   onSelect,
+  onContextMenu,
 }: {
   node: DocTreeNode;
   depth: number;
   selectedPath: string | null;
   onSelect: (path: string) => void;
+  onContextMenu: (e: MouseEvent, path: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const pad = { paddingLeft: depth * 12 + 10 } as const;
@@ -43,6 +46,7 @@ function TreeRow({
               depth={depth + 1}
               selectedPath={selectedPath}
               onSelect={onSelect}
+              onContextMenu={onContextMenu}
             />
           ))}
       </div>
@@ -54,6 +58,7 @@ function TreeRow({
     <button
       type="button"
       onClick={() => onSelect(node.path)}
+      onContextMenu={(e) => onContextMenu(e, node.path)}
       style={pad}
       className={`relative flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs transition-colors ${
         active
@@ -79,6 +84,14 @@ export function DocsTree({
   selectedPath: string | null;
   onSelect: (path: string) => void;
 }) {
+  const [menu, setMenu] = useState<{ path: string; x: number; y: number } | null>(null);
+
+  const onContextMenu = (e: MouseEvent, path: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ path, x: e.clientX, y: e.clientY });
+  };
+
   return (
     <nav className="flex flex-col gap-0.5 px-2">
       {tree.map((node) => (
@@ -88,8 +101,12 @@ export function DocsTree({
           depth={0}
           selectedPath={selectedPath}
           onSelect={onSelect}
+          onContextMenu={onContextMenu}
         />
       ))}
+      {menu && (
+        <DocContextMenu path={menu.path} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+      )}
     </nav>
   );
 }
