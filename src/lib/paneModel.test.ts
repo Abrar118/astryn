@@ -3,6 +3,7 @@ import { parsePersisted, nextPaneId, clampRatio, FALLBACK, VIEWS } from "./paneM
 import {
   addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, moveTab, swapPanes,
   selectTabIn, openIssueTabAcross, openIssueInRightSplit, assertInvariants,
+  openDocTabAcross, openDocInRightSplit,
 } from "./paneModel";
 import type { Pane, WorkspaceState } from "./paneModel";
 
@@ -303,6 +304,46 @@ describe("openIssueInRightSplit / openIssueTabAcross", () => {
     const s = openIssueTabAcross(split(), "iss-3");
     expect(s.panes[0].tabs.map((t) => t.view)).toEqual(["calendar", "issue"]);
     expect(s.focusedPaneId).toBe("pane-0");
+    assertInvariants(s);
+  });
+});
+
+describe("openDocTabAcross / openDocInRightSplit", () => {
+  it("openDocTabAcross adds a docs tab carrying the path to the focused pane", () => {
+    const s = openDocTabAcross(single(), "02-technical/01-architecture.md");
+    expect(s.panes[0].tabs[1]).toEqual({
+      id: "tab-1",
+      view: "docs",
+      docPath: "02-technical/01-architecture.md",
+    });
+    expect(s.focusedPaneId).toBe("pane-0");
+    assertInvariants(s);
+  });
+  it("openDocTabAcross focuses an existing tab for the same doc instead of duplicating", () => {
+    const base = openDocTabAcross(single(), "a.md");
+    const again = openDocTabAcross(base, "a.md");
+    expect(again.panes.flatMap((p) => p.tabs).filter((t) => t.docPath === "a.md")).toHaveLength(1);
+    expect(again.panes[0].activeTabId).toBe("tab-1");
+  });
+  it("openDocInRightSplit creates a right pane with the doc, leaving the left untouched", () => {
+    const s = openDocInRightSplit(single(), "a.md");
+    expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]); // left unchanged
+    expect(s.panes[1].tabs[0]).toEqual({ id: "tab-1", view: "docs", docPath: "a.md" });
+    expect(s.focusedPaneId).toBe("pane-1");
+    assertInvariants(s);
+  });
+  it("openDocInRightSplit reuses the right pane's existing tab for the same doc", () => {
+    const base = openDocInRightSplit(single(), "a.md");
+    const again = openDocInRightSplit(base, "a.md");
+    expect(again.panes[1].tabs).toHaveLength(1);
+    expect(again.panes[1].activeTabId).toBe("tab-1");
+    expect(again.focusedPaneId).toBe("pane-1");
+    assertInvariants(again);
+  });
+  it("openDocInRightSplit adds to the existing right pane when already split", () => {
+    const s = openDocInRightSplit(split(), "a.md");
+    expect(s.panes[1].tabs.map((t) => t.view)).toEqual(["list", "docs"]);
+    expect(s.panes[1].tabs[1].docPath).toBe("a.md");
     assertInvariants(s);
   });
 });

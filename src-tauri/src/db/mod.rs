@@ -2,6 +2,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::path::Path;
 
+pub mod docs;
 pub mod github;
 pub mod issues;
 pub mod slack;
@@ -175,5 +176,19 @@ mod tests {
                 .unwrap_or_else(|e| panic!("table {table} missing: {e}"));
             assert_eq!(n.0, 0);
         }
+    }
+
+    #[tokio::test]
+    async fn migration_creates_docs_tables() {
+        let (_dir, pool) = temp_pool().await;
+        let files: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM docs_files")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        let meta: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM docs_sync_meta")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!((files.0, meta.0), (0, 0));
     }
 }

@@ -18,6 +18,8 @@ import {
   deleteIssue,
   addReaction,
   errorText,
+  getDocsStatus,
+  getDocContent,
   getGithubContributions,
   getGithubStatus,
   getSlackCatchup,
@@ -26,6 +28,7 @@ import {
   getMe,
   listCalendarIssues,
   listCycles,
+  listDocsTree,
   listFilterOptions,
   listGithubPrs,
   listIssues,
@@ -36,6 +39,7 @@ import {
   listUsers,
   listWorkflowStates,
   removeReaction,
+  syncDocs,
   syncGithubContributions,
   syncGithubPrs,
   syncIssues,
@@ -687,6 +691,48 @@ export function clearGithubQueries(qc: QueryClient) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }
+}
+
+export function useDocsStatus() {
+  return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus });
+}
+
+export function useDocsTree() {
+  return useQuery({ queryKey: ["docs-tree"], queryFn: listDocsTree });
+}
+
+export function useDocContent(path: string | null) {
+  return useQuery({
+    queryKey: ["doc-content", path],
+    queryFn: () => getDocContent(path as string),
+    enabled: !!path,
+  });
+}
+
+/**
+ * Docs sync: runs once on mount while the GitHub token is present, then on a
+ * manual refetch. Invalidates the tree/content/status so cached views refresh.
+ * Disabled (no network) when no token is configured.
+ */
+export function useDocsSync(enabled: boolean) {
+  const qc = useQueryClient();
+  return useQuery({
+    queryKey: ["docs-sync"],
+    enabled,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      try {
+        const result = await syncDocs();
+        await qc.invalidateQueries({ queryKey: ["docs-tree"] });
+        await qc.invalidateQueries({ queryKey: ["doc-content"] });
+        await qc.invalidateQueries({ queryKey: ["docs-status"] });
+        return result;
+      } catch (err) {
+        gooeyToast.error("Couldn't refresh docs", { description: errorText(err) });
+        throw err;
+      }
+    },
+  });
 }
 
 export function useSlackStatus() {
