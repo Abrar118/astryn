@@ -2,6 +2,7 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::path::Path;
 
+pub mod docs;
 pub mod github;
 pub mod issues;
 pub mod slack;
