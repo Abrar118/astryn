@@ -36,9 +36,11 @@ pub fn parent_path(path: &str) -> &str {
     }
 }
 
-/// Parse a `git/trees?recursive=1` response into entries + the `truncated` flag.
+/// Parse a `git/trees?recursive=1` response into entries, the `truncated` flag,
+/// and the tree's own top-level sha (used as a cheap "unchanged since last sync"
+/// short-circuit in future).
 /// Entries missing path/type/sha are skipped (e.g. submodule `commit` rows).
-pub fn parse_tree(data: &Value) -> Result<(Vec<RawEntry>, bool), GitHubError> {
+pub fn parse_tree(data: &Value) -> Result<(Vec<RawEntry>, bool, Option<String>), GitHubError> {
     let arr = data
         .get("tree")
         .and_then(|t| t.as_array())
@@ -60,7 +62,8 @@ pub fn parse_tree(data: &Value) -> Result<(Vec<RawEntry>, bool), GitHubError> {
         .get("truncated")
         .and_then(|t| t.as_bool())
         .unwrap_or(false);
-    Ok((out, truncated))
+    let tree_sha = data.get("sha").and_then(|s| s.as_str()).map(String::from);
+    Ok((out, truncated, tree_sha))
 }
 
 /// GraphQL body reading one file's text via `repository.object(expression:"main:<path>")`.
@@ -121,6 +124,7 @@ mod tests {
     #[test]
     fn parse_tree_extracts_entries_and_truncated() {
         let data = serde_json::json!({
+            "sha": "tree123",
             "tree": [
                 { "path": "00-overview", "type": "tree", "sha": "t1" },
                 { "path": "00-overview/intro.md", "type": "blob", "sha": "b1" },
@@ -128,10 +132,11 @@ mod tests {
             ],
             "truncated": true
         });
-        let (entries, truncated) = parse_tree(&data).unwrap();
+        let (entries, truncated, tree_sha) = parse_tree(&data).unwrap();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[1], RawEntry { path: "00-overview/intro.md".into(), kind: "blob".into(), sha: "b1".into() });
         assert!(truncated);
+        assert_eq!(tree_sha, Some("tree123".to_string()));
     }
 
     #[test]

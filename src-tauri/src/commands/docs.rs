@@ -36,7 +36,7 @@ pub async fn sync_docs_logic<FT, FtFut, FC, FcFut>(
 ) -> Result<DocsSyncResult, CmdError>
 where
     FT: FnOnce(String) -> FtFut,
-    FtFut: std::future::Future<Output = Result<(Vec<RawEntry>, bool), GitHubError>>,
+    FtFut: std::future::Future<Output = Result<(Vec<RawEntry>, bool, Option<String>), GitHubError>>,
     FC: Fn(String, String) -> FcFut,
     FcFut: std::future::Future<Output = Result<String, GitHubError>>,
 {
@@ -48,7 +48,7 @@ where
         .ok_or(CmdError::GitHubNotConfigured)?;
     let gen0 = generation.load(Ordering::SeqCst);
 
-    let (entries, truncated) = fetch_tree(auth.clone()).await?;
+    let (entries, truncated, tree_sha) = fetch_tree(auth.clone()).await?;
     let mut files: Vec<ddb::DocFile> = Vec::new();
     for e in &entries {
         if e.kind == "tree" {
@@ -77,7 +77,7 @@ where
     if generation.load(Ordering::SeqCst) != gen0 {
         return Err(CmdError::WorkspaceChanged);
     }
-    ddb::replace_docs(pool, &files, &now, None, truncated)
+    ddb::replace_docs(pool, &files, &now, tree_sha.as_deref(), truncated)
         .await
         .map_err(|_| CmdError::Internal)?;
     let file_count = files.iter().filter(|f| f.kind == "blob").count() as i64;
@@ -206,7 +206,7 @@ mod tests {
             &pool,
             &gen,
             "now".into(),
-            |_auth| async { Ok((sample_tree(), false)) },
+            |_auth| async { Ok((sample_tree(), false, Some("tree123".into()))) },
             |_auth, path| async move { Ok(format!("# {path}")) },
         )
         .await
@@ -237,7 +237,7 @@ mod tests {
             &pool,
             &gen,
             "now".into(),
-            |_auth| async { Ok((sample_tree(), false)) },
+            |_auth| async { Ok((sample_tree(), false, Some("tree123".into()))) },
             |_auth, _path| async { Ok(String::new()) },
         )
         .await;
@@ -258,7 +258,7 @@ mod tests {
             "now".into(),
             |_auth| {
                 gen.fetch_add(1, Ordering::SeqCst);
-                async { Ok((sample_tree(), false)) }
+                async { Ok((sample_tree(), false, Some("tree123".into()))) }
             },
             |_auth, _path| async { Ok("x".into()) },
         )
