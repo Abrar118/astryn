@@ -466,9 +466,17 @@ export type DocNode = {
 
 export type DocsStatus = {
   tokenPresent: boolean;
+  repoConfigured: boolean;
   lastSyncedAt: string | null;
   fileCount: number;
   truncated: boolean;
+};
+
+export type DocsRepo = {
+  owner: string;
+  repo: string;
+  branch: string;
+  url: string;
 };
 
 export type DocsSyncResult = { fileCount: number; truncated: boolean };
@@ -484,6 +492,13 @@ export const getDocContent = (path: string): Promise<string | null> =>
   invoke("get_doc_content", { path });
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
+
+/** The configured docs repo (`null` until the user sets one). */
+export const getDocsRepo = (): Promise<DocsRepo | null> => invoke("get_docs_repo");
+
+/** Set the docs repo from a GitHub URL (owner/repo[/tree/branch]); clears the cache. */
+export const setDocsRepo = (url: string): Promise<DocsRepo> =>
+  invoke("set_docs_repo", { url });
 
 // ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
 

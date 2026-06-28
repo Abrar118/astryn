@@ -175,6 +175,8 @@ pub fn run() {
             commands::docs::list_docs_tree,
             commands::docs::get_doc_content,
             commands::docs::get_docs_status,
+            commands::docs::get_docs_repo,
+            commands::docs::set_docs_repo,
             commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,

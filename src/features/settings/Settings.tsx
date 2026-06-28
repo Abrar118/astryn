@@ -12,8 +12,10 @@ import {
   detectSlackCredentials,
   errorText,
   getConnectionStatus,
+  getDocsRepo,
   getGithubStatus,
   getSlackStatus,
+  setDocsRepo,
   setGithubToken,
   setLinearKey,
   setSlackCredentials,
@@ -120,6 +122,32 @@ export function Settings() {
       gooeyToast.error("Could not save the token", { description: errorText(err) });
     } finally {
       setGhSaving(false);
+    }
+  };
+
+  const [docsRepoInput, setDocsRepoInput] = useState("");
+  const [docsSaving, setDocsSaving] = useState(false);
+  const { data: docsRepo } = useQuery({ queryKey: ["docs-repo"], queryFn: getDocsRepo });
+
+  const handleDocsSave = async (e: FormEvent) => {
+    e.preventDefault();
+    if (docsSaving) return;
+    const url = docsRepoInput.trim();
+    if (!url) return;
+    setDocsSaving(true);
+    try {
+      const saved = await setDocsRepo(url);
+      setDocsRepoInput("");
+      // Origin changed → the cache was cleared backend-side; drop the cached docs
+      // views and re-arm the on-mount sync so the Docs page refetches the new repo.
+      for (const key of [["docs-repo"], ["docs-status"], ["docs-tree"], ["doc-content"], ["docs-sync"]]) {
+        qc.invalidateQueries({ queryKey: key });
+      }
+      gooeyToast.success(`Docs repository set to ${saved.owner}/${saved.repo}`);
+    } catch (err) {
+      gooeyToast.error("Could not set the docs repository", { description: errorText(err) });
+    } finally {
+      setDocsSaving(false);
     }
   };
 
@@ -300,6 +328,35 @@ export function Settings() {
             <Button type="button" variant="ghost" disabled={ghBusy} onClick={() => ghClearMut.mutate()}>
               Clear token
             </Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="flex flex-col gap-4 p-6">
+        <p className="text-sm text-muted-foreground">
+          {docsRepo === undefined
+            ? "Checking…"
+            : docsRepo === null
+              ? "No documentation repository set"
+              : `Reading from ${docsRepo.owner}/${docsRepo.repo} · ${docsRepo.branch}`}
+        </p>
+        <form className="flex flex-col gap-3" onSubmit={handleDocsSave}>
+          <Label htmlFor="docs-repo">Documentation repository</Label>
+          <Input
+            id="docs-repo"
+            type="text"
+            autoComplete="off"
+            placeholder="https://github.com/owner/repo"
+            value={docsRepoInput}
+            onChange={(e) => setDocsRepoInput(e.currentTarget.value)}
+            disabled={docsSaving}
+          />
+          <p className="text-xs text-muted-foreground">
+            Paste a GitHub repo URL (optionally <code>/tree/&lt;branch&gt;</code>; defaults to{" "}
+            <code>main</code>). Fetched with your GitHub token. Changing it clears the cached docs.
+          </p>
+          <div className="flex gap-2">
+            <Button type="submit" disabled={docsSaving}>Save repository</Button>
           </div>
         </form>
       </Card>

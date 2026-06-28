@@ -8,6 +8,8 @@ const cmd = vi.hoisted(() => ({
   getConnectionStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getGithubStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getSlackStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
+  getDocsRepo: vi.fn().mockResolvedValue(null),
+  setDocsRepo: vi.fn().mockResolvedValue({ owner: "o", repo: "r", branch: "main", url: "" }),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
   clearGithubToken: vi.fn(),
   testGithubConnection: vi.fn(),
@@ -41,6 +43,19 @@ describe("Settings GitHub card", () => {
     fireEvent.change(input, { target: { value: "ghp_secret" } });
     fireEvent.click(screen.getByRole("button", { name: /save github token/i }));
     await waitFor(() => expect(cmd.setGithubToken).toHaveBeenCalledWith("ghp_secret"));
+    expect(input.value).toBe("");
+  });
+});
+
+describe("Settings docs repository card", () => {
+  it("saves the docs repo URL and clears the input", async () => {
+    render(<Settings />, { wrapper });
+    const input = screen.getByLabelText(/documentation repository/i) as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "https://github.com/acme/docs" } });
+    fireEvent.click(screen.getByRole("button", { name: /save repository/i }));
+    await waitFor(() =>
+      expect(cmd.setDocsRepo).toHaveBeenCalledWith("https://github.com/acme/docs")
+    );
     expect(input.value).toBe("");
   });
 });

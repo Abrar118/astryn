@@ -10,7 +10,7 @@ import { BookText, PanelLeftClose, PanelLeftOpen, RefreshCw } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
 import { useDocContent, useDocsStatus, useDocsSync, useDocsTree } from "@/lib/queries";
-import { buildDocTree, defaultDocPath } from "./docsTree";
+import { buildDocTree, defaultDocPath } from "./docTree";
 import { DocsTree } from "./DocsTree";
 import { DocViewer } from "./DocViewer";
 
@@ -23,8 +23,9 @@ export function DocsPage({ docPath }: { docPath?: string } = {}) {
   const { setActiveView } = useWorkspace();
   const { data: status } = useDocsStatus();
   const tokenPresent = status?.tokenPresent ?? false;
+  const repoConfigured = status?.repoConfigured ?? false;
   const { data: flat } = useDocsTree();
-  const sync = useDocsSync(tokenPresent);
+  const sync = useDocsSync(tokenPresent && repoConfigured);
 
   // Seed from the tab's docPath when opened via the tree's "new tab" / "to the
   // side" actions; otherwise fall back to the root README once the tree loads.
@@ -93,6 +94,23 @@ export function DocsPage({ docPath }: { docPath?: string } = {}) {
           </p>
         </div>
         <Button onClick={() => setActiveView("settings")}>Connect GitHub</Button>
+      </main>
+    );
+  }
+
+  if (status && tokenPresent && !repoConfigured) {
+    return (
+      <main className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
+        <span className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
+          <BookText className="size-7 text-muted-foreground" />
+        </span>
+        <div className="flex flex-col gap-1">
+          <h1 className="text-base font-semibold text-foreground">Docs</h1>
+          <p className="max-w-xs text-sm text-muted-foreground">
+            Set the documentation repository in Settings to start browsing.
+          </p>
+        </div>
+        <Button onClick={() => setActiveView("settings")}>Configure repository</Button>
       </main>
     );
   }
