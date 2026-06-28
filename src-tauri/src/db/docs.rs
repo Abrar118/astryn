@@ -38,7 +38,9 @@ pub async fn replace_docs(
     truncated: bool,
 ) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM docs_files").execute(&mut *tx).await?;
+    sqlx::query("DELETE FROM docs_files")
+        .execute(&mut *tx)
+        .await?;
     for f in files {
         sqlx::query(
             "INSERT INTO docs_files (path, name, kind, parent_path, sha, content, synced_at)
@@ -74,6 +76,75 @@ pub async fn replace_docs(
     Ok(())
 }
 
+const ORIGIN_OWNER_KEY: &str = "docs_repo_owner";
+const ORIGIN_REPO_KEY: &str = "docs_repo_name";
+const ORIGIN_BRANCH_KEY: &str = "docs_repo_branch";
+
+/// Persist the configured docs repo origin (owner/repo/branch) atomically.
+pub async fn save_docs_origin(
+    pool: &SqlitePool,
+    owner: &str,
+    repo: &str,
+    branch: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (k, v) in [
+        (ORIGIN_OWNER_KEY, owner),
+        (ORIGIN_REPO_KEY, repo),
+        (ORIGIN_BRANCH_KEY, branch),
+    ] {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(k)
+        .bind(v)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(())
+}
+
+/// The configured docs repo origin as `(owner, repo, branch)`, or `None` until set.
+pub async fn load_docs_origin(
+    pool: &SqlitePool,
+) -> Result<Option<(String, String, String)>, sqlx::Error> {
+    let rows: Vec<(String, String)> =
+        sqlx::query_as("SELECT key, value FROM settings WHERE key IN (?1, ?2, ?3)")
+            .bind(ORIGIN_OWNER_KEY)
+            .bind(ORIGIN_REPO_KEY)
+            .bind(ORIGIN_BRANCH_KEY)
+            .fetch_all(pool)
+            .await?;
+    let find = |k: &str| {
+        rows.iter()
+            .find(|(key, _)| key == k)
+            .map(|(_, v)| v.clone())
+    };
+    match (find(ORIGIN_OWNER_KEY), find(ORIGIN_REPO_KEY)) {
+        (Some(owner), Some(repo)) => {
+            let branch = find(ORIGIN_BRANCH_KEY).unwrap_or_else(|| "main".to_string());
+            Ok(Some((owner, repo, branch)))
+        }
+        _ => Ok(None),
+    }
+}
+
+/// Empty the docs cache (files + metadata) — used when the repo origin changes so
+/// the old repo's content never lingers under the new one.
+pub async fn clear_docs(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    sqlx::query("DELETE FROM docs_files")
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM docs_sync_meta")
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+    Ok(())
+}
+
 /// All cached entries (folders + files), lightweight (no content). The frontend
 /// nests them into a tree.
 pub async fn list_docs(pool: &SqlitePool) -> Result<Vec<DocNode>, sqlx::Error> {
@@ -85,7 +156,10 @@ pub async fn list_docs(pool: &SqlitePool) -> Result<Vec<DocNode>, sqlx::Error> {
 }
 
 /// The cached markdown for one file (`None` if the path is unknown or a folder).
-pub async fn load_doc_content(pool: &SqlitePool, path: &str) -> Result<Option<String>, sqlx::Error> {
+pub async fn load_doc_content(
+    pool: &SqlitePool,
+    path: &str,
+) -> Result<Option<String>, sqlx::Error> {
     let row: Option<(Option<String>,)> =
         sqlx::query_as("SELECT content FROM docs_files WHERE path = ?1 AND kind = 'blob'")
             .bind(path)
@@ -182,7 +256,10 @@ mod tests {
         assert_eq!(nodes[0].path, "b.md");
         // Stale file is gone, meta updated (single row).
         assert_eq!(load_doc_content(&pool, "a.md").await.unwrap(), None);
-        assert_eq!(load_docs_meta(&pool).await.unwrap().unwrap().truncated, true);
+        assert_eq!(
+            load_docs_meta(&pool).await.unwrap().unwrap().truncated,
+            true
+        );
     }
 
     #[tokio::test]
@@ -190,5 +267,38 @@ mod tests {
         let (_d, pool) = pool().await;
         assert!(load_docs_meta(&pool).await.unwrap().is_none());
         assert!(list_docs(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn docs_origin_round_trips_and_overwrites() {
+        let (_d, pool) = pool().await;
+        assert!(load_docs_origin(&pool).await.unwrap().is_none());
+
+        save_docs_origin(&pool, "acme", "docs", "main")
+            .await
+            .unwrap();
+        assert_eq!(
+            load_docs_origin(&pool).await.unwrap(),
+            Some(("acme".into(), "docs".into(), "main".into()))
+        );
+
+        save_docs_origin(&pool, "other", "guide", "release")
+            .await
+            .unwrap();
+        assert_eq!(
+            load_docs_origin(&pool).await.unwrap(),
+            Some(("other".into(), "guide".into(), "release".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn clear_docs_empties_files_and_meta() {
+        let (_d, pool) = pool().await;
+        replace_docs(&pool, &[file("a.md", "", "a")], "now", None, false)
+            .await
+            .unwrap();
+        clear_docs(&pool).await.unwrap();
+        assert!(list_docs(&pool).await.unwrap().is_empty());
+        assert!(load_docs_meta(&pool).await.unwrap().is_none());
     }
 }

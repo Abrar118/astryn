@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocNode } from "@/lib/commands";
-import { buildDocTree, defaultDocPath, displayLabel } from "./docsTree";
+import { buildDocTree, defaultDocPath, displayLabel } from "./docTree";
 
 const node = (path: string, kind: "blob" | "tree", parentPath: string): DocNode => ({
   path,

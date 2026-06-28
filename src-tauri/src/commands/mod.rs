@@ -111,6 +111,8 @@ pub enum CmdError {
     PreviewUnavailable,
     #[error("No GitHub token is configured.")]
     GitHubNotConfigured,
+    #[error("No documentation repository is configured.")]
+    DocsRepoNotConfigured,
     #[error("GitHub rejected the request.")]
     GitHubApi,
     #[error("No Slack token is configured.")]

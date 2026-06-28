@@ -1,6 +1,6 @@
 import { useState, type MouseEvent } from "react";
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
-import type { DocTreeNode } from "./docsTree";
+import type { DocTreeNode } from "./docTree";
 import { DocContextMenu } from "./DocContextMenu";
 
 function TreeRow({

@@ -18,6 +18,7 @@ import {
   deleteIssue,
   addReaction,
   errorText,
+  getDocsRepo,
   getDocsStatus,
   getDocContent,
   getGithubContributions,
@@ -695,6 +696,10 @@ export function clearGithubQueries(qc: QueryClient) {
 
 export function useDocsStatus() {
   return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus });
+}
+
+export function useDocsRepo() {
+  return useQuery({ queryKey: ["docs-repo"], queryFn: getDocsRepo });
 }
 
 export function useDocsTree() {
