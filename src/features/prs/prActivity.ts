@@ -41,11 +41,12 @@ export type PrStats = {
 
 /** Headline counts for the activity card's metric tiles. */
 export function prStats(prs: GithubPr[]): PrStats {
-  const unique = uniqueById(prs);
+  const viewerPrs = prs.filter((pr) => !pr.bucket.startsWith("repo:"));
+  const unique = uniqueById(viewerPrs);
   return {
     open: unique.length,
-    needsReview: prs.filter((p) => p.bucket === "needs_review").length,
-    changesRequested: prs.filter(
+    needsReview: viewerPrs.filter((p) => p.bucket === "needs_review").length,
+    changesRequested: viewerPrs.filter(
       (p) => p.bucket === "mine" && p.reviewDecision === "changes_requested",
     ).length,
     conflicts: unique.filter((p) => p.mergeable === "conflicting").length,
