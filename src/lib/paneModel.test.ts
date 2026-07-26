@@ -11,6 +11,10 @@ describe("VIEWS", () => {
   it("includes the slack view", () => {
     expect(VIEWS).toContain("slack");
   });
+
+  it("includes the dashboard view", () => {
+    expect(VIEWS).toContain("dashboard");
+  });
 });
 
 describe("clampRatio", () => {
@@ -38,6 +42,24 @@ describe("nextPaneId", () => {
 });
 
 describe("parsePersisted", () => {
+  it("starts a fresh workspace on the dashboard", () => {
+    expect(parsePersisted(null).panes[0].tabs[0].view).toBe("dashboard");
+  });
+
+  it("preserves a persisted dashboard tab", () => {
+    const state = parsePersisted(JSON.stringify({
+      panes: [{
+        id: "pane-0",
+        tabs: [{ id: "tab-0", view: "dashboard" }],
+        activeTabId: "tab-0",
+      }],
+      focusedPaneId: "pane-0",
+      ratio: 0.5,
+      seq: 1,
+    }));
+    expect(state.panes[0].tabs[0].view).toBe("dashboard");
+  });
+
   it("migrates the old {tabs,activeId,seq} shape to a single pane", () => {
     const raw = JSON.stringify({ tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "issue", issueId: "iss-1" }], activeId: "tab-1", seq: 2 });
     const s = parsePersisted(raw);
@@ -88,7 +110,7 @@ describe("parsePersisted", () => {
     const s = parsePersisted(raw);
     expect(s.ratio).toBe(0.5);
     expect(s.seq).toBe(1); // max(0, maxTabSeq 0 + 1)
-    expect(parsePersisted("{not json").panes[0].tabs[0].view).toBe("calendar");
+    expect(parsePersisted("{not json").panes[0].tabs[0].view).toBe("dashboard");
     expect(parsePersisted(null)).toEqual(FALLBACK);
   });
 });

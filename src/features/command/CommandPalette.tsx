@@ -20,6 +20,7 @@ import {
   ExternalLink,
   GitPullRequest,
   Inbox,
+  LayoutDashboard,
   List,
   Network,
   Plus,
@@ -221,9 +222,10 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   const commands: Command[] = useMemo(
     () => [
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      { key: "go-dashboard", section: "Go to", icon: <LayoutDashboard className="size-4" />, label: "Go to Dashboard", onSelect: () => goTo("dashboard") },
       { key: "go-calendar", section: "Go to", icon: <Calendar className="size-4" />, label: "Go to Calendar", onSelect: () => goTo("calendar") },
       { key: "go-issues", section: "Go to", icon: <List className="size-4" />, label: "Go to Issues", onSelect: () => goTo("list") },
-      { key: "go-this-week", section: "Go to", icon: <CalendarRange className="size-4" />, label: "Go to Overview", onSelect: () => goTo("this-week") },
+      { key: "go-this-week", section: "Go to", icon: <CalendarRange className="size-4" />, label: "Go to This Week", onSelect: () => goTo("this-week") },
       { key: "go-graph", section: "Go to", icon: <Network className="size-4" />, label: "Go to Dependencies", onSelect: () => goTo("graph") },
       { key: "go-inbox", section: "Go to", icon: <Inbox className="size-4" />, label: "Go to Inbox", onSelect: () => goTo("inbox") },
       { key: "go-prs", section: "Go to", icon: <GitPullRequest className="size-4" />, label: "Go to Pull Requests", onSelect: () => goTo("prs") },

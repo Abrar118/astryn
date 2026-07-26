@@ -172,6 +172,118 @@
   }
 }
 
+/* ── Dashboard — frosted, data-dense command center ─────────────────────── */
+.dashboard-surface {
+  position: relative;
+  isolation: isolate;
+  container-type: inline-size;
+  container-name: dashboard-pane;
+  background:
+    radial-gradient(
+      circle at 82% 0%,
+      color-mix(in oklab, var(--primary) 12%, transparent),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 4% 72%,
+      color-mix(in oklab, #22d3ee 7%, transparent),
+      transparent 28%
+    ),
+    var(--background);
+}
+
+.dashboard-kpi-grid,
+.dashboard-main-grid,
+.dashboard-side-grid,
+.dashboard-lower-grid,
+.dashboard-source-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.dashboard-attention-status {
+  display: none;
+}
+
+@container dashboard-pane (min-width: 520px) {
+  .dashboard-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .dashboard-kpi-grid,
+  .dashboard-side-grid,
+  .dashboard-source-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-attention-status {
+    display: table-cell;
+  }
+}
+
+@container dashboard-pane (min-width: 900px) {
+  .dashboard-kpi-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-main-grid {
+    grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.8fr);
+  }
+
+  .dashboard-side-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .dashboard-lower-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.dashboard-glass {
+  border-color: color-mix(in oklab, var(--foreground) 10%, transparent);
+  background: color-mix(in oklab, var(--card) 88%, transparent);
+  box-shadow:
+    inset 0 1px color-mix(in oklab, white 6%, transparent),
+    0 12px 36px color-mix(in oklab, black 15%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.dashboard-aurora {
+  position: fixed;
+  z-index: -1;
+  width: 22rem;
+  height: 22rem;
+  border-radius: 9999px;
+  opacity: 0.12;
+  filter: blur(90px);
+  pointer-events: none;
+}
+
+.dashboard-aurora-primary {
+  top: -10rem;
+  right: 2rem;
+  background: var(--primary);
+}
+
+.dashboard-aurora-cyan {
+  bottom: 4rem;
+  left: -12rem;
+  background: #22d3ee;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-surface *,
+  .dashboard-surface *::before,
+  .dashboard-surface *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* ── FullCalendar — Astryn dark, Linear-style ──────────────────────────── */
 .fc {
   --fc-border-color: var(--border);
@@ -752,4 +864,3 @@
 .react-flow__attribution a {
   color: var(--muted-foreground);
 }
-

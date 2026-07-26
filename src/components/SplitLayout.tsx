@@ -30,6 +30,7 @@ import { PrsPage } from "@/features/prs/PrsPage";
 import { SlackPage } from "@/features/slack/SlackPage";
 import { DocsPage } from "@/features/docs/DocsPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
+import { DashboardPage } from "@/features/dashboard/DashboardPage";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
@@ -37,6 +38,8 @@ const SPLIT_RIGHT_ID = "split-right";
 
 function PaneContent({ tab }: { tab: Tab }) {
   switch (tab.view) {
+    case "dashboard":
+      return <DashboardPage />;
     case "calendar":
       return <CalendarPage />;
     case "list":
