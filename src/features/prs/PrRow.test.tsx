@@ -21,6 +21,15 @@ const base: GithubPr = {
 afterEach(cleanup);
 
 describe("PrRow", () => {
+  it("opens the drawer selection from click and Enter", () => {
+    const onOpen = vi.fn();
+    render(<PrRow pr={base} onOpen={onOpen} />);
+    const row = screen.getByRole("button", { name: /Add widget pull request/i });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
+
   it("shows core fields, avatar, relative time, and changes-requested badge", () => {
     render(<PrRow pr={base} />);
     expect(screen.getByText("Add widget")).toBeInTheDocument();
@@ -33,9 +42,11 @@ describe("PrRow", () => {
   });
 
   it("opens the linked Linear issue when the chip is clicked", () => {
-    render(<PrRow pr={base} />);
+    const onOpen = vi.fn();
+    render(<PrRow pr={base} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button", { name: /ENG-9/ }));
     expect(openIssueTab).toHaveBeenCalledWith("iss-1");
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("renders no Linear chip without a matched issue id", () => {
