@@ -1120,6 +1120,10 @@ fn guess_content_type(filename: &str) -> String {
     mime.to_string()
 }
 
+fn upload_is_image(content_type: &str) -> bool {
+    crate::linear::is_renderable_image_mime(content_type)
+}
+
 /// Read one already-selected file and upload it to Linear storage.
 async fn upload_one(
     linear: &crate::linear::LinearClient,
@@ -1162,7 +1166,7 @@ async fn upload_one(
         .put_upload(&target.upload_url, &target.headers, &content_type, bytes)
         .await
         .map_err(|_| CmdError::UploadFailed)?;
-    let is_image = content_type.starts_with("image/");
+    let is_image = upload_is_image(&content_type);
     Ok(UploadedAsset {
         url: target.asset_url,
         filename,
@@ -1376,6 +1380,12 @@ mod status_tests {
         assert_eq!(guess_content_type("doc.pdf"), "application/pdf");
         assert_eq!(guess_content_type("noext"), "application/octet-stream");
         assert!(guess_content_type("photo.jpeg").starts_with("image/"));
+    }
+
+    #[test]
+    fn upload_image_flag_only_marks_renderable_raster_formats() {
+        assert!(upload_is_image("image/png"));
+        assert!(!upload_is_image("image/svg+xml"));
     }
 
     #[test]

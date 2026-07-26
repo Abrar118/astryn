@@ -42,4 +42,18 @@ describe("MermaidDiagram", () => {
       expect(document.querySelector("pre code")?.textContent).toBe("not valid mermaid"),
     );
   });
+
+  it("recovers when invalid source is replaced with valid source", async () => {
+    renderMock
+      .mockRejectedValueOnce(new Error("Parse error on line 1"))
+      .mockResolvedValueOnce({ svg: "<svg data-testid='recovered-diagram'/>" });
+    const { rerender } = render(<MermaidDiagram code={"not valid mermaid"} />);
+    await waitFor(() =>
+      expect(document.querySelector("pre code")?.textContent).toBe("not valid mermaid"),
+    );
+
+    rerender(<MermaidDiagram code={"graph TD; A-->B"} />);
+
+    await waitFor(() => expect(screen.getByTestId("recovered-diagram")).toBeTruthy());
+  });
 });
