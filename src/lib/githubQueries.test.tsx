@@ -6,11 +6,13 @@ import type { ReactNode } from "react";
 
 const listGithubPrs = vi.hoisted(() => vi.fn());
 const syncGithubPrs = vi.hoisted(() => vi.fn());
+const getGithubPrDetail = vi.hoisted(() => vi.fn());
 const gooeyToastError = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/commands", () => ({
   listGithubPrs,
   syncGithubPrs,
+  getGithubPrDetail,
   getGithubStatus: vi.fn(),
   errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
 }));
@@ -19,7 +21,7 @@ vi.mock("goey-toast", () => ({
   gooeyToast: { error: gooeyToastError, success: vi.fn() },
 }));
 
-import { useGithubPrs, useGithubSync } from "./queries";
+import { useGithubPrDetail, useGithubPrs, useGithubSync } from "./queries";
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -30,6 +32,7 @@ describe("GitHub query hooks", () => {
   beforeEach(() => {
     listGithubPrs.mockClear();
     syncGithubPrs.mockClear();
+    getGithubPrDetail.mockClear();
     gooeyToastError.mockClear();
   });
 
@@ -65,5 +68,18 @@ describe("GitHub query hooks", () => {
       "Couldn't refresh pull requests",
       expect.objectContaining({ description: "GitHub token expired" }),
     ));
+  });
+
+  it("loads a selected PR detail and keeps it session-cached", async () => {
+    getGithubPrDetail.mockResolvedValue({ repo: "o/r", number: 42, title: "Detail" });
+    const { result } = renderHook(() => useGithubPrDetail("o/r", 42), { wrapper });
+    await waitFor(() => expect(result.current.data?.title).toBe("Detail"));
+    expect(getGithubPrDetail).toHaveBeenCalledWith("o/r", 42);
+  });
+
+  it("does not request PR detail without a complete selection", async () => {
+    renderHook(() => useGithubPrDetail(null, null), { wrapper });
+    await Promise.resolve();
+    expect(getGithubPrDetail).not.toHaveBeenCalled();
   });
 });

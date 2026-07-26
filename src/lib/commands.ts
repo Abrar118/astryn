@@ -451,6 +451,89 @@ export const setGithubRepoFavorite = (
   favorite: boolean,
 ): Promise<string[]> => invoke("set_github_repo_favorite", { repo, favorite });
 
+export type GithubPrComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  url: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrReview = {
+  id: string;
+  body: string;
+  state: string;
+  submittedAt: string;
+  url: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrCommit = {
+  oid: string;
+  headline: string;
+  committedAt: string;
+  url: string;
+  authorName: string | null;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrFile = {
+  path: string;
+  changeType: string;
+  additions: number;
+  deletions: number;
+};
+
+export type GithubPrCheck = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  detailsUrl: string | null;
+};
+
+export type GithubPrDetail = {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  draft: boolean;
+  mergeable: GithubPr["mergeable"];
+  reviewDecision: GithubPr["reviewDecision"];
+  body: string | null;
+  createdAt: string;
+  updatedAt: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+  headBranch: string | null;
+  baseBranch: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  commentCount: number;
+  linearIdentifier: string | null;
+  comments: GithubPrComment[];
+  reviews: GithubPrReview[];
+  commits: GithubPrCommit[];
+  files: GithubPrFile[];
+  checks: GithubPrCheck[];
+  truncated: {
+    comments: boolean;
+    reviews: boolean;
+    commits: boolean;
+    files: boolean;
+    checks: boolean;
+  };
+};
+
+export const getGithubPrDetail = (
+  repo: string,
+  number: number,
+): Promise<GithubPrDetail> => invoke("get_github_pr_detail", { repo, number });
+
 /** One day of the GitHub contribution calendar. `weekday`: 0 = Sun … 6 = Sat. */
 export type ContribDay = { date: string; count: number; weekday: number };
 /** The viewer's contribution calendar: total + weeks (oldest→newest, may be partial at edges). */

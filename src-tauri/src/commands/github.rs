@@ -7,6 +7,7 @@ use tauri::State;
 use super::{AppState, CmdError};
 use crate::db::github as gdb;
 use crate::github::contributions::{contributions_query_body, parse_contributions, Contributions};
+use crate::github::pr_detail::{build_pr_detail_body, parse_pr_detail, PrDetail};
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
 };
@@ -434,6 +435,80 @@ mod tests {
         }
     }
 
+    fn sample_pr_detail() -> serde_json::Value {
+        serde_json::json!({
+            "repository": {
+                "pullRequest": {
+                    "number": 1,
+                    "title": "Detail",
+                    "url": "https://github.com/o/r/pull/1",
+                    "state": "OPEN",
+                    "isDraft": false,
+                    "mergeable": "MERGEABLE",
+                    "reviewDecision": null,
+                    "body": "",
+                    "createdAt": "2026-07-20T10:00:00Z",
+                    "updatedAt": "2026-07-26T10:00:00Z",
+                    "additions": 1,
+                    "deletions": 0,
+                    "changedFiles": 1,
+                    "headRefName": "feature",
+                    "baseRefName": "main",
+                    "repository": { "nameWithOwner": "o/r" },
+                    "author": null,
+                    "comments": { "totalCount": 0, "nodes": [] },
+                    "reviews": { "totalCount": 0, "nodes": [] },
+                    "commits": { "totalCount": 0, "nodes": [] },
+                    "files": { "totalCount": 0, "nodes": [] },
+                    "statusCheckRollup": null
+                }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn pr_detail_logic_validates_builds_and_parses_the_request() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let detail = get_github_pr_detail_logic(
+            creds,
+            &generation,
+            "o/r".into(),
+            1,
+            |auth, body| async move {
+                assert_eq!(auth, "Bearer x");
+                assert_eq!(body["variables"]["owner"], "o");
+                assert_eq!(body["variables"]["name"], "r");
+                assert_eq!(body["variables"]["number"], 1);
+                Ok(sample_pr_detail())
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(detail.title, "Detail");
+    }
+
+    #[tokio::test]
+    async fn pr_detail_logic_rejects_invalid_input_without_fetching() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let result = get_github_pr_detail_logic(
+            creds,
+            &generation,
+            "not a repo".into(),
+            0,
+            |_auth, _body| async {
+                panic!("invalid detail input must not fetch");
+                #[allow(unreachable_code)]
+                Ok(sample_pr_detail())
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(CmdError::InvalidInput)));
+    }
+
     #[tokio::test]
     async fn sync_contributions_stores_and_returns() {
         let (_d, pool) = pool().await;
@@ -637,6 +712,36 @@ pub async fn set_github_repo_favorite_logic(
         .map_err(|_| CmdError::Internal)
 }
 
+pub async fn get_github_pr_detail_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    generation: &AtomicU64,
+    repo: String,
+    number: i64,
+    fetch: F,
+) -> Result<PrDetail, CmdError>
+where
+    F: FnOnce(String, serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, GitHubError>>,
+{
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    if number <= 0 || number > i32::MAX as i64 {
+        return Err(CmdError::InvalidInput);
+    }
+    let body = build_pr_detail_body(&repo, number).map_err(|_| CmdError::InvalidInput)?;
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+    let data = fetch(auth, body).await.map_err(CmdError::from)?;
+    if generation.load(Ordering::SeqCst) != gen0 {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    parse_pr_detail(&data).map_err(CmdError::from)
+}
+
 fn now_iso() -> String {
     time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
@@ -679,6 +784,23 @@ pub async fn set_github_repo_favorite(
 ) -> Result<Vec<String>, CmdError> {
     let _g = state.github_lock.lock().await;
     set_github_repo_favorite_logic(&state.pool, repo, favorite).await
+}
+
+#[tauri::command]
+pub async fn get_github_pr_detail(
+    state: State<'_, AppState>,
+    repo: String,
+    number: i64,
+) -> Result<PrDetail, CmdError> {
+    let client = state.github.clone();
+    get_github_pr_detail_logic(
+        state.github_credentials.clone(),
+        &state.github_generation,
+        repo,
+        number,
+        move |auth, body| async move { client.graphql(&auth, body).await },
+    )
+    .await
 }
 
 /// Offline read of the cached contribution calendar (`None` until first sync).

@@ -1,5 +1,6 @@
 pub mod contributions;
 pub mod docs;
+pub mod pr_detail;
 pub mod prs;
 pub mod repositories;
 

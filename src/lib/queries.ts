@@ -22,6 +22,7 @@ import {
   getDocsStatus,
   getDocContent,
   getGithubContributions,
+  getGithubPrDetail,
   getGithubStatus,
   getSlackCatchup,
   getSlackStatus,
@@ -650,6 +651,16 @@ export function useGithubPrs() {
   return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs });
 }
 
+export function useGithubPrDetail(repo: string | null, number: number | null) {
+  return useQuery({
+    queryKey: ["github-pr-detail", repo, number],
+    enabled: repo !== null && number !== null,
+    queryFn: () => getGithubPrDetail(repo!, number!),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
 /**
  * Background GitHub sync: runs on mount + every 5 minutes while a token is
  * present, then invalidates the cached list so fresh rows render. Disabled
@@ -699,6 +710,7 @@ export function clearGithubQueries(qc: QueryClient) {
   for (const key of [
     ["github-status"],
     ["github-prs"],
+    ["github-pr-detail"],
     ["github-sync"],
     ["github-contributions"],
     ["github-contributions-sync"],
