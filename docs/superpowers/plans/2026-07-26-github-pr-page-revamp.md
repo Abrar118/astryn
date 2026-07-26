@@ -1,6 +1,6 @@
 # GitHub Pull Request Page Revamp Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Replace the four-card pull-request dashboard with a three-queue siderail, cached favorite-repository views, accessible PR actions, and a live read-only PR detail drawer.
 
@@ -40,7 +40,7 @@
 - Produces: `delete_repo_scope(pool, scope) -> Result<(), sqlx::Error>`
 - Consumes: existing `db::save_setting`, `db::load_setting`, `github_prs`, and `github_sync_meta`
 
-- [ ] **Step 1: Write failing parser and settings tests**
+- [x] **Step 1: Write failing parser and settings tests**
 
 ```rust
 #[test]
@@ -74,13 +74,13 @@ async fn removing_favorite_deletes_only_its_dynamic_scope() {
 }
 ```
 
-- [ ] **Step 2: Run the focused Rust tests and verify RED**
+- [x] **Step 2: Run the focused Rust tests and verify RED**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml github::repositories db::github`
 
 Expected: compilation fails because the repository module and favorite functions do not exist.
 
-- [ ] **Step 3: Implement strict repository parsing and favorite settings**
+- [x] **Step 3: Implement strict repository parsing and favorite settings**
 
 ```rust
 pub const GITHUB_FAVORITE_REPOS_KEY: &str = "github_favorite_repos";
@@ -114,17 +114,17 @@ pub fn parse_repository(input: &str) -> Result<RepositoryName, GitHubError> {
 
 Persist `Vec<String>` JSON, recover malformed JSON as an empty favorite list, preserve first canonical casing, sort case-insensitively for stable UI, and delete only the removed repository’s rows/meta in one transaction.
 
-- [ ] **Step 4: Extend GitHub account wiping**
+- [x] **Step 4: Extend GitHub account wiping**
 
 Add `GITHUB_FAVORITE_REPOS_KEY` to `wipe_github_cache` so token set/clear removes private repository names along with GitHub rows/meta/login/contributions.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml github::repositories db::github`
 
 Expected: all repository parser, settings, selective deletion, and credential-wipe tests pass.
 
-- [ ] **Step 6: Commit the task**
+- [x] **Step 6: Commit the task**
 
 ```bash
 git add src-tauri/src/github/repositories.rs src-tauri/src/github/mod.rs src-tauri/src/db/github.rs
@@ -149,7 +149,7 @@ git commit -m "feat: persist favorite GitHub repositories"
 - Produces TypeScript: `PrScope = PrBucket | \`repo:${string}\``
 - Produces TypeScript: `setGithubRepoFavorite(repo, favorite) -> Promise<string[]>`
 
-- [ ] **Step 1: Write failing repository-query and sync tests**
+- [x] **Step 1: Write failing repository-query and sync tests**
 
 ```rust
 #[test]
@@ -174,13 +174,13 @@ async fn favorite_scope_failure_preserves_previous_cache() {
 }
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml commands::github github::prs`
 
 Expected: new query builder/dashboard fields/favorite scope behavior are missing.
 
-- [ ] **Step 3: Generalize page fetching from enum bucket to query/scope**
+- [x] **Step 3: Generalize page fetching from enum bucket to query/scope**
 
 Replace the enum-only private fetch helper with:
 
@@ -194,7 +194,7 @@ async fn fetch_scope<F, Fut>(
 
 Keep the existing pagination/cap/dedupe behavior. Sync core `Bucket::all()` first, then validated favorites loaded from SQLite. Before every successful scope write, compare the captured generation and abort with `WorkspaceChanged` on mismatch.
 
-- [ ] **Step 4: Add favorite IPC logic and registration**
+- [x] **Step 4: Add favorite IPC logic and registration**
 
 ```rust
 #[tauri::command]
@@ -207,7 +207,7 @@ pub async fn set_github_repo_favorite(
 
 Hold `github_lock`, validate via `parse_repository`, persist locally, and map database/provider failures to sanitized `CmdError`. Register the command in `src-tauri/src/lib.rs`.
 
-- [ ] **Step 5: Extend TypeScript contracts**
+- [x] **Step 5: Extend TypeScript contracts**
 
 ```ts
 export type PrBucket = "needs_review" | "mine" | "assigned" | "involved" | "merged";
@@ -223,7 +223,7 @@ export const setGithubRepoFavorite = (repo: string, favorite: boolean): Promise<
 
 Change `GithubPr.bucket` and `GithubSyncMeta.bucket` to `PrScope`.
 
-- [ ] **Step 6: Run focused Rust and frontend boundary tests and verify GREEN**
+- [x] **Step 6: Run focused Rust and frontend boundary tests and verify GREEN**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml commands::github github::prs`
 
@@ -231,7 +231,7 @@ Run: `npm test -- src/lib/githubQueries.test.tsx`
 
 Expected: favorite scopes sync/serialize and existing core sync/query behavior remains green.
 
-- [ ] **Step 7: Commit the task**
+- [x] **Step 7: Commit the task**
 
 ```bash
 git add src-tauri/src/github/prs.rs src-tauri/src/commands/github.rs src-tauri/src/lib.rs src/lib/commands.ts src/lib/githubQueries.test.tsx
@@ -257,7 +257,7 @@ git commit -m "feat: sync pull requests for favorite repositories"
 - Produces TypeScript: `GithubPrDetail`, `GithubPrComment`, `GithubPrReview`, `GithubPrCommit`, `GithubPrFile`, `GithubPrCheck`, `GithubPrTruncation`
 - Produces hook: `useGithubPrDetail(repo: string | null, number: number | null)`
 
-- [ ] **Step 1: Write a failing parser contract test**
+- [x] **Step 1: Write a failing parser contract test**
 
 ```rust
 #[test]
@@ -278,13 +278,13 @@ fn parses_pr_detail_and_truncation() {
 The fixture must include every queried field and both `CheckRun` and
 `StatusContext` union forms. Add separate malformed/missing-PR/null-author tests.
 
-- [ ] **Step 2: Run focused detail tests and verify RED**
+- [x] **Step 2: Run focused detail tests and verify RED**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml github::pr_detail`
 
 Expected: compilation fails because the module/types/parser do not exist.
 
-- [ ] **Step 3: Implement bounded query and pure parser**
+- [x] **Step 3: Implement bounded query and pure parser**
 
 Use GraphQL variables `owner`, `name`, and `number`; never interpolate request values into GraphQL source. Query:
 
@@ -308,7 +308,7 @@ Normalize enum strings to lowercase, preserve nullable author/body/url fields,
 derive truncation from `totalCount > nodes.len()`, and reject missing required
 repository/number/title/collection structure.
 
-- [ ] **Step 4: Add command logic, registration, bindings, and hook**
+- [x] **Step 4: Add command logic, registration, bindings, and hook**
 
 ```ts
 export const getGithubPrDetail = (repo: string, number: number): Promise<GithubPrDetail> =>
@@ -329,7 +329,7 @@ The Rust wrapper obtains authorization with `spawn_blocking`, validates a
 positive number/repository, calls `GitHubClient.graphql`, parses, and maps every
 provider failure to existing sanitized `CmdError`.
 
-- [ ] **Step 5: Run focused Rust/query tests and verify GREEN**
+- [x] **Step 5: Run focused Rust/query tests and verify GREEN**
 
 Run: `cargo test --manifest-path src-tauri/Cargo.toml github::pr_detail commands::github`
 
@@ -337,7 +337,7 @@ Run: `npm test -- src/lib/githubQueries.test.tsx`
 
 Expected: parser, command, binding, query key, disabled state, and existing GitHub tests pass.
 
-- [ ] **Step 6: Commit the task**
+- [x] **Step 6: Commit the task**
 
 ```bash
 git add src-tauri/src/github/pr_detail.rs src-tauri/src/github/mod.rs src-tauri/src/commands/github.rs src-tauri/src/lib.rs src/lib/commands.ts src/lib/queries.ts src/lib/githubQueries.test.tsx
@@ -362,7 +362,7 @@ git commit -m "feat: fetch pull request review details"
 - Produces: `saveGroupByRepo(value, storage?: Storage) -> void`
 - Changes: `PrToolbar` removes the board/list layout control
 
-- [ ] **Step 1: Write failing pure helper tests**
+- [x] **Step 1: Write failing pure helper tests**
 
 ```ts
 it("defaults repository grouping to true and honors saved false", () => {
@@ -383,13 +383,13 @@ it("viewer metrics ignore repository scopes", () => {
 });
 ```
 
-- [ ] **Step 2: Run focused tests and verify RED**
+- [x] **Step 2: Run focused tests and verify RED**
 
 Run: `npm test -- src/features/prs/prScopes.test.ts src/features/prs/prActivity.test.ts`
 
 Expected: helper imports fail and repository-scoped rows incorrectly affect metrics.
 
-- [ ] **Step 3: Implement helpers and simplify toolbar**
+- [x] **Step 3: Implement helpers and simplify toolbar**
 
 Use literal parsing for `"true"`/`"false"` only, catch storage access failures,
 case-normalize repository scope keys, derive known repos from canonical row
@@ -397,13 +397,13 @@ values, and filter `prStats` to non-`repo:` buckets before deduplication.
 Remove `PrLayout`, `LayoutGrid`, `LayoutList`, `layout`, and `setLayout` from
 `PrToolbar`.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 Run: `npm test -- src/features/prs/prScopes.test.ts src/features/prs/prActivity.test.ts`
 
 Expected: persisted grouping, scope selection, repo discovery, and viewer metrics pass.
 
-- [ ] **Step 5: Commit the task**
+- [x] **Step 5: Commit the task**
 
 ```bash
 git add src/features/prs/prScopes.ts src/features/prs/prScopes.test.ts src/features/prs/prActivity.ts src/features/prs/prActivity.test.ts src/features/prs/PrToolbar.tsx
@@ -430,7 +430,7 @@ git commit -m "refactor: model pull request page scopes"
 - `PrRow({ pr, viewerLogin, onOpen, onOpenMenu })`
 - `PrsPage` owns `activeScope`, selected PR, menu position, and favorite mutation
 
-- [ ] **Step 1: Write failing page/row behavior tests**
+- [x] **Step 1: Write failing page/row behavior tests**
 
 ```tsx
 it("shows three primary queues and no involved section", () => {
@@ -454,13 +454,13 @@ Add separate tests for primary switching, favorite selection/counts, picker
 exclusion/search, group persistence, Linear-chip propagation, stale/truncated
 scope status, and favorite removal fallback.
 
-- [ ] **Step 2: Run page/row tests and verify RED**
+- [x] **Step 2: Run page/row tests and verify RED**
 
 Run: `npm test -- src/features/prs/PrsPage.test.tsx src/features/prs/PrRow.test.tsx src/features/prs/PrSidebar.test.tsx`
 
 Expected: siderail/list components are missing and existing four-section assertions fail.
 
-- [ ] **Step 3: Implement siderail and active list**
+- [x] **Step 3: Implement siderail and active list**
 
 Build semantic nav buttons with counts and `aria-current`, a compact responsive
 rail, a controlled favorite picker from `knownRepos`, and one grouped/un-grouped
@@ -468,7 +468,7 @@ active list. Preserve cached/connect/refresh/activity behavior. Use
 `useMutation` for `setGithubRepoFavorite`, invalidate `["github-prs"]`, refetch
 `["github-sync"]`, and show sanitized toasts.
 
-- [ ] **Step 4: Write failing context-menu tests**
+- [x] **Step 4: Write failing context-menu tests**
 
 ```tsx
 it("copies the link and title and can open the PR", async () => {
@@ -489,26 +489,26 @@ it("opens the same menu from Shift+F10", () => {
 });
 ```
 
-- [ ] **Step 5: Run menu tests and verify RED**
+- [x] **Step 5: Run menu tests and verify RED**
 
 Run: `npm test -- src/features/prs/PrContextMenu.test.tsx src/features/prs/PrRow.test.tsx`
 
 Expected: menu module/keyboard handlers/actions are absent.
 
-- [ ] **Step 6: Implement the shared accessible menu**
+- [x] **Step 6: Implement the shared accessible menu**
 
 Reuse the existing WKWebView clipboard fallback, opener plugin, `goey-toast`,
 viewport clamping, Escape/outside/resize closure, and cursor/focus styling.
 Render the ellipsis button on row hover/focus; wire right-click, ContextMenu key,
 and Shift+F10 to the same callback.
 
-- [ ] **Step 7: Run all PR list/menu tests and verify GREEN**
+- [x] **Step 7: Run all PR list/menu tests and verify GREEN**
 
 Run: `npm test -- src/features/prs/PrsPage.test.tsx src/features/prs/PrRow.test.tsx src/features/prs/PrSidebar.test.tsx src/features/prs/PrContextMenu.test.tsx`
 
 Expected: navigation, favorites, row selection, context actions, and legacy row badges pass.
 
-- [ ] **Step 8: Commit the task**
+- [x] **Step 8: Commit the task**
 
 ```bash
 git add src/features/prs/PrSidebar.tsx src/features/prs/PrSidebar.test.tsx src/features/prs/PrContextMenu.tsx src/features/prs/PrContextMenu.test.tsx src/features/prs/PrListPanel.tsx src/features/prs/PrRow.tsx src/features/prs/PrRow.test.tsx src/features/prs/PrsPage.tsx src/features/prs/PrsPage.test.tsx
@@ -535,7 +535,7 @@ git commit -m "feat: add pull request siderail and row actions"
 - `detailTimeline(detail) -> Array<CommentEvent | ReviewEvent | CommitEvent>`
 - `loadDrawerWidth(storage?, viewportWidth?) -> number`
 
-- [ ] **Step 1: Write failing pure timeline/width tests**
+- [x] **Step 1: Write failing pure timeline/width tests**
 
 ```ts
 it("merges comments reviews and commits chronologically", () => {
@@ -552,19 +552,19 @@ it("defaults and clamps drawer width", () => {
 });
 ```
 
-- [ ] **Step 2: Run pure tests and verify RED**
+- [x] **Step 2: Run pure tests and verify RED**
 
 Run: `npm test -- src/features/prs/prDetailDisplay.test.ts`
 
 Expected: helper module is missing.
 
-- [ ] **Step 3: Implement timeline, width, labels, and safe external-link helpers**
+- [x] **Step 3: Implement timeline, width, labels, and safe external-link helpers**
 
 Use stable timestamp sorting with explicit event kinds; clamp against
 `min(1180, viewport*0.96)` and `min(680, viewport*0.96)` so small windows never
 overflow.
 
-- [ ] **Step 4: Write failing drawer component tests**
+- [x] **Step 4: Write failing drawer component tests**
 
 ```tsx
 it("renders cached metadata while live detail is loading", () => {
@@ -587,13 +587,13 @@ Add separate tests for Overview/Changes tabs, Markdown without raw HTML,
 timeline decisions, checks/reviewers, file rows/truncation, Escape/backdrop
 close, pointer resizing persistence, and focus restoration.
 
-- [ ] **Step 5: Run drawer tests and verify RED**
+- [x] **Step 5: Run drawer tests and verify RED**
 
 Run: `npm test -- src/features/prs/PrDrawer.test.tsx src/features/prs/PrDrawerOverview.test.tsx src/features/prs/PrDrawerChanges.test.tsx`
 
 Expected: drawer/overview/changes modules are missing.
 
-- [ ] **Step 6: Implement the drawer shell**
+- [x] **Step 6: Implement the drawer shell**
 
 Use a fixed `role="dialog"` shell with a backdrop, sticky header, Close initial
 focus, saved width/resizer, `motion-reduce:transition-none`, Overview/Changes
@@ -601,20 +601,20 @@ tabs, Copy/Open/Favorite actions, query fallback, Escape handling, and focus
 return. Do not trap focus outside nested menus, and do not close on opener
 failure.
 
-- [ ] **Step 7: Implement overview and changes**
+- [x] **Step 7: Implement overview and changes**
 
 Render GFM with existing `react-markdown` and `remark-gfm`, custom external link
 opening, no raw HTML plugin, chronological events, a 300 px metadata rail,
 checks/reviewers/status/Linear issue, calm empty/truncated states, and changed
 file rows using the existing diff visual language.
 
-- [ ] **Step 8: Wire the drawer into `PrsPage` and run all drawer/list tests**
+- [x] **Step 8: Wire the drawer into `PrsPage` and run all drawer/list tests**
 
 Run: `npm test -- src/features/prs`
 
 Expected: all PR tests pass with row selection opening the live/cached drawer.
 
-- [ ] **Step 9: Commit the task**
+- [x] **Step 9: Commit the task**
 
 ```bash
 git add src/features/prs/PrDrawer.tsx src/features/prs/PrDrawer.test.tsx src/features/prs/PrDrawerOverview.tsx src/features/prs/PrDrawerOverview.test.tsx src/features/prs/PrDrawerChanges.tsx src/features/prs/PrDrawerChanges.test.tsx src/features/prs/prDetailDisplay.ts src/features/prs/prDetailDisplay.test.ts src/features/prs/PrsPage.tsx
@@ -633,7 +633,7 @@ git commit -m "feat: add pull request detail drawer"
 - Consumes: all completed feature behavior
 - Produces: product authority matching the implementation and checked build/test evidence
 
-- [ ] **Step 1: Update product authority**
+- [x] **Step 1: Update product authority**
 
 Revise the F7 status, scope, bucket presentation, sync/cache description,
 feature spec, and acceptance criteria to three visible queues, favorite repo
@@ -642,12 +642,12 @@ Keep the hidden Involved backend compatibility path, heatmap/metrics, 300 cap,
 credential rules, and offline cache accurate. Update stale `CLAUDE.md` PR status
 and remove “no PR detail view” claims.
 
-- [ ] **Step 2: Mark the plan checkboxes from execution evidence**
+- [x] **Step 2: Mark the plan checkboxes from execution evidence**
 
-Change only completed `- [ ]` items to `- [x]`. Leave an item unchecked if its
+Change only completed `- [x]` items to `- [x]`. Leave an item unchecked if its
 command did not run or did not pass.
 
-- [ ] **Step 3: Run formatting and focused verification**
+- [x] **Step 3: Run formatting and focused verification**
 
 ```bash
 cargo fmt --manifest-path src-tauri/Cargo.toml
@@ -657,7 +657,7 @@ cargo test --manifest-path src-tauri/Cargo.toml github
 
 Expected: exit 0 with no failing focused tests.
 
-- [ ] **Step 4: Run full frontend verification**
+- [x] **Step 4: Run full frontend verification**
 
 ```bash
 npm test
@@ -667,7 +667,7 @@ npm run build
 
 Expected: all Vitest files pass, TypeScript exits 0, and Vite production build exits 0.
 
-- [ ] **Step 5: Run full Rust verification**
+- [x] **Step 5: Run full Rust verification**
 
 ```bash
 cargo test --manifest-path src-tauri/Cargo.toml
@@ -676,7 +676,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 
 Expected: all Rust tests pass and formatting check exits 0.
 
-- [ ] **Step 6: Inspect the scoped diff**
+- [x] **Step 6: Inspect the scoped diff**
 
 ```bash
 git diff --check
@@ -699,7 +699,7 @@ resize, reduced motion, and stale/error states. If credentials, display, or
 desktop runtime prevent this, report the path as untested instead of claiming
 manual success.
 
-- [ ] **Step 8: Commit documentation and any final verified integration fixes**
+- [x] **Step 8: Commit documentation and any final verified integration fixes**
 
 ```bash
 git add requirements.md CLAUDE.md docs/superpowers/plans/2026-07-26-github-pr-page-revamp.md

@@ -17,7 +17,7 @@ Per-milestone specs and plans live in `docs/superpowers/specs/` and `docs/superp
 
 **M0 (scaffold) is complete** on `main`. Built and installed: Tailwind v4, shadcn/ui (+ Geist font, `tw-animate-css`), TanStack Query, `goey-toast`; Rust side: `sqlx` (SQLite), `keyring`, `reqwest` (rustls), `thiserror`, `tokio`. The Rust backend (secrets/db/linear/commands), the dual-clock Home, and the Settings key flow are working; **24 Rust unit tests pass**. The default `greet` command is gone.
 
-**M4 — GitHub PR dashboard (F7). Done.** Standalone viewer-centric PR dashboard with classic-PAT auth, four `@me`-filtered buckets (needs-my-review / my open PRs / assigned / involved), per-bucket transactional cache (cap 300), `github_prs` + `github_sync_meta` tables, credential isolation + generation guard, and the optional Linear-identifier chip. Rust + Vitest test suites pass.
+**M4 — GitHub PR workspace (F7). Done.** Standalone master-detail PR workspace with classic-PAT auth, three visible `@me` queues (my open PRs / assigned / needs-my-review), favorite-repository scopes containing all open PRs, default repository grouping, row context actions, and a cached-first read-only Overview/Changes drawer backed by a bounded live-detail GraphQL command. Viewer/repository cache scopes are transactional (cap 300), credentials and favorites are isolated across token changes, and generation guards prevent stale writes.
 
 **NOT yet present:** FullCalendar, React Flow, the `activity/`, `generators/` Rust modules, and all feature screens beyond Home/Settings/PRs.
 
