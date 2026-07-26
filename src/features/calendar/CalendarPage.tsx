@@ -8,6 +8,7 @@ import type { DatesSetArg, EventClickArg, EventContentArg, EventDropArg, EventMo
 import type { DropArg } from "@fullcalendar/interaction";
 import { useCalendarIssues, useIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
 import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
+import { hiddenDaysFor, useWorkdays } from "@/lib/workweek";
 import type { IssueFilters, IssueListItem } from "@/lib/commands";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
@@ -108,6 +109,8 @@ export function CalendarPage() {
   const [, setParams] = useSearchParams();
   const update = useUpdateIssue();
   const { openMenu } = useIssueMenu();
+  const workdays = useWorkdays();
+  const hiddenDays = useMemo(() => hiddenDaysFor(workdays), [workdays]);
 
   // Default the assignee filter to "me" exactly once, when identity loads. After
   // that, filters.assigneeId === undefined genuinely means "All assignees".
@@ -203,6 +206,7 @@ export function CalendarPage() {
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             firstDay={0}
+            hiddenDays={hiddenDays}
             now={today}
             editable={true}
             droppable={true}
