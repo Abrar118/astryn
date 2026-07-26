@@ -752,7 +752,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
 
       <div className="flex min-h-0 flex-1">
         {/* Main column (pb clears the floating dock that overlaps the bottom) */}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto pb-20">
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto pb-24">
           {/* Page mode centers the reading column (Linear-style full-page);
               drawer mode keeps the original padded full-width layout. */}
           <div className={mode === "page" ? "mx-auto max-w-3xl px-8 py-8" : "px-7 py-6"}>

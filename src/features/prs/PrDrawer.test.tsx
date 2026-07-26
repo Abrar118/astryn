@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { GithubPr, GithubPrDetail } from "@/lib/commands";
 
 const detailHook = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/queries", () => ({ useGithubPrDetail: detailHook }));
+const diffHook = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/queries", () => ({
+  useGithubPrDetail: detailHook,
+  useGithubPrDiff: diffHook,
+}));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn(() => Promise.resolve()) }));
 
 import { PrDrawer } from "./PrDrawer";
@@ -78,6 +82,12 @@ const detail = {
 beforeEach(() => {
   localStorage.clear();
   Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+  diffHook.mockReturnValue({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  });
 });
 
 afterEach(() => {
@@ -108,7 +118,9 @@ describe("PrDrawer", () => {
       refetch: vi.fn(),
     });
     renderDrawer();
-    expect(screen.getByText("Make review faster")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Make review faster" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("status", { name: /loading pull request details/i }),
     ).toBeInTheDocument();
@@ -131,7 +143,7 @@ describe("PrDrawer", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  it("switches between Overview and Changes", () => {
+  it("uses Linear's compact header, pill tabs, and dock-safe scroll surface", () => {
     detailHook.mockReturnValue({
       data: detail,
       isLoading: false,
@@ -139,9 +151,60 @@ describe("PrDrawer", () => {
       refetch: vi.fn(),
     });
     renderDrawer();
+    expect(
+      screen.getByRole("banner", { name: /pull request header/i }),
+    ).toBeInTheDocument();
+    const overviewTab = screen.getByRole("tab", { name: "Overview" });
+    expect(overviewTab).toHaveAttribute("aria-selected", "true");
+    expect(overviewTab).toHaveAttribute(
+      "aria-controls",
+      "pr-drawer-overview-panel",
+    );
+    expect(screen.getByRole("tab", { name: "Diff" })).toBeInTheDocument();
+    const panel = screen.getByTestId("pr-drawer-scroll");
+    expect(panel).toHaveAttribute("aria-labelledby", "pr-drawer-overview-tab");
+    expect(panel).toHaveAttribute("id", "pr-drawer-overview-panel");
+    expect(panel).toHaveClass("pb-24");
+  });
+
+  it("requests patches only after switching to Diff", () => {
+    detailHook.mockReturnValue({
+      data: detail,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDrawer();
+    expect(diffHook).toHaveBeenLastCalledWith(seed.repo, seed.number, false);
+
+    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+
+    expect(diffHook).toHaveBeenLastCalledWith(seed.repo, seed.number, true);
+  });
+
+  it("switches between Overview and Diff", () => {
+    detailHook.mockReturnValue({
+      data: detail,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    diffHook.mockReturnValue({
+      data: {
+        repo: seed.repo,
+        number: seed.number,
+        files: [],
+        totalFiles: 0,
+        truncated: false,
+      },
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDrawer();
     expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("tab", { name: /changes/i }));
-    expect(screen.getByText("src/review.ts")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Diff" }));
+    expect(screen.getByText(/no changed files/i)).toBeInTheDocument();
   });
 
   it("closes on Escape and restores focus", () => {
@@ -188,7 +251,7 @@ describe("PrDrawer", () => {
     const first = screen.getByRole("separator", {
       name: /resize pull request drawer/i,
     });
-    const last = screen.getByRole("tab", { name: /changes/i });
+    const last = screen.getByRole("tab", { name: "Diff" });
     last.focus();
     fireEvent.keyDown(document, { key: "Tab" });
     expect(first).toHaveFocus();

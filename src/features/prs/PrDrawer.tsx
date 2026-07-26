@@ -1,6 +1,6 @@
 import {
-  useEffect,
   useCallback,
+  useEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -9,9 +9,10 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
-  Copy,
   ExternalLink,
   GitBranch,
+  GitPullRequest,
+  Link2,
   LoaderCircle,
   RefreshCw,
   Star,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GithubPr } from "@/lib/commands";
-import { useGithubPrDetail } from "@/lib/queries";
+import { useGithubPrDetail, useGithubPrDiff } from "@/lib/queries";
 import { PrDrawerChanges } from "./PrDrawerChanges";
 import { PrDrawerOverview } from "./PrDrawerOverview";
 import {
@@ -29,7 +30,7 @@ import {
 } from "./prDetailDisplay";
 import { copyPrText } from "./prClipboard";
 
-type DrawerTab = "overview" | "changes";
+type DrawerTab = "overview" | "diff";
 
 function drawerFocusable(dialog: HTMLElement): HTMLElement[] {
   return [
@@ -57,6 +58,7 @@ export function PrDrawer({
   const detailQuery = useGithubPrDetail(pr.repo, pr.number);
   const detail = detailQuery.data;
   const [tab, setTab] = useState<DrawerTab>("overview");
+  const diffQuery = useGithubPrDiff(pr.repo, pr.number, tab === "diff");
   const [width, setWidth] = useState(loadDrawerWidth);
   const widthRef = useRef(width);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -193,8 +195,6 @@ export function PrDrawer({
 
   const title = detail?.title ?? pr.title ?? "(untitled)";
   const url = detail?.url ?? pr.url;
-  const headBranch = detail?.headBranch ?? pr.branch;
-  const baseBranch = detail?.baseBranch ?? pr.baseBranch;
   const additions = detail?.additions ?? pr.additions ?? 0;
   const deletions = detail?.deletions ?? pr.deletions ?? 0;
 
@@ -227,97 +227,99 @@ export function PrDrawer({
           className="absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize outline-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/60"
         />
 
-        <header className="shrink-0 border-b border-border/60 bg-background/90 px-5 pt-4 backdrop-blur">
-          <div className="flex items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="font-mono text-[11px] text-muted-foreground">
-                {pr.repo} <span className="text-border">/</span> #{pr.number}
-              </p>
-              <h1 className="mt-1 truncate text-lg font-semibold text-foreground">
-                {title}
-              </h1>
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                {(headBranch || baseBranch) && (
-                  <span className="flex min-w-0 items-center gap-1.5 font-mono">
-                    <GitBranch className="size-3.5 shrink-0" />
-                    <span className="max-w-52 truncate">{headBranch ?? "head"}</span>
-                    <span>→</span>
-                    <span className="max-w-40 truncate">{baseBranch ?? "base"}</span>
-                  </span>
-                )}
-                <span className="text-emerald-400">+{additions}</span>
-                <span className="text-red-400">−{deletions}</span>
-              </div>
-            </div>
-
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label={favorite ? "Unfavorite repository" : "Favorite repository"}
-                title={favorite ? "Unfavorite repository" : "Favorite repository"}
-                onClick={() => void onFavoriteChange(pr.repo, !favorite)}
-              >
-                <Star className={`size-4 ${favorite ? "fill-current text-amber-400" : ""}`} />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Copy pull request link"
-                title="Copy link"
-                disabled={!url}
-                onClick={() => url && void copyPrText(url, "PR link")}
-              >
-                <Copy className="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Open pull request on GitHub"
-                title="Open on GitHub"
-                disabled={!url}
-                onClick={() => {
-                  if (!url) return;
-                  openUrl(url).catch(() =>
-                    gooeyToast.error("Couldn't open the pull request"),
-                  );
-                }}
-              >
-                <ExternalLink className="size-4" />
-              </Button>
-              <Button
-                ref={closeRef}
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Close pull request"
-                title="Close"
-                onClick={close}
-              >
-                <X className="size-4" />
-              </Button>
-            </div>
-          </div>
-
-          <div role="tablist" aria-label="Pull request detail" className="mt-4 flex gap-5">
-            {(["overview", "changes"] as const).map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => setTab(value)}
-                className={`border-b-2 px-0.5 pb-2 text-xs font-medium capitalize transition-colors ${
-                  tab === value
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                {value}
-                {value === "changes" && ` ${detail?.changedFiles ?? pr.changedFiles ?? 0}`}
-              </button>
-            ))}
+        <header
+          aria-label="Pull request header"
+          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4 text-xs backdrop-blur"
+        >
+          <GitPullRequest className="size-4 shrink-0 text-emerald-400" />
+          <span className="shrink-0 font-medium text-foreground">
+            {pr.repo} #{pr.number}
+          </span>
+          <span className="text-border">›</span>
+          <GitBranch className="size-3.5 shrink-0 text-emerald-400" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+            {title}
+          </span>
+          <span className="shrink-0 tabular-nums text-emerald-400">
+            +{additions}
+          </span>
+          <span className="shrink-0 tabular-nums text-red-400">−{deletions}</span>
+          <div className="ml-1 flex shrink-0 items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={
+                favorite ? "Unfavorite repository" : "Favorite repository"
+              }
+              title={favorite ? "Unfavorite repository" : "Favorite repository"}
+              onClick={() => void onFavoriteChange(pr.repo, !favorite)}
+            >
+              <Star
+                className={`size-4 ${favorite ? "fill-current text-amber-400" : ""}`}
+              />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Copy pull request link"
+              title="Copy link"
+              disabled={!url}
+              onClick={() => url && void copyPrText(url, "PR link")}
+            >
+              <Link2 className="size-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Open pull request on GitHub"
+              title="Open on GitHub"
+              disabled={!url}
+              onClick={() => {
+                if (!url) return;
+                openUrl(url).catch(() =>
+                  gooeyToast.error("Couldn't open the pull request"),
+                );
+              }}
+            >
+              <ExternalLink className="size-4" />
+            </Button>
+            <Button
+              ref={closeRef}
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Close pull request"
+              title="Close"
+              onClick={close}
+            >
+              <X className="size-4" />
+            </Button>
           </div>
         </header>
+
+        <div
+          role="tablist"
+          aria-label="Pull request detail"
+          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4"
+        >
+          {(["overview", "diff"] as const).map((value) => (
+            <button
+              key={value}
+              id={`pr-drawer-${value}-tab`}
+              type="button"
+              role="tab"
+              aria-controls={`pr-drawer-${value}-panel`}
+              aria-selected={tab === value}
+              onClick={() => setTab(value)}
+              className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+                tab === value
+                  ? "border-border bg-muted text-foreground"
+                  : "border-transparent text-muted-foreground hover:border-border/70 hover:text-foreground"
+              }`}
+            >
+              {value === "overview" ? "Overview" : "Diff"}
+            </button>
+          ))}
+        </div>
 
         {detailQuery.isLoading && (
           <div
@@ -348,11 +350,24 @@ export function PrDrawer({
           </div>
         )}
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div
+          id={`pr-drawer-${tab}-panel`}
+          data-testid="pr-drawer-scroll"
+          role="tabpanel"
+          aria-labelledby={`pr-drawer-${tab}-tab`}
+          className="min-h-0 flex-1 overflow-y-auto pb-24"
+        >
           {tab === "overview" ? (
             <PrDrawerOverview seed={pr} detail={detail} />
           ) : (
-            <PrDrawerChanges seed={pr} detail={detail} />
+            <PrDrawerChanges
+              seed={pr}
+              detail={detail}
+              diff={diffQuery.data}
+              loading={diffQuery.isLoading}
+              error={diffQuery.isError}
+              onRetry={() => void diffQuery.refetch()}
+            />
           )}
         </div>
       </aside>

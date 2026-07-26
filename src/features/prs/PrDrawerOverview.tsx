@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useMemo } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import ReactMarkdown, { type Components } from "react-markdown";
@@ -6,7 +6,9 @@ import remarkGfm from "remark-gfm";
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
   CircleDot,
+  FileCode2,
   GitCommitHorizontal,
   GitMerge,
   MessageSquare,
@@ -158,24 +160,6 @@ function TimelineItem({ event }: { event: PrTimelineEvent }) {
   );
 }
 
-function MetadataItem({
-  icon,
-  label,
-  children,
-}: {
-  icon: ReactNode;
-  label: string;
-  children: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[20px_84px_minmax(0,1fr)] items-start gap-2 py-2.5 text-xs">
-      <span className="mt-0.5 text-muted-foreground">{icon}</span>
-      <span className="text-muted-foreground">{label}</span>
-      <span className="min-w-0 text-foreground">{children}</span>
-    </div>
-  );
-}
-
 export function PrDrawerOverview({
   seed,
   detail,
@@ -207,37 +191,53 @@ export function PrDrawerOverview({
     }
     return [...merged.values()];
   }, [detail?.reviews, seed.reviewers]);
+  const files = detail?.files ?? [];
 
   return (
-    <div className="grid min-h-full grid-cols-1 items-start gap-8 px-7 py-6 2xl:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid min-h-full grid-cols-1 items-start gap-12 px-8 py-7 xl:grid-cols-[minmax(0,1fr)_300px] xl:px-12">
       <div className="min-w-0">
-        <div className="mb-6 flex items-center gap-2 text-xs text-muted-foreground">
+        <h1 className="max-w-4xl text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground">
+          {detail?.title ?? seed.title ?? "(untitled)"}
+        </h1>
+        <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <Actor
             avatar={detail?.authorAvatar ?? seed.authorAvatar}
             login={detail?.authorLogin ?? seed.authorLogin}
           />
-          <span>opened this pull request</span>
-          <span>
-            {detail?.createdAt ? timeAgo(detail.createdAt) : "from cached data"}
+          <span>·</span>
+          <span className="font-mono">
+            {seed.repo}#{seed.number}
           </span>
+          {(detail?.baseBranch ?? seed.baseBranch) && (
+            <>
+              <span>·</span>
+              <span className="min-w-0 truncate font-mono">
+                {detail?.baseBranch ?? seed.baseBranch} ←{" "}
+                {detail?.headBranch ?? seed.branch ?? "head"}
+              </span>
+            </>
+          )}
+          <span>·</span>
+          <span>{detail?.createdAt ? timeAgo(detail.createdAt) : "cached"}</span>
         </div>
 
-        <section className="rounded-xl border border-border/60 bg-card/45 px-5 py-4">
+        <section className="mt-8">
+          <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
+            <span>Description</span>
+            <ChevronDown className="size-3" />
+          </div>
           {detail?.body ? (
             <Markdown>{detail.body}</Markdown>
           ) : (
-            <div>
-              <h2 className="text-sm font-semibold text-foreground">Description</h2>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Live description is unavailable. Cached pull request metadata is
-                still shown.
-              </p>
-            </div>
+            <p className="text-sm text-muted-foreground">
+              Live description is unavailable. Cached pull request metadata is
+              still shown.
+            </p>
           )}
         </section>
 
-        <section className="mt-8">
-          <h2 className="mb-4 text-sm font-semibold text-foreground">Activity</h2>
+        <section className="mt-12 border-t border-border/50 pt-7">
+          <h2 className="mb-5 text-sm font-medium text-foreground">Activity</h2>
           <div
             aria-label="Pull request activity"
             className="relative before:absolute before:bottom-3 before:left-[13px] before:top-3 before:w-px before:bg-border"
@@ -267,71 +267,116 @@ export function PrDrawerOverview({
         </section>
       </div>
 
-      <aside className="rounded-xl border border-border/60 bg-card/35 px-4 py-2 2xl:sticky 2xl:top-6">
-        <h2 className="border-b border-border/60 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          Pull request
-        </h2>
-        <MetadataItem icon={<CircleDot className="size-4" />} label="State">
-          {detail?.draft ?? seed.draft
-            ? "Draft"
-            : reviewStateLabel(detail?.state ?? "open")}
-        </MetadataItem>
-        <MetadataItem icon={<GitMerge className="size-4" />} label="Mergeable">
-          {reviewStateLabel(detail?.mergeable ?? seed.mergeable ?? "unknown")}
-        </MetadataItem>
-        <MetadataItem icon={<ShieldCheck className="size-4" />} label="Review">
-          {reviewStateLabel(
-            detail?.reviewDecision ?? seed.reviewDecision ?? "not requested",
-          )}
-        </MetadataItem>
-        <MetadataItem icon={<UserRoundCheck className="size-4" />} label="Reviewers">
-          {reviewers.length === 0
-            ? "No reviewers"
-            : reviewers.map((reviewer) => reviewer.login).join(", ")}
-        </MetadataItem>
-        <MetadataItem
-          icon={
-            checks.length > 0 && passingChecks === checks.length ? (
-              <CheckCircle2 className="size-4 text-emerald-400" />
-            ) : (
-              <XCircle className="size-4 text-muted-foreground" />
-            )
-          }
-          label="Checks"
-        >
-          {checks.length === 0 ? (
-            seed.ciStatus === "success" ? (
-              "Cached checks passing"
-            ) : (
-              "No live checks"
-            )
+      <aside
+        aria-label="Pull request metadata"
+        className="space-y-8 xl:sticky xl:top-7"
+      >
+        <section>
+          <h2 className="mb-3 text-sm text-muted-foreground">Status</h2>
+          <div className="flex items-center gap-2 text-sm text-foreground">
+            <GitMerge className="size-4 text-emerald-400" />
+            <span>
+              {detail?.draft ?? seed.draft
+                ? "Draft"
+                : reviewStateLabel(detail?.state ?? "open")}
+            </span>
+            <span className="text-muted-foreground">
+              · {reviewStateLabel(detail?.mergeable ?? seed.mergeable ?? "unknown")}
+            </span>
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm text-muted-foreground">Related to</h2>
+          <div className="flex items-center gap-2 text-sm text-foreground">
+            <CircleDot className="size-4 text-primary" />
+            {detail?.linearIdentifier ?? seed.linearIdentifier ?? "Not linked"}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm text-muted-foreground">Reviewers</h2>
+          {reviewers.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No reviewers</p>
           ) : (
-            <div className="space-y-1.5">
-              <span>
-                {passingChecks}/{checks.length} passing
-              </span>
-              {checks.slice(0, 6).map((check) => (
-                <div key={check.name} className="flex items-center gap-1.5">
-                  {check.conclusion?.toLowerCase() === "success" ? (
-                    <Check className="size-3 text-emerald-400" />
-                  ) : (
-                    <CircleDot className="size-3 text-amber-400" />
-                  )}
-                  <span className="truncate">{check.name}</span>
+            <div className="space-y-2.5">
+              {reviewers.map((reviewer) => (
+                <div
+                  key={reviewer.login.toLowerCase()}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <Actor avatar={reviewer.avatar} login={reviewer.login} />
+                  <CheckCircle2 className="ml-auto size-4 text-emerald-400" />
                 </div>
               ))}
-              {detail?.truncated.checks && (
-                <span className="text-muted-foreground">More checks on GitHub</span>
-              )}
             </div>
           )}
-        </MetadataItem>
-        <MetadataItem icon={<MessageSquare className="size-4" />} label="Linear">
-          {detail?.linearIdentifier ?? seed.linearIdentifier ?? "Not linked"}
-        </MetadataItem>
-        <MetadataItem icon={<GitCommitHorizontal className="size-4" />} label="Files">
-          {detail?.changedFiles ?? seed.changedFiles ?? 0} changed
-        </MetadataItem>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm text-muted-foreground">Checks</h2>
+          <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
+            {checks.length > 0 && passingChecks === checks.length ? (
+              <CheckCircle2 className="size-4 text-emerald-400" />
+            ) : (
+              <ShieldCheck className="size-4 text-muted-foreground" />
+            )}
+            {checks.length === 0
+              ? seed.ciStatus === "success"
+                ? "Cached checks passing"
+                : "No live checks"
+              : `${passingChecks}/${checks.length} passing`}
+          </div>
+          <div className="space-y-1.5">
+            {checks.slice(0, 6).map((check) => (
+              <div
+                key={check.name}
+                className="flex items-center gap-2 text-xs text-muted-foreground"
+              >
+                {check.conclusion?.toLowerCase() === "success" ? (
+                  <Check className="size-3 text-emerald-400" />
+                ) : (
+                  <XCircle className="size-3 text-amber-400" />
+                )}
+                <span className="truncate">{check.name}</span>
+              </div>
+            ))}
+            {detail?.truncated.checks && (
+              <span className="text-xs text-muted-foreground">
+                More checks on GitHub
+              </span>
+            )}
+          </div>
+        </section>
+
+        <section>
+          <h2 className="mb-3 text-sm text-muted-foreground">
+            {detail?.changedFiles ?? seed.changedFiles ?? 0} files changed
+          </h2>
+          {files.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              File names load with live details.
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {files.slice(0, 12).map((file) => (
+                <div
+                  key={file.path}
+                  className="flex min-w-0 items-center gap-2 text-xs text-foreground"
+                >
+                  <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="min-w-0 truncate">{file.path}</span>
+                  <span className="ml-auto shrink-0 tabular-nums text-emerald-400">
+                    +{file.additions}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-red-400">
+                    −{file.deletions}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </aside>
     </div>
   );

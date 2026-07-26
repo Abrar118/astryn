@@ -84,6 +84,13 @@ const detail = {
 describe("PrDrawerOverview", () => {
   it("renders safe Markdown, activity in order, and metadata", () => {
     render(<PrDrawerOverview seed={seed} detail={detail} />);
+    expect(
+      screen.getByRole("heading", { name: "Make review faster" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "Pull request metadata" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Description")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Summary" })).toBeInTheDocument();
     expect(screen.getByText("Ship it.")).toBeInTheDocument();
     expect(document.querySelector("script")).toBeNull();
@@ -121,6 +128,7 @@ describe("PrDrawerOverview", () => {
       />,
     );
 
-    expect(screen.getByText("lee, live-reviewer")).toBeInTheDocument();
+    expect(screen.getByText("lee")).toBeInTheDocument();
+    expect(screen.getAllByText("live-reviewer")).not.toHaveLength(0);
   });
 });
