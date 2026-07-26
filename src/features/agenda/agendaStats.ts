@@ -1,7 +1,7 @@
 import type { IssueListItem } from "../../lib/commands";
 import { weekWindow, addDays } from "../../lib/dates";
 import { PRIORITY_LABELS, PRIORITY_COLORS, PRIORITY_ORDER, STATE_RANK } from "../issues/IssueRow";
-import type { AgendaGroup } from "./agenda";
+import { dueIssues, type AgendaGroup } from "./agenda";
 
 export type HeatCell = {
   date: string;
@@ -114,10 +114,11 @@ export type AgendaCounts = {
 
 /**
  * Tally the week's agenda for the dashboard glance card. The three state
- * buckets count the top-level issue of every group (an "In Review" state is
- * matched by name since Linear models it as a `started` custom state);
- * `overdue` is the size of the Overdue group. State buckets and `overdue` may
- * overlap by design — they answer different questions.
+ * buckets count every due issue in every group — nested sub-issues included,
+ * context-only parent headings excluded (an "In Review" state is matched by
+ * name since Linear models it as a `started` custom state); `overdue` is the
+ * size of the Overdue group. State buckets and `overdue` may overlap by
+ * design — they answer different questions.
  */
 export function agendaCounts(groups: AgendaGroup[]): AgendaCounts {
   let todo = 0;
@@ -125,8 +126,9 @@ export function agendaCounts(groups: AgendaGroup[]): AgendaCounts {
   let inReview = 0;
   let overdue = 0;
   for (const g of groups) {
-    if (g.key === "overdue") overdue += g.items.length;
-    for (const { issue } of g.items) {
+    const due = dueIssues(g);
+    if (g.key === "overdue") overdue += due.length;
+    for (const issue of due) {
       if ((issue.stateName ?? "").toLowerCase().includes("review")) inReview++;
       else if (issue.stateType === "started") inProgress++;
       else if (issue.stateType === "unstarted") todo++;
