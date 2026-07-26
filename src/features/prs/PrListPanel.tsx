@@ -72,7 +72,7 @@ export function PrListPanel({
         )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-24">
         {prs.length === 0 ? (
           <div className="flex h-full min-h-36 items-center justify-center gap-2.5 px-5 py-10 text-sm text-muted-foreground">
             <GitPullRequest className="size-4 opacity-50" />
