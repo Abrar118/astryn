@@ -3,8 +3,9 @@
 // only files the user selected this call are read. We embed the returned asset
 // URL as markdown.
 import { gooeyToast } from "goey-toast";
+import type { QueryClient } from "@tanstack/react-query";
 import type { EditorView } from "@milkdown/kit/prose/view";
-import { errorText, uploadFiles, type UploadedAsset } from "@/lib/commands";
+import { createAttachmentLink, errorText, uploadFiles, type UploadedAsset } from "@/lib/commands";
 
 /** Open the native picker (in Rust), upload the chosen files, return the assets. */
 export async function pickAndUploadFiles(): Promise<UploadedAsset[]> {
@@ -24,6 +25,21 @@ export async function pickAndUploadFiles(): Promise<UploadedAsset[]> {
     gooeyToast.warning(skipped === 1 ? "1 file was skipped" : `${skipped} files were skipped`);
   }
   return assets;
+}
+
+/** Attach documents to an issue like Linear: native picker → upload to Linear
+ *  storage → register each asset as an issue attachment, so the files show in
+ *  the Resources section (and in Linear itself). Refreshes the issue detail. */
+export async function attachDocumentsToIssue(issueId: string, qc: QueryClient): Promise<void> {
+  const assets = await pickAndUploadFiles(); // toasts upload success/skips itself
+  if (assets.length === 0) return;
+  try {
+    await Promise.all(assets.map((a) => createAttachmentLink(issueId, a.url, a.filename)));
+  } catch (err) {
+    gooeyToast.error("Couldn't add to the issue's resources", { description: errorText(err) });
+  } finally {
+    qc.invalidateQueries({ queryKey: ["issue", issueId] });
+  }
 }
 
 /** Format a byte count like Linear ("8.14 KB"). Empty string for 0/unknown. */

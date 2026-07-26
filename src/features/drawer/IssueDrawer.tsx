@@ -34,6 +34,7 @@ import {
   X,
 } from "lucide-react";
 import { StatusIcon, PRIORITIES } from "./issueGlyphs";
+import { attachDocumentsToIssue } from "./attachUpload";
 import type { SaveStatus } from "./descriptionAutosave";
 import {
   useCreateComment,
@@ -505,6 +506,18 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
   const editable = result.source === "live";
   const d = result.detail;
 
+  const qc = useQueryClient();
+  const [attaching, setAttaching] = useState(false);
+  const attachDocuments = async () => {
+    if (attaching) return;
+    setAttaching(true);
+    try {
+      await attachDocumentsToIssue(id, qc);
+    } finally {
+      setAttaching(false);
+    }
+  };
+
   // Fields shared by all branches (CalendarIssue | Issue | LiveDetail).
   const identifier = d.identifier;
   const priority = d.priority;
@@ -851,7 +864,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
           )}
 
 
-          {live && live.attachments.length > 0 && (
+          {live && (live.attachments.length > 0 || editable) && (
             <DrawerSection title="Resources">
               <div className="space-y-2">
                 {live.attachments.map((attachment) => (
@@ -892,6 +905,17 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
                   </div>
                 ))}
                 {live.attachmentsTruncated && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 resources.</p>}
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={attachDocuments}
+                    disabled={attaching}
+                    className="flex w-full cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {attaching ? <Loader2 className="size-4 animate-spin" /> : <Paperclip className="size-4" />}
+                    {attaching ? "Attaching…" : "Attach document…"}
+                  </button>
+                )}
               </div>
             </DrawerSection>
           )}

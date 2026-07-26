@@ -252,6 +252,7 @@ export type CreateIssueInput = {
   projectId?: string | null;
   estimate?: number | null;
   cycleId?: string | null;
+  parentId?: string | null;
 };
 
 // ── M1 bindings ───────────────────────────────────────────────────────────────

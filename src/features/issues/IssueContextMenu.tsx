@@ -34,6 +34,8 @@ import {
   ListChecks,
   Maximize2,
   PanelRight,
+  Paperclip,
+  Plus,
   SignalHigh,
   SquareSplitHorizontal,
   Tag,
@@ -53,8 +55,11 @@ import {
   useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
+import { useQueryClient } from "@tanstack/react-query";
 import { dhakaToday } from "@/lib/dates";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
+import { useCommandPalette, type CreateSeed } from "@/features/command/CommandPalette";
+import { attachDocumentsToIssue } from "@/features/drawer/attachUpload";
 import type { GithubPr, IssueListItem, UpdateIssuePatch, User } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 
@@ -389,6 +394,13 @@ function Menu({
   const { data: filterOpts } = useFilterOptions();
   const [params, setParams] = useSearchParams();
   const { openIssueTab, openIssueInRightSplit } = useWorkspace();
+  const { openCreate } = useCommandPalette();
+  const qc = useQueryClient();
+
+  const createLinked = (relation: CreateSeed["relation"]) => {
+    openCreate({ relation, issue: { id: issue.id, identifier: issue.identifier, teamId: issue.teamId } });
+    onClose();
+  };
   const ref = useRef<HTMLDivElement>(null);
   const [sub, setSub] = useState<string | null>(null);
 
@@ -673,6 +685,18 @@ function Menu({
         )}
       </div>
 
+      {/* Create a NEW issue pre-linked to this one (vs "Mark as", which links existing ones) */}
+      <div className="relative" onMouseEnter={() => setSub("createlinked")}>
+        <Row icon={<Plus className="size-4" />} label="Create" hasSub />
+        {sub === "createlinked" && (
+          <SubMenu flip={flip}>
+            <Row icon={<ChevronsDown className="size-4" />} label="Sub-issue…" onClick={() => createLinked("sub")} />
+            <Row icon={<ChevronsUp className="size-4" />} label="Parent issue…" onClick={() => createLinked("parent")} />
+            <Row icon={<Ban className="size-4" />} label="Blocked issue…" onClick={() => createLinked("blocked")} />
+          </SubMenu>
+        )}
+      </div>
+
       <div className="my-1 border-t border-border/60" />
 
       {/* Add link (Linear attachment) */}
@@ -686,6 +710,17 @@ function Menu({
         <Row icon={<GitPullRequest className="size-4" />} label="Add pull request…" hasSub />
         {sub === "addpr" && <AddPrSubmenu issueId={issue.id} flip={flip} onClose={onClose} />}
       </div>
+
+      {/* Attach document (upload files → Linear attachments in Resources) */}
+      <Row
+        icon={<Paperclip className="size-4" />}
+        label="Attach document…"
+        onMouseEnter={() => setSub(null)}
+        onClick={() => {
+          onClose();
+          void attachDocumentsToIssue(issue.id, qc);
+        }}
+      />
 
       <div className="my-1 border-t border-border/60" />
 

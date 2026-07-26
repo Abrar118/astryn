@@ -21,11 +21,13 @@ function Shell() {
 export function AppShell() {
   return (
     <WorkspaceProvider>
-      <IssueMenuProvider>
-        <CommandPaletteProvider>
+      {/* Palette outside the issue menu: the menu's "Create" actions open the
+          seeded create modal via useCommandPalette. */}
+      <CommandPaletteProvider>
+        <IssueMenuProvider>
           <Shell />
-        </CommandPaletteProvider>
-      </IssueMenuProvider>
+        </IssueMenuProvider>
+      </CommandPaletteProvider>
     </WorkspaceProvider>
   );
 }

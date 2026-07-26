@@ -61,7 +61,14 @@ async function copyText(text: string, label: string) {
   gooeyToast.success(`${label} copied`);
 }
 
-type Ctx = { openPalette: () => void; openCreate: () => void };
+/** Pre-link a new issue to an existing one: created as its sub-issue, as its new
+ *  parent, or as an issue blocked by it (wired after create). */
+export type CreateSeed = {
+  relation: "sub" | "parent" | "blocked";
+  issue: { id: string; identifier: string; teamId: string | null };
+};
+
+type Ctx = { openPalette: () => void; openCreate: (seed?: CreateSeed) => void };
 const PaletteCtx = createContext<Ctx | null>(null);
 
 export function useCommandPalette(): Ctx {
@@ -80,6 +87,7 @@ function isEditableTarget(el: EventTarget | null): boolean {
 
 export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const [mode, setMode] = useState<null | "palette" | "create">(null);
+  const [createSeed, setCreateSeed] = useState<CreateSeed | null>(null);
   const { addTab, closeTab, active } = useWorkspace();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -144,6 +152,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         altKey: e.altKey,
       })) {
         e.preventDefault();
+        setCreateSeed(null);
         setMode("create");
       }
     };
@@ -152,7 +161,13 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<Ctx>(
-    () => ({ openPalette: () => setMode("palette"), openCreate: () => setMode("create") }),
+    () => ({
+      openPalette: () => setMode("palette"),
+      openCreate: (seed?: CreateSeed) => {
+        setCreateSeed(seed ?? null);
+        setMode("create");
+      },
+    }),
     [],
   );
 
@@ -160,9 +175,12 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
     <PaletteCtx.Provider value={value}>
       {children}
       {mode === "palette" && (
-        <Palette onClose={() => setMode(null)} onCreate={() => setMode("create")} resync={resync} />
+        <Palette onClose={() => setMode(null)} onCreate={() => value.openCreate()} resync={resync} />
       )}
-      {mode === "create" && <CreateIssueModal onClose={() => setMode(null)} />}
+      {/* Clear the seed on close so it can't leak into a later plain create. */}
+      {mode === "create" && (
+        <CreateIssueModal seed={createSeed} onClose={() => { setMode(null); setCreateSeed(null); }} />
+      )}
     </PaletteCtx.Provider>
   );
 }

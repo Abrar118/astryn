@@ -1193,6 +1193,8 @@ pub struct CreateIssueInput {
     pub estimate: Option<f64>,
     #[serde(default)]
     pub cycle_id: Option<String>,
+    #[serde(default)]
+    pub parent_id: Option<String>,
 }
 
 /// Build the GraphQL `IssueCreateInput`. `teamId`/`title` are required; the rest
@@ -1230,6 +1232,9 @@ pub fn create_input_to_value(p: &CreateIssueInput) -> Value {
     }
     if let Some(v) = &p.cycle_id {
         m.insert("cycleId".into(), Value::String(v.clone()));
+    }
+    if let Some(v) = &p.parent_id {
+        m.insert("parentId".into(), Value::String(v.clone()));
     }
     Value::Object(m)
 }
@@ -2037,14 +2042,16 @@ mod tests {
         // full: optional fields included only when present
         let p: CreateIssueInput = serde_json::from_str(
             r#"{"teamId":"t1","title":"H","priority":2,"assigneeId":"u1",
-                "labelIds":["a"],"projectId":"p1","estimate":3,"dueDate":"2026-07-01"}"#,
+                "labelIds":["a"],"projectId":"p1","estimate":3,"dueDate":"2026-07-01",
+                "parentId":"par1"}"#,
         )
         .unwrap();
         assert_eq!(
             create_input_to_value(&p),
             serde_json::json!({
                 "teamId": "t1", "title": "H", "priority": 2, "assigneeId": "u1",
-                "labelIds": ["a"], "projectId": "p1", "estimate": 3.0, "dueDate": "2026-07-01"
+                "labelIds": ["a"], "projectId": "p1", "estimate": 3.0, "dueDate": "2026-07-01",
+                "parentId": "par1"
             })
         );
 
