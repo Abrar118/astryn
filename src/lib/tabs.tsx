@@ -22,8 +22,8 @@ type Ctx = {
   selectTab: (id: string) => void;
   openIssueTab: (issueId: string) => void;
   openIssueInRightSplit: (issueId: string) => void;
-  openDocTab: (docPath: string) => void;
-  openDocToSide: (docPath: string) => void;
+  openDocTab: (sourceId: string, docPath: string) => void;
+  openDocToSide: (sourceId: string, docPath: string) => void;
   splitTabRight: (tabId: string) => void;
   moveTabToOtherPane: (tabId: string) => void;
   moveTab: (tabId: string, targetPaneId: string, targetIndex: number) => void;
@@ -83,8 +83,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     selectTab: (id) => setState((s) => selectTabIn(s, id)),
     openIssueTab: (issueId) => setState((s) => openIssueTabAcross(s, issueId)),
     openIssueInRightSplit: (issueId) => setState((s) => openRightReducer(s, issueId)),
-    openDocTab: (docPath) => setState((s) => openDocTabAcross(s, docPath)),
-    openDocToSide: (docPath) => setState((s) => openDocRightReducer(s, docPath)),
+    openDocTab: (sourceId, docPath) => setState((s) => openDocTabAcross(s, sourceId, docPath)),
+    openDocToSide: (sourceId, docPath) => setState((s) => openDocRightReducer(s, sourceId, docPath)),
     splitTabRight: (tabId) => setState((s) => splitTabRightReducer(s, tabId)),
     moveTabToOtherPane: (tabId) => setState((s) => moveTabReducer(s, tabId)),
     moveTab: (tabId, targetPaneId, targetIndex) => setState((s) => moveTabAtReducer(s, tabId, targetPaneId, targetIndex)),

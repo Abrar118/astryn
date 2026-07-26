@@ -18,7 +18,6 @@ import {
   deleteIssue,
   addReaction,
   errorText,
-  getDocsRepo,
   getDocsStatus,
   getDocContent,
   getGithubContributions,
@@ -29,6 +28,7 @@ import {
   getMe,
   listCalendarIssues,
   listCycles,
+  listDocsSources,
   listDocsTree,
   listFilterOptions,
   listGithubPrs,
@@ -698,38 +698,47 @@ export function useDocsStatus() {
   return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus });
 }
 
-export function useDocsRepo() {
-  return useQuery({ queryKey: ["docs-repo"], queryFn: getDocsRepo });
+export function useDocsSources() {
+  return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources });
 }
 
-export function useDocsTree() {
-  return useQuery({ queryKey: ["docs-tree"], queryFn: listDocsTree });
-}
-
-export function useDocContent(path: string | null) {
+export function useDocsTree(sourceId: string | null) {
   return useQuery({
-    queryKey: ["doc-content", path],
-    queryFn: () => getDocContent(path as string),
-    enabled: !!path,
+    queryKey: ["docs-tree", sourceId],
+    queryFn: () => listDocsTree(sourceId as string),
+    enabled: !!sourceId,
+  });
+}
+
+export function useDocContent(sourceId: string | null, path: string | null) {
+  return useQuery({
+    queryKey: ["doc-content", sourceId, path],
+    queryFn: () => getDocContent(sourceId as string, path as string),
+    enabled: !!sourceId && !!path,
   });
 }
 
 /**
- * Docs sync: runs once on mount while the GitHub token is present, then on a
- * manual refetch. Invalidates the tree/content/status so cached views refresh.
- * Disabled (no network) when no token is configured.
+ * Docs sync for ONE source. Sources sync lazily — each runs once when you first
+ * view it (a sync costs one API call per markdown file, so syncing every
+ * configured repo up front would multiply that), then on a manual refetch.
+ * Keying the query by source means switching back to an already-synced source is
+ * a cache read, not another round trip.
+ * Disabled (no network) when no token is configured or no source is selected.
  */
-export function useDocsSync(enabled: boolean) {
+export function useDocsSync(sourceId: string | null, enabled: boolean) {
   const qc = useQueryClient();
   return useQuery({
-    queryKey: ["docs-sync"],
-    enabled,
+    queryKey: ["docs-sync", sourceId],
+    enabled: enabled && !!sourceId,
     refetchOnWindowFocus: false,
     queryFn: async () => {
       try {
-        const result = await syncDocs();
-        await qc.invalidateQueries({ queryKey: ["docs-tree"] });
-        await qc.invalidateQueries({ queryKey: ["doc-content"] });
+        const result = await syncDocs(sourceId as string);
+        await qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] });
+        await qc.invalidateQueries({ queryKey: ["doc-content", sourceId] });
+        // File counts live on the source rows, so the picker/Settings refresh too.
+        await qc.invalidateQueries({ queryKey: ["docs-sources"] });
         await qc.invalidateQueries({ queryKey: ["docs-status"] });
         return result;
       } catch (err) {

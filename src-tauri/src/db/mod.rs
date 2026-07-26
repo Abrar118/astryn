@@ -181,14 +181,125 @@ mod tests {
     #[tokio::test]
     async fn migration_creates_docs_tables() {
         let (_dir, pool) = temp_pool().await;
-        let files: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM docs_files")
-            .fetch_one(&pool)
+        for table in ["docs_files", "docs_sync_meta", "docs_sources"] {
+            let n: (i64,) = sqlx::query_as(&format!("SELECT COUNT(*) FROM {table}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap_or_else(|e| panic!("table {table} missing: {e}"));
+            assert_eq!(n.0, 0);
+        }
+    }
+
+    fn migration_files() -> (std::path::PathBuf, Vec<String>) {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("migrations");
+        let mut names: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|n| n.ends_with(".sql"))
+            .collect();
+        names.sort();
+        (dir, names)
+    }
+
+    async fn run_migration_file(pool: &SqlitePool, dir: &std::path::Path, name: &str) {
+        let sql = std::fs::read_to_string(dir.join(name)).unwrap();
+        sqlx::raw_sql(&sql)
+            .execute(pool)
             .await
-            .unwrap();
-        let meta: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM docs_sync_meta")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-        assert_eq!((files.0, meta.0), (0, 0));
+            .unwrap_or_else(|e| panic!("migration {name} failed: {e}"));
+    }
+
+    /// Apply migrations in order, stopping after the one prefixed `through`. Lets a
+    /// test stand up an older schema and then step it forward one migration at a
+    /// time, which `sqlx::migrate!` (all-or-nothing) can't express.
+    async fn migrate_through(pool: &SqlitePool, through: &str) {
+        let (dir, names) = migration_files();
+        for name in names {
+            run_migration_file(pool, &dir, &name).await;
+            if name.starts_with(through) {
+                return;
+            }
+        }
+        panic!("no migration starting with {through}");
+    }
+
+    /// Apply exactly one migration, by filename prefix.
+    async fn apply_migration(pool: &SqlitePool, prefix: &str) {
+        let (dir, names) = migration_files();
+        let name = names
+            .iter()
+            .find(|n| n.starts_with(prefix))
+            .unwrap_or_else(|| panic!("no migration starting with {prefix}"));
+        run_migration_file(pool, &dir, name).await;
+    }
+
+    /// Upgrading with a docs repo already configured must keep both the repo and
+    /// its synced cache — a resync costs one API call per markdown file.
+    #[tokio::test]
+    async fn docs_sources_migration_carries_the_legacy_repo_forward() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = SqliteConnectOptions::new()
+            .filename(dir.path().join("legacy.db"))
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new().connect_with(opts).await.unwrap();
+
+        migrate_through(&pool, "0015").await;
+        for (k, v) in [
+            ("docs_repo_owner", "acme"),
+            ("docs_repo_name", "core-docs"),
+            ("docs_repo_branch", "release"),
+        ] {
+            save_setting(&pool, k, v).await.unwrap();
+        }
+        sqlx::query(
+            "INSERT INTO docs_files (path, name, kind, parent_path, sha, content, synced_at)
+             VALUES ('README.md', 'README.md', 'blob', '', 'sha1', '# Hi', 'yesterday')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO docs_sync_meta (id, last_synced_at, file_count, tree_sha, truncated)
+             VALUES (1, 'yesterday', 1, 'tree1', 0)",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        apply_migration(&pool, "0016").await;
+
+        let sources = docs::list_docs_sources(&pool).await.unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].id, "acme/core-docs@release");
+        assert_eq!(sources[0].name, "core-docs"); // defaults to the repo name
+        assert_eq!(sources[0].branch, "release");
+        // The cache came along rather than being dropped.
+        assert_eq!(sources[0].file_count, 1);
+        assert_eq!(sources[0].last_synced_at.as_deref(), Some("yesterday"));
+        assert_eq!(
+            docs::load_doc_content(&pool, &sources[0].id, "README.md")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("# Hi")
+        );
+        // The superseded settings keys are gone.
+        assert_eq!(load_setting(&pool, "docs_repo_owner").await.unwrap(), None);
+    }
+
+    /// The same upgrade on a install that never configured a repo must leave an
+    /// empty source list, not a half-built row from NULL settings.
+    #[tokio::test]
+    async fn docs_sources_migration_is_a_noop_without_a_legacy_repo() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = SqliteConnectOptions::new()
+            .filename(dir.path().join("fresh.db"))
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new().connect_with(opts).await.unwrap();
+
+        migrate_through(&pool, "0015").await;
+        apply_migration(&pool, "0016").await;
+
+        assert!(docs::list_docs_sources(&pool).await.unwrap().is_empty());
     }
 }

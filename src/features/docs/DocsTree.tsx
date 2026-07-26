@@ -77,10 +77,12 @@ function TreeRow({
 }
 
 export function DocsTree({
+  sourceId,
   tree,
   selectedPath,
   onSelect,
 }: {
+  sourceId: string;
   tree: DocTreeNode[];
   selectedPath: string | null;
   onSelect: (path: string) => void;
@@ -106,7 +108,13 @@ export function DocsTree({
         />
       ))}
       {menu && (
-        <DocContextMenu path={menu.path} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />
+        <DocContextMenu
+          sourceId={sourceId}
+          path={menu.path}
+          x={menu.x}
+          y={menu.y}
+          onClose={() => setMenu(null)}
+        />
       )}
     </nav>
   );

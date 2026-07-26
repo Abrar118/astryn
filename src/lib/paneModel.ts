@@ -1,5 +1,16 @@
 export type ViewKind = "calendar" | "list" | "this-week" | "graph" | "inbox" | "prs" | "slack" | "docs" | "reports" | "settings" | "issue";
-export type Tab = { id: string; view: ViewKind; issueId?: string; docPath?: string };
+/**
+ * A doc tab carries `docSourceId` alongside `docPath` because a path alone stops
+ * identifying a document once several docs repos are configured — two of them
+ * will both have a `README.md`.
+ */
+export type Tab = {
+  id: string;
+  view: ViewKind;
+  issueId?: string;
+  docPath?: string;
+  docSourceId?: string;
+};
 export type Pane = { id: string; tabs: Tab[]; activeTabId: string };
 export type WorkspaceState = {
   panes: Pane[]; // length 1 (single) or 2 (split: [left, right])
@@ -42,6 +53,13 @@ function validTab(t: unknown): t is Tab {
   return true;
 }
 
+/** The view-specific fields a tab keeps when it is rehydrated from storage or cloned into a split. */
+function tabPayload(t: Tab): Partial<Tab> {
+  if (t.issueId) return { issueId: t.issueId };
+  if (t.docPath) return { docPath: t.docPath, ...(t.docSourceId ? { docSourceId: t.docSourceId } : {}) };
+  return {};
+}
+
 function maxTabSeq(panes: Pane[]): number {
   let max = -1;
   for (const p of panes) {
@@ -65,8 +83,7 @@ function repair(input: Partial<WorkspaceState>): WorkspaceState {
     for (const t of Array.isArray(raw.tabs) ? raw.tabs : []) {
       if (!validTab(t) || seenTabIds.has(t.id)) continue;
       seenTabIds.add(t.id);
-      const carry = t.issueId ? { issueId: t.issueId } : t.docPath ? { docPath: t.docPath } : {};
-      tabs.push({ id: t.id, view: t.view, ...carry });
+      tabs.push({ id: t.id, view: t.view, ...tabPayload(t) });
     }
     if (tabs.length === 0) continue; // drop empty pane
     const activeTabId = tabs.some((t) => t.id === raw.activeTabId) ? raw.activeTabId : tabs[0].id;
@@ -175,11 +192,7 @@ export function splitTabRight(state: WorkspaceState, tabId: string): WorkspaceSt
   const tab = src.tabs[tabIdx];
   if (src.tabs.length === 1) {
     const cloneId = `tab-${state.seq}`;
-    const clone: Tab = {
-      id: cloneId,
-      view: tab.view,
-      ...(tab.issueId ? { issueId: tab.issueId } : tab.docPath ? { docPath: tab.docPath } : {}),
-    };
+    const clone: Tab = { id: cloneId, view: tab.view, ...tabPayload(tab) };
     const right: Pane = { id: nextPaneId(state.panes), tabs: [clone], activeTabId: cloneId };
     return { ...state, panes: [src, right], focusedPaneId: right.id, seq: state.seq + 1 };
   }
@@ -302,31 +315,48 @@ export function openIssueInRightSplit(state: WorkspaceState, issueId: string): W
   return { ...state, panes: [state.panes[0], right], focusedPaneId: right.id, seq: state.seq + 1 };
 }
 
-function findDocTab(state: WorkspaceState, docPath: string): { paneIdx: number; tabId: string } | null {
+/** A doc tab is identified by source AND path — the same path exists in several repos. */
+const isDoc = (t: Tab, sourceId: string, docPath: string) =>
+  t.view === "docs" && t.docPath === docPath && t.docSourceId === sourceId;
+
+function findDocTab(
+  state: WorkspaceState,
+  sourceId: string,
+  docPath: string,
+): { paneIdx: number; tabId: string } | null {
   for (let pi = 0; pi < state.panes.length; pi++) {
-    const t = state.panes[pi].tabs.find((x) => x.view === "docs" && x.docPath === docPath);
+    const t = state.panes[pi].tabs.find((x) => isDoc(x, sourceId, docPath));
     if (t) return { paneIdx: pi, tabId: t.id };
   }
   return null;
 }
 
-function addDocTabIn(state: WorkspaceState, paneId: string, docPath: string): WorkspaceState {
+function addDocTabIn(
+  state: WorkspaceState,
+  paneId: string,
+  sourceId: string,
+  docPath: string,
+): WorkspaceState {
   const idx = state.panes.findIndex((p) => p.id === paneId);
   if (idx < 0) return state;
   const id = `tab-${state.seq}`;
-  const tab: Tab = { id, view: "docs", docPath };
+  const tab: Tab = { id, view: "docs", docPath, docSourceId: sourceId };
   const panes = state.panes.map((p, i) => (i === idx ? { ...p, tabs: [...p.tabs, tab], activeTabId: id } : p));
   return { ...state, panes, focusedPaneId: paneId, seq: state.seq + 1 };
 }
 
 /** Open a specific doc in a tab: focus an existing tab for it, else add one to the focused pane. */
-export function openDocTabAcross(state: WorkspaceState, docPath: string): WorkspaceState {
-  const found = findDocTab(state, docPath);
+export function openDocTabAcross(
+  state: WorkspaceState,
+  sourceId: string,
+  docPath: string,
+): WorkspaceState {
+  const found = findDocTab(state, sourceId, docPath);
   if (found) {
     const panes = state.panes.map((p, i) => (i === found.paneIdx ? { ...p, activeTabId: found.tabId } : p));
     return { ...state, panes, focusedPaneId: state.panes[found.paneIdx].id };
   }
-  return addDocTabIn(state, state.focusedPaneId, docPath);
+  return addDocTabIn(state, state.focusedPaneId, sourceId, docPath);
 }
 
 /**
@@ -334,18 +364,23 @@ export function openDocTabAcross(state: WorkspaceState, docPath: string): Worksp
  * reusing an existing right-pane tab for that doc instead of duplicating it. The
  * left pane is left untouched so you can keep browsing the tree there.
  */
-export function openDocInRightSplit(state: WorkspaceState, docPath: string): WorkspaceState {
+export function openDocInRightSplit(
+  state: WorkspaceState,
+  sourceId: string,
+  docPath: string,
+): WorkspaceState {
   if (state.panes.length === 2) {
     const right = state.panes[1];
-    const existing = right.tabs.find((t) => t.view === "docs" && t.docPath === docPath);
+    const existing = right.tabs.find((t) => isDoc(t, sourceId, docPath));
     if (existing) {
       const panes = state.panes.map((p, i) => (i === 1 ? { ...p, activeTabId: existing.id } : p));
       return { ...state, panes, focusedPaneId: right.id };
     }
-    return addDocTabIn(state, right.id, docPath);
+    return addDocTabIn(state, right.id, sourceId, docPath);
   }
   const id = `tab-${state.seq}`;
-  const right: Pane = { id: nextPaneId(state.panes), tabs: [{ id, view: "docs", docPath }], activeTabId: id };
+  const tab: Tab = { id, view: "docs", docPath, docSourceId: sourceId };
+  const right: Pane = { id: nextPaneId(state.panes), tabs: [tab], activeTabId: id };
   return { ...state, panes: [state.panes[0], right], focusedPaneId: right.id, seq: state.seq + 1 };
 }
 

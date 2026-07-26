@@ -17,11 +17,13 @@ function Row({ icon, label, onClick }: { icon: ReactNode; label: string; onClick
 
 /** Right-click menu for a doc file: open it in a new tab or alongside (split view). */
 export function DocContextMenu({
+  sourceId,
   path,
   x,
   y,
   onClose,
 }: {
+  sourceId: string;
   path: string;
   x: number;
   y: number;
@@ -56,8 +58,8 @@ export function DocContextMenu({
       style={{ left, top }}
       className="fixed z-50 w-48 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
     >
-      <Row icon={<SquarePlus className="size-4" />} label="Open in new tab" onClick={act(() => openDocTab(path))} />
-      <Row icon={<PanelRight className="size-4" />} label="Open to the side" onClick={act(() => openDocToSide(path))} />
+      <Row icon={<SquarePlus className="size-4" />} label="Open in new tab" onClick={act(() => openDocTab(sourceId, path))} />
+      <Row icon={<PanelRight className="size-4" />} label="Open to the side" onClick={act(() => openDocToSide(sourceId, path))} />
     </div>
   );
 }

@@ -21,38 +21,16 @@ pub struct DocsSyncResult {
 #[serde(rename_all = "camelCase")]
 pub struct DocsStatus {
     pub token_present: bool,
-    pub repo_configured: bool,
-    pub last_synced_at: Option<String>,
-    pub file_count: i64,
-    pub truncated: bool,
+    pub source_count: i64,
 }
 
-/// The configured docs repo, with a display URL, for the Settings screen.
-#[derive(Serialize, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct DocsRepo {
-    pub owner: String,
-    pub repo: String,
-    pub branch: String,
-    pub url: String,
-}
-
-impl DocsRepo {
-    fn new(owner: String, repo: String, branch: String) -> Self {
-        let url = format!("https://github.com/{owner}/{repo}/tree/{branch}");
-        Self {
-            owner,
-            repo,
-            branch,
-            url,
-        }
-    }
-}
-
+/// Fetch one source's tree + markdown into its slice of the cache. Sources are
+/// synced lazily (only the one being viewed), so this never touches the others.
 pub async fn sync_docs_logic<FT, FtFut, FC, FcFut>(
     credentials: Arc<dyn GitHubCredentialProvider>,
     pool: &SqlitePool,
     generation: &AtomicU64,
+    source_id: &str,
     now: String,
     fetch_tree: FT,
     fetch_content: FC,
@@ -96,13 +74,20 @@ where
         }
     }
 
-    // Abort if the GitHub token changed mid-sync — never mix two repos' content.
+    // Abort if the GitHub token changed mid-sync — never mix two accounts' content.
     if generation.load(Ordering::SeqCst) != gen0 {
         return Err(CmdError::WorkspaceChanged);
     }
-    ddb::replace_docs(pool, &files, &now, tree_sha.as_deref(), truncated)
-        .await
-        .map_err(|_| CmdError::Internal)?;
+    ddb::replace_docs(
+        pool,
+        source_id,
+        &files,
+        &now,
+        tree_sha.as_deref(),
+        truncated,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)?;
     let file_count = files.iter().filter(|f| f.kind == "blob").count() as i64;
     Ok(DocsSyncResult {
         file_count,
@@ -110,15 +95,21 @@ where
     })
 }
 
-pub async fn list_docs_logic(pool: &SqlitePool) -> Result<Vec<ddb::DocNode>, CmdError> {
-    ddb::list_docs(pool).await.map_err(|_| CmdError::Internal)
+pub async fn list_docs_logic(
+    pool: &SqlitePool,
+    source_id: String,
+) -> Result<Vec<ddb::DocNode>, CmdError> {
+    ddb::list_docs(pool, &source_id)
+        .await
+        .map_err(|_| CmdError::Internal)
 }
 
 pub async fn get_doc_content_logic(
     pool: &SqlitePool,
+    source_id: String,
     path: String,
 ) -> Result<Option<String>, CmdError> {
-    ddb::load_doc_content(pool, &path)
+    ddb::load_doc_content(pool, &source_id, &path)
         .await
         .map_err(|_| CmdError::Internal)
 }
@@ -133,40 +124,85 @@ pub async fn get_docs_status_logic(
         .map_err(|_| CmdError::Internal)?
         .map_err(|_| CmdError::SecretStore)?
         .is_some();
-    let meta = ddb::load_docs_meta(pool)
-        .await
-        .map_err(|_| CmdError::Internal)?;
-    let repo_configured = ddb::load_docs_origin(pool)
+    let source_count = ddb::list_docs_sources(pool)
         .await
         .map_err(|_| CmdError::Internal)?
-        .is_some();
+        .len() as i64;
     Ok(DocsStatus {
         token_present,
-        repo_configured,
-        last_synced_at: meta.as_ref().and_then(|m| m.last_synced_at.clone()),
-        file_count: meta.as_ref().map(|m| m.file_count).unwrap_or(0),
-        truncated: meta.as_ref().map(|m| m.truncated).unwrap_or(false),
+        source_count,
     })
 }
 
-pub async fn get_docs_repo_logic(pool: &SqlitePool) -> Result<Option<DocsRepo>, CmdError> {
-    let origin = ddb::load_docs_origin(pool)
+pub async fn list_docs_sources_logic(pool: &SqlitePool) -> Result<Vec<ddb::DocsSource>, CmdError> {
+    ddb::list_docs_sources(pool)
         .await
-        .map_err(|_| CmdError::Internal)?;
-    Ok(origin.map(|(owner, repo, branch)| DocsRepo::new(owner, repo, branch)))
+        .map_err(|_| CmdError::Internal)
 }
 
-/// Validate + persist a new docs repo origin, clearing the now-stale cache so the
-/// old repo's content can't linger under the new one.
-pub async fn set_docs_repo_logic(pool: &SqlitePool, url: String) -> Result<DocsRepo, CmdError> {
+/// Validate a GitHub repo reference and append it as a source. The display name
+/// defaults to the repo name when the caller leaves it blank.
+pub async fn add_docs_source_logic(
+    pool: &SqlitePool,
+    url: String,
+    name: Option<String>,
+    now: String,
+) -> Result<ddb::DocsSource, CmdError> {
     let origin = gdocs::parse_docs_origin(&url).ok_or(CmdError::InvalidUrl)?;
-    ddb::save_docs_origin(pool, &origin.owner, &origin.repo, &origin.branch)
+    let label = name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or_else(|| origin.repo.clone());
+    let inserted = ddb::insert_docs_source(
+        pool,
+        &label,
+        &origin.owner,
+        &origin.repo,
+        &origin.branch,
+        &now,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)?;
+    if !inserted {
+        return Err(CmdError::DuplicateDocsSource);
+    }
+    let id = ddb::source_id(&origin.owner, &origin.repo, &origin.branch);
+    ddb::load_docs_source(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .ok_or(CmdError::Internal)
+}
+
+pub async fn rename_docs_source_logic(
+    pool: &SqlitePool,
+    id: String,
+    name: String,
+) -> Result<ddb::DocsSource, CmdError> {
+    let label = name.trim();
+    if label.is_empty() {
+        return Err(CmdError::InvalidInput);
+    }
+    let renamed = ddb::rename_docs_source(pool, &id, label)
         .await
         .map_err(|_| CmdError::Internal)?;
-    ddb::clear_docs(pool)
+    if !renamed {
+        return Err(CmdError::DocsSourceNotFound);
+    }
+    ddb::load_docs_source(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .ok_or(CmdError::DocsSourceNotFound)
+}
+
+pub async fn remove_docs_source_logic(pool: &SqlitePool, id: String) -> Result<(), CmdError> {
+    let removed = ddb::remove_docs_source(pool, &id)
         .await
         .map_err(|_| CmdError::Internal)?;
-    Ok(DocsRepo::new(origin.owner, origin.repo, origin.branch))
+    if removed {
+        Ok(())
+    } else {
+        Err(CmdError::DocsSourceNotFound)
+    }
 }
 
 fn now_iso() -> String {
@@ -176,16 +212,19 @@ fn now_iso() -> String {
 }
 
 #[tauri::command]
-pub async fn sync_docs(state: State<'_, AppState>) -> Result<DocsSyncResult, CmdError> {
+pub async fn sync_docs(
+    state: State<'_, AppState>,
+    source_id: String,
+) -> Result<DocsSyncResult, CmdError> {
     let _g = state.github_lock.lock().await;
-    let (owner, repo, branch) = ddb::load_docs_origin(&state.pool)
+    let source = ddb::load_docs_source(&state.pool, &source_id)
         .await
         .map_err(|_| CmdError::Internal)?
-        .ok_or(CmdError::DocsRepoNotConfigured)?;
+        .ok_or(CmdError::DocsSourceNotFound)?;
     let origin = std::sync::Arc::new(gdocs::DocsOrigin {
-        owner,
-        repo,
-        branch,
+        owner: source.owner,
+        repo: source.repo,
+        branch: source.branch,
     });
     let client = state.github.clone();
     let client2 = client.clone();
@@ -194,6 +233,7 @@ pub async fn sync_docs(state: State<'_, AppState>) -> Result<DocsSyncResult, Cmd
         state.github_credentials.clone(),
         &state.pool,
         &state.github_generation,
+        &source_id,
         now_iso(),
         move |auth| {
             let client = client.clone();
@@ -218,27 +258,55 @@ pub async fn sync_docs(state: State<'_, AppState>) -> Result<DocsSyncResult, Cmd
 }
 
 #[tauri::command]
-pub async fn get_docs_repo(state: State<'_, AppState>) -> Result<Option<DocsRepo>, CmdError> {
-    get_docs_repo_logic(&state.pool).await
+pub async fn list_docs_sources(
+    state: State<'_, AppState>,
+) -> Result<Vec<ddb::DocsSource>, CmdError> {
+    list_docs_sources_logic(&state.pool).await
 }
 
 #[tauri::command]
-pub async fn set_docs_repo(state: State<'_, AppState>, url: String) -> Result<DocsRepo, CmdError> {
+pub async fn add_docs_source(
+    state: State<'_, AppState>,
+    url: String,
+    name: Option<String>,
+) -> Result<ddb::DocsSource, CmdError> {
     let _g = state.github_lock.lock().await;
-    set_docs_repo_logic(&state.pool, url).await
+    add_docs_source_logic(&state.pool, url, name, now_iso()).await
 }
 
 #[tauri::command]
-pub async fn list_docs_tree(state: State<'_, AppState>) -> Result<Vec<ddb::DocNode>, CmdError> {
-    list_docs_logic(&state.pool).await
+pub async fn rename_docs_source(
+    state: State<'_, AppState>,
+    source_id: String,
+    name: String,
+) -> Result<ddb::DocsSource, CmdError> {
+    rename_docs_source_logic(&state.pool, source_id, name).await
+}
+
+#[tauri::command]
+pub async fn remove_docs_source(
+    state: State<'_, AppState>,
+    source_id: String,
+) -> Result<(), CmdError> {
+    let _g = state.github_lock.lock().await;
+    remove_docs_source_logic(&state.pool, source_id).await
+}
+
+#[tauri::command]
+pub async fn list_docs_tree(
+    state: State<'_, AppState>,
+    source_id: String,
+) -> Result<Vec<ddb::DocNode>, CmdError> {
+    list_docs_logic(&state.pool, source_id).await
 }
 
 #[tauri::command]
 pub async fn get_doc_content(
     state: State<'_, AppState>,
+    source_id: String,
     path: String,
 ) -> Result<Option<String>, CmdError> {
-    get_doc_content_logic(&state.pool, path).await
+    get_doc_content_logic(&state.pool, source_id, path).await
 }
 
 #[tauri::command]
@@ -258,6 +326,14 @@ mod tests {
             .await
             .unwrap();
         (dir, pool)
+    }
+
+    /// Adds a source through the command logic and returns its id.
+    async fn add(pool: &SqlitePool, url: &str, name: Option<&str>) -> String {
+        add_docs_source_logic(pool, url.into(), name.map(String::from), "now".into())
+            .await
+            .unwrap()
+            .id
     }
 
     fn sample_tree() -> Vec<RawEntry> {
@@ -281,8 +357,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn sync_caches_tree_and_markdown_content() {
+    async fn sync_caches_tree_and_markdown_content_under_its_source() {
         let (_d, pool) = pool().await;
+        let id = add(&pool, "https://github.com/acme/docs", None).await;
         let creds: Arc<dyn GitHubCredentialProvider> =
             Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
@@ -290,6 +367,7 @@ mod tests {
             creds,
             &pool,
             &gen,
+            &id,
             "now".into(),
             |_auth| async { Ok((sample_tree(), false, Some("tree123".into()))) },
             |_auth, path| async move { Ok(format!("# {path}")) },
@@ -301,10 +379,10 @@ mod tests {
         assert_eq!(result.truncated, false);
 
         // Folder + markdown file cached; the .png was filtered out.
-        let nodes = ddb::list_docs(&pool).await.unwrap();
+        let nodes = list_docs_logic(&pool, id.clone()).await.unwrap();
         assert_eq!(nodes.len(), 2);
         assert_eq!(
-            ddb::load_doc_content(&pool, "02-technical/intro.md")
+            get_doc_content_logic(&pool, id, "02-technical/intro.md".into())
                 .await
                 .unwrap()
                 .as_deref(),
@@ -315,12 +393,14 @@ mod tests {
     #[tokio::test]
     async fn sync_without_token_is_not_configured() {
         let (_d, pool) = pool().await;
+        let id = add(&pool, "acme/docs", None).await;
         let creds: Arc<dyn GitHubCredentialProvider> = Arc::new(FakeGitHubCreds(None));
         let gen = AtomicU64::new(0);
         let result = sync_docs_logic(
             creds,
             &pool,
             &gen,
+            &id,
             "now".into(),
             |_auth| async { Ok((sample_tree(), false, Some("tree123".into()))) },
             |_auth, _path| async { Ok(String::new()) },
@@ -332,6 +412,7 @@ mod tests {
     #[tokio::test]
     async fn sync_aborts_and_writes_nothing_when_generation_changes() {
         let (_d, pool) = pool().await;
+        let id = add(&pool, "acme/docs", None).await;
         let creds: Arc<dyn GitHubCredentialProvider> =
             Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
@@ -340,6 +421,7 @@ mod tests {
             creds,
             &pool,
             &gen,
+            &id,
             "now".into(),
             |_auth| {
                 gen.fetch_add(1, Ordering::SeqCst);
@@ -349,95 +431,166 @@ mod tests {
         )
         .await;
         assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
-        assert!(ddb::list_docs(&pool).await.unwrap().is_empty());
+        assert!(list_docs_logic(&pool, id).await.unwrap().is_empty());
     }
 
     #[tokio::test]
-    async fn status_reflects_token_and_meta() {
+    async fn syncing_one_source_leaves_the_others_cached() {
         let (_d, pool) = pool().await;
-        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        let a = add(&pool, "acme/core", Some("Core")).await;
+        let b = add(&pool, "acme/design", Some("Design")).await;
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
 
-        // No token, no sync.
-        let s0 = get_docs_status_logic(store.clone(), &pool).await.unwrap();
-        assert_eq!(s0.token_present, false);
-        assert_eq!(s0.file_count, 0);
-        assert_eq!(s0.last_synced_at, None);
-
-        // Token + a completed sync.
-        store.set(GITHUB_TOKEN_ACCOUNT, "ghp_x").unwrap();
-        ddb::replace_docs(
-            &pool,
-            &[ddb::DocFile {
-                path: "a.md".into(),
-                name: "a.md".into(),
-                kind: "blob".into(),
-                parent_path: "".into(),
-                sha: "s".into(),
-                content: Some("a".into()),
-            }],
-            "now",
-            None,
-            true,
-        )
-        .await
-        .unwrap();
-        let s1 = get_docs_status_logic(store, &pool).await.unwrap();
-        assert_eq!(s1.token_present, true);
-        assert_eq!(s1.file_count, 1);
-        assert_eq!(s1.truncated, true);
-        assert_eq!(s1.last_synced_at.as_deref(), Some("now"));
-    }
-
-    #[tokio::test]
-    async fn set_docs_repo_parses_persists_and_clears_cache() {
-        let (_d, pool) = pool().await;
-        assert!(get_docs_repo_logic(&pool).await.unwrap().is_none());
-
-        // Seed a stale cache from a previous repo.
-        ddb::replace_docs(
-            &pool,
-            &[ddb::DocFile {
-                path: "old.md".into(),
-                name: "old.md".into(),
-                kind: "blob".into(),
-                parent_path: "".into(),
-                sha: "s".into(),
-                content: Some("old".into()),
-            }],
-            "now",
-            None,
-            false,
-        )
-        .await
-        .unwrap();
-
-        let saved = set_docs_repo_logic(&pool, "https://github.com/acme/docs/tree/release".into())
+        for (id, body) in [(&a, "core"), (&b, "design")] {
+            sync_docs_logic(
+                creds.clone(),
+                &pool,
+                &gen,
+                id,
+                "now".into(),
+                |_auth| async { Ok((sample_tree(), false, None)) },
+                move |_auth, _path| async move { Ok(body.to_string()) },
+            )
             .await
             .unwrap();
-        assert_eq!(saved.owner, "acme");
-        assert_eq!(saved.repo, "docs");
-        assert_eq!(saved.branch, "release");
-        assert_eq!(saved.url, "https://github.com/acme/docs/tree/release");
+        }
 
-        // Stale cache from the old repo is gone.
-        assert!(ddb::list_docs(&pool).await.unwrap().is_empty());
+        // Re-syncing `a` with an empty tree must not disturb `b`.
+        sync_docs_logic(
+            creds,
+            &pool,
+            &gen,
+            &a,
+            "later".into(),
+            |_auth| async { Ok((vec![], false, None)) },
+            |_auth, _path| async { Ok(String::new()) },
+        )
+        .await
+        .unwrap();
 
-        let got = get_docs_repo_logic(&pool).await.unwrap().unwrap();
-        assert_eq!(got.owner, "acme");
-        assert_eq!(got.branch, "release");
-        assert!(
-            get_docs_status_logic(Arc::new(FakeSecretStore::default()), &pool)
+        assert!(list_docs_logic(&pool, a).await.unwrap().is_empty());
+        assert_eq!(
+            get_doc_content_logic(&pool, b, "02-technical/intro.md".into())
                 .await
                 .unwrap()
-                .repo_configured
+                .as_deref(),
+            Some("design")
         );
     }
 
     #[tokio::test]
-    async fn set_docs_repo_rejects_garbage() {
+    async fn status_reports_token_and_source_count() {
         let (_d, pool) = pool().await;
-        let result = set_docs_repo_logic(&pool, "not a url".into()).await;
-        assert!(matches!(result, Err(CmdError::InvalidUrl)));
-        assert!(get_docs_repo_logic(&pool).await.unwrap().is_none());
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+
+        let s0 = get_docs_status_logic(store.clone(), &pool).await.unwrap();
+        assert_eq!(s0.token_present, false);
+        assert_eq!(s0.source_count, 0);
+
+        store.set(GITHUB_TOKEN_ACCOUNT, "ghp_x").unwrap();
+        add(&pool, "acme/docs", None).await;
+        let s1 = get_docs_status_logic(store, &pool).await.unwrap();
+        assert_eq!(s1.token_present, true);
+        assert_eq!(s1.source_count, 1);
+    }
+
+    #[tokio::test]
+    async fn add_source_parses_url_and_defaults_the_name_to_the_repo() {
+        let (_d, pool) = pool().await;
+        let saved = add_docs_source_logic(
+            &pool,
+            "https://github.com/acme/docs/tree/release".into(),
+            None,
+            "now".into(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(saved.owner, "acme");
+        assert_eq!(saved.repo, "docs");
+        assert_eq!(saved.branch, "release");
+        assert_eq!(saved.name, "docs");
+        assert_eq!(saved.id, "acme/docs@release");
+        assert_eq!(saved.url, "https://github.com/acme/docs/tree/release");
+        assert_eq!(saved.file_count, 0);
+
+        // A blank name falls back too, rather than storing an empty label.
+        let second =
+            add_docs_source_logic(&pool, "acme/other".into(), Some("   ".into()), "now".into())
+                .await
+                .unwrap();
+        assert_eq!(second.name, "other");
+    }
+
+    #[tokio::test]
+    async fn add_source_rejects_garbage_and_duplicates() {
+        let (_d, pool) = pool().await;
+        assert!(matches!(
+            add_docs_source_logic(&pool, "not a url".into(), None, "now".into()).await,
+            Err(CmdError::InvalidUrl)
+        ));
+        assert!(list_docs_sources_logic(&pool).await.unwrap().is_empty());
+
+        add(&pool, "acme/docs", None).await;
+        assert!(matches!(
+            add_docs_source_logic(
+                &pool,
+                "acme/docs".into(),
+                Some("Again".into()),
+                "now".into()
+            )
+            .await,
+            Err(CmdError::DuplicateDocsSource)
+        ));
+        assert_eq!(list_docs_sources_logic(&pool).await.unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn rename_requires_a_real_source_and_a_non_blank_name() {
+        let (_d, pool) = pool().await;
+        let id = add(&pool, "acme/docs", None).await;
+
+        let renamed = rename_docs_source_logic(&pool, id.clone(), "  Platform  ".into())
+            .await
+            .unwrap();
+        assert_eq!(renamed.name, "Platform");
+
+        assert!(matches!(
+            rename_docs_source_logic(&pool, id, "   ".into()).await,
+            Err(CmdError::InvalidInput)
+        ));
+        assert!(matches!(
+            rename_docs_source_logic(&pool, "ghost@main".into(), "X".into()).await,
+            Err(CmdError::DocsSourceNotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn remove_source_drops_its_cache_and_reports_unknown_ids() {
+        let (_d, pool) = pool().await;
+        let id = add(&pool, "acme/docs", None).await;
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        sync_docs_logic(
+            creds,
+            &pool,
+            &AtomicU64::new(0),
+            &id,
+            "now".into(),
+            |_auth| async { Ok((sample_tree(), false, None)) },
+            |_auth, _path| async { Ok("x".into()) },
+        )
+        .await
+        .unwrap();
+
+        remove_docs_source_logic(&pool, id.clone()).await.unwrap();
+        assert!(list_docs_sources_logic(&pool).await.unwrap().is_empty());
+        assert!(list_docs_logic(&pool, id.clone()).await.unwrap().is_empty());
+
+        assert!(matches!(
+            remove_docs_source_logic(&pool, id).await,
+            Err(CmdError::DocsSourceNotFound)
+        ));
     }
 }

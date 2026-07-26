@@ -467,39 +467,52 @@ export type DocNode = {
 
 export type DocsStatus = {
   tokenPresent: boolean;
-  repoConfigured: boolean;
+  sourceCount: number;
+};
+
+/** One configured documentation repository, joined with its cache freshness. */
+export type DocsSource = {
+  /** Origin-derived (`owner/repo@branch`) — stable across renames. */
+  id: string;
+  name: string;
+  owner: string;
+  repo: string;
+  branch: string;
+  url: string;
   lastSyncedAt: string | null;
   fileCount: number;
   truncated: boolean;
 };
 
-export type DocsRepo = {
-  owner: string;
-  repo: string;
-  branch: string;
-  url: string;
-};
-
 export type DocsSyncResult = { fileCount: number; truncated: boolean };
 
-/** Fetch the docs repo tree + markdown into the SQLite cache. Reuses the GitHub token. */
-export const syncDocs = (): Promise<DocsSyncResult> => invoke("sync_docs");
+/** Fetch one source's tree + markdown into its slice of the cache. Reuses the GitHub token. */
+export const syncDocs = (sourceId: string): Promise<DocsSyncResult> =>
+  invoke("sync_docs", { sourceId });
 
-/** The cached flat list of folders + files (frontend nests it). */
-export const listDocsTree = (): Promise<DocNode[]> => invoke("list_docs_tree");
+/** One source's cached flat list of folders + files (frontend nests it). */
+export const listDocsTree = (sourceId: string): Promise<DocNode[]> =>
+  invoke("list_docs_tree", { sourceId });
 
 /** Cached markdown for one file (`null` if unknown / not yet synced). */
-export const getDocContent = (path: string): Promise<string | null> =>
-  invoke("get_doc_content", { path });
+export const getDocContent = (sourceId: string, path: string): Promise<string | null> =>
+  invoke("get_doc_content", { sourceId, path });
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
 
-/** The configured docs repo (`null` until the user sets one). */
-export const getDocsRepo = (): Promise<DocsRepo | null> => invoke("get_docs_repo");
+/** All configured docs sources, in the order they were added. */
+export const listDocsSources = (): Promise<DocsSource[]> => invoke("list_docs_sources");
 
-/** Set the docs repo from a GitHub URL (owner/repo[/tree/branch]); clears the cache. */
-export const setDocsRepo = (url: string): Promise<DocsRepo> =>
-  invoke("set_docs_repo", { url });
+/** Add a source from a GitHub URL (owner/repo[/tree/branch]); name defaults to the repo. */
+export const addDocsSource = (url: string, name?: string): Promise<DocsSource> =>
+  invoke("add_docs_source", { url, name: name ?? null });
+
+export const renameDocsSource = (sourceId: string, name: string): Promise<DocsSource> =>
+  invoke("rename_docs_source", { sourceId, name });
+
+/** Remove a source along with its cached tree. */
+export const removeDocsSource = (sourceId: string): Promise<void> =>
+  invoke("remove_docs_source", { sourceId });
 
 // ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
 

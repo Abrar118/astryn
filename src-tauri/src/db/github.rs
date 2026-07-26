@@ -284,9 +284,16 @@ mod tests {
             .await
             .unwrap();
         save_github_login(&pool, "octocat").await.unwrap();
-        // Docs cache shares the GitHub credential, so it must be wiped too.
+        // Docs cache shares the GitHub credential, so every source's content must
+        // be wiped too — while the configured sources themselves (user config, not
+        // credential-derived) survive so a new token just resyncs them.
+        crate::db::docs::insert_docs_source(&pool, "Core", "acme", "core", "main", "now")
+            .await
+            .unwrap();
+        let source = crate::db::docs::source_id("acme", "core", "main");
         crate::db::docs::replace_docs(
             &pool,
+            &source,
             &[crate::db::docs::DocFile {
                 path: "a.md".into(),
                 name: "a.md".into(),
@@ -305,6 +312,16 @@ mod tests {
         assert!(list_prs(&pool).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
         assert_eq!(load_github_login(&pool).await.unwrap(), None);
-        assert!(crate::db::docs::list_docs(&pool).await.unwrap().is_empty());
+        assert!(crate::db::docs::list_docs(&pool, &source)
+            .await
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            crate::db::docs::list_docs_sources(&pool)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }
