@@ -514,6 +514,7 @@ export type GithubPrDetail = {
   deletions: number;
   changedFiles: number;
   commentCount: number;
+  commitCount: number;
   linearIdentifier: string | null;
   comments: GithubPrComment[];
   reviews: GithubPrReview[];
@@ -533,6 +534,30 @@ export const getGithubPrDetail = (
   repo: string,
   number: number,
 ): Promise<GithubPrDetail> => invoke("get_github_pr_detail", { repo, number });
+
+export type GithubPrDiffFile = {
+  path: string;
+  previousPath: string | null;
+  changeType: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch: string | null;
+  blobUrl: string | null;
+};
+
+export type GithubPrDiff = {
+  repo: string;
+  number: number;
+  files: GithubPrDiffFile[];
+  totalFiles: number;
+  truncated: boolean;
+};
+
+export const getGithubPrDiff = (
+  repo: string,
+  number: number,
+): Promise<GithubPrDiff> => invoke("get_github_pr_diff", { repo, number });
 
 /** One day of the GitHub contribution calendar. `weekday`: 0 = Sun … 6 = Sat. */
 export type ContribDay = { date: string; count: number; weekday: number };

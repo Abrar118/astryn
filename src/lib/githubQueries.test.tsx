@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 const listGithubPrs = vi.hoisted(() => vi.fn());
 const syncGithubPrs = vi.hoisted(() => vi.fn());
 const getGithubPrDetail = vi.hoisted(() => vi.fn());
+const getGithubPrDiff = vi.hoisted(() => vi.fn());
 const setGithubRepoFavorite = vi.hoisted(() => vi.fn());
 const gooeyToastError = vi.hoisted(() => vi.fn());
 
@@ -14,6 +15,7 @@ vi.mock("@/lib/commands", () => ({
   listGithubPrs,
   syncGithubPrs,
   getGithubPrDetail,
+  getGithubPrDiff,
   setGithubRepoFavorite,
   getGithubStatus: vi.fn(),
   errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
@@ -24,6 +26,7 @@ vi.mock("goey-toast", () => ({
 }));
 
 import {
+  useGithubPrDiff,
   useGithubPrDetail,
   useGithubPrs,
   useGithubSync,
@@ -40,6 +43,7 @@ describe("GitHub query hooks", () => {
     listGithubPrs.mockClear();
     syncGithubPrs.mockClear();
     getGithubPrDetail.mockClear();
+    getGithubPrDiff.mockClear();
     setGithubRepoFavorite.mockClear();
     gooeyToastError.mockClear();
   });
@@ -117,5 +121,25 @@ describe("GitHub query hooks", () => {
     renderHook(() => useGithubPrDetail(null, null), { wrapper });
     await Promise.resolve();
     expect(getGithubPrDetail).not.toHaveBeenCalled();
+  });
+
+  it("loads PR patches only after the diff view is enabled", async () => {
+    getGithubPrDiff.mockResolvedValue({
+      repo: "o/r",
+      number: 42,
+      files: [{ path: "src/app.ts", patch: "@@ -1 +1 @@" }],
+      totalFiles: 1,
+      truncated: false,
+    });
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useGithubPrDiff("o/r", 42, enabled),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    expect(getGithubPrDiff).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+
+    await waitFor(() => expect(result.current.data?.totalFiles).toBe(1));
+    expect(getGithubPrDiff).toHaveBeenCalledWith("o/r", 42);
   });
 });

@@ -59,6 +59,7 @@ const detail = {
   deletions: 2,
   changedFiles: 1,
   commentCount: 1,
+  commitCount: 0,
   linearIdentifier: "ENG-42",
   comments: [],
   reviews: [],

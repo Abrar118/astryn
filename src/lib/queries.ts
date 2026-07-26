@@ -22,6 +22,7 @@ import {
   getDocsStatus,
   getDocContent,
   getGithubContributions,
+  getGithubPrDiff,
   getGithubPrDetail,
   getGithubStatus,
   getSlackCatchup,
@@ -657,6 +658,20 @@ export function useGithubPrDetail(repo: string | null, number: number | null) {
     queryKey: ["github-pr-detail", repo, number],
     enabled: repo !== null && number !== null,
     queryFn: () => getGithubPrDetail(repo!, number!),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+export function useGithubPrDiff(
+  repo: string | null,
+  number: number | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["github-pr-diff", repo, number],
+    enabled: enabled && repo !== null && number !== null,
+    queryFn: () => getGithubPrDiff(repo!, number!),
     staleTime: Infinity,
     gcTime: Infinity,
   });
