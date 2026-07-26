@@ -30,3 +30,6 @@ dist-ssr
 
 # Superpowers local scratch (ledgers, briefs, brainstorm server state — local paths/ports)
 .superpowers/
+
+# Claude Code local state (skills, settings)
+.claude/
