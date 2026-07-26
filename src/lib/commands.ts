@@ -565,3 +565,46 @@ export const getSlackConversationMessages = (conversationId: string): Promise<Sl
   invoke("get_slack_conversation_messages", { conversationId });
 export const slackDeepLink = (conversationId: string, ts?: string | null): Promise<SlackDeepLink> =>
   invoke("slack_deep_link", { conversationId, ts: ts ?? null });
+
+// ---- Report generators (daily scrum / weekly review) ----
+
+export type LlmConfig = { baseUrl: string; model: string; hasApiKey: boolean };
+
+export type ReportKind = "daily" | "weekly";
+
+/** Frontend-computed window (all Dhaka/workday math lives in reportWindow.ts). */
+export type ReportWindowArgs = {
+  kind: ReportKind;
+  /** UTC instant lower bound (ISO 8601). */
+  since: string;
+  /** Human label for the window start, e.g. "Thursday" or "July 20". */
+  sinceLabel: string;
+  /** Today's Dhaka date, YYYY-MM-DD. */
+  today: string;
+  /** Header date, e.g. "Saturday, July 26". */
+  titleDate: string;
+};
+
+export type ReportResult = {
+  /** Deterministic markdown facts — always present. */
+  factSheet: string;
+  /** LLM prose; null when no endpoint is configured or the pass failed. */
+  llmText: string | null;
+  /** Sanitized reason the LLM pass failed, if it did. */
+  llmError: string | null;
+  model: string | null;
+};
+
+/** Payload of the `report:token` Tauri event emitted while streaming. */
+export type ReportTokenEvent = { genId: number; token: string };
+
+export const getLlmConfig = (): Promise<LlmConfig | null> => invoke("get_llm_config");
+export const setLlmConfig = (
+  baseUrl: string,
+  model: string,
+  apiKey?: string | null,
+): Promise<LlmConfig> => invoke("set_llm_config", { baseUrl, model, apiKey: apiKey ?? null });
+export const clearLlmConfig = (): Promise<void> => invoke("clear_llm_config");
+export const testLlmConnection = (): Promise<string[]> => invoke("test_llm_connection");
+export const generateReport = (args: ReportWindowArgs, genId: number): Promise<ReportResult> =>
+  invoke("generate_report", { args, genId });

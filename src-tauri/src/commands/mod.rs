@@ -23,9 +23,11 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod docs;
 pub mod github;
+pub mod reports;
 pub mod slack;
 
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
+const LLM_API_KEY_ACCOUNT: &str = "llm_api_key";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -119,6 +121,10 @@ pub enum CmdError {
     SlackNotConfigured,
     #[error("Slack rejected the request.")]
     SlackApi,
+    #[error("No AI endpoint is configured.")]
+    LlmNotConfigured,
+    #[error("The AI endpoint rejected the request.")]
+    LlmApi,
     #[error("That doesn't look like a valid URL.")]
     InvalidUrl,
     #[error("Couldn't read that file.")]
@@ -201,6 +207,9 @@ pub struct AppState {
     pub slack_lock: tokio::sync::Mutex<()>,
     /// Bumped by every Slack cache wipe; guards a late sync write.
     pub slack_generation: AtomicU64,
+    /// The id of the LATEST generate_report call; an in-flight LLM stream
+    /// stops as soon as a newer generation claims this slot.
+    pub llm_generation: AtomicU64,
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
@@ -1525,6 +1534,7 @@ mod logic_tests {
             description: None,
             due_date: due.map(Into::into),
             started_at: None,
+            completed_at: None,
             priority: 0,
             url: "u".into(),
             state_id: Some("s".into()),

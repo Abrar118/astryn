@@ -1,5 +1,6 @@
 mod commands;
 mod db;
+mod generators;
 mod github;
 mod linear;
 mod link_preview;
@@ -134,6 +135,7 @@ pub fn run() {
                 slack,
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
+                llm_generation: std::sync::atomic::AtomicU64::new(0),
             });
 
             // macOS: replace the default app menu with one that OMITS "Close
@@ -200,7 +202,12 @@ pub fn run() {
             commands::slack::sync_slack_catchup,
             commands::slack::get_slack_catchup,
             commands::slack::get_slack_conversation_messages,
-            commands::slack::slack_deep_link
+            commands::slack::slack_deep_link,
+            commands::reports::get_llm_config,
+            commands::reports::set_llm_config,
+            commands::reports::clear_llm_config,
+            commands::reports::test_llm_connection,
+            commands::reports::generate_report
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

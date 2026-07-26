@@ -75,6 +75,7 @@ pub struct IssueRecord {
     pub description: Option<String>,
     pub due_date: Option<String>,
     pub started_at: Option<String>,
+    pub completed_at: Option<String>,
     pub priority: i64,
     pub url: String,
     pub state_id: Option<String>,
@@ -160,8 +161,8 @@ pub async fn upsert_issue(
             state_id, state_name, state_type, state_color, assignee_id, assignee_name,
             team_id, team_key, project_id, project_name, parent_id,
             estimate, cycle_name, cycle_number, milestone_name, link_count, pr_count, attachments_truncated,
-            created_at, updated_at, archived_at, synced_at, raw_json, started_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28, datetime('now'), ?29, ?30)
+            created_at, updated_at, archived_at, synced_at, raw_json, started_at, completed_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28, datetime('now'), ?29, ?30, ?31)
          ON CONFLICT(id) DO UPDATE SET
            identifier=excluded.identifier, title=excluded.title, description=excluded.description,
            due_date=excluded.due_date, priority=excluded.priority, url=excluded.url,
@@ -173,7 +174,8 @@ pub async fn upsert_issue(
            milestone_name=excluded.milestone_name, link_count=excluded.link_count, pr_count=excluded.pr_count,
            attachments_truncated=excluded.attachments_truncated,
            created_at=excluded.created_at, updated_at=excluded.updated_at, archived_at=excluded.archived_at,
-           synced_at=excluded.synced_at, raw_json=excluded.raw_json, started_at=excluded.started_at
+           synced_at=excluded.synced_at, raw_json=excluded.raw_json, started_at=excluded.started_at,
+           completed_at=excluded.completed_at
          WHERE excluded.updated_at >= issues.updated_at
          RETURNING id",
     )
@@ -207,6 +209,7 @@ pub async fn upsert_issue(
     .bind(&r.archived_at)
     .bind(&r.raw_json)
     .bind(&r.started_at)
+    .bind(&r.completed_at)
     .fetch_optional(&mut **tx)
     .await?;
     Ok(id.is_some())
@@ -558,6 +561,7 @@ mod tests {
             description: None,
             due_date: due.map(Into::into),
             started_at: None,
+            completed_at: None,
             priority: 0,
             url: "u".into(),
             state_id: Some("s".into()),

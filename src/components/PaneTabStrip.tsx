@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { BookText, Calendar, CalendarRange, FileText, GitPullRequest, Inbox, List, MessageSquare, Network, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { BookText, Calendar, CalendarRange, FileText, GitPullRequest, Inbox, List, MessageSquare, Network, NotebookPen, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -19,6 +19,7 @@ const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode 
   prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5 text-emerald-400" /> },
   slack: { label: "Slack", icon: <MessageSquare className="size-3.5 text-green-400" /> },
   docs: { label: "Docs", icon: <BookText className="size-3.5 text-rose-400" /> },
+  reports: { label: "Reports", icon: <NotebookPen className="size-3.5 text-fuchsia-400" /> },
   settings: { label: "Settings", icon: <SettingsIcon className="size-3.5 text-slate-400" /> },
 };
 
