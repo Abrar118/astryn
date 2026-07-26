@@ -8,6 +8,10 @@ use super::{AppState, CmdError};
 use crate::db::github as gdb;
 use crate::github::contributions::{contributions_query_body, parse_contributions, Contributions};
 use crate::github::pr_detail::{build_pr_detail_body, parse_pr_detail, PrDetail};
+use crate::github::pr_diff::{
+    build_pr_diff_path, parse_pr_diff_page, PrDiff, PR_DIFF_MAX_FILES, PR_DIFF_MAX_PAGES,
+    PR_DIFF_PAGE_SIZE,
+};
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
 };
@@ -509,6 +513,90 @@ mod tests {
         assert!(matches!(result, Err(CmdError::InvalidInput)));
     }
 
+    fn sample_diff_file(path: &str) -> serde_json::Value {
+        serde_json::json!({
+            "filename": path,
+            "status": "modified",
+            "additions": 2,
+            "deletions": 1,
+            "changes": 3,
+            "blob_url": format!("https://github.com/o/r/blob/head/{path}"),
+            "patch": "@@ -1 +1,2 @@\n-old\n+new"
+        })
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_paginates_rest_files() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+
+        let diff =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, move |auth, path| {
+                assert_eq!(auth, "Bearer x");
+                seen.lock().unwrap().push(path.clone());
+                let page = if path.ends_with("page=1") {
+                    (0..100)
+                        .map(|index| sample_diff_file(&format!("src/{index}.ts")))
+                        .collect()
+                } else {
+                    vec![sample_diff_file("src/final.ts")]
+                };
+                async move { Ok(serde_json::Value::Array(page)) }
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(diff.repo, "o/r");
+        assert_eq!(diff.number, 42);
+        assert_eq!(diff.total_files, 101);
+        assert!(!diff.truncated);
+        assert_eq!(calls.lock().unwrap().len(), 2);
+        assert_eq!(diff.files.last().unwrap().path, "src/final.ts");
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_stops_at_githubs_file_ceiling() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let calls = Arc::new(AtomicU64::new(0));
+        let seen = calls.clone();
+
+        let diff =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, move |_auth, _path| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                let page = (0..100)
+                    .map(|index| sample_diff_file(&format!("src/{index}.ts")))
+                    .collect();
+                async move { Ok(serde_json::Value::Array(page)) }
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(diff.total_files, 3000);
+        assert!(diff.truncated);
+        assert_eq!(calls.load(Ordering::SeqCst), 30);
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_rejects_a_generation_change() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+
+        let result =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, |_auth, _path| {
+                generation.fetch_add(1, Ordering::SeqCst);
+                async { Ok(serde_json::Value::Array(Vec::new())) }
+            })
+            .await;
+
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+    }
+
     #[tokio::test]
     async fn sync_contributions_stores_and_returns() {
         let (_d, pool) = pool().await;
@@ -742,6 +830,62 @@ where
     parse_pr_detail(&data).map_err(CmdError::from)
 }
 
+pub async fn get_github_pr_diff_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    generation: &AtomicU64,
+    repo: String,
+    number: i64,
+    fetch: F,
+) -> Result<PrDiff, CmdError>
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, GitHubError>>,
+{
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    if number <= 0 || number > i32::MAX as i64 {
+        return Err(CmdError::InvalidInput);
+    }
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+
+    let mut files = Vec::new();
+    let mut truncated = false;
+    for page in 1..=PR_DIFF_MAX_PAGES {
+        let path = build_pr_diff_path(&repo, number, page).map_err(|_| CmdError::InvalidInput)?;
+        let value = fetch(auth.clone(), path).await.map_err(CmdError::from)?;
+        if generation.load(Ordering::SeqCst) != gen0 {
+            return Err(CmdError::WorkspaceChanged);
+        }
+        let mut page_files = parse_pr_diff_page(&value).map_err(CmdError::from)?;
+        let page_len = page_files.len();
+        if page_len > PR_DIFF_PAGE_SIZE {
+            return Err(CmdError::Internal);
+        }
+        files.append(&mut page_files);
+        if page_len < PR_DIFF_PAGE_SIZE {
+            break;
+        }
+        if page == PR_DIFF_MAX_PAGES {
+            truncated = true;
+        }
+    }
+    files.truncate(PR_DIFF_MAX_FILES);
+    let total_files = files.len();
+
+    Ok(PrDiff {
+        repo: repo.canonical,
+        number,
+        files,
+        total_files,
+        truncated,
+    })
+}
+
 fn now_iso() -> String {
     time::OffsetDateTime::now_utc()
         .format(&time::format_description::well_known::Rfc3339)
@@ -799,6 +943,26 @@ pub async fn get_github_pr_detail(
         repo,
         number,
         move |auth, body| async move { client.graphql(&auth, body).await },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_github_pr_diff(
+    state: State<'_, AppState>,
+    repo: String,
+    number: i64,
+) -> Result<PrDiff, CmdError> {
+    let client = state.github.clone();
+    get_github_pr_diff_logic(
+        state.github_credentials.clone(),
+        &state.github_generation,
+        repo,
+        number,
+        move |auth, path| {
+            let client = client.clone();
+            async move { client.rest_get(&auth, &path).await }
+        },
     )
     .await
 }

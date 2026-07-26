@@ -132,6 +132,7 @@ pub struct PrDetail {
     pub deletions: i64,
     pub changed_files: i64,
     pub comment_count: i64,
+    pub commit_count: i64,
     pub linear_identifier: Option<String>,
     pub comments: Vec<PrDetailComment>,
     pub reviews: Vec<PrDetailReview>,
@@ -253,7 +254,7 @@ fn parse_reviews(value: &Value) -> Result<(Vec<PrDetailReview>, bool), GitHubErr
     Ok((reviews, total > nodes.len() as i64))
 }
 
-fn parse_commits(value: &Value) -> Result<(Vec<PrDetailCommit>, bool), GitHubError> {
+fn parse_commits(value: &Value) -> Result<(Vec<PrDetailCommit>, bool, i64), GitHubError> {
     let (nodes, total) = connection(value)?;
     let commits = nodes
         .iter()
@@ -272,7 +273,7 @@ fn parse_commits(value: &Value) -> Result<(Vec<PrDetailCommit>, bool), GitHubErr
             })
         })
         .collect::<Result<Vec<_>, GitHubError>>()?;
-    Ok((commits, total > nodes.len() as i64))
+    Ok((commits, total > nodes.len() as i64, total))
 }
 
 fn parse_files(value: &Value) -> Result<(Vec<PrDetailFile>, bool), GitHubError> {
@@ -351,7 +352,7 @@ pub fn parse_pr_detail(data: &Value) -> Result<PrDetail, GitHubError> {
         parse_comments(pr.get("comments").ok_or(GitHubError::Malformed)?)?;
     let (reviews, reviews_truncated) =
         parse_reviews(pr.get("reviews").ok_or(GitHubError::Malformed)?)?;
-    let (commits, commits_truncated) =
+    let (commits, commits_truncated, commit_count) =
         parse_commits(pr.get("commits").ok_or(GitHubError::Malformed)?)?;
     let (files, files_truncated) = parse_files(pr.get("files").ok_or(GitHubError::Malformed)?)?;
     let (checks, checks_truncated) = parse_checks(pr.get("statusCheckRollup"))?;
@@ -380,6 +381,7 @@ pub fn parse_pr_detail(data: &Value) -> Result<PrDetail, GitHubError> {
         deletions: required_i64(pr, "deletions")?,
         changed_files: required_i64(pr, "changedFiles")?,
         comment_count,
+        commit_count,
         linear_identifier,
         comments,
         reviews,
@@ -523,6 +525,7 @@ mod tests {
         assert_eq!(detail.comments[0].body, "Looks good");
         assert_eq!(detail.reviews[0].state, "approved");
         assert_eq!(detail.commits[0].oid, "abc123");
+        assert_eq!(detail.commit_count, 51);
         assert_eq!(detail.files[0].path, "src/a.ts");
         assert_eq!(detail.checks[0].name, "test");
         assert_eq!(detail.checks[0].conclusion.as_deref(), Some("success"));
