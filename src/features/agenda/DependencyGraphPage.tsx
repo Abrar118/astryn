@@ -2,7 +2,7 @@ import { useSearchParams } from "react-router-dom";
 import { Network } from "lucide-react";
 import { useIssues, useRelations, useMe } from "../../lib/queries";
 import { weekWindow } from "../../lib/dates";
-import { buildAgenda } from "./agenda";
+import { buildAgenda, dueIssues } from "./agenda";
 import { DependencyGraph } from "./DependencyGraph";
 
 /**
@@ -29,9 +29,9 @@ export function DependencyGraphPage() {
   const viewerId = me.data?.viewerId;
   const win = weekWindow(new Date(), 0);
   const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: win })
+    ? buildAgenda({ issues: issues ?? [], viewerId, window: win })
     : [];
-  const rootIds = groups.flatMap((g) => g.items.map((it) => it.issue.id));
+  const rootIds = groups.flatMap((g) => dueIssues(g).map((i) => i.id));
 
   return (
     <div className="flex h-full flex-col overflow-hidden">

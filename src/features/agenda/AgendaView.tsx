@@ -1,21 +1,15 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarRange, ChevronLeft, ChevronRight } from "lucide-react";
-import { useIssues, useRelations, useMe, useUsers } from "../../lib/queries";
+import { CalendarRange, ChevronLeft, ChevronRight, CornerDownRight } from "lucide-react";
+import { useIssues, useMe, useUsers } from "../../lib/queries";
 import { dhakaToday, weekWindow, addDays, isoWeek } from "../../lib/dates";
-import { buildAgenda, type AgendaItem } from "./agenda";
+import { buildAgenda, dueIssues, type AgendaItem } from "./agenda";
+import type { IssueListItem } from "../../lib/commands";
 import { IssueRow } from "../issues/IssueRow";
 import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
 import { buildHeatmap, agendaCounts, type AgendaCounts } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
-
-const RELATION_LABEL: Record<string, string> = {
-  blocks: "Blocks",
-  blocked_by: "Blocked by",
-  related: "Related",
-  duplicate: "Duplicate",
-};
 
 const STAT_TILES: { key: keyof AgendaCounts; label: string; color: string }[] = [
   { key: "todo", label: "Todo", color: "#6b7280" },
@@ -72,7 +66,6 @@ export function AgendaView() {
 
   const me = useMe();
   const { data: issues, isLoading: issuesLoading } = useIssues({});
-  const { data: relations, isLoading: relsLoading } = useRelations();
   const { data: users } = useUsers();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
@@ -106,7 +99,7 @@ export function AgendaView() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  if (issuesLoading || relsLoading || me.isLoading) {
+  if (issuesLoading || me.isLoading) {
     return (
       <div className="space-y-2 p-6">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -118,7 +111,7 @@ export function AgendaView() {
 
   const viewerId = me.data?.viewerId;
   const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], relations: relations ?? [], viewerId, window: win, includeOverdue: weekOffset === 0 })
+    ? buildAgenda({ issues: issues ?? [], viewerId, window: win, includeOverdue: weekOffset === 0 })
     : [];
 
   const isEmpty = groups.every((g) => g.items.length === 0);
@@ -135,40 +128,48 @@ export function AgendaView() {
     ? buildHeatmap(issues ?? [], viewerId, { now: new Date(), weeksBack: 51, weeksForward: 1 })
     : [];
   const counts = agendaCounts(groups);
-  const weekTotal = groups.reduce((n, g) => n + g.items.length, 0);
+  const weekTotal = groups.reduce((n, g) => n + dueIssues(g).length, 0);
+
+  const renderRow = (issue: IssueListItem) => (
+    <IssueRow
+      issue={issue}
+      display={DEFAULT_DISPLAY}
+      avatar={avatarOf(issue.assigneeId)}
+      onOpen={open}
+      onContextMenu={(e) => openMenu(e, issue.id)}
+      today={today}
+      size="base"
+      startedAt={issue.startedAt}
+    />
+  );
+
+  // A parent shown only to give its due sub-issues context (it isn't itself due
+  // in this group) — a muted heading, still clickable/right-clickable.
+  const renderContextParent = (issue: IssueListItem) => (
+    <button
+      type="button"
+      onClick={() => open(issue.id)}
+      onContextMenu={(e) => openMenu(e, issue.id)}
+      className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <span
+        className="size-2 shrink-0 rounded-full"
+        style={{ backgroundColor: issue.stateColor }}
+        title={issue.stateName ?? undefined}
+      />
+      <span className="shrink-0 font-mono">{issue.identifier}</span>
+      <span className="truncate text-foreground/80">{issue.title}</span>
+      <CornerDownRight className="size-3 shrink-0 text-muted-foreground/60" aria-hidden />
+    </button>
+  );
 
   const renderItem = (item: AgendaItem) => (
     <div key={item.issue.id}>
-      <IssueRow
-        issue={item.issue}
-        display={DEFAULT_DISPLAY}
-        avatar={avatarOf(item.issue.assigneeId)}
-        onOpen={open}
-        onContextMenu={(e) => openMenu(e, item.issue.id)}
-        today={today}
-        size="base"
-        startedAt={item.issue.startedAt}
-      />
-      {item.relations.length > 0 && (
+      {item.contextOnly ? renderContextParent(item.issue) : renderRow(item.issue)}
+      {item.children.length > 0 && (
         <div className="ml-5 border-l border-white/15 pl-1">
-          {item.relations.map((r) => (
-            <button
-              key={`${r.type}-${r.relatedId}`}
-              type="button"
-              onClick={() => open(r.relatedId)}
-              className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              <span className="w-16 shrink-0 uppercase tracking-wide text-[10px]">
-                {RELATION_LABEL[r.type] ?? r.type}
-              </span>
-              <span
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: r.relatedStateColor ?? "#888" }}
-                title={r.relatedStateName ?? undefined}
-              />
-              <span className="w-16 shrink-0 font-mono">{r.relatedIdentifier}</span>
-              <span className="flex-1 truncate text-foreground/80">{r.relatedTitle}</span>
-            </button>
+          {item.children.map((c) => (
+            <div key={c.id}>{renderRow(c)}</div>
           ))}
         </div>
       )}
@@ -248,7 +249,7 @@ export function AgendaView() {
               <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-4 py-2.5 backdrop-blur">
                 <span className="text-base font-semibold">{g.label}</span>
                 {g.date && <span className="text-[13px] text-muted-foreground">{g.date}</span>}
-                <span className="ml-auto text-[13px] text-muted-foreground">{g.items.length}</span>
+                <span className="ml-auto text-[13px] text-muted-foreground">{dueIssues(g).length}</span>
               </div>
               {g.items.length ? (
                 g.items.map(renderItem)

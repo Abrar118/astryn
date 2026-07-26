@@ -16,7 +16,8 @@ function TreeRow({
   onSelect: (path: string) => void;
   onContextMenu: (e: MouseEvent, path: string) => void;
 }) {
-  const [open, setOpen] = useState(true);
+  // Folders start collapsed so a large repo opens as a scannable top level.
+  const [open, setOpen] = useState(false);
   const pad = { paddingLeft: depth * 12 + 10 } as const;
 
   if (node.kind === "tree") {

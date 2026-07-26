@@ -12,16 +12,25 @@ import {
 } from "lucide-react";
 import {
   useCreateIssue,
+  useCreateIssueRelation,
   useCycles,
   useFilterOptions,
   useIssues,
   useLabels,
   useMe,
+  useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
 import type { CreateIssueInput } from "@/lib/commands";
+import type { CreateSeed } from "./CommandPalette";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
+
+const SEED_LABEL: Record<CreateSeed["relation"], (identifier: string) => string> = {
+  sub: (id) => `Sub-issue of ${id}`,
+  parent: (id) => `Parent of ${id}`,
+  blocked: (id) => `Blocked by ${id}`,
+};
 
 const PRIORITIES = [
   { value: 1, label: "Urgent", color: "#ef4444" },
@@ -124,7 +133,7 @@ function Opt({
 
 const dot = (color: string) => <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />;
 
-export function CreateIssueModal({ onClose }: { onClose: () => void }) {
+export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed | null; onClose: () => void }) {
   const { data: teamsOpts } = useFilterOptions();
   const { data: allIssues } = useIssues({});
   const { data: users } = useUsers();
@@ -132,12 +141,20 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
   const { data: cycles } = useCycles();
   const { data: me } = useMe();
   const create = useCreateIssue();
+  const update = useUpdateIssue();
+  const createRel = useCreateIssueRelation();
   const [, setParams] = useSearchParams();
 
   const teams = teamsOpts?.teams ?? [];
   const projects = teamsOpts?.projects ?? [];
 
-  const [teamId, setTeamId] = useState<string>("");
+  // Local so a "parent" seed can be consumed after its one allowed use: an issue
+  // has exactly one parent, so with "create more" only the FIRST submit may
+  // re-parent the origin ("sub"/"blocked" legitimately repeat).
+  const [activeSeed, setActiveSeed] = useState(seed);
+
+  // A seeded create starts in the origin issue's team (sub-issues must share it).
+  const [teamId, setTeamId] = useState<string>(seed?.issue.teamId ?? "");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [stateId, setStateId] = useState<string | null>(null);
@@ -207,9 +224,18 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
       labelIds: labelIds.length ? labelIds : undefined,
       cycleId: cycleId ?? undefined,
       dueDate: dueDate ?? undefined,
+      parentId: activeSeed?.relation === "sub" ? activeSeed.issue.id : undefined,
     };
     create.mutate(input, {
       onSuccess: (issue) => {
+        // "parent"/"blocked" seeds need a second call once the new id exists; the
+        // mutations carry their own toasts/rollbacks, so fire-and-forget here.
+        if (activeSeed?.relation === "parent") {
+          update.mutate({ id: activeSeed.issue.id, patch: { parentId: issue.id } });
+          setActiveSeed(null); // consumed — a repeat submit must not re-parent again
+        } else if (activeSeed?.relation === "blocked") {
+          createRel.mutate({ issueId: activeSeed.issue.id, relatedIssueId: issue.id, type: "blocks" });
+        }
         if (createMore) resetForNext();
         else {
           setParams({ issue: issue.id });
@@ -255,6 +281,11 @@ export function CreateIssueModal({ onClose }: { onClose: () => void }) {
           </span>
           <span className="text-muted-foreground">›</span>
           <span className="text-muted-foreground">New issue</span>
+          {activeSeed && (
+            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+              {SEED_LABEL[activeSeed.relation](activeSeed.issue.identifier)}
+            </span>
+          )}
           <button
             type="button"
             onClick={onClose}

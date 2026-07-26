@@ -188,7 +188,8 @@ describe("priorityBreakdown", () => {
 describe("agendaCounts", () => {
   const item = (over: Partial<IssueListItem> & { id: string }): AgendaItem => ({
     issue: iss(over),
-    relations: [],
+    contextOnly: false,
+    children: [],
   });
   const group = (key: string, items: AgendaItem[]): AgendaGroup => ({
     key,
