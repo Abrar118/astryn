@@ -30,6 +30,17 @@ describe("PrRow", () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
+  it("opens row actions from right click and the context-menu keyboard shortcut", () => {
+    const onOpenMenu = vi.fn();
+    render(<PrRow pr={base} onOpenMenu={onOpenMenu} />);
+    const row = screen.getByRole("button", { name: /Add widget pull request/i });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    fireEvent.keyDown(row, { key: "F10", shiftKey: true });
+    expect(onOpenMenu).toHaveBeenCalledTimes(2);
+    expect(onOpenMenu.mock.calls[0][0]).toBe(base);
+    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 40, y: 60 });
+  });
+
   it("shows core fields, avatar, relative time, and changes-requested badge", () => {
     render(<PrRow pr={base} />);
     expect(screen.getByText("Add widget")).toBeInTheDocument();

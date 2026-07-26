@@ -24,6 +24,7 @@ import {
 } from "@/lib/queries";
 import { useWorkspace } from "@/lib/tabs";
 import { PrHeatMap } from "./PrHeatMap";
+import { PrContextMenu } from "./PrContextMenu";
 import { PrListPanel } from "./PrListPanel";
 import { PrSidebar } from "./PrSidebar";
 import { PrToolbar, type PrFilter } from "./PrToolbar";
@@ -150,6 +151,12 @@ export function PrsPage() {
   const [sort, setSort] = useState<PrSort>("updated");
   const [filter, setFilter] = useState<PrFilter>("all");
   const [groupByRepo, setGroupByRepoState] = useState(loadGroupByRepo);
+  const [menu, setMenu] = useState<{
+    pr: GithubPr;
+    x: number;
+    y: number;
+    origin: HTMLElement;
+  } | null>(null);
 
   if (status?.state === "not_configured") {
     return (
@@ -200,6 +207,12 @@ export function PrsPage() {
         description: errorText(err),
       });
     }
+  };
+
+  const closeMenu = () => {
+    const origin = menu?.origin;
+    setMenu(null);
+    origin?.focus();
   };
 
   return (
@@ -255,9 +268,24 @@ export function PrsPage() {
             stale={failed.has(activeScope)}
             viewerLogin={viewerLogin}
             groupByRepo={groupByRepo}
+            onOpenMenu={(pr, point, origin) =>
+              setMenu({ pr, x: point.x, y: point.y, origin })
+            }
           />
         </div>
       </div>
+      {menu && (
+        <PrContextMenu
+          pr={menu.pr}
+          favorite={favorites.some(
+            (repo) => repo.toLowerCase() === menu.pr.repo.toLowerCase(),
+          )}
+          x={menu.x}
+          y={menu.y}
+          onFavoriteChange={changeFavorite}
+          onClose={closeMenu}
+        />
+      )}
     </main>
   );
 }
