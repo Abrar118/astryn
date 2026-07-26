@@ -19,6 +19,8 @@ export function MermaidDiagram({ code }: { code: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setSvg(null);
+    setFailed(false);
     (async () => {
       try {
         const mermaid = (await import("mermaid")).default;

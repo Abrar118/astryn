@@ -49,6 +49,13 @@ pub fn validate_upload_put_url(value: &str) -> Result<(), LinearError> {
     Ok(())
 }
 
+pub fn is_renderable_image_mime(mime: &str) -> bool {
+    matches!(
+        mime,
+        "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif"
+    )
+}
+
 pub fn image_data_url(content_type: &str, bytes: &[u8]) -> Result<String, LinearError> {
     let mime = content_type
         .split(';')
@@ -56,12 +63,7 @@ pub fn image_data_url(content_type: &str, bytes: &[u8]) -> Result<String, Linear
         .unwrap_or_default()
         .trim()
         .to_ascii_lowercase();
-    if bytes.len() > MAX_IMAGE_BYTES
-        || !matches!(
-            mime.as_str(),
-            "image/png" | "image/jpeg" | "image/gif" | "image/webp" | "image/avif"
-        )
-    {
+    if bytes.len() > MAX_IMAGE_BYTES || !is_renderable_image_mime(&mime) {
         return Err(LinearError::Asset);
     }
     let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
