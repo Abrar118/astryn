@@ -52,7 +52,7 @@ function PaneContent({ tab }: { tab: Tab }) {
     case "slack":
       return <SlackPage />;
     case "docs":
-      return <DocsPage docPath={tab.docPath} />;
+      return <DocsPage docPath={tab.docPath} docSourceId={tab.docSourceId} />;
     case "reports":
       return <ReportsPage />;
     case "settings":

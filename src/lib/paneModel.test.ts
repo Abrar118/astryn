@@ -309,41 +309,97 @@ describe("openIssueInRightSplit / openIssueTabAcross", () => {
 });
 
 describe("openDocTabAcross / openDocInRightSplit", () => {
-  it("openDocTabAcross adds a docs tab carrying the path to the focused pane", () => {
-    const s = openDocTabAcross(single(), "02-technical/01-architecture.md");
+  const CORE = "acme/core@main";
+  const DESIGN = "acme/design@main";
+
+  it("openDocTabAcross adds a docs tab carrying source + path to the focused pane", () => {
+    const s = openDocTabAcross(single(), CORE, "02-technical/01-architecture.md");
     expect(s.panes[0].tabs[1]).toEqual({
       id: "tab-1",
       view: "docs",
       docPath: "02-technical/01-architecture.md",
+      docSourceId: CORE,
     });
     expect(s.focusedPaneId).toBe("pane-0");
     assertInvariants(s);
   });
   it("openDocTabAcross focuses an existing tab for the same doc instead of duplicating", () => {
-    const base = openDocTabAcross(single(), "a.md");
-    const again = openDocTabAcross(base, "a.md");
+    const base = openDocTabAcross(single(), CORE, "a.md");
+    const again = openDocTabAcross(base, CORE, "a.md");
     expect(again.panes.flatMap((p) => p.tabs).filter((t) => t.docPath === "a.md")).toHaveLength(1);
     expect(again.panes[0].activeTabId).toBe("tab-1");
   });
+  it("treats the same path in two sources as two different docs", () => {
+    // Every repo has a README.md — matching on path alone would hijack the
+    // first source's tab and silently show the other repo's file.
+    const base = openDocTabAcross(single(), CORE, "README.md");
+    const s = openDocTabAcross(base, DESIGN, "README.md");
+    const docs = s.panes.flatMap((p) => p.tabs).filter((t) => t.view === "docs");
+    expect(docs).toHaveLength(2);
+    expect(docs.map((t) => t.docSourceId)).toEqual([CORE, DESIGN]);
+    assertInvariants(s);
+  });
   it("openDocInRightSplit creates a right pane with the doc, leaving the left untouched", () => {
-    const s = openDocInRightSplit(single(), "a.md");
+    const s = openDocInRightSplit(single(), CORE, "a.md");
     expect(s.panes[0].tabs.map((t) => t.id)).toEqual(["tab-0"]); // left unchanged
-    expect(s.panes[1].tabs[0]).toEqual({ id: "tab-1", view: "docs", docPath: "a.md" });
+    expect(s.panes[1].tabs[0]).toEqual({
+      id: "tab-1",
+      view: "docs",
+      docPath: "a.md",
+      docSourceId: CORE,
+    });
     expect(s.focusedPaneId).toBe("pane-1");
     assertInvariants(s);
   });
   it("openDocInRightSplit reuses the right pane's existing tab for the same doc", () => {
-    const base = openDocInRightSplit(single(), "a.md");
-    const again = openDocInRightSplit(base, "a.md");
+    const base = openDocInRightSplit(single(), CORE, "a.md");
+    const again = openDocInRightSplit(base, CORE, "a.md");
     expect(again.panes[1].tabs).toHaveLength(1);
     expect(again.panes[1].activeTabId).toBe("tab-1");
     expect(again.focusedPaneId).toBe("pane-1");
     assertInvariants(again);
   });
+  it("openDocInRightSplit opens a second tab for the same path from another source", () => {
+    const base = openDocInRightSplit(single(), CORE, "a.md");
+    const s = openDocInRightSplit(base, DESIGN, "a.md");
+    expect(s.panes[1].tabs).toHaveLength(2);
+    expect(s.panes[1].tabs.map((t) => t.docSourceId)).toEqual([CORE, DESIGN]);
+    assertInvariants(s);
+  });
   it("openDocInRightSplit adds to the existing right pane when already split", () => {
-    const s = openDocInRightSplit(split(), "a.md");
+    const s = openDocInRightSplit(split(), CORE, "a.md");
     expect(s.panes[1].tabs.map((t) => t.view)).toEqual(["list", "docs"]);
     expect(s.panes[1].tabs[1].docPath).toBe("a.md");
+    expect(s.panes[1].tabs[1].docSourceId).toBe(CORE);
     assertInvariants(s);
+  });
+  it("keeps the source when a lone doc tab is cloned into a split", () => {
+    // splitTabRight clones the tab; losing docSourceId would leave the clone
+    // rendering the default source's file at the same path.
+    const base = openDocTabAcross(single(), DESIGN, "a.md");
+    const closedCalendar = { ...base, panes: [{ ...base.panes[0], tabs: [base.panes[0].tabs[1]] }] };
+    const s = splitTabRight(closedCalendar, "tab-1");
+    expect(s.panes[1].tabs[0]).toMatchObject({ docPath: "a.md", docSourceId: DESIGN });
+    assertInvariants(s);
+  });
+  it("keeps the source when a doc tab is restored from storage", () => {
+    const persisted = JSON.stringify({
+      panes: [
+        {
+          id: "pane-0",
+          tabs: [{ id: "tab-0", view: "docs", docPath: "a.md", docSourceId: DESIGN }],
+          activeTabId: "tab-0",
+        },
+      ],
+      focusedPaneId: "pane-0",
+      ratio: 0.5,
+      seq: 1,
+    });
+    expect(parsePersisted(persisted).panes[0].tabs[0]).toEqual({
+      id: "tab-0",
+      view: "docs",
+      docPath: "a.md",
+      docSourceId: DESIGN,
+    });
   });
 });

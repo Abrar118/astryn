@@ -8,8 +8,12 @@ const cmd = vi.hoisted(() => ({
   getConnectionStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getGithubStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getSlackStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
-  getDocsRepo: vi.fn().mockResolvedValue(null),
-  setDocsRepo: vi.fn().mockResolvedValue({ owner: "o", repo: "r", branch: "main", url: "" }),
+  addDocsSource: vi.fn().mockResolvedValue({
+    id: "acme/docs@main", name: "docs", owner: "acme", repo: "docs", branch: "main",
+    url: "https://github.com/acme/docs/tree/main", lastSyncedAt: null, fileCount: 0, truncated: false,
+  }),
+  renameDocsSource: vi.fn(),
+  removeDocsSource: vi.fn().mockResolvedValue(undefined),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
   clearGithubToken: vi.fn(),
   testGithubConnection: vi.fn(),
@@ -25,24 +29,65 @@ const cmd = vi.hoisted(() => ({
   syncIssues: vi.fn(), errorText: (e: unknown) => String(e),
 }));
 vi.mock("@/lib/commands", () => cmd);
+
+const queries = vi.hoisted(() => ({
+  docsSources: [] as unknown[],
+  docsStatus: { tokenPresent: true, sourceCount: 0 },
+}));
 vi.mock("@/lib/queries", () => ({
   clearWorkspaceQueries: vi.fn(), invalidateWorkspaceQueries: vi.fn(), clearGithubQueries: vi.fn(),
   clearSlackQueries: vi.fn(),
+  useDocsSources: () => ({ data: queries.docsSources }),
+  useDocsStatus: () => ({ data: queries.docsStatus }),
 }));
 vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
 
 import { Settings } from "./Settings";
+import { requestSettingsSection } from "./settingsSection";
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
 }
 
+/** Render Settings and navigate to a section via the sidebar. */
+function renderAt(section: string) {
+  render(<Settings />, { wrapper });
+  fireEvent.click(screen.getByRole("button", { name: section }));
+}
+
 afterEach(cleanup);
 
-describe("Settings GitHub card", () => {
-  it("saves the GitHub token and clears the input", async () => {
+describe("Settings navigation", () => {
+  it("opens on Linear and shows only that section", () => {
     render(<Settings />, { wrapper });
+    expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
+    // Another section's fields are not merely hidden — they aren't mounted.
+    expect(screen.queryByLabelText(/github personal access token/i)).toBeNull();
+  });
+
+  it("switches sections from the sidebar", () => {
+    renderAt("GitHub");
+    expect(screen.getByLabelText(/github personal access token/i)).toBeTruthy();
+    expect(screen.queryByLabelText(/linear personal api key/i)).toBeNull();
+  });
+
+  it("honours a deep-linked section and consumes it", () => {
+    // Docs' "Add a repository" empty state sends the user straight here.
+    requestSettingsSection("documentation");
+    render(<Settings />, { wrapper });
+    expect(screen.getByLabelText(/add a repository/i)).toBeTruthy();
+
+    // The request is one-shot: a later visit opens on the default section.
+    cleanup();
+    render(<Settings />, { wrapper });
+    expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
+  });
+});
+
+describe("Settings GitHub section", () => {
+  it("saves the GitHub token and clears the input", async () => {
+    renderAt("GitHub");
     const input = screen.getByPlaceholderText(/ghp_/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "ghp_secret" } });
     fireEvent.click(screen.getByRole("button", { name: /save github token/i }));
@@ -51,28 +96,78 @@ describe("Settings GitHub card", () => {
   });
 });
 
-describe("Settings docs repository card", () => {
-  it("saves the docs repo URL and clears the input", async () => {
-    render(<Settings />, { wrapper });
-    const input = screen.getByLabelText(/documentation repository/i) as HTMLInputElement;
-    fireEvent.change(input, { target: { value: "https://github.com/acme/docs" } });
-    fireEvent.click(screen.getByRole("button", { name: /save repository/i }));
+describe("Settings documentation section", () => {
+  it("adds a source from a URL and clears both inputs", async () => {
+    queries.docsSources = [];
+    renderAt("Documentation");
+    fireEvent.change(screen.getByLabelText(/add a repository/i), {
+      target: { value: "https://github.com/acme/docs" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add source/i }));
     await waitFor(() =>
-      expect(cmd.setDocsRepo).toHaveBeenCalledWith("https://github.com/acme/docs")
+      expect(cmd.addDocsSource).toHaveBeenCalledWith("https://github.com/acme/docs", undefined)
     );
-    expect(input.value).toBe("");
+    expect((screen.getByLabelText(/add a repository/i) as HTMLInputElement).value).toBe("");
+  });
+
+  it("passes a display name through when one is given", async () => {
+    queries.docsSources = [];
+    renderAt("Documentation");
+    fireEvent.change(screen.getByLabelText(/add a repository/i), {
+      target: { value: "acme/docs" },
+    });
+    fireEvent.change(screen.getByLabelText(/display name/i), {
+      target: { value: "  Core docs  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add source/i }));
+    await waitFor(() => expect(cmd.addDocsSource).toHaveBeenCalledWith("acme/docs", "Core docs"));
+  });
+
+  it("requires confirmation before removing a source", async () => {
+    queries.docsSources = [
+      {
+        id: "acme/docs@main", name: "Core docs", owner: "acme", repo: "docs", branch: "main",
+        url: "", lastSyncedAt: null, fileCount: 3, truncated: false,
+      },
+    ];
+    renderAt("Documentation");
+    // The first click only arms the confirm — removing a source drops its cache.
+    fireEvent.click(screen.getByRole("button", { name: /remove core docs/i }));
+    expect(cmd.removeDocsSource).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /^remove$/i }));
+    await waitFor(() => expect(cmd.removeDocsSource).toHaveBeenCalledWith("acme/docs@main"));
+  });
+
+  it("only renames when the name actually changed", async () => {
+    queries.docsSources = [
+      {
+        id: "acme/docs@main", name: "Core docs", owner: "acme", repo: "docs", branch: "main",
+        url: "", lastSyncedAt: null, fileCount: 0, truncated: false,
+      },
+    ];
+    renderAt("Documentation");
+    const input = screen.getByLabelText(/name for acme\/docs/i);
+    // Tabbing through the list untouched must not fire a write.
+    fireEvent.blur(input);
+    expect(cmd.renameDocsSource).not.toHaveBeenCalled();
+
+    fireEvent.change(input, { target: { value: "Platform docs" } });
+    fireEvent.blur(input);
+    await waitFor(() =>
+      expect(cmd.renameDocsSource).toHaveBeenCalledWith("acme/docs@main", "Platform docs")
+    );
   });
 });
 
-describe("Settings Slack card", () => {
+describe("Settings Slack section", () => {
   it("calls detectSlackCredentials when the Detect button is clicked", async () => {
-    render(<Settings />, { wrapper });
+    renderAt("Slack");
     fireEvent.click(screen.getByRole("button", { name: /detect from slack app/i }));
     await waitFor(() => expect(cmd.detectSlackCredentials).toHaveBeenCalled());
   });
 
   it("manual fallback: calls setSlackCredentials with typed values and clears both inputs", async () => {
-    render(<Settings />, { wrapper });
+    renderAt("Slack");
     // Open the manual entry disclosure
     fireEvent.click(screen.getByRole("button", { name: /enter manually/i }));
     const tokenInput = screen.getByLabelText(/xoxc token/i) as HTMLInputElement;
@@ -89,9 +184,9 @@ describe("Settings Slack card", () => {
   });
 });
 
-describe("Settings AI endpoint card", () => {
+describe("Settings AI section", () => {
   it("saves endpoint + model and clears the key input immediately", async () => {
-    render(<Settings />, { wrapper });
+    renderAt("AI");
     fireEvent.change(screen.getByLabelText(/ai endpoint/i), {
       target: { value: "http://localhost:11434" },
     });
@@ -113,7 +208,7 @@ describe("Settings AI endpoint card", () => {
   });
 
   it("does not send a key when the key input is empty", async () => {
-    render(<Settings />, { wrapper });
+    renderAt("AI");
     fireEvent.change(screen.getByLabelText(/ai endpoint/i), {
       target: { value: "http://localhost:11434" },
     });
