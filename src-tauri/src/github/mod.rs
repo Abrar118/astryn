@@ -1,6 +1,7 @@
 pub mod contributions;
 pub mod docs;
 pub mod prs;
+pub mod repositories;
 
 use serde_json::Value;
 use std::sync::Arc;

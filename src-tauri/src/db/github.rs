@@ -1,9 +1,11 @@
 use sqlx::SqlitePool;
 
 use crate::github::prs::{ParsedPr, Reviewer};
+use crate::github::repositories::{parse_repository, RepositoryName};
 
 pub const GITHUB_LOGIN_KEY: &str = "github_login";
 pub const GITHUB_CONTRIBUTIONS_KEY: &str = "github_contributions";
+pub const GITHUB_FAVORITE_REPOS_KEY: &str = "github_favorite_repos";
 
 #[derive(Debug, serde::Serialize, sqlx::FromRow)]
 #[serde(rename_all = "camelCase")]
@@ -131,9 +133,10 @@ pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     sqlx::query("DELETE FROM github_sync_meta")
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2)")
+    sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2, ?3)")
         .bind(GITHUB_LOGIN_KEY)
         .bind(GITHUB_CONTRIBUTIONS_KEY)
+        .bind(GITHUB_FAVORITE_REPOS_KEY)
         .execute(&mut *tx)
         .await?;
     // Docs cache shares the GitHub credential, so it is wiped on the same seam as the PR cache.
@@ -163,6 +166,69 @@ pub async fn save_contributions_json(pool: &SqlitePool, json: &str) -> Result<()
 
 pub async fn load_contributions_json(pool: &SqlitePool) -> Result<Option<String>, sqlx::Error> {
     crate::db::load_setting(pool, GITHUB_CONTRIBUTIONS_KEY).await
+}
+
+pub async fn load_favorite_repos(pool: &SqlitePool) -> Result<Vec<String>, sqlx::Error> {
+    let Some(json) = crate::db::load_setting(pool, GITHUB_FAVORITE_REPOS_KEY).await? else {
+        return Ok(Vec::new());
+    };
+    let values: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
+    let mut favorites = Vec::new();
+    for value in values {
+        let Ok(repo) = parse_repository(&value) else {
+            continue;
+        };
+        if !favorites
+            .iter()
+            .any(|known: &String| known.eq_ignore_ascii_case(&repo.canonical))
+        {
+            favorites.push(repo.canonical);
+        }
+    }
+    favorites.sort_by_key(|repo| repo.to_ascii_lowercase());
+    Ok(favorites)
+}
+
+pub async fn set_favorite_repo(
+    pool: &SqlitePool,
+    repo: &RepositoryName,
+    favorite: bool,
+) -> Result<Vec<String>, sqlx::Error> {
+    let mut favorites = load_favorite_repos(pool).await?;
+    if favorite {
+        if !favorites
+            .iter()
+            .any(|known| known.eq_ignore_ascii_case(&repo.canonical))
+        {
+            favorites.push(repo.canonical.clone());
+        }
+    } else {
+        favorites.retain(|known| !known.eq_ignore_ascii_case(&repo.canonical));
+    }
+    favorites.sort_by_key(|known| known.to_ascii_lowercase());
+    let json = serde_json::to_string(&favorites).unwrap_or_else(|_| "[]".to_string());
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    )
+    .bind(GITHUB_FAVORITE_REPOS_KEY)
+    .bind(json)
+    .execute(&mut *tx)
+    .await?;
+    if !favorite {
+        sqlx::query("DELETE FROM github_prs WHERE bucket = ?1")
+            .bind(&repo.scope)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query("DELETE FROM github_sync_meta WHERE bucket = ?1")
+            .bind(&repo.scope)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(favorites)
 }
 
 pub async fn list_prs(pool: &SqlitePool) -> Result<Vec<PrRow>, sqlx::Error> {
@@ -278,12 +344,70 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn favorite_repositories_round_trip_and_dedupe_case_insensitively() {
+        let (_d, pool) = pool().await;
+        set_favorite_repo(&pool, &parse_repository("Owner/Repo").unwrap(), true)
+            .await
+            .unwrap();
+        set_favorite_repo(&pool, &parse_repository("owner/repo").unwrap(), true)
+            .await
+            .unwrap();
+        set_favorite_repo(&pool, &parse_repository("Another/Project").unwrap(), true)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            load_favorite_repos(&pool).await.unwrap(),
+            vec!["Another/Project", "Owner/Repo"]
+        );
+    }
+
+    #[tokio::test]
+    async fn malformed_favorite_setting_recovers_as_empty() {
+        let (_d, pool) = pool().await;
+        crate::db::save_setting(&pool, GITHUB_FAVORITE_REPOS_KEY, "{bad json")
+            .await
+            .unwrap();
+
+        assert!(load_favorite_repos(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn removing_favorite_deletes_only_its_repository_scope() {
+        let (_d, pool) = pool().await;
+        set_favorite_repo(&pool, &parse_repository("Owner/Repo").unwrap(), true)
+            .await
+            .unwrap();
+        replace_bucket(&pool, "repo:owner/repo", &[pr(1, None)], "now", false)
+            .await
+            .unwrap();
+        replace_bucket(&pool, "mine", &[pr(2, None)], "now", false)
+            .await
+            .unwrap();
+
+        set_favorite_repo(&pool, &parse_repository("owner/repo").unwrap(), false)
+            .await
+            .unwrap();
+
+        let rows = list_prs(&pool).await.unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].bucket, "mine");
+        let meta = load_sync_meta(&pool).await.unwrap();
+        assert_eq!(meta.len(), 1);
+        assert_eq!(meta[0].bucket, "mine");
+        assert!(load_favorite_repos(&pool).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
     async fn wipe_clears_prs_meta_and_login() {
         let (_d, pool) = pool().await;
         replace_bucket(&pool, "mine", &[pr(1, None)], "now", false)
             .await
             .unwrap();
         save_github_login(&pool, "octocat").await.unwrap();
+        set_favorite_repo(&pool, &parse_repository("Owner/Repo").unwrap(), true)
+            .await
+            .unwrap();
         // Docs cache shares the GitHub credential, so every source's content must
         // be wiped too — while the configured sources themselves (user config, not
         // credential-derived) survive so a new token just resyncs them.
@@ -312,6 +436,7 @@ mod tests {
         assert!(list_prs(&pool).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
         assert_eq!(load_github_login(&pool).await.unwrap(), None);
+        assert!(load_favorite_repos(&pool).await.unwrap().is_empty());
         assert!(crate::db::docs::list_docs(&pool, &source)
             .await
             .unwrap()
