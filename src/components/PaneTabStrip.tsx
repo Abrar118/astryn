@@ -1,5 +1,5 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { BookText, Calendar, CalendarRange, FileText, GitPullRequest, Inbox, List, MessageSquare, Network, NotebookPen, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { BookText, Calendar, CalendarRange, FileText, GitPullRequest, Inbox, LayoutDashboard, List, MessageSquare, Network, NotebookPen, Plus, Settings as SettingsIcon, X } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -11,9 +11,10 @@ import { DualClock } from "@/features/home/DualClock";
 import { TabContextMenu } from "./TabContextMenu";
 
 const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
+  dashboard: { label: "Dashboard", icon: <LayoutDashboard className="size-3.5 text-cyan-400" /> },
   calendar: { label: "Calendar", icon: <Calendar className="size-3.5 text-sky-400" /> },
   list: { label: "Issues", icon: <List className="size-3.5 text-indigo-400" /> },
-  "this-week": { label: "Overview", icon: <CalendarRange className="size-3.5 text-violet-400" /> },
+  "this-week": { label: "This Week", icon: <CalendarRange className="size-3.5 text-violet-400" /> },
   graph: { label: "Dependencies", icon: <Network className="size-3.5 text-teal-400" /> },
   inbox: { label: "Inbox", icon: <Inbox className="size-3.5 text-amber-400" /> },
   prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5 text-emerald-400" /> },

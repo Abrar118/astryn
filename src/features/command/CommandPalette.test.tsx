@@ -77,6 +77,18 @@ describe("CommandPalette right-split sub-mode", () => {
 });
 
 describe("CommandPalette navigation + shortcuts", () => {
+  it("the Dashboard command switches to the dashboard view", () => {
+    openPalette();
+    fireEvent.click(screen.getByText("Go to Dashboard"));
+    expect(ws.setActiveView).toHaveBeenCalledWith("dashboard");
+  });
+
+  it("labels the existing agenda command as This Week", () => {
+    openPalette();
+    fireEvent.click(screen.getByText("Go to This Week"));
+    expect(ws.setActiveView).toHaveBeenCalledWith("this-week");
+  });
+
   it("the 'Go to Inbox' command switches the view and closes", () => {
     openPalette();
     fireEvent.click(screen.getByText("Go to Inbox"));

@@ -1,5 +1,5 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { BookText, Calendar, CalendarRange, GitPullRequest, Inbox, List, MessageSquare, Network, NotebookPen, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { BookText, Calendar, CalendarRange, GitPullRequest, Inbox, LayoutDashboard, List, MessageSquare, Network, NotebookPen, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 
 function DockButton({
@@ -36,9 +36,10 @@ function DockButton({
 }
 
 const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[] = [
+  { view: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="size-5" /> },
   { view: "calendar", label: "Calendar", icon: <Calendar className="size-5" /> },
   { view: "list", label: "Issues", icon: <List className="size-5" /> },
-  { view: "this-week", label: "Overview", icon: <CalendarRange className="size-5" /> },
+  { view: "this-week", label: "This Week", icon: <CalendarRange className="size-5" /> },
   { view: "graph", label: "Dependencies", icon: <Network className="size-5" /> },
   { view: "inbox", label: "Inbox", icon: <Inbox className="size-5" /> },
   { view: "prs", label: "Pull Requests", icon: <GitPullRequest className="size-5" /> },
@@ -48,7 +49,7 @@ const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[
   { view: "settings", label: "Settings", icon: <SettingsIcon className="size-5" /> },
 ];
 
-const META: Record<Exclude<ViewKind, "issue">, string> = { calendar: "Calendar", list: "Issues", "this-week": "Overview", graph: "Dependencies", inbox: "Inbox", prs: "Pull Requests", slack: "Slack", docs: "Docs", reports: "Reports", settings: "Settings" };
+const META: Record<Exclude<ViewKind, "issue">, string> = { dashboard: "Dashboard", calendar: "Calendar", list: "Issues", "this-week": "This Week", graph: "Dependencies", inbox: "Inbox", prs: "Pull Requests", slack: "Slack", docs: "Docs", reports: "Reports", settings: "Settings" };
 
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();

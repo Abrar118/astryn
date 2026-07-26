@@ -18,6 +18,7 @@ import {
   deleteIssue,
   addReaction,
   errorText,
+  getConnectionStatus,
   getDocsStatus,
   getDocContent,
   getGithubContributions,
@@ -177,6 +178,14 @@ export function useMe() {
   return useQuery({ queryKey: ["me"], queryFn: getMe, staleTime: Infinity });
 }
 
+export function useConnectionStatus() {
+  return useQuery({
+    queryKey: ["connection-status"],
+    queryFn: getConnectionStatus,
+    staleTime: Infinity,
+  });
+}
+
 export function useFilterOptions() {
   return useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
 }
@@ -186,8 +195,13 @@ export function useUsers() {
 }
 
 /** Inbox notifications (live fetch, refreshed alongside the sync loop). */
-export function useNotifications() {
-  return useQuery({ queryKey: ["notifications"], queryFn: listNotifications, staleTime: 60_000 });
+export function useNotifications({ enabled = true }: { enabled?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["notifications"],
+    queryFn: listNotifications,
+    staleTime: 60_000,
+    enabled,
+  });
 }
 
 export function useLabels() {
