@@ -8,6 +8,7 @@ const listGithubPrs = vi.hoisted(() => vi.fn());
 const syncGithubPrs = vi.hoisted(() => vi.fn());
 const getGithubPrDetail = vi.hoisted(() => vi.fn());
 const getGithubPrDiff = vi.hoisted(() => vi.fn());
+const listGithubRepositories = vi.hoisted(() => vi.fn());
 const setGithubRepoFavorite = vi.hoisted(() => vi.fn());
 const gooeyToastError = vi.hoisted(() => vi.fn());
 
@@ -16,6 +17,7 @@ vi.mock("@/lib/commands", () => ({
   syncGithubPrs,
   getGithubPrDetail,
   getGithubPrDiff,
+  listGithubRepositories,
   setGithubRepoFavorite,
   getGithubStatus: vi.fn(),
   errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
@@ -28,6 +30,7 @@ vi.mock("goey-toast", () => ({
 import {
   useGithubPrDiff,
   useGithubPrDetail,
+  useGithubRepositories,
   useGithubPrs,
   useGithubSync,
   useSetGithubRepoFavorite,
@@ -44,6 +47,7 @@ describe("GitHub query hooks", () => {
     syncGithubPrs.mockClear();
     getGithubPrDetail.mockClear();
     getGithubPrDiff.mockClear();
+    listGithubRepositories.mockClear();
     setGithubRepoFavorite.mockClear();
     gooeyToastError.mockClear();
   });
@@ -141,5 +145,27 @@ describe("GitHub query hooks", () => {
 
     await waitFor(() => expect(result.current.data?.totalFiles).toBe(1));
     expect(getGithubPrDiff).toHaveBeenCalledWith("o/r", 42);
+  });
+
+  it("loads the accessible repository catalog only when enabled", async () => {
+    listGithubRepositories.mockResolvedValue({
+      repositories: ["Abrar/personal", "GAM-Health/platform"],
+      truncated: false,
+    });
+    const { result, rerender } = renderHook(
+      ({ enabled }) => useGithubRepositories(enabled),
+      { wrapper, initialProps: { enabled: false } },
+    );
+    expect(listGithubRepositories).not.toHaveBeenCalled();
+
+    rerender({ enabled: true });
+
+    await waitFor(() =>
+      expect(result.current.data?.repositories).toEqual([
+        "Abrar/personal",
+        "GAM-Health/platform",
+      ]),
+    );
+    expect(listGithubRepositories).toHaveBeenCalledTimes(1);
   });
 });

@@ -34,6 +34,7 @@ import {
   listDocsSources,
   listDocsTree,
   listFilterOptions,
+  listGithubRepositories,
   listGithubPrs,
   listIssues,
   listLabels,
@@ -653,6 +654,16 @@ export function useGithubPrs() {
   return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs });
 }
 
+export function useGithubRepositories(enabled: boolean) {
+  return useQuery({
+    queryKey: ["github-repositories"],
+    queryFn: listGithubRepositories,
+    enabled,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
 export function useGithubPrDetail(repo: string | null, number: number | null) {
   return useQuery({
     queryKey: ["github-pr-detail", repo, number],
@@ -751,6 +762,7 @@ export function clearGithubQueries(qc: QueryClient) {
   for (const key of [
     ["github-status"],
     ["github-prs"],
+    ["github-repositories"],
     ["github-pr-detail"],
     ["github-sync"],
     ["github-contributions"],

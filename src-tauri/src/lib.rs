@@ -186,6 +186,7 @@ pub fn run() {
             commands::github::test_github_connection,
             commands::github::sync_github_prs,
             commands::github::list_github_prs,
+            commands::github::list_github_repositories,
             commands::github::set_github_repo_favorite,
             commands::github::get_github_pr_detail,
             commands::github::get_github_pr_diff,

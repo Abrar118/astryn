@@ -1,10 +1,27 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { GithubPr } from "@/lib/commands";
+
+const repositoryQuery = vi.hoisted(() => vi.fn());
+vi.mock("@/lib/queries", () => ({
+  useGithubRepositories: repositoryQuery,
+}));
+
 import { PrSidebar } from "./PrSidebar";
 
 afterEach(cleanup);
+beforeEach(() => {
+  repositoryQuery.mockReturnValue({
+    data: {
+      repositories: ["Abrar/personal", "GAM-Health/platform"],
+      truncated: false,
+    },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  });
+});
 
 const row = {
   id: "Acme/Web#1",
@@ -15,6 +32,101 @@ const row = {
 } as GithubPr;
 
 describe("PrSidebar", () => {
+  it("lists owned and organization repositories beyond cached PR rows", () => {
+    render(
+      <PrSidebar
+        prs={[]}
+        favorites={[]}
+        activeScope="mine"
+        onSelect={vi.fn()}
+        onFavoriteChange={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /add favorite repository/i }),
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Abrar/personal" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "GAM-Health/platform" }),
+    ).toBeInTheDocument();
+  });
+
+  it("closes the repository picker when pointer focus moves outside it", () => {
+    render(
+      <PrSidebar
+        prs={[row]}
+        favorites={[]}
+        activeScope="mine"
+        onSelect={vi.fn()}
+        onFavoriteChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", {
+      name: /add favorite repository/i,
+    });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("searchbox")).toBeInTheDocument();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("closes the repository picker with Escape and restores trigger focus", () => {
+    render(
+      <PrSidebar
+        prs={[row]}
+        favorites={[]}
+        activeScope="mine"
+        onSelect={vi.fn()}
+        onFavoriteChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", {
+      name: /add favorite repository/i,
+    });
+    fireEvent.click(trigger);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(screen.queryByRole("searchbox")).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("keeps cached repositories available and offers retry after a catalog error", () => {
+    const refetch = vi.fn();
+    repositoryQuery.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: true,
+      refetch,
+    });
+    render(
+      <PrSidebar
+        prs={[row]}
+        favorites={[]}
+        activeScope="mine"
+        onSelect={vi.fn()}
+        onFavoriteChange={vi.fn()}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: /add favorite repository/i }),
+    );
+
+    expect(screen.getByRole("button", { name: "Acme/Web" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      /couldn't load all repositories/i,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /retry repositories/i }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it("adds a known repository from the searchable picker", () => {
     const onFavoriteChange = vi.fn();
     render(

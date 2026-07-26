@@ -9,6 +9,7 @@ const hooks = vi.hoisted(() => ({
   useGithubSync: vi.fn(),
   useGithubContributions: vi.fn(),
   useGithubContributionsSync: vi.fn(),
+  useGithubRepositories: vi.fn(),
   useGithubPrDetail: vi.fn(),
   useGithubPrDiff: vi.fn(),
   useSetGithubRepoFavorite: vi.fn(),
@@ -51,6 +52,12 @@ function setup(
   hooks.useGithubSync.mockReturnValue({ data: undefined, isError: false, refetch, ...(sync as object) });
   hooks.useGithubContributions.mockReturnValue({ data: null });
   hooks.useGithubContributionsSync.mockReturnValue({ data: undefined });
+  hooks.useGithubRepositories.mockReturnValue({
+    data: { repositories: [], truncated: false },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  });
   hooks.useGithubPrDetail.mockReturnValue({
     data: undefined,
     isLoading: true,

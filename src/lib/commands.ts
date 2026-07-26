@@ -446,6 +446,14 @@ export const syncGithubPrs = (): Promise<BucketSyncResult[]> => invoke("sync_git
 
 export const listGithubPrs = (): Promise<PrDashboard> => invoke("list_github_prs");
 
+export type GithubRepositoryCatalog = {
+  repositories: string[];
+  truncated: boolean;
+};
+
+export const listGithubRepositories = (): Promise<GithubRepositoryCatalog> =>
+  invoke("list_github_repositories");
+
 export const setGithubRepoFavorite = (
   repo: string,
   favorite: boolean,

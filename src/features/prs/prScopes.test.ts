@@ -63,7 +63,13 @@ describe("PR scopes", () => {
       pr({ id: "a/one#2", bucket: "assigned", repo: "a/one" }),
       pr({ id: "B/Two#1", bucket: "needs_review", repo: "B/Two" }),
     ];
-    expect(knownRepos(rows, ["a/ONE"])).toEqual(["B/Two"]);
+    expect(
+      knownRepos(rows, ["a/ONE"], [
+        "Viewer/Personal",
+        "Org/Platform",
+        "b/two",
+      ]),
+    ).toEqual(["B/Two", "Org/Platform", "Viewer/Personal"]);
   });
 
   it("defaults grouping to true for missing or invalid state", () => {

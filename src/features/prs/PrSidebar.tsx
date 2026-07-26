@@ -1,7 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
   GitPullRequest,
+  LoaderCircle,
   Plus,
   RefreshCw,
   Search,
@@ -11,6 +12,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { GithubPr } from "@/lib/commands";
+import { useGithubRepositories } from "@/lib/queries";
 import {
   knownRepos,
   repoScope,
@@ -50,12 +52,47 @@ export function PrSidebar({
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const pickerTriggerRef = useRef<HTMLButtonElement>(null);
+  const repositoryQuery = useGithubRepositories(pickerOpen);
   const candidates = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return knownRepos(prs, favorites).filter((repo) =>
-      repo.toLowerCase().includes(normalized),
-    );
-  }, [favorites, prs, query]);
+    return knownRepos(
+      prs,
+      favorites,
+      repositoryQuery.data?.repositories ?? [],
+    ).filter((repo) => repo.toLowerCase().includes(normalized));
+  }, [favorites, prs, query, repositoryQuery.data?.repositories]);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const closePicker = () => {
+      setPickerOpen(false);
+      setQuery("");
+    };
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      if (
+        pickerRef.current?.contains(event.target) ||
+        pickerTriggerRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      closePicker();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closePicker();
+      pickerTriggerRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [pickerOpen]);
 
   const chooseFavorite = (repo: string) => {
     void onFavoriteChange(repo, true);
@@ -99,11 +136,17 @@ export function PrSidebar({
           Favorite repositories
         </span>
         <button
+          ref={pickerTriggerRef}
           type="button"
           aria-label="Add favorite repository"
           aria-expanded={pickerOpen}
           title="Add favorite repository"
-          onClick={() => setPickerOpen((open) => !open)}
+          onClick={() =>
+            setPickerOpen((open) => {
+              if (open) setQuery("");
+              return !open;
+            })
+          }
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           <Plus className="size-3.5" />
@@ -111,13 +154,19 @@ export function PrSidebar({
       </div>
 
       {pickerOpen && (
-        <div className="absolute left-12 top-40 z-40 w-64 rounded-xl border border-border bg-popover p-2 shadow-xl lg:left-3 lg:top-40">
+        <div
+          ref={pickerRef}
+          role="dialog"
+          aria-label="Favorite repository search"
+          className="absolute left-12 top-40 z-40 w-64 rounded-xl border border-border bg-popover p-2 shadow-xl lg:left-3 lg:top-40"
+        >
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
             <Input
               autoFocus
               type="search"
               role="searchbox"
+              aria-label="Search repositories"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Find a repository"
@@ -125,7 +174,39 @@ export function PrSidebar({
             />
           </div>
           <div className="mt-1 max-h-52 overflow-y-auto">
-            {candidates.length === 0 ? (
+            {repositoryQuery.isLoading && (
+              <div
+                role="status"
+                className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground"
+              >
+                <LoaderCircle className="size-3.5 animate-spin" />
+                Loading repositories…
+              </div>
+            )}
+            {repositoryQuery.isError && (
+              <div
+                role="alert"
+                className="flex items-center gap-2 border-b border-border/60 px-2 py-2 text-xs text-amber-300"
+              >
+                <span className="min-w-0 flex-1">
+                  Couldn't load all repositories.
+                </span>
+                <button
+                  type="button"
+                  aria-label="Retry repositories"
+                  onClick={() => void repositoryQuery.refetch()}
+                  className="flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-muted"
+                >
+                  <RefreshCw className="size-3.5" />
+                </button>
+              </div>
+            )}
+            {repositoryQuery.data?.truncated && (
+              <p className="px-2 py-2 text-xs text-amber-300">
+                Showing the first 10,000 accessible repositories.
+              </p>
+            )}
+            {candidates.length === 0 && !repositoryQuery.isLoading ? (
               <p className="px-2 py-4 text-center text-xs text-muted-foreground">
                 No repositories available.
               </p>

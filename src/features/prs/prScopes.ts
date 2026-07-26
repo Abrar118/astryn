@@ -18,12 +18,20 @@ export function scopePrs(prs: GithubPr[], scope: ActivePrScope): GithubPr[] {
   });
 }
 
-export function knownRepos(prs: GithubPr[], favorites: string[]): string[] {
+export function knownRepos(
+  prs: GithubPr[],
+  favorites: string[],
+  repositories: string[] = [],
+): string[] {
   const excluded = new Set(favorites.map((repo) => repo.toLowerCase()));
   const repos = new Map<string, string>();
   for (const pr of prs) {
     const key = pr.repo.toLowerCase();
     if (!excluded.has(key) && !repos.has(key)) repos.set(key, pr.repo);
+  }
+  for (const repo of repositories) {
+    const key = repo.toLowerCase();
+    if (!excluded.has(key) && !repos.has(key)) repos.set(key, repo);
   }
   return [...repos.values()].sort((a, b) =>
     a.localeCompare(b, undefined, { sensitivity: "base" }),
