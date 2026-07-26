@@ -1,3 +1,14 @@
+import {
+  BookText,
+  Calendar,
+  GitBranch,
+  MessageSquare,
+  Palette,
+  Sparkles,
+  SquareKanban,
+  type LucideIcon,
+} from "lucide-react";
+
 export type SettingsSection =
   | "linear"
   | "github"
@@ -9,31 +20,36 @@ export type SettingsSection =
 
 export type SettingsGroup = {
   label: string;
-  items: { id: SettingsSection; label: string }[];
+  items: { id: SettingsSection; label: string; icon: LucideIcon }[];
 };
 
-/** Sidebar structure. Order here is the order rendered. */
+/**
+ * Sidebar structure. Order here is the order rendered. Icons are component
+ * references rather than JSX so this stays a plain `.ts` registry; SettingsNav
+ * sizes them. Where a section maps onto a Dock view (Slack, Documentation,
+ * Calendar) it reuses that view's icon so the two navigations agree.
+ */
 export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     label: "Connections",
     items: [
-      { id: "linear", label: "Linear" },
-      { id: "github", label: "GitHub" },
-      { id: "slack", label: "Slack" },
+      { id: "linear", label: "Linear", icon: SquareKanban },
+      { id: "github", label: "GitHub", icon: GitBranch },
+      { id: "slack", label: "Slack", icon: MessageSquare },
     ],
   },
   {
     label: "Workspace",
     items: [
-      { id: "documentation", label: "Documentation" },
-      { id: "ai", label: "AI" },
+      { id: "documentation", label: "Documentation", icon: BookText },
+      { id: "ai", label: "AI", icon: Sparkles },
     ],
   },
   {
     label: "Preferences",
     items: [
-      { id: "appearance", label: "Appearance" },
-      { id: "calendar", label: "Calendar" },
+      { id: "appearance", label: "Appearance", icon: Palette },
+      { id: "calendar", label: "Calendar", icon: Calendar },
     ],
   },
 ];

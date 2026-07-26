@@ -21,22 +21,24 @@ export function SettingsNav({
           </span>
           {group.items.map((item) => {
             const selected = item.id === active;
+            const Icon = item.icon;
             return (
               <button
                 key={item.id}
                 type="button"
                 aria-current={selected ? "page" : undefined}
                 onClick={() => onSelect(item.id)}
-                className={`relative cursor-pointer rounded-md px-2 py-1.5 text-left text-[13px] transition-colors ${
+                className={`relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-semibold transition-colors ${
                   selected
-                    ? "bg-primary/10 font-medium text-foreground"
+                    ? "bg-primary/10 text-foreground"
                     : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
                 }`}
               >
                 {selected && (
                   <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" aria-hidden />
                 )}
-                {item.label}
+                <Icon className={`size-4 shrink-0 ${selected ? "text-primary" : "text-muted-foreground/70"}`} />
+                <span className="truncate">{item.label}</span>
               </button>
             );
           })}
