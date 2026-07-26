@@ -21,6 +21,13 @@ const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 const SLACK_TOKEN_ACCOUNT: &str = "slack_user_token";
 const SLACK_COOKIE_ACCOUNT: &str = "slack_cookie_d";
 
+/// True when the process was invoked with a version flag (`astryn --version`).
+/// Checked before the GUI starts so the version prints and the process exits
+/// instead of opening a window.
+fn wants_version(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--version" || a == "-V")
+}
+
 /// Build a macOS app menu mirroring the system default but WITHOUT the
 /// "Close Window" item, so Cmd+W is left for the webview (which closes the
 /// active tab). Keeps Quit and the Edit items so native shortcuts still work.
@@ -63,6 +70,14 @@ fn install_macos_menu(app: &tauri::App) -> tauri::Result<()> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Answer `--version` before any Tauri/DB setup. (On Windows the release
+    // binary has no console attached, so this prints only where one exists.)
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if wants_version(&args) {
+        println!("astryn {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
@@ -189,4 +204,41 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wants_version;
+
+    fn args(list: &[&str]) -> Vec<String> {
+        list.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn detects_version_flags_anywhere_in_the_args() {
+        assert!(wants_version(&args(&["--version"])));
+        assert!(wants_version(&args(&["-V"])));
+        assert!(wants_version(&args(&["--other", "--version"])));
+    }
+
+    #[test]
+    fn ignores_no_args_and_lookalikes() {
+        assert!(!wants_version(&args(&[])));
+        assert!(!wants_version(&args(&["-v"]))); // lowercase is not the version flag
+        assert!(!wants_version(&args(&[
+            "--versions",
+            "version",
+            "--version=1"
+        ])));
+    }
+
+    #[test]
+    fn crate_version_matches_the_bundle_version() {
+        // `--version` reports CARGO_PKG_VERSION, while the installed bundle takes
+        // its version from tauri.conf.json. A half-finished release bump would
+        // make the two disagree, so pin them together here.
+        let conf: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).expect("tauri.conf.json");
+        assert_eq!(conf["version"].as_str(), Some(env!("CARGO_PKG_VERSION")));
+    }
 }
