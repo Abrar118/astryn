@@ -18,6 +18,10 @@ const cmd = vi.hoisted(() => ({
   detectSlackCredentials: vi.fn().mockResolvedValue({ state: "not_configured" }),
   clearSlackToken: vi.fn(),
   testSlackConnection: vi.fn(),
+  getLlmConfig: vi.fn().mockResolvedValue(null),
+  setLlmConfig: vi.fn().mockResolvedValue({ baseUrl: "http://localhost:11434", model: "phi4", hasApiKey: false }),
+  clearLlmConfig: vi.fn(),
+  testLlmConnection: vi.fn(),
   syncIssues: vi.fn(), errorText: (e: unknown) => String(e),
 }));
 vi.mock("@/lib/commands", () => cmd);
@@ -82,5 +86,41 @@ describe("Settings Slack card", () => {
     // Both inputs must be cleared before the async call resolves (secret hygiene)
     expect(tokenInput.value).toBe("");
     expect(cookieInput.value).toBe("");
+  });
+});
+
+describe("Settings AI endpoint card", () => {
+  it("saves endpoint + model and clears the key input immediately", async () => {
+    render(<Settings />, { wrapper });
+    fireEvent.change(screen.getByLabelText(/ai endpoint/i), {
+      target: { value: "http://localhost:11434" },
+    });
+    fireEvent.change(screen.getByLabelText(/^model$/i), {
+      target: { value: "phi4-mini-reasoning:latest" },
+    });
+    const keyInput = screen.getByLabelText(/api key \(optional\)/i) as HTMLInputElement;
+    fireEvent.change(keyInput, { target: { value: "sk-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: /save endpoint/i }));
+    await waitFor(() =>
+      expect(cmd.setLlmConfig).toHaveBeenCalledWith(
+        "http://localhost:11434",
+        "phi4-mini-reasoning:latest",
+        "sk-secret",
+      )
+    );
+    // The secret leaves component state before the async save resolves.
+    expect(keyInput.value).toBe("");
+  });
+
+  it("does not send a key when the key input is empty", async () => {
+    render(<Settings />, { wrapper });
+    fireEvent.change(screen.getByLabelText(/ai endpoint/i), {
+      target: { value: "http://localhost:11434" },
+    });
+    fireEvent.change(screen.getByLabelText(/^model$/i), { target: { value: "phi4" } });
+    fireEvent.click(screen.getByRole("button", { name: /save endpoint/i }));
+    await waitFor(() =>
+      expect(cmd.setLlmConfig).toHaveBeenCalledWith("http://localhost:11434", "phi4", null)
+    );
   });
 });

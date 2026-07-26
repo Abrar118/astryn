@@ -29,6 +29,7 @@ import { DependencyGraphPage } from "@/features/agenda/DependencyGraphPage";
 import { PrsPage } from "@/features/prs/PrsPage";
 import { SlackPage } from "@/features/slack/SlackPage";
 import { DocsPage } from "@/features/docs/DocsPage";
+import { ReportsPage } from "@/features/reports/ReportsPage";
 
 const DIVIDER_PX = 6;
 const STEP = 0.02;
@@ -52,6 +53,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <SlackPage />;
     case "docs":
       return <DocsPage docPath={tab.docPath} />;
+    case "reports":
+      return <ReportsPage />;
     case "settings":
       return <Settings />;
     case "issue":

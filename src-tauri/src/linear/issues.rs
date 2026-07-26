@@ -28,6 +28,7 @@ pub struct ParsedIssue {
     pub description: Option<String>,
     pub due_date: Option<String>,
     pub started_at: Option<String>,
+    pub completed_at: Option<String>,
     pub priority: i64,
     pub url: String,
     pub state_id: Option<String>,
@@ -219,6 +220,7 @@ fn node_to_issue(n: &Value) -> ParsedIssue {
         description: s(n, "description"),
         due_date: s(n, "dueDate"),
         started_at: s(n, "startedAt"),
+        completed_at: s(n, "completedAt"),
         priority: n.get("priority").and_then(|p| p.as_i64()).unwrap_or(0),
         url: s(n, "url").unwrap_or_default(),
         state_id: nested(n, "state", "id"),
@@ -1250,7 +1252,7 @@ pub fn validate_create_input(p: &CreateIssueInput) -> Result<(), &'static str> {
 }
 
 // ---- GraphQL query strings + LinearClient methods ----
-const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate startedAt priority url createdAt updatedAt archivedAt
+const ISSUE_NODE_FIELDS: &str = "id identifier title description dueDate startedAt completedAt priority url createdAt updatedAt archivedAt
   estimate cycle { id number name } projectMilestone { id name }
   attachments(first: 50) { pageInfo { hasNextPage } nodes { id title subtitle url sourceType createdAt } }
   state { id name type color } assignee { id name } team { id key } project { id name } parent { id }
