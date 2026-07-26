@@ -1,5 +1,6 @@
 import {
   useEffect,
+  useCallback,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -26,24 +27,18 @@ import {
   loadDrawerWidth,
   saveDrawerWidth,
 } from "./prDetailDisplay";
+import { copyPrText } from "./prClipboard";
 
 type DrawerTab = "overview" | "changes";
 
-async function copyLink(url: string) {
-  try {
-    await navigator.clipboard.writeText(url);
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = url;
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      document.execCommand("copy");
-    } finally {
-      textarea.remove();
-    }
-  }
-  gooeyToast.success("PR link copied");
+function drawerFocusable(dialog: HTMLElement): HTMLElement[] {
+  return [
+    ...dialog.querySelectorAll<HTMLElement>("a[href], button, [tabindex]"),
+  ].filter(
+    (element) =>
+      element.tabIndex >= 0 &&
+      (!(element instanceof HTMLButtonElement) || !element.disabled),
+  );
 }
 
 export function PrDrawer({
@@ -65,13 +60,17 @@ export function PrDrawer({
   const [width, setWidth] = useState(loadDrawerWidth);
   const widthRef = useRef(width);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const dialogRef = useRef<HTMLElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
   const resizing = useRef(false);
+  const closing = useRef(false);
   widthRef.current = width;
 
-  const close = () => {
+  const close = useCallback(() => {
+    closing.current = true;
     onClose();
     returnFocus?.focus();
-  };
+  }, [onClose, returnFocus]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -82,11 +81,64 @@ export function PrDrawer({
       if (event.key === "Escape" && !event.defaultPrevented) {
         event.preventDefault();
         close();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = drawerFocusable(dialog);
+      if (focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      const active = document.activeElement;
+      if (!dialog.contains(active)) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
       }
     };
+    const containFocus = (event: FocusEvent) => {
+      if (
+        !closing.current &&
+        dialogRef.current &&
+        !dialogRef.current.contains(event.target as Node)
+      ) {
+        closeRef.current?.focus();
+      }
+    };
+    const overlay = overlayRef.current;
+    const siblings = overlay?.parentElement
+      ? [...overlay.parentElement.children].filter(
+          (element): element is HTMLElement =>
+            element instanceof HTMLElement && element !== overlay,
+        )
+      : [];
+    const previous = siblings.map((element) => ({
+      element,
+      inert: element.inert,
+      ariaHidden: element.getAttribute("aria-hidden"),
+    }));
+    for (const element of siblings) {
+      element.inert = true;
+      element.setAttribute("aria-hidden", "true");
+    }
     document.addEventListener("keydown", handleKey);
-    return () => document.removeEventListener("keydown", handleKey);
-  });
+    document.addEventListener("focusin", containFocus);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      document.removeEventListener("focusin", containFocus);
+      for (const { element, inert, ariaHidden } of previous) {
+        element.inert = inert;
+        if (ariaHidden === null) element.removeAttribute("aria-hidden");
+        else element.setAttribute("aria-hidden", ariaHidden);
+      }
+    };
+  }, [close]);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -147,14 +199,18 @@ export function PrDrawer({
   const deletions = detail?.deletions ?? pr.deletions ?? 0;
 
   return (
-    <div className="fixed inset-0 z-30" data-command-shortcut-blocker>
-      <button
-        type="button"
-        aria-label="Close pull request drawer backdrop"
+    <div
+      ref={overlayRef}
+      className="fixed inset-0 z-30"
+      data-command-shortcut-blocker
+    >
+      <div
+        aria-hidden="true"
         onClick={close}
         className="absolute inset-0 size-full cursor-default bg-black/45 transition-opacity duration-200 motion-reduce:transition-none"
       />
       <aside
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={`${pr.repo} pull request ${pr.number}`}
@@ -210,7 +266,7 @@ export function PrDrawer({
                 aria-label="Copy pull request link"
                 title="Copy link"
                 disabled={!url}
-                onClick={() => url && void copyLink(url)}
+                onClick={() => url && void copyPrText(url, "PR link")}
               >
                 <Copy className="size-4" />
               </Button>

@@ -54,34 +54,41 @@ export function PrRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      aria-label={`${title} pull request`}
-      onClick={(event) => onOpen?.(pr, event.currentTarget)}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          onOpen?.(pr, event.currentTarget);
-        } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-          event.preventDefault();
-          openMenuFromKeyboard(event);
-        }
-      }}
-      onContextMenu={(event: MouseEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        onOpenMenu?.(
-          pr,
-          { x: event.clientX, y: event.clientY },
-          event.currentTarget,
-        );
-      }}
-      className="group flex cursor-pointer items-start gap-3.5 border-b border-border/50 px-5 py-3.5 outline-none transition-colors last:border-b-0 hover:bg-white/[0.03] focus-visible:bg-primary/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50"
+      className="group relative flex items-start gap-3.5 border-b border-border/50 px-5 py-3.5 last:border-b-0"
     >
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/40">
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label={`${title} pull request`}
+        onClick={(event) => onOpen?.(pr, event.currentTarget)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            onOpen?.(pr, event.currentTarget);
+          } else if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            openMenuFromKeyboard(event);
+          }
+        }}
+        onContextMenu={(event: MouseEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          onOpenMenu?.(
+            pr,
+            { x: event.clientX, y: event.clientY },
+            event.currentTarget,
+          );
+        }}
+        className="absolute inset-0 z-0 cursor-pointer outline-none transition-colors hover:bg-white/[0.03] focus-visible:bg-primary/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50"
+      />
+
+      <span className="pointer-events-none relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/40">
         <GitPullRequest className={`size-4 ${pr.draft ? "text-muted-foreground" : "text-emerald-400"}`} />
       </span>
 
-      <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+      <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 flex-col gap-2.5">
         {/* Line 1: title + status badges; Linear chip and time pinned right */}
         <div className="flex items-center gap-2">
           <span className="min-w-0 truncate text-left text-[15px] font-medium text-foreground">
@@ -116,7 +123,7 @@ export function PrRow({
                   openIssueTab(pr.linearIssueId!);
                 }}
                 onKeyDown={(event) => event.stopPropagation()}
-                className="rounded-md border border-primary/40 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
+                className="pointer-events-auto relative z-20 rounded-md border border-primary/40 px-2 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/10"
               >
                 {pr.linearIdentifier}
               </button>
@@ -135,7 +142,7 @@ export function PrRow({
                 );
               }}
               onKeyDown={(event) => event.stopPropagation()}
-              className="flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
+              className="pointer-events-auto relative z-20 flex size-6 items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-muted hover:text-foreground focus:opacity-100 group-hover:opacity-100"
             >
               <MoreHorizontal className="size-4" />
             </button>

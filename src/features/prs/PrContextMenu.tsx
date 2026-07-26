@@ -3,40 +3,29 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import { Copy, ExternalLink, Star } from "lucide-react";
 import type { GithubPr } from "@/lib/commands";
-
-async function copyText(text: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    const textarea = document.createElement("textarea");
-    textarea.value = text;
-    document.body.appendChild(textarea);
-    textarea.select();
-    try {
-      document.execCommand("copy");
-    } finally {
-      textarea.remove();
-    }
-  }
-  gooeyToast.success(`${label} copied`);
-}
+import { copyPrText } from "./prClipboard";
 
 function MenuRow({
   icon,
   label,
   disabled,
+  disabledReason,
   onSelect,
 }: {
   icon: ReactNode;
   label: string;
   disabled?: boolean;
+  disabledReason?: string;
   onSelect: () => void;
 }) {
   return (
     <button
       type="button"
       role="menuitem"
+      tabIndex={-1}
       disabled={disabled}
+      aria-description={disabled ? disabledReason : undefined}
+      title={disabled ? disabledReason : undefined}
       onClick={onSelect}
       className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-40"
     >
@@ -71,7 +60,7 @@ export function PrContextMenu({
       ?.focus();
     const close = () => onClose();
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape" && !event.defaultPrevented) onClose();
     };
     window.addEventListener("click", close);
     window.addEventListener("keydown", handleKey);
@@ -89,6 +78,34 @@ export function PrContextMenu({
   };
   const left = Math.max(8, Math.min(x, window.innerWidth - 216));
   const top = Math.max(8, Math.min(y, window.innerHeight - 152));
+  const handleMenuKey = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = [
+      ...(menuRef.current?.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitem"]:not(:disabled)',
+      ) ?? []),
+    ];
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    let next: number | null = null;
+    if (event.key === "ArrowDown") {
+      next = current < 0 ? 0 : (current + 1) % items.length;
+    } else if (event.key === "ArrowUp") {
+      next = current <= 0 ? items.length - 1 : current - 1;
+    } else if (event.key === "Home") {
+      next = 0;
+    } else if (event.key === "End") {
+      next = items.length - 1;
+    } else if (event.key === "Escape" || event.key === "Tab") {
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+      return;
+    }
+    if (next !== null) {
+      event.preventDefault();
+      items[next]?.focus();
+    }
+  };
 
   return (
     <div
@@ -97,24 +114,32 @@ export function PrContextMenu({
       aria-label={`Actions for ${pr.title ?? "pull request"}`}
       style={{ left, top }}
       onClick={(event) => event.stopPropagation()}
+      onKeyDown={handleMenuKey}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          onClose();
+        }
+      }}
       className="fixed z-50 w-52 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
     >
       <MenuRow
         icon={<Copy className="size-4" />}
         label="Copy link"
         disabled={!pr.url}
-        onSelect={act(() => copyText(pr.url!, "PR link"))}
+        disabledReason="Link unavailable in cached data"
+        onSelect={act(() => copyPrText(pr.url!, "PR link"))}
       />
       <MenuRow
         icon={<Copy className="size-4" />}
         label="Copy PR title"
         disabled={!pr.title}
-        onSelect={act(() => copyText(pr.title!, "PR title"))}
+        onSelect={act(() => copyPrText(pr.title!, "PR title"))}
       />
       <MenuRow
         icon={<ExternalLink className="size-4" />}
         label="Open PR"
         disabled={!pr.url}
+        disabledReason="Link unavailable in cached data"
         onSelect={act(async () => {
           try {
             await openUrl(pr.url!);

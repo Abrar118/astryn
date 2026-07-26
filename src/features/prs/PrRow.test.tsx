@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { GithubPr } from "@/lib/commands";
 
 const openIssueTab = vi.hoisted(() => vi.fn());
@@ -29,6 +29,18 @@ describe("PrRow", () => {
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onOpen).toHaveBeenCalledTimes(2);
     expect(onOpen.mock.calls[0][1]).toBe(row);
+  });
+
+  it("keeps independent actions outside the full-row selection button", () => {
+    render(<PrRow pr={base} />);
+    const row = screen.getByRole("button", {
+      name: /Add widget pull request/i,
+    });
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button", { name: /Open ENG-9/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Actions for Add widget/i }),
+    ).toBeInTheDocument();
   });
 
   it("opens row actions from right click and the context-menu keyboard shortcut", () => {

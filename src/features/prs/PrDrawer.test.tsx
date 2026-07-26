@@ -175,4 +175,24 @@ describe("PrDrawer", () => {
     fireEvent.pointerUp(window);
     expect(localStorage.getItem("astryn:prs:drawer-width:v1")).toBe("940");
   });
+
+  it("contains Tab focus within the modal drawer", () => {
+    detailHook.mockReturnValue({
+      data: detail,
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    });
+    renderDrawer();
+    const first = screen.getByRole("separator", {
+      name: /resize pull request drawer/i,
+    });
+    const last = screen.getByRole("tab", { name: /changes/i });
+    last.focus();
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(first).toHaveFocus();
+    first.focus();
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(last).toHaveFocus();
+  });
 });

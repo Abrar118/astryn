@@ -11,7 +11,6 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import {
   errorText,
-  setGithubRepoFavorite,
   type Contributions,
   type GithubPr,
 } from "@/lib/commands";
@@ -21,6 +20,7 @@ import {
   useGithubPrs,
   useGithubStatus,
   useGithubSync,
+  useSetGithubRepoFavorite,
 } from "@/lib/queries";
 import { useWorkspace } from "@/lib/tabs";
 import { PrHeatMap } from "./PrHeatMap";
@@ -146,6 +146,7 @@ export function PrsPage() {
   const { data: dashboard } = useGithubPrs();
   const { data: contributions } = useGithubContributions();
   const sync = useGithubSync(connected);
+  const favoriteMutation = useSetGithubRepoFavorite();
   useGithubContributionsSync(connected);
 
   const [activeScope, setActiveScope] = useState<ActivePrScope>("mine");
@@ -197,7 +198,7 @@ export function PrsPage() {
 
   const changeFavorite = async (repo: string, favorite: boolean) => {
     try {
-      await setGithubRepoFavorite(repo, favorite);
+      await favoriteMutation.mutateAsync({ repo, favorite });
       if (favorite) {
         setActiveScope(repoScope(repo));
       } else if (activeScope === repoScope(repo)) {
@@ -206,7 +207,7 @@ export function PrsPage() {
       gooeyToast.success(
         favorite ? `Favorited ${repo}` : `Removed ${repo} from favorites`,
       );
-      await sync.refetch();
+      void sync.refetch();
     } catch (err) {
       gooeyToast.error("Couldn't update favorite repositories", {
         description: errorText(err),
@@ -252,6 +253,8 @@ export function PrsPage() {
           activeScope={activeScope}
           onSelect={setActiveScope}
           onFavoriteChange={changeFavorite}
+          staleScopes={failed}
+          onRetry={() => void sync.refetch()}
         />
 
         <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">

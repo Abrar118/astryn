@@ -101,4 +101,26 @@ describe("PrDrawerOverview", () => {
     expect(screen.getByText(/live description is unavailable/i)).toBeInTheDocument();
     expect(screen.getByText(/activity loads with live details/i)).toBeInTheDocument();
   });
+
+  it("merges live review authors with cached reviewers", () => {
+    render(
+      <PrDrawerOverview
+        seed={seed}
+        detail={{
+          ...detail,
+          comments: [],
+          commits: [],
+          reviews: [
+            {
+              ...detail.reviews[0],
+              id: "live-review",
+              authorLogin: "live-reviewer",
+            },
+          ],
+        }}
+      />,
+    );
+
+    expect(screen.getByText("lee, live-reviewer")).toBeInTheDocument();
+  });
 });

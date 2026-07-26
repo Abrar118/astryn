@@ -46,4 +46,21 @@ describe("PrSidebar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Unfavorite Acme/Web" }));
     expect(onFavoriteChange).toHaveBeenCalledWith("Acme/Web", false);
   });
+
+  it("marks a stale favorite and offers a scoped retry", () => {
+    const onRetry = vi.fn();
+    render(
+      <PrSidebar
+        prs={[{ ...row, bucket: "repo:acme/web" }]}
+        favorites={["Acme/Web"]}
+        activeScope="mine"
+        staleScopes={new Set(["repo:acme/web"])}
+        onSelect={vi.fn()}
+        onFavoriteChange={vi.fn()}
+        onRetry={onRetry}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry Acme/Web" }));
+    expect(onRetry).toHaveBeenCalled();
+  });
 });

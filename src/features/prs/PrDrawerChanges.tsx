@@ -1,10 +1,14 @@
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { gooeyToast } from "goey-toast";
 import {
+  ExternalLink,
   FileDiff,
   FileMinus2,
   FilePen,
   FilePlus2,
   type LucideIcon,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { GithubPr, GithubPrDetail, GithubPrFile } from "@/lib/commands";
 
 function fileIcon(changeType: string): {
@@ -63,6 +67,10 @@ export function PrDrawerChanges({
   const changedFiles = detail?.changedFiles ?? seed.changedFiles ?? 0;
   const additions = detail?.additions ?? seed.additions ?? 0;
   const deletions = detail?.deletions ?? seed.deletions ?? 0;
+  const pullRequestUrl = detail?.url ?? seed.url;
+  const diffUrl = pullRequestUrl
+    ? `${pullRequestUrl.replace(/\/files\/?$/, "").replace(/\/$/, "")}/files`
+    : null;
   return (
     <div className="px-7 py-6">
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -71,9 +79,21 @@ export function PrDrawerChanges({
         </h2>
         <span className="text-xs tabular-nums text-emerald-400">+{additions}</span>
         <span className="text-xs tabular-nums text-red-400">−{deletions}</span>
-        <span className="ml-auto text-xs text-muted-foreground">
-          File summary only · open GitHub for the full diff
-        </span>
+        <Button
+          variant="ghost"
+          size="xs"
+          className="ml-auto"
+          disabled={!diffUrl}
+          onClick={() => {
+            if (!diffUrl) return;
+            openUrl(diffUrl).catch(() =>
+              gooeyToast.error("Couldn't open the full diff"),
+            );
+          }}
+        >
+          <ExternalLink className="size-3" />
+          Open full diff on GitHub
+        </Button>
       </div>
 
       {!detail ? (

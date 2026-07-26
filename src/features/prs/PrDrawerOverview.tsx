@@ -188,7 +188,25 @@ export function PrDrawerOverview({
   const passingChecks = checks.filter(
     (check) => check.conclusion?.toLowerCase() === "success",
   ).length;
-  const reviewers = seed.reviewers;
+  const reviewers = useMemo(() => {
+    const merged = new Map<string, { login: string; avatar: string | null }>();
+    for (const reviewer of seed.reviewers) {
+      merged.set(reviewer.login.toLowerCase(), {
+        login: reviewer.login,
+        avatar: reviewer.avatar,
+      });
+    }
+    for (const review of detail?.reviews ?? []) {
+      if (!review.authorLogin) continue;
+      const key = review.authorLogin.toLowerCase();
+      const cached = merged.get(key);
+      merged.set(key, {
+        login: review.authorLogin,
+        avatar: review.authorAvatar ?? cached?.avatar ?? null,
+      });
+    }
+    return [...merged.values()];
+  }, [detail?.reviews, seed.reviewers]);
 
   return (
     <div className="grid min-h-full grid-cols-1 items-start gap-8 px-7 py-6 2xl:grid-cols-[minmax(0,1fr)_300px]">

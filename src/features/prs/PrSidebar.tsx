@@ -3,6 +3,7 @@ import {
   Eye,
   GitPullRequest,
   Plus,
+  RefreshCw,
   Search,
   Star,
   UserCheck,
@@ -36,12 +37,16 @@ export function PrSidebar({
   activeScope,
   onSelect,
   onFavoriteChange,
+  staleScopes = new Set(),
+  onRetry,
 }: {
   prs: GithubPr[];
   favorites: string[];
   activeScope: ActivePrScope;
   onSelect: (scope: ActivePrScope) => void;
   onFavoriteChange: (repo: string, favorite: boolean) => void | Promise<void>;
+  staleScopes?: ReadonlySet<string>;
+  onRetry?: () => void;
 }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -146,13 +151,14 @@ export function PrSidebar({
         {favorites.map((repo) => {
           const scope = repoScope(repo);
           const active = activeScope === scope;
+          const stale = staleScopes.has(scope);
           return (
             <div key={repo} className="group/favorite relative">
               <button
                 type="button"
                 aria-label={repo}
                 aria-current={active ? "page" : undefined}
-                title={repo}
+                title={stale ? `${repo} — refresh failed` : repo}
                 onClick={() => onSelect(scope)}
                 className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors ${
                   active
@@ -160,7 +166,15 @@ export function PrSidebar({
                     : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                 }`}
               >
-                <Star className={`size-4 shrink-0 ${active ? "fill-primary/25 text-primary" : ""}`} />
+                <Star
+                  className={`size-4 shrink-0 ${
+                    stale
+                      ? "text-amber-400"
+                      : active
+                        ? "fill-primary/25 text-primary"
+                        : ""
+                  }`}
+                />
                 <span className="hidden min-w-0 flex-1 truncate text-left lg:block">
                   {repo}
                 </span>
@@ -168,6 +182,20 @@ export function PrSidebar({
                   {scopePrs(prs, scope).length}
                 </span>
               </button>
+              {stale && onRetry && (
+                <button
+                  type="button"
+                  aria-label={`Retry ${repo}`}
+                  title={`Retry ${repo}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onRetry();
+                  }}
+                  className="absolute right-8 top-1 hidden size-7 items-center justify-center rounded-md text-amber-400 hover:bg-muted hover:text-amber-300 lg:flex"
+                >
+                  <RefreshCw className="size-3.5" />
+                </button>
+              )}
               <button
                 type="button"
                 aria-label={`Unfavorite ${repo}`}
@@ -176,7 +204,7 @@ export function PrSidebar({
                   event.stopPropagation();
                   void onFavoriteChange(repo, false);
                 }}
-                className="absolute right-2 top-1 hidden size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground group-hover/favorite:flex focus:flex"
+                className="absolute right-1 top-1 hidden size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground group-hover/favorite:flex focus:flex"
               >
                 <Star className="size-3.5 fill-current" />
               </button>

@@ -7,12 +7,14 @@ import type { ReactNode } from "react";
 const listGithubPrs = vi.hoisted(() => vi.fn());
 const syncGithubPrs = vi.hoisted(() => vi.fn());
 const getGithubPrDetail = vi.hoisted(() => vi.fn());
+const setGithubRepoFavorite = vi.hoisted(() => vi.fn());
 const gooeyToastError = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/commands", () => ({
   listGithubPrs,
   syncGithubPrs,
   getGithubPrDetail,
+  setGithubRepoFavorite,
   getGithubStatus: vi.fn(),
   errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
 }));
@@ -21,7 +23,12 @@ vi.mock("goey-toast", () => ({
   gooeyToast: { error: gooeyToastError, success: vi.fn() },
 }));
 
-import { useGithubPrDetail, useGithubPrs, useGithubSync } from "./queries";
+import {
+  useGithubPrDetail,
+  useGithubPrs,
+  useGithubSync,
+  useSetGithubRepoFavorite,
+} from "./queries";
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -33,6 +40,7 @@ describe("GitHub query hooks", () => {
     listGithubPrs.mockClear();
     syncGithubPrs.mockClear();
     getGithubPrDetail.mockClear();
+    setGithubRepoFavorite.mockClear();
     gooeyToastError.mockClear();
   });
 
@@ -68,6 +76,34 @@ describe("GitHub query hooks", () => {
       "Couldn't refresh pull requests",
       expect.objectContaining({ description: "GitHub token expired" }),
     ));
+  });
+
+  it("reports partial per-scope sync failures", async () => {
+    syncGithubPrs.mockResolvedValue([
+      { bucket: "mine", ok: true, truncated: false },
+      { bucket: "repo:acme/web", ok: false, truncated: false },
+    ]);
+    renderHook(() => useGithubSync(true), { wrapper });
+    await waitFor(() =>
+      expect(gooeyToastError).toHaveBeenCalledWith(
+        "Some pull request scopes couldn't refresh",
+        expect.objectContaining({ description: "acme/web" }),
+      ),
+    );
+  });
+
+  it("invalidates the cached dashboard immediately after a favorite write", async () => {
+    const qc = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    qc.setQueryData(["github-prs"], { prs: [], meta: [], favoriteRepos: [] });
+    setGithubRepoFavorite.mockResolvedValue(["Acme/Web"]);
+    const localWrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useSetGithubRepoFavorite(), {
+      wrapper: localWrapper,
+    });
+    await result.current.mutateAsync({ repo: "Acme/Web", favorite: true });
+    expect(qc.getQueryState(["github-prs"])?.isInvalidated).toBe(true);
   });
 
   it("loads a selected PR detail and keeps it session-cached", async () => {

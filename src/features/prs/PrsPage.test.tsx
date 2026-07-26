@@ -10,6 +10,7 @@ const hooks = vi.hoisted(() => ({
   useGithubContributions: vi.fn(),
   useGithubContributionsSync: vi.fn(),
   useGithubPrDetail: vi.fn(),
+  useSetGithubRepoFavorite: vi.fn(),
 }));
 const setActiveView = vi.hoisted(() => vi.fn());
 const refetch = vi.hoisted(() => vi.fn());
@@ -54,6 +55,9 @@ function setup(
     isLoading: true,
     isError: false,
     refetch: vi.fn(),
+  });
+  hooks.useSetGithubRepoFavorite.mockReturnValue({
+    mutateAsync: vi.fn().mockResolvedValue([]),
   });
 }
 
