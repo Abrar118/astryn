@@ -22,6 +22,8 @@ import {
   getDocsStatus,
   getDocContent,
   getGithubContributions,
+  getGithubPrDiff,
+  getGithubPrDetail,
   getGithubStatus,
   getSlackCatchup,
   getSlackStatus,
@@ -32,6 +34,7 @@ import {
   listDocsSources,
   listDocsTree,
   listFilterOptions,
+  listGithubRepositories,
   listGithubPrs,
   listIssues,
   listLabels,
@@ -41,6 +44,7 @@ import {
   listUsers,
   listWorkflowStates,
   removeReaction,
+  setGithubRepoFavorite,
   syncDocs,
   syncGithubContributions,
   syncGithubPrs,
@@ -650,6 +654,56 @@ export function useGithubPrs() {
   return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs });
 }
 
+export function useGithubRepositories(enabled: boolean) {
+  return useQuery({
+    queryKey: ["github-repositories"],
+    queryFn: listGithubRepositories,
+    enabled,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+export function useGithubPrDetail(repo: string | null, number: number | null) {
+  return useQuery({
+    queryKey: ["github-pr-detail", repo, number],
+    enabled: repo !== null && number !== null,
+    queryFn: () => getGithubPrDetail(repo!, number!),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+export function useGithubPrDiff(
+  repo: string | null,
+  number: number | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["github-pr-diff", repo, number],
+    enabled: enabled && repo !== null && number !== null,
+    queryFn: () => getGithubPrDiff(repo!, number!),
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+}
+
+export function useSetGithubRepoFavorite() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      repo,
+      favorite,
+    }: {
+      repo: string;
+      favorite: boolean;
+    }) => setGithubRepoFavorite(repo, favorite),
+    onSuccess: async () => {
+      await qc.invalidateQueries({ queryKey: ["github-prs"] });
+    },
+  });
+}
+
 /**
  * Background GitHub sync: runs on mount + every 5 minutes while a token is
  * present, then invalidates the cached list so fresh rows render. Disabled
@@ -666,6 +720,15 @@ export function useGithubSync(enabled: boolean) {
       try {
         const results = await syncGithubPrs();
         await qc.invalidateQueries({ queryKey: ["github-prs"] });
+        const failed = results.filter((result) => !result.ok);
+        if (failed.length > 0) {
+          const scopes = failed
+            .map((result) => result.bucket.replace(/^repo:/, ""))
+            .join(", ");
+          gooeyToast.error("Some pull request scopes couldn't refresh", {
+            description: scopes,
+          });
+        }
         return results;
       } catch (err) {
         gooeyToast.error("Couldn't refresh pull requests", { description: errorText(err) });
@@ -699,6 +762,8 @@ export function clearGithubQueries(qc: QueryClient) {
   for (const key of [
     ["github-status"],
     ["github-prs"],
+    ["github-repositories"],
+    ["github-pr-detail"],
     ["github-sync"],
     ["github-contributions"],
     ["github-contributions-sync"],

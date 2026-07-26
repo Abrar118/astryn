@@ -384,6 +384,7 @@ export type GitHubStatus =
   | { state: "connected"; login: string };
 
 export type PrBucket = "needs_review" | "mine" | "assigned" | "involved" | "merged";
+export type PrScope = PrBucket | `repo:${string}`;
 
 export type PrReviewer = {
   login: string;
@@ -393,7 +394,7 @@ export type PrReviewer = {
 
 export type GithubPr = {
   id: string;
-  bucket: PrBucket;
+  bucket: PrScope;
   repo: string;
   number: number;
   title: string | null;
@@ -422,14 +423,14 @@ export type GithubPr = {
 };
 
 export type GithubSyncMeta = {
-  bucket: PrBucket;
+  bucket: PrScope;
   fetchedCount: number;
   truncated: boolean;
   lastSyncedAt: string | null;
 };
 
-export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[] };
-export type BucketSyncResult = { bucket: PrBucket; ok: boolean; truncated: boolean };
+export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[]; favoriteRepos: string[] };
+export type BucketSyncResult = { bucket: PrScope; ok: boolean; truncated: boolean };
 
 export const setGithubToken = (token: string): Promise<void> =>
   invoke("set_github_token", { token });
@@ -444,6 +445,127 @@ export const testGithubConnection = (): Promise<GitHubStatus> =>
 export const syncGithubPrs = (): Promise<BucketSyncResult[]> => invoke("sync_github_prs");
 
 export const listGithubPrs = (): Promise<PrDashboard> => invoke("list_github_prs");
+
+export type GithubRepositoryCatalog = {
+  repositories: string[];
+  truncated: boolean;
+};
+
+export const listGithubRepositories = (): Promise<GithubRepositoryCatalog> =>
+  invoke("list_github_repositories");
+
+export const setGithubRepoFavorite = (
+  repo: string,
+  favorite: boolean,
+): Promise<string[]> => invoke("set_github_repo_favorite", { repo, favorite });
+
+export type GithubPrComment = {
+  id: string;
+  body: string;
+  createdAt: string;
+  url: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrReview = {
+  id: string;
+  body: string;
+  state: string;
+  submittedAt: string;
+  url: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrCommit = {
+  oid: string;
+  headline: string;
+  committedAt: string;
+  url: string;
+  authorName: string | null;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+};
+
+export type GithubPrFile = {
+  path: string;
+  changeType: string;
+  additions: number;
+  deletions: number;
+};
+
+export type GithubPrCheck = {
+  name: string;
+  status: string;
+  conclusion: string | null;
+  detailsUrl: string | null;
+};
+
+export type GithubPrDetail = {
+  repo: string;
+  number: number;
+  title: string;
+  url: string;
+  state: string;
+  draft: boolean;
+  mergeable: GithubPr["mergeable"];
+  reviewDecision: GithubPr["reviewDecision"];
+  body: string | null;
+  createdAt: string;
+  updatedAt: string;
+  authorLogin: string | null;
+  authorAvatar: string | null;
+  headBranch: string | null;
+  baseBranch: string | null;
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+  commentCount: number;
+  commitCount: number;
+  linearIdentifier: string | null;
+  comments: GithubPrComment[];
+  reviews: GithubPrReview[];
+  commits: GithubPrCommit[];
+  files: GithubPrFile[];
+  checks: GithubPrCheck[];
+  truncated: {
+    comments: boolean;
+    reviews: boolean;
+    commits: boolean;
+    files: boolean;
+    checks: boolean;
+  };
+};
+
+export const getGithubPrDetail = (
+  repo: string,
+  number: number,
+): Promise<GithubPrDetail> => invoke("get_github_pr_detail", { repo, number });
+
+export type GithubPrDiffFile = {
+  path: string;
+  previousPath: string | null;
+  changeType: string;
+  additions: number;
+  deletions: number;
+  changes: number;
+  patch: string | null;
+  blobUrl: string | null;
+};
+
+export type GithubPrDiff = {
+  repo: string;
+  number: number;
+  files: GithubPrDiffFile[];
+  totalFiles: number;
+  truncated: boolean;
+};
+
+export const getGithubPrDiff = (
+  repo: string,
+  number: number,
+): Promise<GithubPrDiff> => invoke("get_github_pr_diff", { repo, number });
 
 /** One day of the GitHub contribution calendar. `weekday`: 0 = Sun … 6 = Sat. */
 export type ContribDay = { date: string; count: number; weekday: number };

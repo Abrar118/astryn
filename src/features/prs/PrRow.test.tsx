@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { GithubPr } from "@/lib/commands";
 
 const openIssueTab = vi.hoisted(() => vi.fn());
@@ -21,6 +21,39 @@ const base: GithubPr = {
 afterEach(cleanup);
 
 describe("PrRow", () => {
+  it("opens the drawer selection from click and Enter", () => {
+    const onOpen = vi.fn();
+    render(<PrRow pr={base} onOpen={onOpen} />);
+    const row = screen.getByRole("button", { name: /Add widget pull request/i });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen.mock.calls[0][1]).toBe(row);
+  });
+
+  it("keeps independent actions outside the full-row selection button", () => {
+    render(<PrRow pr={base} />);
+    const row = screen.getByRole("button", {
+      name: /Add widget pull request/i,
+    });
+    expect(within(row).queryByRole("button")).toBeNull();
+    expect(screen.getByRole("button", { name: /Open ENG-9/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Actions for Add widget/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("opens row actions from right click and the context-menu keyboard shortcut", () => {
+    const onOpenMenu = vi.fn();
+    render(<PrRow pr={base} onOpenMenu={onOpenMenu} />);
+    const row = screen.getByRole("button", { name: /Add widget pull request/i });
+    fireEvent.contextMenu(row, { clientX: 40, clientY: 60 });
+    fireEvent.keyDown(row, { key: "F10", shiftKey: true });
+    expect(onOpenMenu).toHaveBeenCalledTimes(2);
+    expect(onOpenMenu.mock.calls[0][0]).toBe(base);
+    expect(onOpenMenu.mock.calls[0][1]).toEqual({ x: 40, y: 60 });
+  });
+
   it("shows core fields, avatar, relative time, and changes-requested badge", () => {
     render(<PrRow pr={base} />);
     expect(screen.getByText("Add widget")).toBeInTheDocument();
@@ -33,9 +66,11 @@ describe("PrRow", () => {
   });
 
   it("opens the linked Linear issue when the chip is clicked", () => {
-    render(<PrRow pr={base} />);
+    const onOpen = vi.fn();
+    render(<PrRow pr={base} onOpen={onOpen} />);
     fireEvent.click(screen.getByRole("button", { name: /ENG-9/ }));
     expect(openIssueTab).toHaveBeenCalledWith("iss-1");
+    expect(onOpen).not.toHaveBeenCalled();
   });
 
   it("renders no Linear chip without a matched issue id", () => {

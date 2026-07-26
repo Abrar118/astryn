@@ -4,7 +4,7 @@
 **Audience:** Claude Code (implementing agent)
 **Owner:** Abrar
 **Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) + dependency graph (M5/F8) shipped, with several workspace extensions beyond the original plan; F9 (doc links) remains. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
-**Last updated:** 2026-06-23
+**Last updated:** 2026-07-26
 
 ---
 
@@ -15,7 +15,7 @@
 - **M0 — Scaffold.** Tauri v2 + React 19 + Tailwind v4 + shadcn/ui, SQLite migrations, OS-keychain secret storage, the Rust Linear GraphQL proxy, the Home dual clock (Dhaka + Germany), and the Settings key-entry/connection flow.
 - **M1 — Calendar + Drawer + Drag (F1–F3).** Month/week calendar with filters and the unscheduled rail, drag-to-reschedule, the shared issue detail (drawer **and** full-page tab) with inline editing, and a Milkdown markdown editor (GFM, Mermaid, code blocks, proxied images, issue mentions).
 - **F4 — Activity timeline.** Per-issue chronological activity with semantic, color-coded event icons.
-- **M4 — GitHub PR dashboard (F7).** Viewer-centric dashboard (needs-my-review / mine / assigned / involved) with status/CI/conflict/review badges, the real GitHub contribution heatmap, classic-PAT auth, and an offline-first per-bucket cache.
+- **M4 — GitHub PR workspace (F7).** Three actionable viewer queues (needs-my-review / mine / assigned), favorite-repository views, row actions, a read-only live PR detail drawer, the real GitHub contribution heatmap, classic-PAT auth, and an offline-first per-scope cache. The involved bucket remains a backend compatibility cache but is not exposed in the page UI.
 - **M5 — Dependency graph (F8).** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 
 **Delivered beyond the original M0/M1 scope**
@@ -60,7 +60,7 @@ The user already lives in Linear for issue tracking at work. The point of this a
 3. **Draggable calendar tasks** — drag an issue to a new day to reschedule its due date.
 4. **"My activity" timeline** — a chronological feed of the user's own actions/changes.
 5. **"This Week" agenda** — viewer's issues organized by due date for the current work week (replaces the original standup and weekly-review generators).
-6. **GitHub PR dashboard** — a standalone view of open PRs that involve you (needs-my-review, my PRs, assigned, involved) across all accessible repos.
+6. **GitHub PR workspace** — a standalone view of My PRs, Assigned to Me, Needs My Review, and all open PRs in locally favorited repositories, with a read-only on-demand detail drawer.
 7. **Issue web / hierarchy visualization** — parent/child + relations as a graph.
 8. **Related docs & link storage** per issue (local-first).
 
@@ -261,10 +261,10 @@ CREATE TABLE doc_links (
 );
 CREATE INDEX idx_doclinks_issue ON doc_links(issue_id);
 
--- GitHub PRs — viewer/bucket-centric (feature 7, M4)
+-- GitHub PRs — viewer and favorite-repository scopes (feature 7, M4)
 CREATE TABLE github_prs (
   id                TEXT NOT NULL,     -- "owner/repo#number"
-  bucket            TEXT NOT NULL,     -- needs_review | mine | assigned | involved
+  bucket            TEXT NOT NULL,     -- needs_review | mine | assigned | involved | repo:<lowercase owner/name>
   repo              TEXT NOT NULL,     -- "owner/name"
   number            INTEGER NOT NULL,
   title             TEXT,
@@ -287,7 +287,7 @@ CREATE INDEX idx_github_prs_linear_identifier ON github_prs(linear_identifier);
 
 -- Per-bucket sync metadata so truncation/staleness survive restart.
 CREATE TABLE github_sync_meta (
-  bucket         TEXT PRIMARY KEY,     -- needs_review | mine | assigned | involved
+  bucket         TEXT PRIMARY KEY,     -- viewer bucket or repo:<lowercase owner/name>
   fetched_count  INTEGER NOT NULL,
   truncated      INTEGER NOT NULL,     -- bool: cap (300) was hit
   last_synced_at TEXT
@@ -361,7 +361,7 @@ CREATE TABLE settings (
 - **Initial sync:** pull **all issues across all teams in the `GAM Health Solutions` workspace** (resolved scope — not limited to the user's teams or their own assignments). Page through `issues` 100 at a time, upsert into `issues`/`labels`/`relations`/`comments`. If the personal API key has access to more than one organization, filter to GAM Health Solutions; if it's the only workspace, no filter is needed.
 - **Incremental sync:** store the max `updatedAt` seen in `sync_cursors`. On refresh, query `issues(filter: { updatedAt: { gt: $cursor } })` and upsert. This keeps refreshes cheap.
 - **Trigger:** manual "refresh" button + a configurable interval poll (default 5 min) `[CHOICE]`. `[EXT]` Linear webhooks via a relay later — not now.
-- **GitHub sync:** background refresh on dashboard open + a 5-minute poll while open; each bucket is fetched to completion (cap 300, `sort:updated-desc`) and committed in one transaction (delete+insert+meta), so a partial/failed fetch never empties a bucket. Rate limits: parse GraphQL `errors` on HTTP 200, treat throttled 403 as rate-limited.
+- **GitHub sync:** background refresh on the PR workspace opening + a 5-minute poll while open. Each viewer bucket and favorite-repository scope is fetched to completion (cap 300, `sort:updated-desc`) and committed independently in one transaction (delete+insert+meta), so a partial/failed fetch never empties a scope. Favorite repositories use `repo:owner/name is:pr is:open sort:updated-desc`; favorite names are app-owned settings and their cached scope is deleted when unfavorited. Rate limits: parse GraphQL `errors` on HTTP 200 and treat throttled 403 as rate-limited.
 - **Rate limits:** Linear uses complexity-based rate limiting — keep query depth modest, request only needed fields, and back off on `429`. Surface a non-blocking toast if throttled.
 - **Slack sync (Phase 2 iter 1):** triggered on catch-up board open and by a 5-minute background poll while the board is visible. The sync runs `replace_catchup`: paginate `conversations.list` → for each member conversation call `conversations.info` (unread count + `last_read`) → for conversations with unreads fetch `conversations.history` since `last_read` → assemble mentions/threads. The entire result is written in one SQLite transaction (delete-then-insert across the 3 cache tables — `slack_conversations`, `slack_messages`, `slack_users` — plus an upsert of `slack_sync_meta`) so a partial/failed sync never leaves the board in a half-updated state. `auth.test` is called first; if it fails the board shows a "Connect Slack" prompt rather than an error. Rate limits: Slack Tier-2/3 methods; back off on 429 with the `Retry-After` header. Offline-first: the board reads the cache and shows data even without network.
 
@@ -445,22 +445,32 @@ mutation UpdateIssue($id: String!, $input: IssueUpdateInput!) {
 
 ---
 
-## 8. GitHub PR dashboard (feature 7)
+## 8. GitHub PR workspace (feature 7)
 
-The PR dashboard is viewer-centric: it shows open PRs that involve *you* (the authenticated GitHub user), organized into four buckets via `@me` GraphQL search filters:
+The PR workspace opens on one focused queue at a time. Its page siderail exposes three actionable viewer buckets in this order: **My PRs**, **Assigned to Me**, and **Needs My Review**. The existing `involved` bucket remains synced for compatibility and viewer metrics but is not rendered as a page section.
 
 | Bucket | Search query |
 | --- | --- |
 | Needs my review | `is:pr is:open review-requested:@me sort:updated-desc` |
 | My open PRs | `is:pr is:open author:@me sort:updated-desc` |
 | Assigned to me | `is:pr is:open assignee:@me sort:updated-desc` |
-| Involved/mentioned | `is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me sort:updated-desc` |
+| Hidden compatibility bucket | `is:pr is:open involves:@me -author:@me -assignee:@me -review-requested:@me sort:updated-desc` |
 
-Each bucket is capped at the 300 most recently updated PRs. The `involved` bucket is the *remainder* — `involves:@me` minus the other three via negative qualifiers, so it never overlaps them. Overlap among the other three is intentional and allowed.
+Each bucket is capped at the 300 most recently updated PRs. The hidden `involved` bucket is the remainder after the other three; overlap among the three visible viewer buckets is intentional and allowed.
+
+**Favorite repositories.** The siderail picker lists repositories owned by the authenticated viewer plus repositories accessible through organization membership, using GitHub's paginated authenticated-user repository endpoint with `affiliation=owner,organization_member`. The live catalog is session-cached only, generation-guarded across every page, deduplicated case-insensitively, and merged with repositories already known from cached PR rows so the picker remains useful after a catalog fetch failure. Existing favorites are excluded from the picker. Clicking outside the popup closes it; Escape closes it and restores focus to the trigger. Every PR row can also favorite/unfavorite its repository.
+
+Favorite names are stored as a JSON array in the existing SQLite `settings` table under `github_favorite_repos`; repository inputs are strictly validated as `owner/name` and deduplicated case-insensitively. Each favorite syncs all of its open PRs into a normalized `repo:<lowercase owner/name>` cache scope with the same 300-item, transactional-replacement, stale-cache, rate-limit, and generation-guard behavior as viewer buckets. Removing a favorite deletes only its re-fetchable repository scope. Setting or clearing the GitHub token clears favorites, the session repository catalog, and all GitHub cache state so private repository names cannot leak across account changes.
+
+**List interaction.** Every scope uses the same dense PR rows and All / Conflicts / CI-failing filters, Recent / Oldest / Largest sorting, and repository grouping. Grouping defaults on and persists an explicit override in `localStorage["astryn:prs:group-by-repo:v1"]`. Right-click, the Context Menu key / Shift+F10, and the row ellipsis expose Copy link, Copy PR title, Open PR, and Favorite/Unfavorite repository. The whole row is a keyboard-focusable drawer target; its Linear issue chip remains an independent action.
+
+**Read-only detail drawer.** Clicking or pressing Enter on a row opens a resizable right drawer. Its width defaults to 70 vw, clamps to 680–1180 px and 96 vw, and persists in `localStorage["astryn:prs:drawer-width:v1"]`. The cached row renders immediately. Rust then fetches bounded live detail through `get_github_pr_detail`: summary and Markdown body, comments (100), reviews (100), recent commits (50), changed files (100), and checks (100), with explicit truncation flags. The Linear-style Overview uses a compact breadcrumb/action bar plus pill tabs, renders safe GitHub-flavored Markdown and chronological activity on a flat main surface, and places status, related issue, reviewers, checks, and changed-file metadata in a right rail. Drawer scrollers include dock-safe bottom space.
+
+The Diff tab has a separate lazy `get_github_pr_diff` command and TanStack Query cache so opening a PR never downloads patch data. Rust paginates GitHub's pull-request-files endpoint at 100 files per page, up to GitHub's 3,000-file ceiling, and preserves credential-generation guards across every page. The webview renders available unified patches as stacked file panels with semantic old/new line-number gutters, hunk, context, addition, deletion, and metadata rows. Files for which GitHub omits `patch` (including binary or oversized changes) retain their metadata and an external GitHub fallback. Diff patches are session-cached only and are never persisted to SQLite. The drawer remains read-only—reviewing, commenting, merging, marking files reviewed, and inline review threads remain on GitHub.
 
 **Linear correlation** is demoted to an optional convenience chip: when a PR's `headRefName` or `title` contains a Linear issue identifier (matched case-insensitively with `\b[A-Z][A-Z0-9]*-\d+\b`, then normalized to uppercase), the row shows a chip that opens that issue's tab inside Astryn. The identifier is extracted at sync time and stored in `github_prs.linear_identifier`; the join to `issues.identifier` happens at read time in `list_github_prs`, so it automatically follows Linear cache rebuilds. If no GitHub token: the dashboard shows a "Connect GitHub" prompt; no error state.
 
-**Activity heatmap.** The page header renders the viewer's real GitHub **contribution calendar** (`viewer.contributionsCollection.contributionCalendar` — `totalContributions` + per-day counts for the last year), as a GitHub-style grid in the app's indigo palette, beside Open / Needs-review / Changes-requested / Conflict metric tiles. The calendar is fetched in Rust (`sync_github_contributions`) and cached as a JSON blob in `settings` (offline-first), wiped on token set/clear alongside the login.
+**Activity heatmap.** The compact page band renders the viewer's real GitHub **contribution calendar** (`viewer.contributionsCollection.contributionCalendar` — `totalContributions` + per-day counts for the last year), as a GitHub-style grid in the app's indigo palette, beside Open / Needs-review / Changes-requested / Conflict metrics. Repository-specific scopes are excluded from these personal metrics. The calendar is fetched in Rust (`sync_github_contributions`) and cached as a JSON blob in `settings` (offline-first), wiped on token set/clear alongside the login.
 
 ---
 
@@ -507,9 +517,9 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 - **Frontend:** `src/features/agenda/`. Week-window math via a new `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). Grouping and rendering in the frontend; data assembly in Rust (`generators/` module, `get_week_agenda` command).
 - **AC:** groups match due dates in Dhaka time; Sunday week start; Overdue/Weekend sections shown only when non-empty; sub-issues threaded and deduped; relations shown per issue; clicking any row opens the F2 drawer; cache-only reads keep the view available offline.
 
-### F7 — GitHub PR dashboard `[REQ]` ✅ Done (M4)
-- A standalone view with four sections (needs-my-review, my open PRs, assigned, involved), each row showing title, #number, author, comments, repo, updated time, and status/CI/conflict/review badges; a Linear chip when the branch/title identifier matches a cached issue. The header shows the viewer's real GitHub contribution heatmap (last year) plus Open / Needs-review / Changes-requested / Conflict metric tiles (see §8).
-- **AC:** with a token, sections populate; with none, a connect prompt shows without errors; a sync failure leaves the previous cache intact; setting/clearing the token never disturbs the Linear cache.
+### F7 — GitHub PR workspace `[REQ]` ✅ Done (M4)
+- A standalone master-detail view with My PRs, Assigned to Me, Needs My Review, and favorite-repository scopes. Each row shows title, #number, author, comments, repo, updated time, branch/diff information, status/CI/conflict/review badges, and a Linear chip when the branch/title identifier matches a cached issue. The compact header band shows the viewer's real GitHub contribution heatmap (last year) plus Open / Needs-review / Changes-requested / Conflict metrics (see §8).
+- **AC:** My PRs is the default and Involved is not visible; primary/favorite selection shows one scope; the favorite picker searches owned and organization-member repositories, merges cached fallback repositories, and closes on outside click or Escape; grouping defaults on and persists; row pointer/keyboard actions copy/open/favorite; selecting a row opens a cached-first read-only Linear-style Overview/Diff drawer; the Diff query stays disabled until selected and renders available unified patches in-app; favorite and viewer sync failures preserve the prior per-scope cache; with no token, a connect prompt shows without errors; setting/clearing the token clears GitHub favorites/cache and never disturbs the Linear cache.
 
 ### F8 — Issue web / hierarchy viz `[REQ]` ✅ Done (M5)
 - **Data:** `issues.parent_id` (tree) + `relations` (cross-links).
@@ -558,7 +568,7 @@ src/                 # React frontend
 - **M1 — Calendar + Drawer + Drag (F1–F3). ✅ Done.** The core loop: see issues, open details, edit, reschedule. Shipped with extensions: list/board views, the full-page issue tab, the two-pane split workspace, the command palette + shortcuts, the inbox, sub-issues, and label create (see *Implementation status* near the top).
 - **M2 — Activity timeline (F4). ✅ Done.**
 - **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
-- **M4 — GitHub PR dashboard (F7). ✅ Done.** Standalone viewer-centric PR dashboard (four `@me` buckets, status/CI/conflict/review badges, the real GitHub contribution heatmap + metric tiles, the optional Linear chip); classic-PAT auth; offline-first per-bucket cache. See `docs/superpowers/specs/2026-06-22-github-pr-dashboard-design.md`.
+- **M4 — GitHub PR workspace (F7). ✅ Done.** Three visible `@me` queues, favorite-repository scopes, default grouping, row actions, a cached-first read-only Linear-style Overview/Diff drawer with lazy in-app unified patches, status/CI/conflict/review badges, the real GitHub contribution heatmap + viewer metrics, and the optional Linear chip; classic-PAT auth; offline-first per-scope cache. See `docs/superpowers/specs/2026-07-26-github-pr-page-revamp-design.md` and `docs/superpowers/specs/2026-07-26-github-pr-linear-drawer-diff-design.md`.
 - **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 - **M6 — Doc links (F9).** Not started.
 - **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackPage` with stacked sections (Mentions / DMs / Threads / Channels) rendered via a `Section` component and a `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.

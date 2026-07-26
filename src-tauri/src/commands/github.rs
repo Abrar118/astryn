@@ -1,5 +1,6 @@
 use serde::Serialize;
 use sqlx::SqlitePool;
+use std::collections::HashSet;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::State;
@@ -7,8 +8,18 @@ use tauri::State;
 use super::{AppState, CmdError};
 use crate::db::github as gdb;
 use crate::github::contributions::{contributions_query_body, parse_contributions, Contributions};
+use crate::github::pr_detail::{build_pr_detail_body, parse_pr_detail, PrDetail};
+use crate::github::pr_diff::{
+    build_pr_diff_path, parse_pr_diff_page, PrDiff, PR_DIFF_MAX_FILES, PR_DIFF_MAX_PAGES,
+    PR_DIFF_PAGE_SIZE,
+};
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
+};
+use crate::github::repositories::{
+    build_repository_catalog_path, build_repository_search, parse_repository,
+    parse_repository_catalog_page, RepositoryCatalog, REPOSITORY_CATALOG_MAX_PAGES,
+    REPOSITORY_CATALOG_PAGE_SIZE,
 };
 use crate::github::{GitHubCredentialProvider, GitHubError};
 use crate::secrets::SecretStore;
@@ -18,6 +29,7 @@ mod tests {
     use super::*;
     use crate::github::fake::FakeGitHubCreds;
     use crate::github::prs::{Bucket, PageInfo, ParsedPr};
+    use crate::github::repositories::parse_repository;
     use crate::secrets::fake::FakeSecretStore;
     use std::sync::Mutex;
 
@@ -143,6 +155,104 @@ mod tests {
         let dash = list_github_prs_logic(&pool).await.unwrap();
         assert_eq!(dash.prs.len(), 5); // one PR per bucket
         assert_eq!(dash.meta.len(), 5);
+        assert!(dash.favorite_repos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sync_populates_favorite_repository_scopes() {
+        let (_d, pool) = pool().await;
+        gdb::set_favorite_repo(&pool, &parse_repository("o/r").unwrap(), true)
+            .await
+            .unwrap();
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+
+        let results =
+            sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, q, _c| async move {
+                if q.starts_with("repo:o/r ") {
+                    assert_eq!(q, "repo:o/r is:pr is:open sort:updated-desc");
+                }
+                Ok((
+                    vec![page_pr(1)],
+                    PageInfo {
+                        has_next_page: false,
+                        end_cursor: None,
+                    },
+                ))
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 6);
+        assert!(results
+            .iter()
+            .any(|result| result.bucket == "repo:o/r" && result.ok));
+        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        assert_eq!(dashboard.favorite_repos, vec!["o/r"]);
+        assert_eq!(
+            dashboard
+                .prs
+                .iter()
+                .filter(|pr| pr.bucket == "repo:o/r")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn favorite_repository_sync_failure_preserves_its_cache() {
+        let (_d, pool) = pool().await;
+        gdb::set_favorite_repo(&pool, &parse_repository("o/r").unwrap(), true)
+            .await
+            .unwrap();
+        gdb::replace_bucket(&pool, "repo:o/r", &[page_pr(7)], "old", false)
+            .await
+            .unwrap();
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+
+        let results =
+            sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, q, _c| async move {
+                if q.starts_with("repo:o/r ") {
+                    Err(GitHubError::Network)
+                } else {
+                    Ok((
+                        Vec::new(),
+                        PageInfo {
+                            has_next_page: false,
+                            end_cursor: None,
+                        },
+                    ))
+                }
+            })
+            .await
+            .unwrap();
+
+        assert!(results
+            .iter()
+            .any(|result| result.bucket == "repo:o/r" && !result.ok));
+        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        assert!(dashboard
+            .prs
+            .iter()
+            .any(|pr| pr.bucket == "repo:o/r" && pr.number == 7));
+    }
+
+    #[tokio::test]
+    async fn favorite_command_validates_and_persists_repository() {
+        let (_d, pool) = pool().await;
+        assert!(matches!(
+            set_github_repo_favorite_logic(&pool, "not a repo".into(), true).await,
+            Err(CmdError::InvalidInput)
+        ));
+        assert_eq!(
+            set_github_repo_favorite_logic(&pool, "Owner/Repo".into(), true)
+                .await
+                .unwrap(),
+            vec!["Owner/Repo"]
+        );
     }
 
     #[tokio::test]
@@ -334,6 +444,214 @@ mod tests {
         }
     }
 
+    fn sample_pr_detail() -> serde_json::Value {
+        serde_json::json!({
+            "repository": {
+                "pullRequest": {
+                    "number": 1,
+                    "title": "Detail",
+                    "url": "https://github.com/o/r/pull/1",
+                    "state": "OPEN",
+                    "isDraft": false,
+                    "mergeable": "MERGEABLE",
+                    "reviewDecision": null,
+                    "body": "",
+                    "createdAt": "2026-07-20T10:00:00Z",
+                    "updatedAt": "2026-07-26T10:00:00Z",
+                    "additions": 1,
+                    "deletions": 0,
+                    "changedFiles": 1,
+                    "headRefName": "feature",
+                    "baseRefName": "main",
+                    "repository": { "nameWithOwner": "o/r" },
+                    "author": null,
+                    "comments": { "totalCount": 0, "nodes": [] },
+                    "reviews": { "totalCount": 0, "nodes": [] },
+                    "commits": { "totalCount": 0, "nodes": [] },
+                    "files": { "totalCount": 0, "nodes": [] },
+                    "statusCheckRollup": null
+                }
+            }
+        })
+    }
+
+    #[tokio::test]
+    async fn pr_detail_logic_validates_builds_and_parses_the_request() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let detail = get_github_pr_detail_logic(
+            creds,
+            &generation,
+            "o/r".into(),
+            1,
+            |auth, body| async move {
+                assert_eq!(auth, "Bearer x");
+                assert_eq!(body["variables"]["owner"], "o");
+                assert_eq!(body["variables"]["name"], "r");
+                assert_eq!(body["variables"]["number"], 1);
+                Ok(sample_pr_detail())
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(detail.title, "Detail");
+    }
+
+    #[tokio::test]
+    async fn pr_detail_logic_rejects_invalid_input_without_fetching() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let result = get_github_pr_detail_logic(
+            creds,
+            &generation,
+            "not a repo".into(),
+            0,
+            |_auth, _body| async {
+                panic!("invalid detail input must not fetch");
+                #[allow(unreachable_code)]
+                Ok(sample_pr_detail())
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(CmdError::InvalidInput)));
+    }
+
+    fn sample_diff_file(path: &str) -> serde_json::Value {
+        serde_json::json!({
+            "filename": path,
+            "status": "modified",
+            "additions": 2,
+            "deletions": 1,
+            "changes": 3,
+            "blob_url": format!("https://github.com/o/r/blob/head/{path}"),
+            "patch": "@@ -1 +1,2 @@\n-old\n+new"
+        })
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_paginates_rest_files() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+
+        let diff =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, move |auth, path| {
+                assert_eq!(auth, "Bearer x");
+                seen.lock().unwrap().push(path.clone());
+                let page = if path.ends_with("page=1") {
+                    (0..100)
+                        .map(|index| sample_diff_file(&format!("src/{index}.ts")))
+                        .collect()
+                } else {
+                    vec![sample_diff_file("src/final.ts")]
+                };
+                async move { Ok(serde_json::Value::Array(page)) }
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(diff.repo, "o/r");
+        assert_eq!(diff.number, 42);
+        assert_eq!(diff.total_files, 101);
+        assert!(!diff.truncated);
+        assert_eq!(calls.lock().unwrap().len(), 2);
+        assert_eq!(diff.files.last().unwrap().path, "src/final.ts");
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_stops_at_githubs_file_ceiling() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let calls = Arc::new(AtomicU64::new(0));
+        let seen = calls.clone();
+
+        let diff =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, move |_auth, _path| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                let page = (0..100)
+                    .map(|index| sample_diff_file(&format!("src/{index}.ts")))
+                    .collect();
+                async move { Ok(serde_json::Value::Array(page)) }
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(diff.total_files, 3000);
+        assert!(diff.truncated);
+        assert_eq!(calls.load(Ordering::SeqCst), 30);
+    }
+
+    #[tokio::test]
+    async fn pr_diff_logic_rejects_a_generation_change() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+
+        let result =
+            get_github_pr_diff_logic(creds, &generation, "o/r".into(), 42, |_auth, _path| {
+                generation.fetch_add(1, Ordering::SeqCst);
+                async { Ok(serde_json::Value::Array(Vec::new())) }
+            })
+            .await;
+
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+    }
+
+    #[tokio::test]
+    async fn repository_catalog_logic_paginates_and_deduplicates_accessible_repositories() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let seen = calls.clone();
+
+        let catalog = list_github_repositories_logic(creds, &generation, move |auth, path| {
+            assert_eq!(auth, "Bearer x");
+            seen.lock().unwrap().push(path.clone());
+            let page = if path.ends_with("page=1") {
+                (0..100)
+                    .map(|index| serde_json::json!({ "full_name": format!("Org/Repo{index}") }))
+                    .collect()
+            } else {
+                vec![
+                    serde_json::json!({ "full_name": "org/repo0" }),
+                    serde_json::json!({ "full_name": "Viewer/Personal" }),
+                ]
+            };
+            async move { Ok(serde_json::Value::Array(page)) }
+        })
+        .await
+        .unwrap();
+
+        assert_eq!(catalog.repositories.len(), 101);
+        assert!(catalog.repositories.contains(&"Org/Repo0".to_string()));
+        assert!(catalog
+            .repositories
+            .contains(&"Viewer/Personal".to_string()));
+        assert!(!catalog.truncated);
+        assert_eq!(calls.lock().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn repository_catalog_logic_rejects_a_generation_change() {
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let generation = AtomicU64::new(0);
+
+        let result = list_github_repositories_logic(creds, &generation, |_auth, _path| {
+            generation.fetch_add(1, Ordering::SeqCst);
+            async { Ok(serde_json::Value::Array(Vec::new())) }
+        })
+        .await;
+
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+    }
+
     #[tokio::test]
     async fn sync_contributions_stores_and_returns() {
         let (_d, pool) = pool().await;
@@ -391,19 +709,19 @@ pub struct BucketSyncResult {
 pub struct PrDashboard {
     pub prs: Vec<gdb::PrRow>,
     pub meta: Vec<gdb::SyncMeta>,
+    pub favorite_repos: Vec<String>,
 }
 
-/// Fetch one bucket to completion (or the cap), deduping by id within the bucket.
-async fn fetch_bucket<F, Fut>(
+/// Fetch one search scope to completion (or the cap), deduping by PR id.
+async fn fetch_scope<F, Fut>(
     auth: &str,
-    bucket: Bucket,
+    query: String,
     fetch_page: &F,
 ) -> Result<(Vec<ParsedPr>, bool), GitHubError>
 where
     F: Fn(String, String, Option<String>) -> Fut,
     Fut: std::future::Future<Output = Result<(Vec<ParsedPr>, PageInfo), GitHubError>>,
 {
-    let query = bucket.search_query();
     let mut acc: Vec<ParsedPr> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut cursor: Option<String> = None;
@@ -436,6 +754,19 @@ where
     }
 }
 
+#[cfg(test)]
+async fn fetch_bucket<F, Fut>(
+    auth: &str,
+    bucket: Bucket,
+    fetch_page: &F,
+) -> Result<(Vec<ParsedPr>, bool), GitHubError>
+where
+    F: Fn(String, String, Option<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<(Vec<ParsedPr>, PageInfo), GitHubError>>,
+{
+    fetch_scope(auth, bucket.search_query(), fetch_page).await
+}
+
 pub async fn sync_github_prs_logic<F, Fut>(
     credentials: Arc<dyn GitHubCredentialProvider>,
     pool: &SqlitePool,
@@ -455,8 +786,21 @@ where
         .ok_or(CmdError::GitHubNotConfigured)?;
     let gen0 = generation.load(Ordering::SeqCst);
     let mut results = Vec::new();
-    for bucket in Bucket::all() {
-        match fetch_bucket(&auth, bucket, &fetch_page).await {
+    let mut scopes: Vec<(String, String)> = Bucket::all()
+        .iter()
+        .map(|bucket| (bucket.key().to_string(), bucket.search_query()))
+        .collect();
+    let favorites = gdb::load_favorite_repos(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    for favorite in &favorites {
+        if let Ok(repo) = parse_repository(favorite) {
+            scopes.push((repo.scope.clone(), build_repository_search(&repo)));
+        }
+    }
+
+    for (scope, query) in scopes {
+        match fetch_scope(&auth, query, &fetch_page).await {
             Ok((prs, truncated)) => {
                 // Abort the whole sync if the credential changed mid-flight: a
                 // partial (shortened) summary is ambiguous, so surface an error
@@ -464,18 +808,18 @@ where
                 if generation.load(Ordering::SeqCst) != gen0 {
                     return Err(CmdError::WorkspaceChanged);
                 }
-                gdb::replace_bucket(pool, bucket.key(), &prs, &now, truncated)
+                gdb::replace_bucket(pool, &scope, &prs, &now, truncated)
                     .await
                     .map_err(|_| CmdError::Internal)?;
                 results.push(BucketSyncResult {
-                    bucket: bucket.key().into(),
+                    bucket: scope,
                     ok: true,
                     truncated,
                 });
             }
             Err(_) => {
                 results.push(BucketSyncResult {
-                    bucket: bucket.key().into(),
+                    bucket: scope,
                     ok: false,
                     truncated: false,
                 });
@@ -490,7 +834,166 @@ pub async fn list_github_prs_logic(pool: &SqlitePool) -> Result<PrDashboard, Cmd
     let meta = gdb::load_sync_meta(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
-    Ok(PrDashboard { prs, meta })
+    let favorite_repos = gdb::load_favorite_repos(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(PrDashboard {
+        prs,
+        meta,
+        favorite_repos,
+    })
+}
+
+pub async fn set_github_repo_favorite_logic(
+    pool: &SqlitePool,
+    repo: String,
+    favorite: bool,
+) -> Result<Vec<String>, CmdError> {
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    gdb::set_favorite_repo(pool, &repo, favorite)
+        .await
+        .map_err(|_| CmdError::Internal)
+}
+
+pub async fn list_github_repositories_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    generation: &AtomicU64,
+    fetch: F,
+) -> Result<RepositoryCatalog, CmdError>
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, GitHubError>>,
+{
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+
+    let mut repositories = Vec::new();
+    let mut seen = HashSet::new();
+    let mut truncated = false;
+    for page in 1..=REPOSITORY_CATALOG_MAX_PAGES {
+        let path = build_repository_catalog_path(page).map_err(CmdError::from)?;
+        let value = fetch(auth.clone(), path).await.map_err(CmdError::from)?;
+        if generation.load(Ordering::SeqCst) != gen0 {
+            return Err(CmdError::WorkspaceChanged);
+        }
+        let page_repositories = parse_repository_catalog_page(&value).map_err(CmdError::from)?;
+        let page_len = page_repositories.len();
+        if page_len > REPOSITORY_CATALOG_PAGE_SIZE {
+            return Err(CmdError::Internal);
+        }
+        for repository in page_repositories {
+            if seen.insert(repository.to_ascii_lowercase()) {
+                repositories.push(repository);
+            }
+        }
+        if page_len < REPOSITORY_CATALOG_PAGE_SIZE {
+            break;
+        }
+        if page == REPOSITORY_CATALOG_MAX_PAGES {
+            truncated = true;
+        }
+    }
+    repositories.sort_by(|left, right| {
+        left.to_ascii_lowercase()
+            .cmp(&right.to_ascii_lowercase())
+            .then_with(|| left.cmp(right))
+    });
+
+    Ok(RepositoryCatalog {
+        repositories,
+        truncated,
+    })
+}
+
+pub async fn get_github_pr_detail_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    generation: &AtomicU64,
+    repo: String,
+    number: i64,
+    fetch: F,
+) -> Result<PrDetail, CmdError>
+where
+    F: FnOnce(String, serde_json::Value) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, GitHubError>>,
+{
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    if number <= 0 || number > i32::MAX as i64 {
+        return Err(CmdError::InvalidInput);
+    }
+    let body = build_pr_detail_body(&repo, number).map_err(|_| CmdError::InvalidInput)?;
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+    let data = fetch(auth, body).await.map_err(CmdError::from)?;
+    if generation.load(Ordering::SeqCst) != gen0 {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    parse_pr_detail(&data).map_err(CmdError::from)
+}
+
+pub async fn get_github_pr_diff_logic<F, Fut>(
+    credentials: Arc<dyn GitHubCredentialProvider>,
+    generation: &AtomicU64,
+    repo: String,
+    number: i64,
+    fetch: F,
+) -> Result<PrDiff, CmdError>
+where
+    F: Fn(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, GitHubError>>,
+{
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    if number <= 0 || number > i32::MAX as i64 {
+        return Err(CmdError::InvalidInput);
+    }
+    let gen0 = generation.load(Ordering::SeqCst);
+    let c = credentials.clone();
+    let auth = tokio::task::spawn_blocking(move || c.authorization())
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)?
+        .ok_or(CmdError::GitHubNotConfigured)?;
+
+    let mut files = Vec::new();
+    let mut truncated = false;
+    for page in 1..=PR_DIFF_MAX_PAGES {
+        let path = build_pr_diff_path(&repo, number, page).map_err(|_| CmdError::InvalidInput)?;
+        let value = fetch(auth.clone(), path).await.map_err(CmdError::from)?;
+        if generation.load(Ordering::SeqCst) != gen0 {
+            return Err(CmdError::WorkspaceChanged);
+        }
+        let mut page_files = parse_pr_diff_page(&value).map_err(CmdError::from)?;
+        let page_len = page_files.len();
+        if page_len > PR_DIFF_PAGE_SIZE {
+            return Err(CmdError::Internal);
+        }
+        files.append(&mut page_files);
+        if page_len < PR_DIFF_PAGE_SIZE {
+            break;
+        }
+        if page == PR_DIFF_MAX_PAGES {
+            truncated = true;
+        }
+    }
+    files.truncate(PR_DIFF_MAX_FILES);
+    let total_files = files.len();
+
+    Ok(PrDiff {
+        repo: repo.canonical,
+        number,
+        files,
+        total_files,
+        truncated,
+    })
 }
 
 fn now_iso() -> String {
@@ -525,6 +1028,69 @@ pub async fn sync_github_prs(
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
     list_github_prs_logic(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn set_github_repo_favorite(
+    state: State<'_, AppState>,
+    repo: String,
+    favorite: bool,
+) -> Result<Vec<String>, CmdError> {
+    let _g = state.github_lock.lock().await;
+    set_github_repo_favorite_logic(&state.pool, repo, favorite).await
+}
+
+#[tauri::command]
+pub async fn list_github_repositories(
+    state: State<'_, AppState>,
+) -> Result<RepositoryCatalog, CmdError> {
+    let client = state.github.clone();
+    list_github_repositories_logic(
+        state.github_credentials.clone(),
+        &state.github_generation,
+        move |auth, path| {
+            let client = client.clone();
+            async move { client.rest_get(&auth, &path).await }
+        },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_github_pr_detail(
+    state: State<'_, AppState>,
+    repo: String,
+    number: i64,
+) -> Result<PrDetail, CmdError> {
+    let client = state.github.clone();
+    get_github_pr_detail_logic(
+        state.github_credentials.clone(),
+        &state.github_generation,
+        repo,
+        number,
+        move |auth, body| async move { client.graphql(&auth, body).await },
+    )
+    .await
+}
+
+#[tauri::command]
+pub async fn get_github_pr_diff(
+    state: State<'_, AppState>,
+    repo: String,
+    number: i64,
+) -> Result<PrDiff, CmdError> {
+    let client = state.github.clone();
+    get_github_pr_diff_logic(
+        state.github_credentials.clone(),
+        &state.github_generation,
+        repo,
+        number,
+        move |auth, path| {
+            let client = client.clone();
+            async move { client.rest_get(&auth, &path).await }
+        },
+    )
+    .await
 }
 
 /// Offline read of the cached contribution calendar (`None` until first sync).

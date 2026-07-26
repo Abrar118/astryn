@@ -54,4 +54,17 @@ describe("prStats", () => {
       conflicts: 1,
     });
   });
+
+  it("keeps favorite-repository scopes out of viewer metrics", () => {
+    const prs = [
+      pr({ id: "o/r#1", bucket: "mine" }),
+      pr({ id: "x/y#2", bucket: "repo:x/y", mergeable: "conflicting" }),
+    ];
+    expect(prStats(prs)).toEqual({
+      open: 1,
+      needsReview: 0,
+      changesRequested: 0,
+      conflicts: 0,
+    });
+  });
 });
