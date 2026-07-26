@@ -1,19 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { listen } from "@tauri-apps/api/event";
 import { gooeyToast } from "goey-toast";
 import { Copy, Loader2, NotebookPen, RefreshCw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import {
-  errorText,
-  generateReport,
-  getLlmConfig,
-  type ReportKind,
-  type ReportResult,
-  type ReportTokenEvent,
-} from "@/lib/commands";
+import { errorText, getLlmConfig, type ReportKind } from "@/lib/commands";
 import { dailyWindow, weeklyWindow } from "@/lib/reportWindow";
+import { generate, setDraft, useReportSlot } from "@/lib/reportsStore";
 import { useWorkdays } from "@/lib/workweek";
 import { useWorkspace } from "@/lib/tabs";
 
@@ -40,81 +33,46 @@ async function copyText(text: string) {
   gooeyToast.success("Report copied");
 }
 
-type Phase = "idle" | "generating" | "done";
-
 export function ReportsPage() {
   const { setActiveView } = useWorkspace();
   const workdays = useWorkdays();
   const { data: llmCfg } = useQuery({ queryKey: ["llm-config"], queryFn: getLlmConfig });
 
+  // Which kind is shown; the generated text itself lives in reportsStore (keyed
+  // by kind) so it survives this component unmounting when you switch tabs.
   const [kind, setKind] = useState<ReportKind>("daily");
-  const [phase, setPhase] = useState<Phase>("idle");
-  const [draft, setDraft] = useState("");
-  const [result, setResult] = useState<ReportResult | null>(null);
-  // The id of the generation this screen is showing; events/results from any
-  // other id are stale (superseded by a newer Generate or a tab switch).
-  const genIdRef = useRef(0);
+  const slot = useReportSlot(kind);
   const outputRef = useRef<HTMLTextAreaElement>(null);
-
-  useEffect(() => {
-    const un = listen<ReportTokenEvent>("report:token", (e) => {
-      if (e.payload.genId !== genIdRef.current) return;
-      setDraft((d) => d + e.payload.token);
-    });
-    return () => {
-      void un.then((f) => f());
-    };
-  }, []);
 
   // Keep the newest streamed tokens in view.
   useEffect(() => {
-    if (phase !== "generating") return;
+    if (slot.phase !== "generating") return;
     const ta = outputRef.current;
     if (ta) ta.scrollTop = ta.scrollHeight;
-  }, [draft, phase]);
+  }, [slot.draft, slot.phase]);
 
   const win = kind === "daily" ? dailyWindow(workdays) : weeklyWindow();
 
-  const switchKind = (k: ReportKind) => {
-    if (k === kind) return;
-    genIdRef.current = 0; // orphan any in-flight stream
-    setKind(k);
-    setPhase("idle");
-    setDraft("");
-    setResult(null);
-  };
-
-  const generate = async () => {
-    if (phase === "generating") return;
+  const runGenerate = async () => {
+    if (slot.phase === "generating") return;
     const window = kind === "daily" ? dailyWindow(workdays) : weeklyWindow();
-    const genId = Date.now();
-    genIdRef.current = genId;
-    setDraft("");
-    setResult(null);
-    setPhase("generating");
     try {
-      const res = await generateReport(window, genId);
-      if (genIdRef.current !== genId) return; // superseded
-      setResult(res);
-      setDraft(res.llmText ?? res.factSheet);
-      setPhase("done");
-      if (res.llmError) {
+      const res = await generate(kind, window);
+      if (res?.llmError) {
         gooeyToast.error("AI pass failed — showing plain facts", { description: res.llmError });
       }
     } catch (err) {
-      if (genIdRef.current !== genId) return;
-      setPhase("idle");
       gooeyToast.error("Could not generate the report", { description: errorText(err) });
     }
   };
 
-  const streaming = phase === "generating";
+  const streaming = slot.phase === "generating";
   const statusLabel = streaming
-    ? draft
+    ? slot.draft
       ? "Streaming…"
       : "Assembling facts…"
-    : result?.llmText
-      ? `Draft · ${result.model}`
+    : slot.result?.llmText
+      ? `Draft · ${slot.result.model}`
       : "Facts (no AI pass)";
 
   return (
@@ -140,7 +98,7 @@ export function ReportsPage() {
                 type="button"
                 role="tab"
                 aria-selected={kind === k}
-                onClick={() => switchKind(k)}
+                onClick={() => setKind(k)}
                 className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
                   kind === k
                     ? "bg-primary/15 text-foreground ring-1 ring-primary/40"
@@ -151,12 +109,12 @@ export function ReportsPage() {
               </button>
             ))}
           </div>
-          <Button className="gap-2" onClick={() => void generate()} disabled={streaming}>
+          <Button className="gap-2" onClick={() => void runGenerate()} disabled={streaming}>
             {streaming ? (
               <>
                 <Loader2 className="size-4 animate-spin" /> Generating…
               </>
-            ) : phase === "done" ? (
+            ) : slot.phase === "done" ? (
               <>
                 <RefreshCw className="size-4" /> Regenerate
               </>
@@ -192,7 +150,7 @@ export function ReportsPage() {
           )}
         </p>
 
-        {phase === "idle" ? (
+        {slot.phase === "idle" ? (
           <Card className="flex flex-col items-center justify-center gap-3 p-12 text-center">
             <NotebookPen className="size-8 text-muted-foreground/40" />
             <p className="max-w-sm text-sm text-muted-foreground">
@@ -208,8 +166,8 @@ export function ReportsPage() {
               <button
                 type="button"
                 aria-label="Copy report as Markdown"
-                disabled={!draft}
-                onClick={() => void copyText(draft)}
+                disabled={!slot.draft}
+                onClick={() => void copyText(slot.draft)}
                 className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
               >
                 <Copy className="size-3.5" /> Copy
@@ -217,8 +175,8 @@ export function ReportsPage() {
             </div>
             <textarea
               ref={outputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.currentTarget.value)}
+              value={slot.draft}
+              onChange={(e) => setDraft(kind, e.currentTarget.value)}
               readOnly={streaming}
               spellCheck={false}
               aria-label="Generated report (editable)"
@@ -228,19 +186,19 @@ export function ReportsPage() {
           </Card>
         )}
 
-        {result?.llmError && (
+        {slot.result?.llmError && (
           <p className="text-xs text-amber-400">
-            AI pass failed — this is the deterministic fact sheet. {result.llmError}
+            AI pass failed — this is the deterministic fact sheet. {slot.result.llmError}
           </p>
         )}
 
-        {result?.llmText && (
+        {slot.result?.llmText && (
           <details>
             <summary className="w-fit cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
               Source facts
             </summary>
             <pre className="mt-2 whitespace-pre-wrap rounded-md border border-border bg-card px-4 py-3 font-mono text-xs leading-relaxed text-muted-foreground">
-              {result.factSheet}
+              {slot.result.factSheet}
             </pre>
           </details>
         )}
