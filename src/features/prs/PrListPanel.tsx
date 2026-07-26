@@ -48,7 +48,7 @@ export function PrListPanel({
   stale?: boolean;
   viewerLogin?: string | null;
   groupByRepo: boolean;
-  onOpenPr?: (pr: GithubPr) => void;
+  onOpenPr?: (pr: GithubPr, origin: HTMLElement) => void;
   onOpenMenu?: (pr: GithubPr, point: PrMenuPoint, origin: HTMLElement) => void;
 }) {
   const groups = groupByRepo ? groupedByRepository(prs) : null;

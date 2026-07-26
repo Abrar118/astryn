@@ -35,7 +35,7 @@ export function PrRow({
 }: {
   pr: GithubPr;
   viewerLogin?: string | null;
-  onOpen?: (pr: GithubPr) => void;
+  onOpen?: (pr: GithubPr, origin: HTMLElement) => void;
   onOpenMenu?: (pr: GithubPr, point: PrMenuPoint, origin: HTMLElement) => void;
 }) {
   const { openIssueTab } = useWorkspace();
@@ -57,11 +57,11 @@ export function PrRow({
       role="button"
       tabIndex={0}
       aria-label={`${title} pull request`}
-      onClick={() => onOpen?.(pr)}
+      onClick={(event) => onOpen?.(pr, event.currentTarget)}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
-          onOpen?.(pr);
+          onOpen?.(pr, event.currentTarget);
         } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
           event.preventDefault();
           openMenuFromKeyboard(event);

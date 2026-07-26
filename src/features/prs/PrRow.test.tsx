@@ -28,6 +28,7 @@ describe("PrRow", () => {
     fireEvent.click(row);
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onOpen).toHaveBeenCalledTimes(2);
+    expect(onOpen.mock.calls[0][1]).toBe(row);
   });
 
   it("opens row actions from right click and the context-menu keyboard shortcut", () => {

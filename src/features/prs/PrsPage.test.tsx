@@ -9,6 +9,7 @@ const hooks = vi.hoisted(() => ({
   useGithubSync: vi.fn(),
   useGithubContributions: vi.fn(),
   useGithubContributionsSync: vi.fn(),
+  useGithubPrDetail: vi.fn(),
 }));
 const setActiveView = vi.hoisted(() => vi.fn());
 const refetch = vi.hoisted(() => vi.fn());
@@ -48,6 +49,12 @@ function setup(
   hooks.useGithubSync.mockReturnValue({ data: undefined, isError: false, refetch, ...(sync as object) });
   hooks.useGithubContributions.mockReturnValue({ data: null });
   hooks.useGithubContributionsSync.mockReturnValue({ data: undefined });
+  hooks.useGithubPrDetail.mockReturnValue({
+    data: undefined,
+    isLoading: true,
+    isError: false,
+    refetch: vi.fn(),
+  });
 }
 
 describe("PrsPage", () => {
@@ -145,5 +152,18 @@ describe("PrsPage", () => {
     expect(group).toHaveAttribute("aria-pressed", "true");
     fireEvent.click(group);
     expect(localStorage.getItem("astryn:prs:group-by-repo:v1")).toBe("false");
+  });
+
+  it("opens and closes the pull request drawer from a row", () => {
+    setup({ state: "connected", login: "octocat" }, [pr("o/r#1", "mine")]);
+    render(<PrsPage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: /Add widget pull request/i }),
+    );
+    expect(
+      screen.getByRole("dialog", { name: /o\/r pull request 1/i }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close pull request" }));
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

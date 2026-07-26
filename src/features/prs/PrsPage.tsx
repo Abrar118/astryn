@@ -25,6 +25,7 @@ import {
 import { useWorkspace } from "@/lib/tabs";
 import { PrHeatMap } from "./PrHeatMap";
 import { PrContextMenu } from "./PrContextMenu";
+import { PrDrawer } from "./PrDrawer";
 import { PrListPanel } from "./PrListPanel";
 import { PrSidebar } from "./PrSidebar";
 import { PrToolbar, type PrFilter } from "./PrToolbar";
@@ -157,6 +158,10 @@ export function PrsPage() {
     y: number;
     origin: HTMLElement;
   } | null>(null);
+  const [selectedPr, setSelectedPr] = useState<{
+    pr: GithubPr;
+    origin: HTMLElement;
+  } | null>(null);
 
   if (status?.state === "not_configured") {
     return (
@@ -268,6 +273,7 @@ export function PrsPage() {
             stale={failed.has(activeScope)}
             viewerLogin={viewerLogin}
             groupByRepo={groupByRepo}
+            onOpenPr={(pr, origin) => setSelectedPr({ pr, origin })}
             onOpenMenu={(pr, point, origin) =>
               setMenu({ pr, x: point.x, y: point.y, origin })
             }
@@ -284,6 +290,17 @@ export function PrsPage() {
           y={menu.y}
           onFavoriteChange={changeFavorite}
           onClose={closeMenu}
+        />
+      )}
+      {selectedPr && (
+        <PrDrawer
+          pr={selectedPr.pr}
+          favorite={favorites.some(
+            (repo) => repo.toLowerCase() === selectedPr.pr.repo.toLowerCase(),
+          )}
+          onFavoriteChange={changeFavorite}
+          onClose={() => setSelectedPr(null)}
+          returnFocus={selectedPr.origin}
         />
       )}
     </main>
