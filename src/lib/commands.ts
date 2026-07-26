@@ -384,6 +384,7 @@ export type GitHubStatus =
   | { state: "connected"; login: string };
 
 export type PrBucket = "needs_review" | "mine" | "assigned" | "involved" | "merged";
+export type PrScope = PrBucket | `repo:${string}`;
 
 export type PrReviewer = {
   login: string;
@@ -393,7 +394,7 @@ export type PrReviewer = {
 
 export type GithubPr = {
   id: string;
-  bucket: PrBucket;
+  bucket: PrScope;
   repo: string;
   number: number;
   title: string | null;
@@ -422,14 +423,14 @@ export type GithubPr = {
 };
 
 export type GithubSyncMeta = {
-  bucket: PrBucket;
+  bucket: PrScope;
   fetchedCount: number;
   truncated: boolean;
   lastSyncedAt: string | null;
 };
 
-export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[] };
-export type BucketSyncResult = { bucket: PrBucket; ok: boolean; truncated: boolean };
+export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[]; favoriteRepos: string[] };
+export type BucketSyncResult = { bucket: PrScope; ok: boolean; truncated: boolean };
 
 export const setGithubToken = (token: string): Promise<void> =>
   invoke("set_github_token", { token });
@@ -444,6 +445,11 @@ export const testGithubConnection = (): Promise<GitHubStatus> =>
 export const syncGithubPrs = (): Promise<BucketSyncResult[]> => invoke("sync_github_prs");
 
 export const listGithubPrs = (): Promise<PrDashboard> => invoke("list_github_prs");
+
+export const setGithubRepoFavorite = (
+  repo: string,
+  favorite: boolean,
+): Promise<string[]> => invoke("set_github_repo_favorite", { repo, favorite });
 
 /** One day of the GitHub contribution calendar. `weekday`: 0 = Sun … 6 = Sat. */
 export type ContribDay = { date: string; count: number; weekday: number };

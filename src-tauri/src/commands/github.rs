@@ -10,6 +10,7 @@ use crate::github::contributions::{contributions_query_body, parse_contributions
 use crate::github::prs::{
     build_search_body, parse_search_page, Bucket, PageInfo, ParsedPr, PAGE_SIZE, PER_BUCKET_CAP,
 };
+use crate::github::repositories::{build_repository_search, parse_repository};
 use crate::github::{GitHubCredentialProvider, GitHubError};
 use crate::secrets::SecretStore;
 
@@ -18,6 +19,7 @@ mod tests {
     use super::*;
     use crate::github::fake::FakeGitHubCreds;
     use crate::github::prs::{Bucket, PageInfo, ParsedPr};
+    use crate::github::repositories::parse_repository;
     use crate::secrets::fake::FakeSecretStore;
     use std::sync::Mutex;
 
@@ -143,6 +145,104 @@ mod tests {
         let dash = list_github_prs_logic(&pool).await.unwrap();
         assert_eq!(dash.prs.len(), 5); // one PR per bucket
         assert_eq!(dash.meta.len(), 5);
+        assert!(dash.favorite_repos.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sync_populates_favorite_repository_scopes() {
+        let (_d, pool) = pool().await;
+        gdb::set_favorite_repo(&pool, &parse_repository("o/r").unwrap(), true)
+            .await
+            .unwrap();
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+
+        let results =
+            sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, q, _c| async move {
+                if q.starts_with("repo:o/r ") {
+                    assert_eq!(q, "repo:o/r is:pr is:open sort:updated-desc");
+                }
+                Ok((
+                    vec![page_pr(1)],
+                    PageInfo {
+                        has_next_page: false,
+                        end_cursor: None,
+                    },
+                ))
+            })
+            .await
+            .unwrap();
+
+        assert_eq!(results.len(), 6);
+        assert!(results
+            .iter()
+            .any(|result| result.bucket == "repo:o/r" && result.ok));
+        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        assert_eq!(dashboard.favorite_repos, vec!["o/r"]);
+        assert_eq!(
+            dashboard
+                .prs
+                .iter()
+                .filter(|pr| pr.bucket == "repo:o/r")
+                .count(),
+            1
+        );
+    }
+
+    #[tokio::test]
+    async fn favorite_repository_sync_failure_preserves_its_cache() {
+        let (_d, pool) = pool().await;
+        gdb::set_favorite_repo(&pool, &parse_repository("o/r").unwrap(), true)
+            .await
+            .unwrap();
+        gdb::replace_bucket(&pool, "repo:o/r", &[page_pr(7)], "old", false)
+            .await
+            .unwrap();
+        let creds: Arc<dyn GitHubCredentialProvider> =
+            Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
+        let gen = AtomicU64::new(0);
+
+        let results =
+            sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, q, _c| async move {
+                if q.starts_with("repo:o/r ") {
+                    Err(GitHubError::Network)
+                } else {
+                    Ok((
+                        Vec::new(),
+                        PageInfo {
+                            has_next_page: false,
+                            end_cursor: None,
+                        },
+                    ))
+                }
+            })
+            .await
+            .unwrap();
+
+        assert!(results
+            .iter()
+            .any(|result| result.bucket == "repo:o/r" && !result.ok));
+        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        assert!(dashboard
+            .prs
+            .iter()
+            .any(|pr| pr.bucket == "repo:o/r" && pr.number == 7));
+    }
+
+    #[tokio::test]
+    async fn favorite_command_validates_and_persists_repository() {
+        let (_d, pool) = pool().await;
+        assert!(matches!(
+            set_github_repo_favorite_logic(&pool, "not a repo".into(), true).await,
+            Err(CmdError::InvalidInput)
+        ));
+        assert_eq!(
+            set_github_repo_favorite_logic(&pool, "Owner/Repo".into(), true)
+                .await
+                .unwrap(),
+            vec!["Owner/Repo"]
+        );
     }
 
     #[tokio::test]
@@ -391,19 +491,19 @@ pub struct BucketSyncResult {
 pub struct PrDashboard {
     pub prs: Vec<gdb::PrRow>,
     pub meta: Vec<gdb::SyncMeta>,
+    pub favorite_repos: Vec<String>,
 }
 
-/// Fetch one bucket to completion (or the cap), deduping by id within the bucket.
-async fn fetch_bucket<F, Fut>(
+/// Fetch one search scope to completion (or the cap), deduping by PR id.
+async fn fetch_scope<F, Fut>(
     auth: &str,
-    bucket: Bucket,
+    query: String,
     fetch_page: &F,
 ) -> Result<(Vec<ParsedPr>, bool), GitHubError>
 where
     F: Fn(String, String, Option<String>) -> Fut,
     Fut: std::future::Future<Output = Result<(Vec<ParsedPr>, PageInfo), GitHubError>>,
 {
-    let query = bucket.search_query();
     let mut acc: Vec<ParsedPr> = Vec::new();
     let mut seen = std::collections::HashSet::new();
     let mut cursor: Option<String> = None;
@@ -436,6 +536,19 @@ where
     }
 }
 
+#[cfg(test)]
+async fn fetch_bucket<F, Fut>(
+    auth: &str,
+    bucket: Bucket,
+    fetch_page: &F,
+) -> Result<(Vec<ParsedPr>, bool), GitHubError>
+where
+    F: Fn(String, String, Option<String>) -> Fut,
+    Fut: std::future::Future<Output = Result<(Vec<ParsedPr>, PageInfo), GitHubError>>,
+{
+    fetch_scope(auth, bucket.search_query(), fetch_page).await
+}
+
 pub async fn sync_github_prs_logic<F, Fut>(
     credentials: Arc<dyn GitHubCredentialProvider>,
     pool: &SqlitePool,
@@ -455,8 +568,21 @@ where
         .ok_or(CmdError::GitHubNotConfigured)?;
     let gen0 = generation.load(Ordering::SeqCst);
     let mut results = Vec::new();
-    for bucket in Bucket::all() {
-        match fetch_bucket(&auth, bucket, &fetch_page).await {
+    let mut scopes: Vec<(String, String)> = Bucket::all()
+        .iter()
+        .map(|bucket| (bucket.key().to_string(), bucket.search_query()))
+        .collect();
+    let favorites = gdb::load_favorite_repos(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    for favorite in &favorites {
+        if let Ok(repo) = parse_repository(favorite) {
+            scopes.push((repo.scope.clone(), build_repository_search(&repo)));
+        }
+    }
+
+    for (scope, query) in scopes {
+        match fetch_scope(&auth, query, &fetch_page).await {
             Ok((prs, truncated)) => {
                 // Abort the whole sync if the credential changed mid-flight: a
                 // partial (shortened) summary is ambiguous, so surface an error
@@ -464,18 +590,18 @@ where
                 if generation.load(Ordering::SeqCst) != gen0 {
                     return Err(CmdError::WorkspaceChanged);
                 }
-                gdb::replace_bucket(pool, bucket.key(), &prs, &now, truncated)
+                gdb::replace_bucket(pool, &scope, &prs, &now, truncated)
                     .await
                     .map_err(|_| CmdError::Internal)?;
                 results.push(BucketSyncResult {
-                    bucket: bucket.key().into(),
+                    bucket: scope,
                     ok: true,
                     truncated,
                 });
             }
             Err(_) => {
                 results.push(BucketSyncResult {
-                    bucket: bucket.key().into(),
+                    bucket: scope,
                     ok: false,
                     truncated: false,
                 });
@@ -490,7 +616,25 @@ pub async fn list_github_prs_logic(pool: &SqlitePool) -> Result<PrDashboard, Cmd
     let meta = gdb::load_sync_meta(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
-    Ok(PrDashboard { prs, meta })
+    let favorite_repos = gdb::load_favorite_repos(pool)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(PrDashboard {
+        prs,
+        meta,
+        favorite_repos,
+    })
+}
+
+pub async fn set_github_repo_favorite_logic(
+    pool: &SqlitePool,
+    repo: String,
+    favorite: bool,
+) -> Result<Vec<String>, CmdError> {
+    let repo = parse_repository(&repo).map_err(|_| CmdError::InvalidInput)?;
+    gdb::set_favorite_repo(pool, &repo, favorite)
+        .await
+        .map_err(|_| CmdError::Internal)
 }
 
 fn now_iso() -> String {
@@ -525,6 +669,16 @@ pub async fn sync_github_prs(
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
     list_github_prs_logic(&state.pool).await
+}
+
+#[tauri::command]
+pub async fn set_github_repo_favorite(
+    state: State<'_, AppState>,
+    repo: String,
+    favorite: bool,
+) -> Result<Vec<String>, CmdError> {
+    let _g = state.github_lock.lock().await;
+    set_github_repo_favorite_logic(&state.pool, repo, favorite).await
 }
 
 /// Offline read of the cached contribution calendar (`None` until first sync).

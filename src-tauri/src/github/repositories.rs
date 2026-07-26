@@ -28,6 +28,10 @@ pub fn parse_repository(input: &str) -> Result<RepositoryName, GitHubError> {
     })
 }
 
+pub fn build_repository_search(repo: &RepositoryName) -> String {
+    format!("repo:{} is:pr is:open sort:updated-desc", repo.canonical)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -57,5 +61,14 @@ mod tests {
                 "{invalid:?} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn favorite_repository_search_is_open_and_recent() {
+        let repo = parse_repository("Owner/Repo").unwrap();
+        assert_eq!(
+            build_repository_search(&repo),
+            "repo:Owner/Repo is:pr is:open sort:updated-desc"
+        );
     }
 }
