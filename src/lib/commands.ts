@@ -430,7 +430,13 @@ export type GithubSyncMeta = {
 };
 
 export type PrDashboard = { prs: GithubPr[]; meta: GithubSyncMeta[]; favoriteRepos: string[] };
-export type BucketSyncResult = { bucket: PrScope; ok: boolean; truncated: boolean };
+export type BucketSyncResult = {
+  bucket: PrScope;
+  ok: boolean;
+  truncated: boolean;
+  /** Sanitized failure cause; absent when the scope synced. */
+  reason?: string | null;
+};
 
 export const setGithubToken = (token: string): Promise<void> =>
   invoke("set_github_token", { token });

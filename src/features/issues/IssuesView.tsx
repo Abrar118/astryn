@@ -44,6 +44,7 @@ import {
   DEFAULT_DISPLAY,
   VIEW_KEY,
   parseViewConfig,
+  pruneFilters,
   type Completed,
   type DisplayProps,
   type GroupBy,
@@ -375,6 +376,13 @@ export function IssuesView() {
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor),
   );
+
+  // Filters persist by raw Linear id, so a workspace switch can leave one
+  // pointing at an entity that no longer exists — which filters the list down to
+  // nothing with no visible cause. Drop those once the option lists have loaded.
+  useEffect(() => {
+    setFilters((f) => pruneFilters(f, { teams: filterOpts?.teams, projects: filterOpts?.projects, users }));
+  }, [filterOpts, users]);
 
   // Persist the view config (filters + display options) across reloads/launches.
   useEffect(() => {
