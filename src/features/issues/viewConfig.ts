@@ -33,6 +33,34 @@ function oneOf<T extends string>(value: unknown, values: readonly T[], fallback:
   return typeof value === "string" && values.includes(value as T) ? value as T : fallback;
 }
 
+/**
+ * Drop persisted filter ids that don't exist in the current workspace. Filters
+ * are stored by raw Linear id, so switching workspaces leaves them pointing at
+ * entities that match nothing and the list silently renders empty.
+ *
+ * An empty or absent list means "not loaded yet" (cold start, offline, failed
+ * fetch) — never a reason to prune, or a valid filter would be wiped on launch.
+ */
+export function pruneFilters(
+  filters: IssueFilters,
+  known: { teams?: { id: string }[]; projects?: { id: string }[]; users?: { id: string }[] },
+): IssueFilters {
+  const pairs = [
+    ["teamId", known.teams],
+    ["assigneeId", known.users],
+    ["projectId", known.projects],
+  ] as const;
+  let next = filters;
+  for (const [key, list] of pairs) {
+    const value = filters[key];
+    if (!value || !list?.length) continue;
+    if (list.some((entry) => entry.id === value)) continue;
+    if (next === filters) next = { ...filters };
+    delete next[key];
+  }
+  return next;
+}
+
 export function parseViewConfig(raw: string | null): ViewConfig {
   let value: unknown;
   try { value = JSON.parse(raw ?? "{}"); } catch { return DEFAULT_CONFIG; }

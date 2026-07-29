@@ -722,8 +722,13 @@ export function useGithubSync(enabled: boolean) {
         await qc.invalidateQueries({ queryKey: ["github-prs"] });
         const failed = results.filter((result) => !result.ok);
         if (failed.length > 0) {
+          // Name the cause, not just the scope — "needs_review" alone gives the
+          // user nothing to act on.
           const scopes = failed
-            .map((result) => result.bucket.replace(/^repo:/, ""))
+            .map((result) => {
+              const scope = result.bucket.replace(/^repo:/, "");
+              return result.reason ? `${scope} — ${result.reason}` : scope;
+            })
             .join(", ");
           gooeyToast.error("Some pull request scopes couldn't refresh", {
             description: scopes,

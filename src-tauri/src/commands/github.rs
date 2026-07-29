@@ -266,11 +266,16 @@ mod tests {
             Arc::new(FakeGitHubCreds(Some("Bearer x".into())));
         let gen = AtomicU64::new(0);
         let results = sync_github_prs_logic(creds, &pool, &gen, "now".into(), |_a, _q, _c| async {
-            Err(GitHubError::Network)
+            Err::<(Vec<ParsedPr>, PageInfo), _>(GitHubError::Network)
         })
         .await
         .unwrap();
         assert!(results.iter().all(|r| !r.ok));
+        // A failed scope must carry why, not just which — the toast is otherwise
+        // undiagnosable.
+        assert!(results
+            .iter()
+            .all(|r| r.reason.as_deref() == Some("couldn't reach GitHub")));
         // The previously-cached needs_review PR survives the failed refresh.
         let dash = list_github_prs_logic(&pool).await.unwrap();
         assert_eq!(
@@ -702,6 +707,22 @@ pub struct BucketSyncResult {
     pub bucket: String,
     pub ok: bool,
     pub truncated: bool,
+    /// Why a scope failed, absent when it succeeded. Without this a failed scope
+    /// reports only *which* queue broke, which is undiagnosable from the UI.
+    pub reason: Option<String>,
+}
+
+/// Sanitized, user-facing reason a scope failed. Mirrors `CmdError`'s style: a
+/// stable category, never raw transport or GraphQL diagnostics.
+fn scope_failure_reason(err: &GitHubError) -> &'static str {
+    match err {
+        GitHubError::Network => "couldn't reach GitHub",
+        GitHubError::Auth => "token rejected — check its scopes and SSO authorization",
+        GitHubError::RateLimited(_) => "rate limited",
+        GitHubError::Malformed => "unexpected response from GitHub",
+        GitHubError::Server => "GitHub server error",
+        GitHubError::Api(_) => "GitHub rejected the query",
+    }
 }
 
 #[derive(Serialize, Debug)]
@@ -815,13 +836,15 @@ where
                     bucket: scope,
                     ok: true,
                     truncated,
+                    reason: None,
                 });
             }
-            Err(_) => {
+            Err(err) => {
                 results.push(BucketSyncResult {
                     bucket: scope,
                     ok: false,
                     truncated: false,
+                    reason: Some(scope_failure_reason(&err).to_string()),
                 });
             }
         }
