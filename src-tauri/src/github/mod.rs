@@ -3,6 +3,7 @@ pub mod docs;
 pub mod pr_detail;
 pub mod pr_diff;
 pub mod prs;
+pub mod rate_limit;
 pub mod repositories;
 
 use serde_json::Value;
