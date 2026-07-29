@@ -24,16 +24,16 @@ name = "astryn-2"
 [[terminals]]
 name = "Claude"
 path = "."
-command = "claude"
-emulator = "ghostty"
+command = ""
+emulator = "kitty"
 
 [[terminals]]
 name = "Codex"
 path = "."
-command = "codex"
-emulator = "ghostty"
+command = ""
+emulator = "kitty"
 
 [[terminals]]
 name = "scripts"
 path = "."
-emulator = "ghostty"
+emulator = "kitty"
