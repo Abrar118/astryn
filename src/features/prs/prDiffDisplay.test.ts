@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseUnifiedPatch } from "./prDiffDisplay";
+import { collapseContext, parseUnifiedPatch } from "./prDiffDisplay";
 
 describe("parseUnifiedPatch", () => {
   it("classifies unified rows and advances old and new line numbers", () => {
@@ -72,5 +72,46 @@ describe("parseUnifiedPatch", () => {
 
   it("returns no rows for a blank patch", () => {
     expect(parseUnifiedPatch("")).toEqual([]);
+  });
+});
+
+describe("collapseContext", () => {
+  const context = (count: number, from = 1) =>
+    Array.from({ length: count }, (_, i) => ({
+      key: `context-${from + i}`,
+      kind: "context" as const,
+      oldLine: from + i,
+      newLine: from + i,
+      text: `line ${from + i}`,
+    }));
+
+  const addition = {
+    key: "addition",
+    kind: "addition" as const,
+    oldLine: null,
+    newLine: 13,
+    text: "new value",
+  };
+
+  it("hides long runs of unchanged lines on both sides of a change", () => {
+    const out = collapseContext([...context(12), addition, ...context(12, 14)], 3);
+    const collapsed = out.filter((row) => row.text.startsWith("\u22ef"));
+
+    expect(collapsed).toHaveLength(2);
+    expect(collapsed[0].text).toBe("\u22ef 9 unchanged lines");
+    expect(out.filter((row) => row.kind === "context")).toHaveLength(6);
+  });
+
+  it("leaves a patch shorter than the padding window untouched", () => {
+    const rows = [...context(2), addition, ...context(2, 4)];
+    expect(collapseContext(rows, 3)).toEqual(rows);
+  });
+
+  it("singularizes a one-line gap", () => {
+    const rows = [addition, ...context(7, 1), addition];
+    const collapsed = collapseContext(rows, 3).filter((row) =>
+      row.text.startsWith("\u22ef"),
+    );
+    expect(collapsed[0].text).toBe("\u22ef 1 unchanged line");
   });
 });

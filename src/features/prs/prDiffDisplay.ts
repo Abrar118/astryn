@@ -78,3 +78,45 @@ export function parseUnifiedPatch(patch: string): PrDiffRow[] {
     };
   });
 }
+
+/**
+ * Replace long runs of unchanged context with a single collapsed marker,
+ * keeping `padding` rows of context on each side of every change.
+ *
+ * Large patches are mostly context; rendering all of it pushes the actual
+ * change off screen and makes the virtualized list do needless work.
+ */
+export function collapseContext(rows: PrDiffRow[], padding = 3): PrDiffRow[] {
+  const keep = new Set<number>();
+  rows.forEach((row, index) => {
+    if (row.kind === "context") return;
+    for (let near = index - padding; near <= index + padding; near += 1) {
+      if (near >= 0 && near < rows.length) keep.add(near);
+    }
+  });
+
+  const marker = (key: string, hidden: number): PrDiffRow => ({
+    key,
+    kind: "metadata",
+    oldLine: null,
+    newLine: null,
+    text: `\u22ef ${hidden} unchanged ${hidden === 1 ? "line" : "lines"}`,
+  });
+
+  const out: PrDiffRow[] = [];
+  let hidden = 0;
+  rows.forEach((row, index) => {
+    if (!keep.has(index)) {
+      hidden += 1;
+      return;
+    }
+    if (hidden > 0) {
+      out.push(marker(`${index}-collapsed`, hidden));
+      hidden = 0;
+    }
+    out.push(row);
+  });
+  if (hidden > 0) out.push(marker(`${rows.length}-collapsed`, hidden));
+
+  return out;
+}
