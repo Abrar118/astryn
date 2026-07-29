@@ -141,6 +141,12 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check # Rust formatting
 
 Astryn currently targets a single-user Linear workflow and delivers the calendar, issue workspace, detail editing, activity timeline, the "This Week" overview, the dependency graph, the GitHub pull-request dashboard, the inbox, the command palette, and the two-pane split workspace. Planned directions include per-issue reference links (docs & links) and additional activity sources.
 
+## Troubleshooting
+
+Keychain errors, `SQLITE_CANTOPEN`, empty issue lists after a sync, and
+Linux Secret Service setup are covered in
+[docs/troubleshooting.md](docs/troubleshooting.md).
+
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
