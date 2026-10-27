@@ -231,21 +231,35 @@ pub async fn set_favorite_repo(
     Ok(favorites)
 }
 
-pub async fn list_prs(pool: &SqlitePool) -> Result<Vec<PrRow>, sqlx::Error> {
-    let mut rows = sqlx::query_as::<_, PrRow>(
+pub async fn list_prs(pool: &SqlitePool, include_tracker: bool) -> Result<Vec<PrRow>, sqlx::Error> {
+    // Without the tracker module the issues cache is not joined at all.
+    let (linear_cols, linear_join) = if include_tracker {
+        (
+            "i.id AS linear_issue_id, i.state_name AS linear_state_name,
+                i.state_type AS linear_state_type, i.state_color AS linear_state_color,
+                i.priority AS linear_priority",
+            "LEFT JOIN issues i ON i.identifier = p.linear_identifier",
+        )
+    } else {
+        (
+            "NULL AS linear_issue_id, NULL AS linear_state_name,
+                NULL AS linear_state_type, NULL AS linear_state_color,
+                NULL AS linear_priority",
+            "",
+        )
+    };
+    let sql = format!(
         "SELECT p.id, p.bucket, p.repo, p.number, p.title, p.draft, p.mergeable, p.ci_status,
                 p.review_decision, p.author_login, p.author_avatar, p.comment_count, p.branch,
-                p.base_branch, p.url, p.linear_identifier, i.id AS linear_issue_id, p.updated_at,
+                p.base_branch, p.url, p.linear_identifier, p.updated_at,
                 p.merged_at, p.additions, p.deletions, p.changed_files,
-                i.state_name AS linear_state_name, i.state_type AS linear_state_type,
-                i.state_color AS linear_state_color, i.priority AS linear_priority,
+                {linear_cols},
                 p.reviewers
          FROM github_prs p
-         LEFT JOIN issues i ON i.identifier = p.linear_identifier
-         ORDER BY p.bucket, p.updated_at DESC",
-    )
-    .fetch_all(pool)
-    .await?;
+         {linear_join}
+         ORDER BY p.bucket, p.updated_at DESC"
+    );
+    let mut rows = sqlx::query_as::<_, PrRow>(&sql).fetch_all(pool).await?;
     for r in &mut rows {
         if let Some(json) = &r.reviewers_raw {
             r.reviewers = serde_json::from_str(json).unwrap_or_default();
@@ -313,7 +327,7 @@ mod tests {
         replace_bucket(&pool, "mine", &[pr(2, None)], "now", true)
             .await
             .unwrap();
-        let rows = list_prs(&pool).await.unwrap();
+        let rows = list_prs(&pool, true).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].number, 2);
         let meta = load_sync_meta(&pool).await.unwrap();
@@ -336,7 +350,7 @@ mod tests {
         )
         .await
         .unwrap();
-        let rows = list_prs(&pool).await.unwrap();
+        let rows = list_prs(&pool, true).await.unwrap();
         let matched = rows.iter().find(|r| r.number == 9).unwrap();
         let unmatched = rows.iter().find(|r| r.number == 8).unwrap();
         assert_eq!(matched.linear_issue_id.as_deref(), Some("iss-1"));
@@ -389,7 +403,7 @@ mod tests {
             .await
             .unwrap();
 
-        let rows = list_prs(&pool).await.unwrap();
+        let rows = list_prs(&pool, true).await.unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].bucket, "mine");
         let meta = load_sync_meta(&pool).await.unwrap();
@@ -433,7 +447,7 @@ mod tests {
         .await
         .unwrap();
         wipe_github_cache(&pool).await.unwrap();
-        assert!(list_prs(&pool).await.unwrap().is_empty());
+        assert!(list_prs(&pool, true).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
         assert_eq!(load_github_login(&pool).await.unwrap(), None);
         assert!(load_favorite_repos(&pool).await.unwrap().is_empty());

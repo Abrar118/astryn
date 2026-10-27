@@ -2,6 +2,7 @@ mod commands;
 mod db;
 mod generators;
 mod github;
+mod issue_ref;
 mod linear;
 mod link_preview;
 mod modules;

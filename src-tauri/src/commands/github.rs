@@ -152,7 +152,7 @@ mod tests {
         .unwrap();
         assert_eq!(results.len(), 5);
         assert!(results.iter().all(|r| r.ok && !r.truncated));
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dash.prs.len(), 5); // one PR per bucket
         assert_eq!(dash.meta.len(), 5);
         assert!(dash.favorite_repos.is_empty());
@@ -188,7 +188,7 @@ mod tests {
         assert!(results
             .iter()
             .any(|result| result.bucket == "repo:o/r" && result.ok));
-        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        let dashboard = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dashboard.favorite_repos, vec!["o/r"]);
         assert_eq!(
             dashboard
@@ -233,7 +233,7 @@ mod tests {
         assert!(results
             .iter()
             .any(|result| result.bucket == "repo:o/r" && !result.ok));
-        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        let dashboard = list_github_prs_logic(&pool, true).await.unwrap();
         assert!(dashboard
             .prs
             .iter()
@@ -277,7 +277,7 @@ mod tests {
             .iter()
             .all(|r| r.reason.as_deref() == Some("couldn't reach GitHub")));
         // The previously-cached needs_review PR survives the failed refresh.
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(
             dash.prs
                 .iter()
@@ -317,7 +317,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dash.prs.len(), 1500); // capped at 300 per bucket × 5 buckets
         assert!(dash.meta.iter().all(|m| m.truncated));
     }
@@ -435,7 +435,11 @@ mod tests {
         })
         .await;
         assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
-        assert!(list_github_prs_logic(&pool).await.unwrap().prs.is_empty());
+        assert!(list_github_prs_logic(&pool, true)
+            .await
+            .unwrap()
+            .prs
+            .is_empty());
     }
 
     fn sample_contributions() -> Contributions {
@@ -852,8 +856,13 @@ where
     Ok(results)
 }
 
-pub async fn list_github_prs_logic(pool: &SqlitePool) -> Result<PrDashboard, CmdError> {
-    let prs = gdb::list_prs(pool).await.map_err(|_| CmdError::Internal)?;
+pub async fn list_github_prs_logic(
+    pool: &SqlitePool,
+    include_tracker: bool,
+) -> Result<PrDashboard, CmdError> {
+    let prs = gdb::list_prs(pool, include_tracker)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     let meta = gdb::load_sync_meta(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
@@ -1052,7 +1061,8 @@ pub async fn sync_github_prs(
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
     state.require(crate::modules::ModuleId::Github)?;
-    list_github_prs_logic(&state.pool).await
+    let include_tracker = state.capability(crate::modules::Capability::Tracker);
+    list_github_prs_logic(&state.pool, include_tracker).await
 }
 
 #[tauri::command]

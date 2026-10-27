@@ -610,11 +610,14 @@ where
     })
 }
 
-pub async fn get_slack_catchup_logic(pool: &SqlitePool) -> Result<SlackCatchup, CmdError> {
+pub async fn get_slack_catchup_logic(
+    pool: &SqlitePool,
+    include_tracker: bool,
+) -> Result<SlackCatchup, CmdError> {
     let conversations = sdb::list_conversations(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
-    let mentions = sdb::list_mentions(pool)
+    let mentions = sdb::list_mentions(pool, include_tracker)
         .await
         .map_err(|_| CmdError::Internal)?;
     let threads = sdb::list_threads(pool)
@@ -634,8 +637,9 @@ pub async fn get_slack_catchup_logic(pool: &SqlitePool) -> Result<SlackCatchup, 
 pub async fn get_slack_conversation_messages_logic(
     pool: &SqlitePool,
     conversation_id: &str,
+    include_tracker: bool,
 ) -> Result<Vec<sdb::MessageRow>, CmdError> {
-    sdb::list_conversation_messages(pool, conversation_id)
+    sdb::list_conversation_messages(pool, conversation_id, include_tracker)
         .await
         .map_err(|_| CmdError::Internal)
 }
@@ -757,7 +761,8 @@ async fn fetch_conversation_data(
 #[tauri::command]
 pub async fn get_slack_catchup(state: State<'_, AppState>) -> Result<SlackCatchup, CmdError> {
     state.require(crate::modules::ModuleId::Slack)?;
-    get_slack_catchup_logic(&state.pool).await
+    let include_tracker = state.capability(crate::modules::Capability::Tracker);
+    get_slack_catchup_logic(&state.pool, include_tracker).await
 }
 
 // Tauri maps the JS camelCase arg `conversationId` to the Rust snake_case
@@ -768,7 +773,8 @@ pub async fn get_slack_conversation_messages(
     conversation_id: String,
 ) -> Result<Vec<sdb::MessageRow>, CmdError> {
     state.require(crate::modules::ModuleId::Slack)?;
-    get_slack_conversation_messages_logic(&state.pool, &conversation_id).await
+    let include_tracker = state.capability(crate::modules::Capability::Tracker);
+    get_slack_conversation_messages_logic(&state.pool, &conversation_id, include_tracker).await
 }
 
 #[tauri::command]
@@ -993,7 +999,7 @@ mod tests {
         assert!(summary.synced);
         assert_eq!(summary.conversation_count, 1);
 
-        let dash = get_slack_catchup_logic(&pool).await.unwrap();
+        let dash = get_slack_catchup_logic(&pool, true).await.unwrap();
         assert_eq!(dash.conversations.len(), 1);
         assert_eq!(dash.conversations[0].unread_count, 1); // U1's own message excluded
         assert_eq!(dash.conversations[0].has_mention, true);
@@ -1046,7 +1052,7 @@ mod tests {
         assert!(r.is_err());
         // Prior cache preserved (all-or-nothing).
         assert_eq!(
-            get_slack_catchup_logic(&pool)
+            get_slack_catchup_logic(&pool, true)
                 .await
                 .unwrap()
                 .conversations
@@ -1106,7 +1112,7 @@ mod tests {
         )
         .await;
         assert!(matches!(r, Err(CmdError::WorkspaceChanged)));
-        assert!(get_slack_catchup_logic(&pool)
+        assert!(get_slack_catchup_logic(&pool, true)
             .await
             .unwrap()
             .conversations
@@ -1277,7 +1283,7 @@ mod tests {
         );
         // Cache survived (rotation is not an account switch).
         assert_eq!(
-            get_slack_catchup_logic(&pool)
+            get_slack_catchup_logic(&pool, true)
                 .await
                 .unwrap()
                 .conversations

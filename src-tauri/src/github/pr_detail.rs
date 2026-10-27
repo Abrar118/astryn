@@ -1,9 +1,9 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 
-use super::prs::extract_linear_identifier;
 use super::repositories::RepositoryName;
 use super::GitHubError;
+use crate::issue_ref::extract_linear_identifier;
 
 const PR_DETAIL_QUERY: &str = r#"query($owner:String!,$name:String!,$number:Int!){
   repository(owner:$owner,name:$name){

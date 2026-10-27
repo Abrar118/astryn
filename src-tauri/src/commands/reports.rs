@@ -209,9 +209,16 @@ pub async fn generate_report(
         .await
         .map_err(|_| CmdError::Internal)?
         .ok_or(CmdError::NotConfigured)?;
-    let f = facts::assemble(&state.pool, &viewer_id, &viewer_name, args)
-        .await
-        .map_err(|_| CmdError::Internal)?;
+    let include_code_host = state.capability(crate::modules::Capability::CodeHost);
+    let f = facts::assemble(
+        &state.pool,
+        &viewer_id,
+        &viewer_name,
+        args,
+        include_code_host,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)?;
     let fact_sheet = facts::render_fact_sheet(&f);
 
     // Claim the generation slot: any newer generate_report supersedes us.
