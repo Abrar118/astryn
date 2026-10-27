@@ -14,8 +14,8 @@ use crate::generators::facts::{self, WindowArgs};
 use crate::generators::llm::{ChatRequest, LlmClient, LlmError};
 use crate::secrets::SecretStore;
 
-const LLM_BASE_URL_KEY: &str = "llm_base_url";
-const LLM_MODEL_KEY: &str = "llm_model";
+pub(crate) const LLM_BASE_URL_KEY: &str = "llm_base_url";
+pub(crate) const LLM_MODEL_KEY: &str = "llm_model";
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]

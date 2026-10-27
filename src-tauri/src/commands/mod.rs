@@ -23,6 +23,7 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod docs;
 pub mod github;
+pub mod modules;
 pub mod reports;
 pub mod slack;
 
