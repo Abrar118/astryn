@@ -11,6 +11,8 @@ const cmd = vi.hoisted(() => ({
   getSlackCatchup: vi.fn(),
   syncGithubPrs: vi.fn(),
   syncIssues: vi.fn(),
+  listDocsSources: vi.fn(),
+  getDocsStatus: vi.fn(),
 }));
 const toastError = vi.hoisted(() => vi.fn());
 
@@ -23,7 +25,7 @@ vi.mock("@/lib/modules", () => ({
 }));
 vi.mock("goey-toast", () => ({ gooeyToast: { error: toastError, success: vi.fn() } }));
 
-import { isModuleOff, useGithubPrs, useGithubSync, useMe, useSlackCatchup, useSyncLoop } from "./queries";
+import { isModuleOff, useDocsSources, useDocsStatus, useGithubPrs, useGithubSync, useMe, useSlackCatchup, useSyncLoop } from "./queries";
 
 function wrapper({ children }: { children: ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,6 +47,13 @@ describe("owner gating", () => {
     expect(cmd.listGithubPrs).not.toHaveBeenCalled();
     expect(cmd.getSlackCatchup).not.toHaveBeenCalled();
     expect(cmd.syncGithubPrs).not.toHaveBeenCalled();
+  });
+
+  it("does not call the docs commands while docs is off", async () => {
+    renderHook(() => { useDocsSources(); useDocsStatus(); }, { wrapper });
+    await act(async () => {});
+    expect(cmd.listDocsSources).not.toHaveBeenCalled();
+    expect(cmd.getDocsStatus).not.toHaveBeenCalled();
   });
 
   it("runs the query once its owner is on", async () => {

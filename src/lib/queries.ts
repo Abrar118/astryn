@@ -829,11 +829,13 @@ export function clearGithubQueries(qc: QueryClient) {
 }
 
 export function useDocsStatus() {
-  return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus });
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus, enabled: on });
 }
 
 export function useDocsSources() {
-  return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources });
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources, enabled: on });
 }
 
 export function useDocsTree(sourceId: string | null) {
