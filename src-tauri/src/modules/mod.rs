@@ -1,0 +1,208 @@
+//! Module manifest: which integrations exist, what capabilities they provide,
+//! and the rules deciding whether an enabled module is actually active.
+
+use std::collections::BTreeSet;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ModuleId {
+    Linear,
+    Github,
+    Slack,
+    Llm,
+    Docs,
+    Reports,
+    LinkPreviews,
+}
+
+impl ModuleId {
+    pub const ALL: [ModuleId; 7] = [
+        ModuleId::Linear,
+        ModuleId::Github,
+        ModuleId::Slack,
+        ModuleId::Llm,
+        ModuleId::Docs,
+        ModuleId::Reports,
+        ModuleId::LinkPreviews,
+    ];
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Capability {
+    Tracker,
+    Notifications,
+    CodeHost,
+    DocsSource,
+    Chat,
+    Llm,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ModuleKind {
+    Provider,
+    Feature,
+}
+
+#[derive(Debug)]
+pub struct ModuleSpec {
+    pub id: ModuleId,
+    pub kind: ModuleKind,
+    pub provides: &'static [Capability],
+    pub requires: &'static [Capability],
+    pub optional: &'static [Capability],
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModuleState {
+    pub enabled: BTreeSet<ModuleId>,
+    pub onboarded: bool,
+}
+
+use Capability as C;
+use ModuleKind as K;
+
+static MANIFEST: [ModuleSpec; 7] = [
+    ModuleSpec {
+        id: ModuleId::Linear,
+        kind: K::Provider,
+        provides: &[C::Tracker, C::Notifications],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Github,
+        kind: K::Provider,
+        provides: &[C::CodeHost, C::DocsSource],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Slack,
+        kind: K::Provider,
+        provides: &[C::Chat],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Llm,
+        kind: K::Provider,
+        provides: &[C::Llm],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Docs,
+        kind: K::Feature,
+        provides: &[],
+        requires: &[C::DocsSource],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Reports,
+        kind: K::Feature,
+        provides: &[],
+        requires: &[C::Tracker],
+        optional: &[C::CodeHost, C::Llm],
+    },
+    ModuleSpec {
+        id: ModuleId::LinkPreviews,
+        kind: K::Feature,
+        provides: &[],
+        requires: &[],
+        optional: &[],
+    },
+];
+
+pub fn spec(id: ModuleId) -> &'static ModuleSpec {
+    MANIFEST
+        .iter()
+        .find(|s| s.id == id)
+        .expect("every ModuleId has a manifest entry")
+}
+
+/// True when any enabled provider module supplies `cap`.
+pub fn has_capability(cap: Capability, enabled: &BTreeSet<ModuleId>) -> bool {
+    enabled.iter().any(|&id| {
+        let s = spec(id);
+        s.kind == ModuleKind::Provider && s.provides.contains(&cap)
+    })
+}
+
+/// Required capabilities of `id` that no enabled provider supplies.
+pub fn missing_capabilities(id: ModuleId, enabled: &BTreeSet<ModuleId>) -> Vec<Capability> {
+    spec(id)
+        .requires
+        .iter()
+        .copied()
+        .filter(|&c| !has_capability(c, enabled))
+        .collect()
+}
+
+/// Enabled and with every required capability available.
+pub fn is_active(id: ModuleId, enabled: &BTreeSet<ModuleId>) -> bool {
+    enabled.contains(&id) && missing_capabilities(id, enabled).is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn set(ids: &[ModuleId]) -> BTreeSet<ModuleId> {
+        ids.iter().copied().collect()
+    }
+
+    #[test]
+    fn docs_needs_a_docs_source() {
+        let on = set(&[ModuleId::Docs]);
+        assert_eq!(
+            missing_capabilities(ModuleId::Docs, &on),
+            vec![Capability::DocsSource]
+        );
+        assert!(!is_active(ModuleId::Docs, &on));
+        assert!(is_active(
+            ModuleId::Docs,
+            &set(&[ModuleId::Docs, ModuleId::Github])
+        ));
+    }
+
+    #[test]
+    fn reports_optional_capabilities_do_not_block() {
+        assert!(is_active(
+            ModuleId::Reports,
+            &set(&[ModuleId::Reports, ModuleId::Linear])
+        ));
+        assert!(!is_active(
+            ModuleId::Reports,
+            &set(&[ModuleId::Reports, ModuleId::Github, ModuleId::Llm])
+        ));
+    }
+
+    #[test]
+    fn providers_are_active_iff_enabled() {
+        assert!(is_active(ModuleId::Slack, &set(&[ModuleId::Slack])));
+        assert!(!is_active(ModuleId::Slack, &set(&[])));
+    }
+
+    #[test]
+    fn ids_serialize_kebab_case() {
+        assert_eq!(
+            serde_json::to_string(&ModuleId::LinkPreviews).unwrap(),
+            "\"link-previews\""
+        );
+        assert_eq!(
+            serde_json::to_string(&Capability::CodeHost).unwrap(),
+            "\"code-host\""
+        );
+    }
+
+    #[test]
+    fn every_id_has_a_spec() {
+        for id in ModuleId::ALL {
+            assert_eq!(spec(id).id, id);
+        }
+    }
+}

@@ -4,6 +4,7 @@ mod generators;
 mod github;
 mod linear;
 mod link_preview;
+mod modules;
 mod secrets;
 mod slack;
 
