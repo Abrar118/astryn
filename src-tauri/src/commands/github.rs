@@ -1029,6 +1029,7 @@ fn now_iso() -> String {
 pub async fn sync_github_prs(
     state: State<'_, AppState>,
 ) -> Result<Vec<BucketSyncResult>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     sync_github_prs_logic(
@@ -1050,6 +1051,7 @@ pub async fn sync_github_prs(
 
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     list_github_prs_logic(&state.pool).await
 }
 
@@ -1059,6 +1061,7 @@ pub async fn set_github_repo_favorite(
     repo: String,
     favorite: bool,
 ) -> Result<Vec<String>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     set_github_repo_favorite_logic(&state.pool, repo, favorite).await
 }
@@ -1067,6 +1070,7 @@ pub async fn set_github_repo_favorite(
 pub async fn list_github_repositories(
     state: State<'_, AppState>,
 ) -> Result<RepositoryCatalog, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     list_github_repositories_logic(
         state.github_credentials.clone(),
@@ -1085,6 +1089,7 @@ pub async fn get_github_pr_detail(
     repo: String,
     number: i64,
 ) -> Result<PrDetail, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     get_github_pr_detail_logic(
         state.github_credentials.clone(),
@@ -1102,6 +1107,7 @@ pub async fn get_github_pr_diff(
     repo: String,
     number: i64,
 ) -> Result<PrDiff, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     get_github_pr_diff_logic(
         state.github_credentials.clone(),
@@ -1172,6 +1178,7 @@ async fn fetch_contributions(
 pub async fn get_github_contributions(
     state: State<'_, AppState>,
 ) -> Result<Option<Contributions>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     get_github_contributions_logic(&state.pool).await
 }
 
@@ -1179,6 +1186,7 @@ pub async fn get_github_contributions(
 pub async fn sync_github_contributions(
     state: State<'_, AppState>,
 ) -> Result<Contributions, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     sync_github_contributions_logic(
@@ -1297,6 +1305,7 @@ async fn fetch_viewer_login(
 
 #[tauri::command]
 pub async fn set_github_token(state: State<'_, AppState>, token: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     set_github_token_logic(
         state.secret_store.clone(),
@@ -1309,6 +1318,7 @@ pub async fn set_github_token(state: State<'_, AppState>, token: String) -> Resu
 
 #[tauri::command]
 pub async fn clear_github_token(state: State<'_, AppState>) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     clear_github_token_logic(
         state.secret_store.clone(),
@@ -1325,6 +1335,7 @@ pub async fn get_github_status(state: State<'_, AppState>) -> Result<GitHubStatu
 
 #[tauri::command]
 pub async fn test_github_connection(state: State<'_, AppState>) -> Result<GitHubStatus, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     test_github_connection_logic(

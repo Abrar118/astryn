@@ -223,11 +223,104 @@ pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sq
     tx.commit().await
 }
 
+/// Management and provider-status commands that are always callable.
+pub const CORE_COMMANDS: &[&str] = &[
+    "list_modules",
+    "set_enabled_modules",
+    "remove_module_data",
+    "get_connection_status",
+    "get_github_status",
+    "get_slack_status",
+    "get_llm_config",
+    "get_docs_status",
+];
+
+/// The module that owns a registered Tauri command, if it is not core.
+pub fn command_owner(name: &str) -> Option<ModuleId> {
+    match name {
+        "set_linear_key"
+        | "clear_linear_key"
+        | "test_linear_connection"
+        | "sync_issues"
+        | "list_calendar_issues"
+        | "list_unscheduled"
+        | "list_issues"
+        | "list_relations"
+        | "list_filter_options"
+        | "get_issue_detail"
+        | "load_linear_image"
+        | "update_issue"
+        | "create_issue"
+        | "list_users"
+        | "list_notifications"
+        | "list_labels"
+        | "list_cycles"
+        | "list_workflow_states"
+        | "delete_issue"
+        | "create_issue_relation"
+        | "create_attachment_link"
+        | "update_attachment"
+        | "delete_attachment"
+        | "upload_file"
+        | "get_me"
+        | "create_comment"
+        | "update_comment"
+        | "delete_comment"
+        | "add_reaction"
+        | "remove_reaction"
+        | "create_label" => Some(ModuleId::Linear),
+        "fetch_link_preview" => Some(ModuleId::LinkPreviews),
+        "sync_github_prs"
+        | "list_github_prs"
+        | "set_github_repo_favorite"
+        | "list_github_repositories"
+        | "get_github_pr_detail"
+        | "get_github_pr_diff"
+        | "get_github_contributions"
+        | "sync_github_contributions"
+        | "set_github_token"
+        | "clear_github_token"
+        | "test_github_connection" => Some(ModuleId::Github),
+        "set_slack_credentials"
+        | "clear_slack_token"
+        | "detect_slack_credentials"
+        | "sync_slack_catchup"
+        | "test_slack_connection"
+        | "get_slack_catchup"
+        | "get_slack_conversation_messages"
+        | "slack_deep_link" => Some(ModuleId::Slack),
+        "sync_docs" | "list_docs_sources" | "add_docs_source" | "rename_docs_source"
+        | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
+        "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
+        "generate_report" => Some(ModuleId::Reports),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::db;
     use sqlx::SqlitePool;
+
+    #[test]
+    fn every_registered_command_has_an_owner_or_is_core() {
+        let src = include_str!("../lib.rs");
+        let list = src
+            .split("generate_handler![")
+            .nth(1)
+            .unwrap()
+            .split("])")
+            .next()
+            .unwrap();
+        let unguarded: Vec<&str> = list
+            .split(',')
+            .map(|s| s.trim().rsplit("::").next().unwrap())
+            .filter(|s| !s.is_empty())
+            .filter(|n| command_owner(n).is_none() && !CORE_COMMANDS.contains(n))
+            .collect();
+        assert!(unguarded.is_empty(), "unguarded commands: {unguarded:?}");
+    }
 
     async fn pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
@@ -235,6 +328,58 @@ mod tests {
             .await
             .unwrap();
         (dir, pool)
+    }
+
+    #[test]
+    fn owned_commands_call_require_for_their_owner() {
+        for (file, src) in [
+            ("mod.rs", include_str!("../commands/mod.rs")),
+            ("github.rs", include_str!("../commands/github.rs")),
+            ("slack.rs", include_str!("../commands/slack.rs")),
+            ("docs.rs", include_str!("../commands/docs.rs")),
+            ("reports.rs", include_str!("../commands/reports.rs")),
+        ] {
+            for chunk in src.split("#[tauri::command]").skip(1) {
+                let name = chunk
+                    .split("fn ")
+                    .nth(1)
+                    .unwrap()
+                    .split('(')
+                    .next()
+                    .unwrap();
+                let body = chunk
+                    .split(
+                        "{
+",
+                    )
+                    .nth(1)
+                    .unwrap_or("");
+                match command_owner(name) {
+                    Some(id) => assert!(
+                        body.trim_start().starts_with(&format!(
+                            "state.require(crate::modules::ModuleId::{id:?})?;"
+                        )),
+                        "{file}: {name} must start with require({id:?})"
+                    ),
+                    None => assert!(CORE_COMMANDS.contains(&name), "{file}: {name}"),
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn enabling_another_module_does_not_enable_docs() {
+        let off = ModuleState {
+            enabled: BTreeSet::from([ModuleId::Docs]),
+            onboarded: true,
+        };
+        assert!(crate::commands::require_in(&off, ModuleId::Docs).is_err());
+        let on = ModuleState {
+            enabled: BTreeSet::from([ModuleId::Docs, ModuleId::Github]),
+            onboarded: true,
+        };
+        assert!(crate::commands::require_in(&on, ModuleId::Docs).is_ok());
+        assert!(on.enabled.contains(&ModuleId::Docs));
     }
 
     #[tokio::test]

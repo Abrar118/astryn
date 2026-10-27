@@ -172,6 +172,7 @@ pub async fn set_slack_credentials(
     token: String,
     cookie: Option<String>,
 ) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let _g = state.slack_lock.lock().await;
     set_slack_credentials_logic(
         state.secret_store.clone(),
@@ -185,6 +186,7 @@ pub async fn set_slack_credentials(
 
 #[tauri::command]
 pub async fn clear_slack_token(state: State<'_, AppState>) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let _g = state.slack_lock.lock().await;
     clear_slack_token_logic(
         state.secret_store.clone(),
@@ -277,6 +279,7 @@ pub async fn store_slack_secrets_logic(
 
 #[tauri::command]
 pub async fn detect_slack_credentials(state: State<'_, AppState>) -> Result<SlackStatus, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let _g = state.slack_lock.lock().await;
     let client = state.slack.clone();
     detect_slack_credentials_logic(
@@ -357,6 +360,7 @@ async fn run_test(state: &AppState) -> Result<SlackStatus, CmdError> {
 
 #[tauri::command]
 pub async fn sync_slack_catchup(state: State<'_, AppState>) -> Result<SlackSyncSummary, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let _g = state.slack_lock.lock().await;
     match run_sync(&state).await {
         // map_slack_err maps SlackError::Auth -> SlackNotConfigured, so this is the rotation signal.
@@ -370,6 +374,7 @@ pub async fn sync_slack_catchup(state: State<'_, AppState>) -> Result<SlackSyncS
 
 #[tauri::command]
 pub async fn test_slack_connection(state: State<'_, AppState>) -> Result<SlackStatus, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let _g = state.slack_lock.lock().await;
     match run_test(&state).await {
         Err(CmdError::SlackNotConfigured) => {
@@ -751,6 +756,7 @@ async fn fetch_conversation_data(
 
 #[tauri::command]
 pub async fn get_slack_catchup(state: State<'_, AppState>) -> Result<SlackCatchup, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     get_slack_catchup_logic(&state.pool).await
 }
 
@@ -761,6 +767,7 @@ pub async fn get_slack_conversation_messages(
     state: State<'_, AppState>,
     conversation_id: String,
 ) -> Result<Vec<sdb::MessageRow>, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     get_slack_conversation_messages_logic(&state.pool, &conversation_id).await
 }
 
@@ -770,6 +777,7 @@ pub async fn slack_deep_link(
     conversation_id: String,
     ts: Option<String>,
 ) -> Result<SlackDeepLink, CmdError> {
+    state.require(crate::modules::ModuleId::Slack)?;
     let identity = sdb::load_slack_identity(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)?
