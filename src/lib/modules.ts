@@ -3,14 +3,18 @@ import {
   BookText,
   Calendar,
   CalendarRange,
+  GitBranch,
   GitPullRequest,
   Inbox,
   LayoutDashboard,
+  Link2,
   List,
   MessageSquare,
   Network,
   NotebookPen,
   Settings as SettingsIcon,
+  Sparkles,
+  SquareKanban,
   type LucideIcon,
 } from "lucide-react";
 import { listModules, type Capability, type ModuleId, type ModulesView } from "@/lib/commands";
@@ -86,15 +90,15 @@ export function useModules(): {
   return { data, isActive, hasCapability, ready: !!data };
 }
 
-/** User-facing name and one-line purpose for each module. */
-export const MODULE_COPY: Record<ModuleId, { name: string; description: string; removes: string[] }> = {
-  linear: { name: "Linear", description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
-  github: { name: "GitHub", description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
-  slack: { name: "Slack", description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
-  llm: { name: "AI", description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
-  docs: { name: "Docs", description: "Documentation linked to your issues.", removes: ["documentation sources", "cached docs"] },
-  reports: { name: "Reports", description: "Standup and weekly generators.", removes: [] },
-  "link-previews": { name: "Link previews", description: "Rich previews for pasted links.", removes: [] },
+/** User-facing name, icon and one-line purpose for each module. Icons match Settings nav. */
+export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; description: string; removes: string[] }> = {
+  linear: { name: "Linear", icon: SquareKanban, description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
+  github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
+  slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
+  llm: { name: "AI", icon: Sparkles, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
+  docs: { name: "Docs", icon: BookText, description: "Markdown docs from your GitHub repositories.", removes: ["documentation sources", "cached docs"] },
+  reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
+  "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */

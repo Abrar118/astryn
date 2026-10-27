@@ -7,43 +7,44 @@
    meet WCAG 2.2 AA (4.5:1) against background and card. Color means state
    (success / warning / destructive / info / merged), never category. */
 
+/* Graphite background matches the Windows Terminal "Adwaita Dark" scheme (#1D1D20). */
 [data-theme="graphite"] {
   --overlay-shadow: oklch(0 0 0 / 40%);
-  --background: oklch(0.205 0.004 255);
-  --foreground: oklch(0.93 0.003 255);
-  --card: oklch(0.228 0.004 255);
-  --card-foreground: oklch(0.93 0.003 255);
-  --popover: oklch(0.245 0.005 255);
-  --popover-foreground: oklch(0.95 0.003 255);
-  --primary: oklch(0.74 0.075 245);
+  --background: oklch(0.232 0.006 286);
+  --foreground: oklch(0.93 0.003 286);
+  --card: oklch(0.255 0.006 286);
+  --card-foreground: oklch(0.93 0.003 286);
+  --popover: oklch(0.272 0.006 286);
+  --popover-foreground: oklch(0.95 0.003 286);
+  --primary: oklch(0.76 0.075 245);
   --primary-foreground: oklch(0.2 0.012 250);
-  --secondary: oklch(0.27 0.005 255);
-  --secondary-foreground: oklch(0.93 0.003 255);
-  --muted: oklch(0.27 0.005 255);
-  --muted-foreground: oklch(0.735 0.006 255);
-  --accent: oklch(0.285 0.006 255);
-  --accent-foreground: oklch(0.95 0.003 255);
-  --destructive: oklch(0.72 0.13 25);
-  --success: oklch(0.76 0.1 155);
-  --warning: oklch(0.8 0.1 80);
-  --info: oklch(0.76 0.065 230);
-  --merged: oklch(0.75 0.08 300);
-  --border: oklch(0.305 0.005 255);
-  --input: oklch(0.535 0.006 255);
-  --ring: oklch(0.74 0.075 245);
-  --chart-1: oklch(0.74 0.075 245);
-  --chart-2: oklch(0.6 0.05 245);
-  --chart-3: oklch(0.5 0.035 245);
-  --chart-4: oklch(0.42 0.02 250);
-  --chart-5: oklch(0.34 0.01 250);
-  --sidebar: oklch(0.18 0.004 255);
-  --sidebar-foreground: oklch(0.93 0.003 255);
-  --sidebar-primary: oklch(0.74 0.075 245);
+  --secondary: oklch(0.295 0.006 286);
+  --secondary-foreground: oklch(0.93 0.003 286);
+  --muted: oklch(0.295 0.006 286);
+  --muted-foreground: oklch(0.76 0.006 286);
+  --accent: oklch(0.31 0.007 286);
+  --accent-foreground: oklch(0.95 0.003 286);
+  --destructive: oklch(0.74 0.13 25);
+  --success: oklch(0.78 0.1 155);
+  --warning: oklch(0.82 0.1 80);
+  --info: oklch(0.78 0.065 230);
+  --merged: oklch(0.77 0.08 300);
+  --border: oklch(0.33 0.006 286);
+  --input: oklch(0.57 0.006 286);
+  --ring: oklch(0.76 0.075 245);
+  --chart-1: oklch(0.76 0.075 245);
+  --chart-2: oklch(0.62 0.05 245);
+  --chart-3: oklch(0.52 0.035 245);
+  --chart-4: oklch(0.44 0.02 286);
+  --chart-5: oklch(0.36 0.01 286);
+  --sidebar: oklch(0.205 0.005 286);
+  --sidebar-foreground: oklch(0.93 0.003 286);
+  --sidebar-primary: oklch(0.76 0.075 245);
   --sidebar-primary-foreground: oklch(0.2 0.012 250);
-  --sidebar-accent: oklch(0.255 0.005 255);
-  --sidebar-accent-foreground: oklch(0.95 0.003 255);
-  --sidebar-border: oklch(0.275 0.005 255);
-  --sidebar-ring: oklch(0.74 0.075 245);
+  --sidebar-accent: oklch(0.28 0.006 286);
+  --sidebar-accent-foreground: oklch(0.95 0.003 286);
+  --sidebar-border: oklch(0.3 0.006 286);
+  --sidebar-ring: oklch(0.76 0.075 245);
 }
 
 [data-theme="charcoal"] {

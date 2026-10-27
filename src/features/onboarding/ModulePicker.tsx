@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
+import { Check } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { setEnabledModules, type ModuleId } from "@/lib/commands";
 import { CAPABILITY_PROVIDERS, MODULES_KEY, MODULE_COPY, MODULE_MANIFEST, previewMissing } from "@/lib/modules";
 import { Button } from "@/components/ui/button";
@@ -42,37 +44,57 @@ export function ModulePicker() {
 
   return (
     <div className="flex h-screen items-center justify-center overflow-auto bg-background p-6 text-foreground">
-      <form onSubmit={submit} className="w-full max-w-md space-y-6">
+      <form onSubmit={submit} className="w-full max-w-2xl space-y-6">
         <div className="space-y-1">
           <h1 className="text-lg font-semibold">Choose your tools</h1>
           <p className="text-sm text-muted-foreground">You can change this any time in Settings → Modules.</p>
         </div>
         {GROUPS.map((g, gi) => (
-          <fieldset key={g.title} className="space-y-2">
-            <legend className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">{g.title}</legend>
-            {g.ids.map((id, i) => {
-              const missing = selected.has(id) ? previewMissing(id, selected) : [];
-              return (
-                <label key={id} className="flex cursor-pointer items-start gap-3 rounded-md border border-border p-3">
-                  <input
-                    ref={gi === 0 && i === 0 ? first : undefined}
-                    type="checkbox"
-                    className="mt-0.5 size-4 accent-primary"
-                    checked={selected.has(id)}
-                    onChange={() => toggle(id)}
-                  />
-                  <span className="space-y-0.5">
-                    <span className="block text-sm font-medium">{MODULE_COPY[id].name}</span>
-                    <span className="block text-xs text-muted-foreground">{MODULE_COPY[id].description}</span>
+          <fieldset key={g.title}>
+            <legend className="mb-2 text-xs font-medium text-muted-foreground">{g.title}</legend>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {g.ids.map((id, i) => {
+                const on = selected.has(id);
+                const missing = on ? previewMissing(id, selected) : [];
+                const { name, icon: Icon, description } = MODULE_COPY[id];
+                return (
+                  <label
+                    key={id}
+                    className={cn(
+                      "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
+                      on ? "border-primary bg-primary/[0.06]" : "border-border hover:border-input",
+                    )}
+                  >
+                    <input
+                      ref={gi === 0 && i === 0 ? first : undefined}
+                      type="checkbox"
+                      className="sr-only"
+                      checked={on}
+                      onChange={() => toggle(id)}
+                    />
+                    <span className="flex items-center justify-between">
+                      <Icon aria-hidden className={cn("size-5", on ? "text-primary" : "text-muted-foreground")} />
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "flex size-4 items-center justify-center rounded-full border",
+                          on ? "border-primary bg-primary text-primary-foreground" : "border-input",
+                        )}
+                      >
+                        {on && <Check className="size-3" strokeWidth={3} />}
+                      </span>
+                    </span>
+                    <span className="text-sm font-medium">{name}</span>
+                    <span className="text-xs leading-snug text-muted-foreground">{description}</span>
                     {missing.length > 0 && (
-                      <span className="block text-xs text-muted-foreground">
+                      <span className="text-xs leading-snug text-warning">
                         Needs {missing.map((c) => CAPABILITY_PROVIDERS[c]).join(", ")}
                       </span>
                     )}
-                  </span>
-                </label>
-              );
-            })}
+                  </label>
+                );
+              })}
+            </div>
           </fieldset>
         ))}
         <Button type="submit" disabled={busy}>
