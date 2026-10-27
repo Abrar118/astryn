@@ -575,6 +575,38 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn assemble_without_code_host_skips_prs() {
+        let (_d, pool) = pool().await;
+        for (id, bucket, merged_at) in [
+            ("o/r#1", "merged", Some("2026-07-24T10:00:00Z")),
+            ("o/r#3", "mine", None),
+        ] {
+            sqlx::query(
+                "INSERT INTO github_prs (id, bucket, repo, number, title, draft, ci_status,
+                   review_decision, updated_at, synced_at, merged_at)
+                 VALUES (?1, ?2, 'o/r', ?3, 'PR', 0, 'success', 'approved', 't', 't', ?4)",
+            )
+            .bind(id)
+            .bind(bucket)
+            .bind(id.rsplit('#').next().unwrap().parse::<i64>().unwrap())
+            .bind(merged_at)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let off = assemble(&pool, "me", "Abrar", daily_window(), false)
+            .await
+            .unwrap();
+        assert!(off.merged_prs.is_empty());
+        assert!(off.open_prs.is_empty());
+        let on = assemble(&pool, "me", "Abrar", daily_window(), true)
+            .await
+            .unwrap();
+        assert_eq!(on.merged_prs.len(), 1);
+        assert_eq!(on.open_prs.len(), 1);
+    }
+
+    #[tokio::test]
     async fn fact_sheet_renders_all_sections() {
         let (_d, pool) = pool().await;
         let mut done = rec("1", "completed");

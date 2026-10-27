@@ -358,6 +358,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_prs_without_tracker_has_no_linear_fields() {
+        let (_d, pool) = pool().await;
+        sqlx::query("INSERT INTO issues (id, identifier, title, url, state_name, state_type, state_color, priority, created_at, updated_at, synced_at) VALUES ('iss-1','ENG-1','x','u','Todo','unstarted','#fff',2,'t','t','t')")
+            .execute(&pool).await.unwrap();
+        replace_bucket(&pool, "mine", &[pr(1, Some("ENG-1"))], "now", false)
+            .await
+            .unwrap();
+        let off = list_prs(&pool, false).await.unwrap();
+        assert_eq!(off[0].linear_issue_id, None);
+        assert_eq!(off[0].linear_state_name, None);
+        assert_eq!(off[0].linear_priority, None);
+        let on = list_prs(&pool, true).await.unwrap();
+        assert_eq!(on[0].linear_issue_id.as_deref(), Some("iss-1"));
+        assert_eq!(on[0].linear_state_name.as_deref(), Some("Todo"));
+    }
+
+    #[tokio::test]
     async fn favorite_repositories_round_trip_and_dedupe_case_insensitively() {
         let (_d, pool) = pool().await;
         set_favorite_repo(&pool, &parse_repository("Owner/Repo").unwrap(), true)

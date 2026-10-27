@@ -458,6 +458,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn mentions_without_tracker_have_no_issue_id() {
+        let (_d, pool) = pool().await;
+        sqlx::query("INSERT INTO issues (id, identifier, title, url, created_at, updated_at, synced_at) VALUES ('iss-1','ENG-1','x','u','t','t','t')")
+            .execute(&pool).await.unwrap();
+        replace_catchup(
+            &pool,
+            &[conv("C1", "channel", 1)],
+            &[msg("C1", "10.0", true, None, Some("ENG-1"))],
+            &[],
+            "now",
+        )
+        .await
+        .unwrap();
+        let off = list_mentions(&pool, false).await.unwrap();
+        assert_eq!(off[0].linear_issue_id, None);
+        assert_eq!(off[0].linear_identifier.as_deref(), Some("ENG-1"));
+        let on = list_mentions(&pool, true).await.unwrap();
+        assert_eq!(on[0].linear_issue_id.as_deref(), Some("iss-1"));
+    }
+
+    #[tokio::test]
     async fn identity_roundtrips_and_wipe_clears_everything() {
         let (_d, pool) = pool().await;
         save_slack_identity(&pool, "U1", "T1", "https://w.slack.com/", Some("Acme"))
