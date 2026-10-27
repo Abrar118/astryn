@@ -64,8 +64,11 @@ function renderAt(section: string) {
 afterEach(cleanup);
 
 describe("Settings navigation", () => {
-  it("opens on Linear and shows only that section", () => {
+  it("opens on Modules and shows only that section", () => {
     render(<Settings />, { wrapper });
+    expect(screen.getByRole("heading", { name: "Modules" })).toBeTruthy();
+    expect(screen.queryByLabelText(/linear personal api key/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Linear" }));
     expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
     // Another section's fields are not merely hidden — they aren't mounted.
     expect(screen.queryByLabelText(/github personal access token/i)).toBeNull();
@@ -86,7 +89,7 @@ describe("Settings navigation", () => {
     // The request is one-shot: a later visit opens on the default section.
     cleanup();
     render(<Settings />, { wrapper });
-    expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Modules" })).toBeTruthy();
   });
 });
 

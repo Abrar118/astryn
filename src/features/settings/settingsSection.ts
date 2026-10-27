@@ -1,5 +1,6 @@
 import {
   BookText,
+  Blocks,
   Calendar,
   GitBranch,
   MessageSquare,
@@ -11,6 +12,7 @@ import {
 import type { ModuleId } from "@/lib/commands";
 
 export type SettingsSection =
+  | "modules"
   | "linear"
   | "github"
   | "slack"
@@ -31,6 +33,10 @@ export type SettingsGroup = {
  * Calendar) it reuses that view's icon so the two navigations agree.
  */
 export const SETTINGS_GROUPS: SettingsGroup[] = [
+  {
+    label: "Modules",
+    items: [{ id: "modules", label: "Modules", icon: Blocks, module: "core" }],
+  },
   {
     label: "Connections",
     items: [

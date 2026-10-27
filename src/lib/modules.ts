@@ -78,3 +78,24 @@ export function useModules(): {
     !!data?.modules.some((m) => m.enabled && m.available && MODULE_MANIFEST[m.id].provides.includes(cap));
   return { data, isActive, hasCapability, ready: !!data };
 }
+
+/** User-facing name and one-line purpose for each module. */
+export const MODULE_COPY: Record<ModuleId, { name: string; description: string }> = {
+  linear: { name: "Linear", description: "Issues, calendar, dependencies and inbox." },
+  github: { name: "GitHub", description: "Pull requests and repository documentation." },
+  slack: { name: "Slack", description: "Messages and mentions from your workspace." },
+  llm: { name: "AI", description: "Summaries and polish for reports." },
+  docs: { name: "Docs", description: "Documentation linked to your issues." },
+  reports: { name: "Reports", description: "Standup and weekly generators." },
+  "link-previews": { name: "Link previews", description: "Rich previews for pasted links." },
+};
+
+/** What turns a missing capability on, phrased to follow "Needs ". */
+export const CAPABILITY_PROVIDERS: Record<Capability, string> = {
+  tracker: "an issue tracker — turn on Linear",
+  notifications: "a notification source — turn on Linear",
+  "code-host": "a code host — turn on GitHub",
+  "docs-source": "a docs source — turn on GitHub",
+  chat: "a chat provider — turn on Slack",
+  llm: "an AI provider — turn on AI",
+};
