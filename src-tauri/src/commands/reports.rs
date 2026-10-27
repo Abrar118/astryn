@@ -14,8 +14,8 @@ use crate::generators::facts::{self, WindowArgs};
 use crate::generators::llm::{ChatRequest, LlmClient, LlmError};
 use crate::secrets::SecretStore;
 
-const LLM_BASE_URL_KEY: &str = "llm_base_url";
-const LLM_MODEL_KEY: &str = "llm_model";
+pub(crate) const LLM_BASE_URL_KEY: &str = "llm_base_url";
+pub(crate) const LLM_MODEL_KEY: &str = "llm_model";
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -159,6 +159,7 @@ pub async fn set_llm_config(
     model: String,
     api_key: Option<String>,
 ) -> Result<LlmConfig, CmdError> {
+    state.require(crate::modules::ModuleId::Llm)?;
     set_llm_config_logic(
         state.secret_store.clone(),
         &state.pool,
@@ -171,12 +172,14 @@ pub async fn set_llm_config(
 
 #[tauri::command]
 pub async fn clear_llm_config(state: State<'_, AppState>) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Llm)?;
     clear_llm_config_logic(state.secret_store.clone(), &state.pool).await
 }
 
 /// Settings "Test" probe: hit `{base}/v1/models`, return the model ids.
 #[tauri::command]
 pub async fn test_llm_connection(state: State<'_, AppState>) -> Result<Vec<String>, CmdError> {
+    state.require(crate::modules::ModuleId::Llm)?;
     let cfg = get_llm_config_logic(state.secret_store.clone(), &state.pool)
         .await?
         .ok_or(CmdError::LlmNotConfigured)?;
@@ -201,19 +204,31 @@ pub async fn generate_report(
     args: WindowArgs,
     gen_id: u64,
 ) -> Result<ReportResult, CmdError> {
+    state.require(crate::modules::ModuleId::Reports)?;
     let (viewer_id, viewer_name) = db::load_me(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)?
         .ok_or(CmdError::NotConfigured)?;
-    let f = facts::assemble(&state.pool, &viewer_id, &viewer_name, args)
-        .await
-        .map_err(|_| CmdError::Internal)?;
+    let include_code_host = state.capability(crate::modules::Capability::CodeHost);
+    let f = facts::assemble(
+        &state.pool,
+        &viewer_id,
+        &viewer_name,
+        args,
+        include_code_host,
+    )
+    .await
+    .map_err(|_| CmdError::Internal)?;
     let fact_sheet = facts::render_fact_sheet(&f);
 
     // Claim the generation slot: any newer generate_report supersedes us.
     state.llm_generation.store(gen_id, Ordering::SeqCst);
 
-    let cfg = get_llm_config_logic(state.secret_store.clone(), &state.pool).await?;
+    let cfg = if state.module_active(crate::modules::ModuleId::Llm) {
+        get_llm_config_logic(state.secret_store.clone(), &state.pool).await?
+    } else {
+        None
+    };
     let Some(cfg) = cfg else {
         return Ok(ReportResult {
             fact_sheet,

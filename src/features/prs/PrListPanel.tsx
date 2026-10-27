@@ -17,7 +17,7 @@ function RepositoryHeader({ repo, count }: { repo: string; count: number }) {
   const owner = cut >= 0 ? repo.slice(0, cut + 1) : "";
   const name = cut >= 0 ? repo.slice(cut + 1) : repo;
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-border/60 bg-muted/80 px-4 py-2 backdrop-blur">
+    <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-border/60 bg-muted px-4 py-2">
       <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
       <span className="truncate font-mono text-[11.5px]">
         <span className="text-muted-foreground">{owner}</span>
@@ -61,12 +61,12 @@ export function PrListPanel({
           {prs.length}
         </span>
         {meta?.truncated && (
-          <span className="truncate text-xs text-amber-400">
+          <span className="truncate text-xs text-warning">
             showing {meta.fetchedCount} most recent
           </span>
         )}
         {stale && (
-          <span className="truncate text-xs text-amber-400">
+          <span className="truncate text-xs text-warning">
             couldn't refresh — cached
           </span>
         )}

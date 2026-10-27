@@ -249,7 +249,7 @@ function MarkAsSubmenu({
       {candidates.map((c) => (
         <Row
           key={c.id}
-          icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: c.stateColor || "#6b7280" }} />}
+          icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: c.stateColor || "var(--muted-foreground)" }} />}
           label={
             <span className="flex items-center gap-1.5">
               <span className="shrink-0 text-[11px] text-muted-foreground">{c.identifier}</span>
@@ -607,7 +607,7 @@ function Menu({
             {(labels ?? []).map((l) => (
               <Row
                 key={l.id}
-                icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />}
+                icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />}
                 label={l.name ?? "label"}
                 active={issue.labels.some((x) => x.id === l.id)}
                 onClick={() => toggleLabel(l.id)}
@@ -788,20 +788,20 @@ function Menu({
       <div className="relative" onMouseEnter={() => setSub("delete")}>
         <button
           type="button"
-          className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+          className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
         >
           <span className="flex size-4 shrink-0 items-center justify-center">
             <Trash2 className="size-4" />
           </span>
           <span className="flex-1">Delete</span>
-          <ChevronRight className="size-3.5 shrink-0 text-red-400/70" />
+          <ChevronRight className="size-3.5 shrink-0 text-destructive/70" />
         </button>
         {sub === "delete" && (
           <SubMenu flip={flip}>
             <button
               type="button"
               onClick={removeIssue}
-              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-red-400 transition-colors hover:bg-red-500/10"
+              className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-destructive transition-colors hover:bg-destructive/10"
             >
               <Trash2 className="size-4" />
               <span className="flex-1">Delete issue</span>

@@ -23,6 +23,7 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod docs;
 pub mod github;
+pub mod modules;
 pub mod reports;
 pub mod slack;
 
@@ -135,6 +136,8 @@ pub enum CmdError {
     FileTooLarge,
     #[error("Couldn't upload the file.")]
     UploadFailed,
+    #[error("That module is turned off.")]
+    ModuleDisabled,
 }
 
 impl serde::Serialize for CmdError {
@@ -177,8 +180,22 @@ type PreviewGate = std::sync::Arc<
     >,
 >;
 
+/// Ok when `id` is enabled and every capability it requires is available.
+pub fn require_in(
+    state: &crate::modules::ModuleState,
+    id: crate::modules::ModuleId,
+) -> Result<(), CmdError> {
+    if crate::modules::is_active(id, &state.enabled) {
+        Ok(())
+    } else {
+        Err(CmdError::ModuleDisabled)
+    }
+}
+
 pub struct AppState {
     pub pool: SqlitePool,
+    /// Which modules are enabled; guard commands with `require`.
+    pub modules: std::sync::RwLock<crate::modules::ModuleState>,
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
@@ -212,6 +229,24 @@ pub struct AppState {
     /// The id of the LATEST generate_report call; an in-flight LLM stream
     /// stops as soon as a newer generation claims this slot.
     pub llm_generation: AtomicU64,
+}
+
+impl AppState {
+    fn modules_read(&self) -> std::sync::RwLockReadGuard<'_, crate::modules::ModuleState> {
+        self.modules.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn require(&self, id: crate::modules::ModuleId) -> Result<(), CmdError> {
+        require_in(&self.modules_read(), id)
+    }
+
+    pub fn module_active(&self, id: crate::modules::ModuleId) -> bool {
+        crate::modules::is_active(id, &self.modules_read().enabled)
+    }
+
+    pub fn capability(&self, cap: crate::modules::Capability) -> bool {
+        crate::modules::has_capability(cap, &self.modules_read().enabled)
+    }
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
@@ -604,6 +639,7 @@ where
 
 #[tauri::command]
 pub async fn set_linear_key(state: State<'_, AppState>, key: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let _g = state.workspace_lock.lock().await;
     set_linear_key_logic(
         state.secret_store.clone(),
@@ -616,6 +652,7 @@ pub async fn set_linear_key(state: State<'_, AppState>, key: String) -> Result<(
 
 #[tauri::command]
 pub async fn clear_linear_key(state: State<'_, AppState>) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let _g = state.workspace_lock.lock().await;
     clear_linear_key_logic(
         state.secret_store.clone(),
@@ -636,6 +673,7 @@ pub async fn get_connection_status(
 pub async fn test_linear_connection(
     state: State<'_, AppState>,
 ) -> Result<ConnectionStatus, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let _g = state.workspace_lock.lock().await;
     let client = state.linear.clone();
     test_connection_logic(
@@ -670,6 +708,7 @@ pub async fn sync_issues(
     state: State<'_, AppState>,
     full: Option<bool>,
 ) -> Result<SyncResult, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let _g = state.workspace_lock.lock().await;
     sync_issues_logic(
         state.credentials.clone(),
@@ -687,6 +726,7 @@ pub async fn list_calendar_issues(
     state: State<'_, AppState>,
     args: CalendarArgs,
 ) -> Result<Vec<CalendarIssue>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     issues::load_issues_in_range(
         &state.pool,
         &args.start,
@@ -704,6 +744,7 @@ pub async fn list_unscheduled(
     state: State<'_, AppState>,
     args: UnscheduledArgs,
 ) -> Result<Vec<CalendarIssue>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     issues::load_unscheduled(&state.pool, args.team_id, args.assignee_id, args.project_id)
         .await
         .map_err(|_| CmdError::Internal)
@@ -714,6 +755,7 @@ pub async fn list_issues(
     state: State<'_, AppState>,
     args: UnscheduledArgs,
 ) -> Result<Vec<issues::IssueListItem>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     issues::load_issues(&state.pool, args.team_id, args.assignee_id, args.project_id)
         .await
         .map_err(|_| CmdError::Internal)
@@ -723,6 +765,7 @@ pub async fn list_issues(
 pub async fn list_relations(
     state: State<'_, AppState>,
 ) -> Result<Vec<issues::RelationItem>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     issues::load_relations(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)
@@ -730,6 +773,7 @@ pub async fn list_relations(
 
 #[tauri::command]
 pub async fn list_filter_options(state: State<'_, AppState>) -> Result<FilterOptions, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     issues::list_filter_options(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)
@@ -740,6 +784,7 @@ pub async fn get_issue_detail(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<IssueDetailResult, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     get_issue_detail_logic(
         state.credentials.clone(),
         state.linear.clone(),
@@ -754,6 +799,7 @@ pub async fn load_linear_image(
     state: State<'_, AppState>,
     url: String,
 ) -> Result<String, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     state.linear.load_image(&url).await.map_err(CmdError::from)
 }
 
@@ -829,6 +875,7 @@ pub async fn fetch_link_preview(
     state: State<'_, AppState>,
     url: String,
 ) -> Result<crate::link_preview::LinkPreview, CmdError> {
+    state.require(crate::modules::ModuleId::LinkPreviews)?;
     fetch_link_preview_logic(&state.link_preview_cache, &state.link_preview_inflight, url).await
 }
 
@@ -838,6 +885,7 @@ pub async fn update_issue(
     id: String,
     patch: UpdateIssuePatch,
 ) -> Result<Issue, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let input = patch_to_input(&patch);
     let client = state.linear.clone();
     let id2 = id.clone();
@@ -856,6 +904,7 @@ pub async fn create_issue(
     state: State<'_, AppState>,
     input: CreateIssueInput,
 ) -> Result<Issue, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     validate_create_input(&input).map_err(|_| CmdError::InvalidInput)?;
     let value = create_input_to_value(&input);
     let client = state.linear.clone();
@@ -871,6 +920,7 @@ pub async fn create_issue(
 
 #[tauri::command]
 pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await
@@ -882,6 +932,7 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
 
 #[tauri::command]
 pub async fn list_notifications(state: State<'_, AppState>) -> Result<NotificationsPage, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await
@@ -897,6 +948,7 @@ pub async fn list_notifications(state: State<'_, AppState>) -> Result<Notificati
 
 #[tauri::command]
 pub async fn list_labels(state: State<'_, AppState>) -> Result<Vec<LabelOut>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await
@@ -916,6 +968,7 @@ pub async fn list_labels(state: State<'_, AppState>) -> Result<Vec<LabelOut>, Cm
 
 #[tauri::command]
 pub async fn list_cycles(state: State<'_, AppState>) -> Result<Vec<ParsedCycle>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await
@@ -929,6 +982,7 @@ pub async fn list_cycles(state: State<'_, AppState>) -> Result<Vec<ParsedCycle>,
 pub async fn list_workflow_states(
     state: State<'_, AppState>,
 ) -> Result<Vec<WorkflowState>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let credentials = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || credentials.authorization())
         .await
@@ -944,6 +998,7 @@ pub async fn list_workflow_states(
 
 #[tauri::command]
 pub async fn delete_issue(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let client = state.linear.clone();
     delete_issue_logic(
         &state.pool,
@@ -967,6 +1022,7 @@ pub async fn create_issue_relation(
     related_issue_id: String,
     r#type: String,
 ) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     if !matches!(r#type.as_str(), "related" | "blocks" | "duplicate") {
         return Err(CmdError::InvalidInput);
     }
@@ -1030,6 +1086,7 @@ pub async fn create_attachment_link(
     url: String,
     title: Option<String>,
 ) -> Result<DetailAttachment, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let url = normalize_attachment_url(&url).ok_or(CmdError::InvalidUrl)?;
     let title = title.map(|t| t.trim().to_owned()).filter(|t| !t.is_empty());
     let auth = authed(&state).await?;
@@ -1047,6 +1104,7 @@ pub async fn update_attachment(
     id: String,
     title: String,
 ) -> Result<DetailAttachment, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let title = title.trim();
     if title.is_empty() {
         return Err(CmdError::InvalidInput);
@@ -1062,6 +1120,7 @@ pub async fn update_attachment(
 /// Delete an attachment (Linear `attachmentDelete`).
 #[tauri::command]
 pub async fn delete_attachment(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1185,6 +1244,7 @@ pub async fn upload_file(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<UploadOutcome, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     use tauri_plugin_dialog::DialogExt;
     // blocking_pick_files() must not run on the main thread.
     let picked =
@@ -1226,6 +1286,7 @@ pub async fn upload_file(
 
 #[tauri::command]
 pub async fn get_me(state: State<'_, AppState>) -> Result<Option<Me>, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     Ok(db::load_me(&state.pool)
         .await
         .map_err(|_| CmdError::Internal)?
@@ -1251,6 +1312,7 @@ pub async fn create_comment(
     body: String,
     parent_id: Option<String>,
 ) -> Result<DetailComment, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1265,6 +1327,7 @@ pub async fn update_comment(
     id: String,
     body: String,
 ) -> Result<DetailComment, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1275,6 +1338,7 @@ pub async fn update_comment(
 
 #[tauri::command]
 pub async fn delete_comment(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1289,6 +1353,7 @@ pub async fn add_reaction(
     comment_id: String,
     emoji: String,
 ) -> Result<DetailReaction, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1299,6 +1364,7 @@ pub async fn add_reaction(
 
 #[tauri::command]
 pub async fn remove_reaction(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     state
         .linear
@@ -1314,6 +1380,7 @@ pub async fn create_label(
     team_id: Option<String>,
     color: String,
 ) -> Result<LabelOut, CmdError> {
+    state.require(crate::modules::ModuleId::Linear)?;
     let auth = authed(&state).await?;
     let l = state
         .linear
@@ -1417,8 +1484,28 @@ mod status_tests {
 #[cfg(test)]
 mod logic_tests {
     use super::*;
+
     use crate::linear::PersonalKeyProvider;
     use crate::secrets::fake::FakeSecretStore;
+
+    #[test]
+    fn require_guards_disabled_and_unavailable_modules() {
+        use crate::modules::{ModuleId, ModuleState};
+        let st = |ids: &[ModuleId]| ModuleState {
+            enabled: ids.iter().copied().collect(),
+            onboarded: true,
+        };
+        assert!(matches!(
+            require_in(&st(&[]), ModuleId::Slack),
+            Err(CmdError::ModuleDisabled)
+        ));
+        // Docs enabled but no DocsSource provider.
+        assert!(matches!(
+            require_in(&st(&[ModuleId::Docs]), ModuleId::Docs),
+            Err(CmdError::ModuleDisabled)
+        ));
+        assert!(require_in(&st(&[ModuleId::Docs, ModuleId::Github]), ModuleId::Docs).is_ok());
+    }
 
     async fn temp_pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();

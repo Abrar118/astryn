@@ -216,6 +216,7 @@ pub async fn sync_docs(
     state: State<'_, AppState>,
     source_id: String,
 ) -> Result<DocsSyncResult, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     let _g = state.github_lock.lock().await;
     let source = ddb::load_docs_source(&state.pool, &source_id)
         .await
@@ -261,6 +262,7 @@ pub async fn sync_docs(
 pub async fn list_docs_sources(
     state: State<'_, AppState>,
 ) -> Result<Vec<ddb::DocsSource>, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     list_docs_sources_logic(&state.pool).await
 }
 
@@ -270,6 +272,7 @@ pub async fn add_docs_source(
     url: String,
     name: Option<String>,
 ) -> Result<ddb::DocsSource, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     let _g = state.github_lock.lock().await;
     add_docs_source_logic(&state.pool, url, name, now_iso()).await
 }
@@ -280,6 +283,7 @@ pub async fn rename_docs_source(
     source_id: String,
     name: String,
 ) -> Result<ddb::DocsSource, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     rename_docs_source_logic(&state.pool, source_id, name).await
 }
 
@@ -288,6 +292,7 @@ pub async fn remove_docs_source(
     state: State<'_, AppState>,
     source_id: String,
 ) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     let _g = state.github_lock.lock().await;
     remove_docs_source_logic(&state.pool, source_id).await
 }
@@ -297,6 +302,7 @@ pub async fn list_docs_tree(
     state: State<'_, AppState>,
     source_id: String,
 ) -> Result<Vec<ddb::DocNode>, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     list_docs_logic(&state.pool, source_id).await
 }
 
@@ -306,6 +312,7 @@ pub async fn get_doc_content(
     source_id: String,
     path: String,
 ) -> Result<Option<String>, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
     get_doc_content_logic(&state.pool, source_id, path).await
 }
 

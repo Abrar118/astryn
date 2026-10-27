@@ -152,7 +152,7 @@ mod tests {
         .unwrap();
         assert_eq!(results.len(), 5);
         assert!(results.iter().all(|r| r.ok && !r.truncated));
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dash.prs.len(), 5); // one PR per bucket
         assert_eq!(dash.meta.len(), 5);
         assert!(dash.favorite_repos.is_empty());
@@ -188,7 +188,7 @@ mod tests {
         assert!(results
             .iter()
             .any(|result| result.bucket == "repo:o/r" && result.ok));
-        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        let dashboard = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dashboard.favorite_repos, vec!["o/r"]);
         assert_eq!(
             dashboard
@@ -233,7 +233,7 @@ mod tests {
         assert!(results
             .iter()
             .any(|result| result.bucket == "repo:o/r" && !result.ok));
-        let dashboard = list_github_prs_logic(&pool).await.unwrap();
+        let dashboard = list_github_prs_logic(&pool, true).await.unwrap();
         assert!(dashboard
             .prs
             .iter()
@@ -277,7 +277,7 @@ mod tests {
             .iter()
             .all(|r| r.reason.as_deref() == Some("couldn't reach GitHub")));
         // The previously-cached needs_review PR survives the failed refresh.
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(
             dash.prs
                 .iter()
@@ -317,7 +317,7 @@ mod tests {
         })
         .await
         .unwrap();
-        let dash = list_github_prs_logic(&pool).await.unwrap();
+        let dash = list_github_prs_logic(&pool, true).await.unwrap();
         assert_eq!(dash.prs.len(), 1500); // capped at 300 per bucket × 5 buckets
         assert!(dash.meta.iter().all(|m| m.truncated));
     }
@@ -435,7 +435,11 @@ mod tests {
         })
         .await;
         assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
-        assert!(list_github_prs_logic(&pool).await.unwrap().prs.is_empty());
+        assert!(list_github_prs_logic(&pool, true)
+            .await
+            .unwrap()
+            .prs
+            .is_empty());
     }
 
     fn sample_contributions() -> Contributions {
@@ -852,8 +856,13 @@ where
     Ok(results)
 }
 
-pub async fn list_github_prs_logic(pool: &SqlitePool) -> Result<PrDashboard, CmdError> {
-    let prs = gdb::list_prs(pool).await.map_err(|_| CmdError::Internal)?;
+pub async fn list_github_prs_logic(
+    pool: &SqlitePool,
+    include_tracker: bool,
+) -> Result<PrDashboard, CmdError> {
+    let prs = gdb::list_prs(pool, include_tracker)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     let meta = gdb::load_sync_meta(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
@@ -1029,6 +1038,7 @@ fn now_iso() -> String {
 pub async fn sync_github_prs(
     state: State<'_, AppState>,
 ) -> Result<Vec<BucketSyncResult>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     sync_github_prs_logic(
@@ -1050,7 +1060,9 @@ pub async fn sync_github_prs(
 
 #[tauri::command]
 pub async fn list_github_prs(state: State<'_, AppState>) -> Result<PrDashboard, CmdError> {
-    list_github_prs_logic(&state.pool).await
+    state.require(crate::modules::ModuleId::Github)?;
+    let include_tracker = state.capability(crate::modules::Capability::Tracker);
+    list_github_prs_logic(&state.pool, include_tracker).await
 }
 
 #[tauri::command]
@@ -1059,6 +1071,7 @@ pub async fn set_github_repo_favorite(
     repo: String,
     favorite: bool,
 ) -> Result<Vec<String>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     set_github_repo_favorite_logic(&state.pool, repo, favorite).await
 }
@@ -1067,6 +1080,7 @@ pub async fn set_github_repo_favorite(
 pub async fn list_github_repositories(
     state: State<'_, AppState>,
 ) -> Result<RepositoryCatalog, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     list_github_repositories_logic(
         state.github_credentials.clone(),
@@ -1085,6 +1099,7 @@ pub async fn get_github_pr_detail(
     repo: String,
     number: i64,
 ) -> Result<PrDetail, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     get_github_pr_detail_logic(
         state.github_credentials.clone(),
@@ -1102,6 +1117,7 @@ pub async fn get_github_pr_diff(
     repo: String,
     number: i64,
 ) -> Result<PrDiff, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let client = state.github.clone();
     get_github_pr_diff_logic(
         state.github_credentials.clone(),
@@ -1172,6 +1188,7 @@ async fn fetch_contributions(
 pub async fn get_github_contributions(
     state: State<'_, AppState>,
 ) -> Result<Option<Contributions>, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     get_github_contributions_logic(&state.pool).await
 }
 
@@ -1179,6 +1196,7 @@ pub async fn get_github_contributions(
 pub async fn sync_github_contributions(
     state: State<'_, AppState>,
 ) -> Result<Contributions, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     sync_github_contributions_logic(
@@ -1297,6 +1315,7 @@ async fn fetch_viewer_login(
 
 #[tauri::command]
 pub async fn set_github_token(state: State<'_, AppState>, token: String) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     set_github_token_logic(
         state.secret_store.clone(),
@@ -1309,6 +1328,7 @@ pub async fn set_github_token(state: State<'_, AppState>, token: String) -> Resu
 
 #[tauri::command]
 pub async fn clear_github_token(state: State<'_, AppState>) -> Result<(), CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     clear_github_token_logic(
         state.secret_store.clone(),
@@ -1325,6 +1345,7 @@ pub async fn get_github_status(state: State<'_, AppState>) -> Result<GitHubStatu
 
 #[tauri::command]
 pub async fn test_github_connection(state: State<'_, AppState>) -> Result<GitHubStatus, CmdError> {
+    state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
     let client = state.github.clone();
     test_github_connection_logic(

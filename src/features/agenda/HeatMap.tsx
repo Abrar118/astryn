@@ -16,13 +16,18 @@ function formatDate(date: string): string {
   return `${weekdayName(date)} ${months[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
 }
 
-/** Compute an indigo-based background color for a given count and maxCount. */
+/** A heat step: `strength` (0–1) of the theme primary mixed into the empty-cell muted tone. */
+function heatColor(strength: number): string {
+  return `color-mix(in oklab, var(--primary) ${Math.round(strength * 100)}%, var(--muted))`;
+}
+
+/** Compute a primary-based background color for a given count and maxCount. */
 function cellBg(count: number, maxCount: number): string | undefined {
   if (count === 0 || maxCount === 0) return undefined;
   // 5 buckets: 1-20%, 21-40%, 41-60%, 61-80%, 81-100%
   const ratio = count / maxCount;
   const opacity = ratio <= 0.2 ? 0.2 : ratio <= 0.4 ? 0.4 : ratio <= 0.6 ? 0.6 : ratio <= 0.8 ? 0.8 : 1;
-  return `rgba(99, 102, 241, ${opacity})`; // indigo-500
+  return heatColor(opacity);
 }
 
 const LEGEND_OPACITIES = [0, 0.2, 0.45, 0.7, 1];
@@ -86,7 +91,7 @@ export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
                       className={[
                         "aspect-square w-full cursor-pointer rounded-[2px] outline-none transition-opacity duration-100",
                         "focus-visible:ring-1 focus-visible:ring-ring",
-                        cell.count === 0 ? "bg-muted/40" : "",
+                        cell.count === 0 ? "bg-muted" : "",
                       ].join(" ")}
                       style={bg ? { backgroundColor: bg } : undefined}
                     />
@@ -105,11 +110,7 @@ export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
           <span
             key={i}
             className="h-2.5 w-2.5 rounded-[2px]"
-            style={
-              opacity === 0
-                ? { backgroundColor: "var(--color-muted)", opacity: 0.4 }
-                : { backgroundColor: `rgba(99, 102, 241, ${opacity})` }
-            }
+            style={{ backgroundColor: opacity === 0 ? "var(--muted)" : heatColor(opacity) }}
           />
         ))}
         <span className="text-[10px] text-muted-foreground">More</span>

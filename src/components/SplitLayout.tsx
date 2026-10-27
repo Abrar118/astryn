@@ -200,7 +200,6 @@ export function SplitLayout() {
               <PaneTabStrip
                 pane={pane}
                 focused={isSplit && pane.id === focusedPaneId}
-                showClock={idx === panes.length - 1}
                 canClose={pane.tabs.length > 1 || isSplit}
                 isSplit={isSplit}
               />

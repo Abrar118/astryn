@@ -23,11 +23,16 @@ vi.mock("@/lib/commands", () => ({
   errorText: (err: unknown) => (typeof err === "string" ? err : String(err)),
 }));
 
+vi.mock("@/lib/modules", () => ({
+  useModules: () => ({ isActive: () => true, hasCapability: () => true, ready: true }),
+}));
+
 vi.mock("goey-toast", () => ({
   gooeyToast: { error: gooeyToastError, success: vi.fn() },
 }));
 
 import {
+  clearGithubQueries,
   useGithubPrDiff,
   useGithubPrDetail,
   useGithubRepositories,
@@ -167,5 +172,15 @@ describe("GitHub query hooks", () => {
       ]),
     );
     expect(listGithubRepositories).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("clearGithubQueries", () => {
+  it("removes the docs queries along with the GitHub ones", () => {
+    const qc = new QueryClient();
+    const keys = [["github-prs"], ["docs-sync", "s1"], ["docs-tree", "s1"], ["doc-content", "s1", "a.md"], ["docs-sources"], ["docs-status"]];
+    for (const k of keys) qc.setQueryData(k, 1);
+    clearGithubQueries(qc);
+    for (const k of keys) expect(qc.getQueryData(k)).toBeUndefined();
   });
 });

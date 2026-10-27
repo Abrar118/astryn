@@ -47,7 +47,7 @@ function Insight({ prs }: { prs: GithubPr[] }) {
     parts.push({
       key: "oldest",
       node: (
-        <span className={oldest.w!.level === "stale" ? "text-red-400" : oldest.w!.level === "warn" ? "text-amber-400" : ""}>
+        <span className={oldest.w!.level === "stale" ? "text-destructive" : oldest.w!.level === "warn" ? "text-warning" : ""}>
           Oldest review · #{oldest.p.number} ({oldest.w!.short})
         </span>
       ),
@@ -57,7 +57,7 @@ function Insight({ prs }: { prs: GithubPr[] }) {
     parts.push({
       key: "ci",
       node: (
-        <span className="flex items-center gap-1 text-red-400">
+        <span className="flex items-center gap-1 text-destructive">
           <XCircle className="size-3.5" /> {failing} failing CI
         </span>
       ),
@@ -67,7 +67,7 @@ function Insight({ prs }: { prs: GithubPr[] }) {
     parts.push({
       key: "conflict",
       node: (
-        <span className="flex items-center gap-1 text-amber-400">
+        <span className="flex items-center gap-1 text-destructive">
           <AlertTriangle className="size-3.5" /> {conflicts} conflicting
         </span>
       ),

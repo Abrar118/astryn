@@ -180,6 +180,12 @@ export function closeTabIn(state: WorkspaceState, tabId: string): WorkspaceState
   return { ...state, panes };
 }
 
+/** Drop every tab `drop` matches (modules turned off), collapsing emptied panes; an empty result is the dashboard. */
+export function closeTabsWhere(state: WorkspaceState, drop: (t: Tab) => boolean): WorkspaceState {
+  if (!state.panes.some((p) => p.tabs.some(drop))) return state;
+  return repair({ ...state, panes: state.panes.map((p) => ({ ...p, tabs: p.tabs.filter((t) => !drop(t)) })) });
+}
+
 export function splitTabRight(state: WorkspaceState, tabId: string): WorkspaceState {
   const loc = findTab(state, tabId);
   if (!loc) return state;

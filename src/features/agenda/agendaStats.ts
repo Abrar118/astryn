@@ -69,7 +69,7 @@ export function statusBreakdown(items: IssueListItem[]): StatusBreakdownEntry[] 
     } else {
       groups.set(item.stateType, {
         name: item.stateName ?? item.stateType,
-        color: item.stateColor ?? "#6b7280",
+        color: item.stateColor ?? "var(--muted-foreground)",
         count: 1,
       });
     }
@@ -100,7 +100,7 @@ export function priorityBreakdown(items: IssueListItem[]): PriorityBreakdownEntr
   return PRIORITY_ORDER.filter((p) => countByPriority.has(p)).map((p) => ({
     priority: p,
     label: PRIORITY_LABELS[p] ?? "Unknown",
-    color: PRIORITY_COLORS[p] ?? "#6b7280",
+    color: PRIORITY_COLORS[p] ?? "var(--muted-foreground)",
     count: countByPriority.get(p)!,
   }));
 }

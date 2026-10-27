@@ -1,5 +1,6 @@
 import {
   BookText,
+  Blocks,
   Calendar,
   GitBranch,
   MessageSquare,
@@ -8,8 +9,10 @@ import {
   SquareKanban,
   type LucideIcon,
 } from "lucide-react";
+import type { ModuleId } from "@/lib/commands";
 
 export type SettingsSection =
+  | "modules"
   | "linear"
   | "github"
   | "slack"
@@ -20,7 +23,7 @@ export type SettingsSection =
 
 export type SettingsGroup = {
   label: string;
-  items: { id: SettingsSection; label: string; icon: LucideIcon }[];
+  items: { id: SettingsSection; label: string; icon: LucideIcon; module: ModuleId | "core" }[];
 };
 
 /**
@@ -31,25 +34,29 @@ export type SettingsGroup = {
  */
 export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
+    label: "Modules",
+    items: [{ id: "modules", label: "Modules", icon: Blocks, module: "core" }],
+  },
+  {
     label: "Connections",
     items: [
-      { id: "linear", label: "Linear", icon: SquareKanban },
-      { id: "github", label: "GitHub", icon: GitBranch },
-      { id: "slack", label: "Slack", icon: MessageSquare },
+      { id: "linear", label: "Linear", icon: SquareKanban, module: "linear" },
+      { id: "github", label: "GitHub", icon: GitBranch, module: "github" },
+      { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
     ],
   },
   {
     label: "Workspace",
     items: [
-      { id: "documentation", label: "Documentation", icon: BookText },
-      { id: "ai", label: "AI", icon: Sparkles },
+      { id: "documentation", label: "Documentation", icon: BookText, module: "docs" },
+      { id: "ai", label: "AI", icon: Sparkles, module: "llm" },
     ],
   },
   {
     label: "Preferences",
     items: [
-      { id: "appearance", label: "Appearance", icon: Palette },
-      { id: "calendar", label: "Calendar", icon: Calendar },
+      { id: "appearance", label: "Appearance", icon: Palette, module: "core" },
+      { id: "calendar", label: "Calendar", icon: Calendar, module: "core" },
     ],
   },
 ];

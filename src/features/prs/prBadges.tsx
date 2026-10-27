@@ -13,13 +13,13 @@ export function DiffStat({ pr }: { pr: GithubPr }) {
       className="flex shrink-0 items-center gap-1.5"
       title={`+${pr.additions ?? 0} −${pr.deletions ?? 0} · ${files} file${files === 1 ? "" : "s"} changed`}
     >
-      <span className="font-mono text-[12px] text-emerald-400">+{pr.additions ?? 0}</span>
-      <span className="font-mono text-[12px] text-red-400">−{pr.deletions ?? 0}</span>
+      <span className="font-mono text-[12px] text-success">+{pr.additions ?? 0}</span>
+      <span className="font-mono text-[12px] text-destructive">−{pr.deletions ?? 0}</span>
       <span className="flex gap-[2px]">
         {blocks.map((b, i) => (
           <span
             key={i}
-            className={`size-2 rounded-[1.5px] ${b === "add" ? "bg-emerald-500" : b === "del" ? "bg-red-500" : "bg-muted"}`}
+            className={`size-2 rounded-[1.5px] ${b === "add" ? "bg-success" : b === "del" ? "bg-destructive" : "bg-muted"}`}
           />
         ))}
       </span>
@@ -28,9 +28,9 @@ export function DiffStat({ pr }: { pr: GithubPr }) {
 }
 
 const RING: Record<PrReviewer["state"], string> = {
-  approved: "ring-emerald-500",
-  changes_requested: "ring-amber-500",
-  commented: "ring-sky-500",
+  approved: "ring-success",
+  changes_requested: "ring-warning",
+  commented: "ring-info",
   dismissed: "ring-muted-foreground/40",
   pending: "ring-muted-foreground/40",
 };
@@ -75,8 +75,8 @@ export function ReviewProgress({ reviewers }: { reviewers: PrReviewer[] }) {
 
 /** The viewer's own review verdict, falling back to the PR's aggregate decision. */
 const AGG: Record<NonNullable<GithubPr["reviewDecision"]>, { label: string; cls: string }> = {
-  approved: { label: "Approved", cls: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300" },
-  changes_requested: { label: "Changes requested", cls: "border-amber-500/30 bg-amber-500/10 text-amber-300" },
+  approved: { label: "Approved", cls: "border-success/30 bg-success/10 text-success" },
+  changes_requested: { label: "Changes requested", cls: "border-warning/30 bg-warning/10 text-warning" },
   review_required: { label: "Review required", cls: "border-border bg-muted/40 text-muted-foreground" },
 };
 
@@ -85,7 +85,7 @@ export function ReviewState({ pr, viewerLogin }: { pr: GithubPr; viewerLogin?: s
   let badge: { label: string; cls: string } | null = null;
   if (sum.viewer === "changes_requested") badge = { label: "You requested changes", cls: AGG.changes_requested.cls };
   else if (sum.viewer === "approved") badge = { label: "You approved", cls: AGG.approved.cls };
-  else if (sum.viewer === "commented") badge = { label: "You commented", cls: "border-sky-500/30 bg-sky-500/10 text-sky-300" };
+  else if (sum.viewer === "commented") badge = { label: "You commented", cls: "border-info/30 bg-info/10 text-info" };
   else if (pr.reviewDecision) badge = AGG[pr.reviewDecision];
   if (!badge) return null;
   return (
@@ -99,7 +99,7 @@ export function ReviewState({ pr, viewerLogin }: { pr: GithubPr; viewerLogin?: s
 export function WaitingBadge({ pr }: { pr: GithubPr }) {
   const w = waitingLabel(pr.updatedAt, Date.now());
   if (!w) return null;
-  const cls = w.level === "stale" ? "text-red-400" : w.level === "warn" ? "text-amber-400" : "text-muted-foreground";
+  const cls = w.level === "stale" ? "text-destructive" : w.level === "warn" ? "text-warning" : "text-muted-foreground";
   return (
     <span className={`flex shrink-0 items-center gap-1 ${cls}`} title={`Waiting ${w.short}`}>
       <Clock className="size-3.5" /> {w.short}

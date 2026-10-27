@@ -20,9 +20,9 @@ import { notificationLabel, relativeTime } from "./notifications";
 function kindBadge(n: Notification): { Icon: ComponentType<LucideProps>; className: string } {
   const k = n.kind.toLowerCase();
   if (k.includes("mention")) return { Icon: AtSign, className: "bg-primary text-primary-foreground" };
-  if (k.includes("comment")) return { Icon: MessageSquare, className: "bg-sky-600 text-white" };
+  if (k.includes("comment")) return { Icon: MessageSquare, className: "bg-info text-background" };
   if (k.includes("status") || k.includes("state")) {
-    if (n.issueStateType === "completed") return { Icon: Check, className: "bg-emerald-600 text-white" };
+    if (n.issueStateType === "completed") return { Icon: Check, className: "bg-success text-background" };
   }
   return { Icon: Plus, className: "bg-muted text-muted-foreground" };
 }

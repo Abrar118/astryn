@@ -100,7 +100,6 @@ Astryn started as a power client for Linear and has grown into a single fast des
 - **Secure authentication** — Linear, GitHub, Slack, and LLM credentials stored in the operating-system keychain, never in the webview or SQLite.
 - **All external API calls run in Rust**, exposed to the renderer as typed Tauri commands; the webview never receives a token.
 - **Optimistic updates and background sync** with rollback handling, and all sync / error / rate-limit feedback through `goey-toast`.
-- **Home dual clock** showing your local Dhaka time alongside Germany (`Europe/Berlin`, DST-aware).
 
 > **Roadmap (not yet built):** per-issue reference links — attaching specific documents and URLs to an individual issue. The documentation browser above is repository-wide, not per-issue. See [`requirements.md`](requirements.md) for the full plan.
 

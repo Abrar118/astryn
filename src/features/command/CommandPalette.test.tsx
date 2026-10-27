@@ -17,6 +17,12 @@ vi.mock("@/lib/queries", () => ({
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn(), useSearchParams: () => [new URLSearchParams(), setParams] }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
+const modulesActive = vi.hoisted(() => ({ current: (_id: string): boolean => true }));
+const capsActive = vi.hoisted(() => ({ current: (_cap: string): boolean => true }));
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  useModules: () => ({ isActive: (id: string) => modulesActive.current(id), hasCapability: (c: string) => capsActive.current(c), ready: true }),
+}));
 vi.mock("./CreateIssueModal", () => ({ CreateIssueModal: () => null }));
 
 import { CommandPaletteProvider, useCommandPalette } from "./CommandPalette";
@@ -28,6 +34,8 @@ function Opener() {
 
 afterEach(() => {
   cleanup();
+  modulesActive.current = () => true;
+  capsActive.current = () => true;
   ws.openIssueInRightSplit.mockReset();
   ws.setActiveView.mockReset();
   ws.addTab.mockReset();
@@ -114,5 +122,32 @@ describe("CommandPalette navigation + shortcuts", () => {
     );
     fireEvent.keyDown(document, { key: "w", metaKey: true });
     expect(ws.closeTab).toHaveBeenCalledWith("tab-1");
+  });
+});
+
+describe("CommandPalette module gating", () => {
+  it("lists only core and slack entries when only slack is active", () => {
+    modulesActive.current = (id) => id === "slack";
+    openPalette();
+    expect(screen.getByText("Go to Dashboard")).toBeTruthy();
+    expect(screen.getByText("Go to Slack")).toBeTruthy();
+    expect(screen.getByText("Go to Settings")).toBeTruthy();
+    expect(screen.queryByText("Go to Calendar")).toBeNull();
+    expect(screen.queryByText("Go to Pull Requests")).toBeNull();
+  });
+
+  it("hides tracker commands and opens dashboard tabs when no tracker is on", () => {
+    capsActive.current = () => false;
+    openPalette();
+    for (const l of ["Create new issue", "Resync workspace", "Full resync", "Open issue in right split"]) {
+      expect(screen.queryByText(l)).toBeNull();
+    }
+    fireEvent.click(screen.getByText("Open new tab"));
+    expect(ws.addTab).toHaveBeenCalledWith("dashboard");
+  });
+
+  it("offers Slack, Docs and Reports when their modules are active", () => {
+    openPalette();
+    for (const l of ["Go to Slack", "Go to Docs", "Go to Reports"]) expect(screen.getByText(l)).toBeTruthy();
   });
 });

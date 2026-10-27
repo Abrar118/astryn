@@ -16,7 +16,6 @@ const ws = vi.hoisted(() => ({
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
 vi.mock("@/lib/queries", () => ({ useIssues: () => ({ data: [] }) }));
-vi.mock("@/features/home/DualClock", () => ({ DualClock: () => <div data-testid="clock" /> }));
 
 import { PaneTabStrip } from "./PaneTabStrip";
 
@@ -26,7 +25,7 @@ const pane = { id: "pane-1", tabs: [{ id: "tab-3", view: "list" as const }], act
 function renderStrip(props: Partial<Parameters<typeof PaneTabStrip>[0]> = {}) {
   return render(
     <DndContext>
-      <PaneTabStrip pane={pane} focused={false} showClock={false} canClose={false} isSplit={true} {...props} />
+      <PaneTabStrip pane={pane} focused={false} canClose={false} isSplit={true} {...props} />
     </DndContext>,
   );
 }
@@ -41,21 +40,6 @@ describe("PaneTabStrip", () => {
     renderStrip();
     fireEvent.click(screen.getByLabelText("New tab"));
     expect(ws.addTabIn).toHaveBeenCalledWith("pane-1");
-  });
-
-  it("shows the clock only when showClock is true", () => {
-    const { rerender } = renderStrip();
-    expect(screen.queryByTestId("clock")).toBeNull();
-    rerender(
-      <DndContext>
-        <PaneTabStrip pane={pane} focused={false} showClock={true} canClose={false} isSplit={true} />
-      </DndContext>,
-    );
-    expect(screen.getByTestId("clock")).toBeTruthy();
-    const clockSlot = document.querySelector("[data-clock-slot]");
-    expect(clockSlot).not.toBeNull();
-    expect((clockSlot as HTMLElement).className).toContain("ml-3");
-    expect((clockSlot as HTMLElement).className).toContain("bg-card/60");
   });
 
   it("clicking a tab selects it", () => {

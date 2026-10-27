@@ -12,6 +12,7 @@ import type {
 const setActiveView = vi.hoisted(() => vi.fn());
 const setParams = vi.hoisted(() => vi.fn());
 const useNotificationsCall = vi.hoisted(() => vi.fn());
+const moduleOn = vi.hoisted(() => ({ current: (_id: string): boolean => true }));
 
 function issue(overrides: Partial<IssueListItem> = {}): IssueListItem {
   return {
@@ -228,6 +229,10 @@ vi.mock("@/lib/queries", () => ({
   useDocsSources: () => queryState.docsSources,
 }));
 
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  useModules: () => ({ isActive: (id: string) => moduleOn.current(id), hasCapability: () => true, ready: true }),
+}));
 vi.mock("@/lib/tabs", () => ({
   useWorkspace: () => ({ setActiveView }),
 }));
@@ -264,11 +269,30 @@ beforeEach(() => {
   setActiveView.mockReset();
   setParams.mockReset();
   useNotificationsCall.mockReset();
+  moduleOn.current = () => true;
 });
 
 afterEach(() => {
   vi.useRealTimers();
   cleanup();
+});
+
+describe("DashboardPage module gating", () => {
+  it("shows the quiet empty state when no source module is on", () => {
+    moduleOn.current = () => false;
+    render(<DashboardPage />);
+    expect(screen.getByText(/No modules are on/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(setActiveView).toHaveBeenCalledWith("settings");
+    expect(screen.queryByText("Overdue")).toBeNull();
+  });
+
+  it("drops the cards of modules that are off", () => {
+    moduleOn.current = (id) => id === "github";
+    render(<DashboardPage />);
+    expect(screen.getByText("Reviews")).toBeTruthy();
+    for (const label of ["Overdue", "Inbox", "Mentions"]) expect(screen.queryByText(label)).toBeNull();
+  });
 });
 
 describe("DashboardPage", () => {

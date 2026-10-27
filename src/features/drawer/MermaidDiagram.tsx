@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from "react";
+import { useScheme } from "@/lib/theme";
 
 /**
  * Renders a Mermaid code block as an SVG diagram (read-only). `mermaid` is a
@@ -16,6 +17,7 @@ export function MermaidDiagram({ code }: { code: string }) {
   const id = `mermaid-${useId().replace(/:/g, "")}`;
   const [svg, setSvg] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const scheme = useScheme();
 
   useEffect(() => {
     let cancelled = false;
@@ -26,7 +28,7 @@ export function MermaidDiagram({ code }: { code: string }) {
         const mermaid = (await import("mermaid")).default;
         // initialize() merges global config idempotently; it only runs when a
         // diagram actually mounts, so re-calling per diagram is negligible.
-        mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "strict" });
+        mermaid.initialize({ startOnLoad: false, theme: scheme === "dark" ? "dark" : "neutral", securityLevel: "strict" });
         const { svg } = await mermaid.render(id, code);
         if (!cancelled) setSvg(svg);
       } catch {
@@ -36,7 +38,7 @@ export function MermaidDiagram({ code }: { code: string }) {
     return () => {
       cancelled = true;
     };
-  }, [code, id]);
+  }, [code, id, scheme]);
 
   if (failed) {
     return (

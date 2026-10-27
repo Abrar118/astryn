@@ -2,11 +2,11 @@ import { addDays } from "@/lib/dates";
 
 /** Linear priority values (0 = none) with display label + color. */
 export const PRIORITIES = [
-  { value: 1, label: "Urgent", color: "#ef4444" },
-  { value: 2, label: "High", color: "#f97316" },
-  { value: 3, label: "Medium", color: "#eab308" },
-  { value: 4, label: "Low", color: "#3b82f6" },
-  { value: 0, label: "No priority", color: "#6b7280" },
+  { value: 1, label: "Urgent", color: "var(--destructive)" },
+  { value: 2, label: "High", color: "var(--warning)" },
+  { value: 3, label: "Medium", color: "var(--info)" },
+  { value: 4, label: "Low", color: "var(--muted-foreground)" },
+  { value: 0, label: "No priority", color: "var(--muted-foreground)" },
 ];
 
 /** Workflow-state ordering for sorting state lists. */

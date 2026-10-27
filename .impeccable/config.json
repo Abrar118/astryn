@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "src/styles/index.css"
+        ],
+        "createdAt": "2026-10-27T09:20:30.820Z",
+        "reason": "Only blockquote rules (typographic convention) in this file; review any new side borders by hand"
+      }
+    ]
+  }
+}

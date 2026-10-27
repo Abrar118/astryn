@@ -81,6 +81,7 @@ pub async fn assemble(
     viewer_id: &str,
     viewer_name: &str,
     window: WindowArgs,
+    include_code_host: bool,
 ) -> Result<ReportFacts, sqlx::Error> {
     // `completed_at` is NULL for rows cached before migration 0015; fall back
     // to updated_at (a completed issue's last touch is usually its completion).
@@ -138,20 +139,28 @@ pub async fn assemble(
     };
 
     const PR_COLS: &str = "repo, number, title, draft, ci_status, review_decision";
-    let merged_prs: Vec<FactPr> = sqlx::query_as(&format!(
-        "SELECT {PR_COLS} FROM github_prs
+    let merged_prs: Vec<FactPr> = if include_code_host {
+        sqlx::query_as(&format!(
+            "SELECT {PR_COLS} FROM github_prs
          WHERE bucket = 'merged' AND merged_at >= ?1
          ORDER BY merged_at"
-    ))
-    .bind(&window.since)
-    .fetch_all(pool)
-    .await?;
+        ))
+        .bind(&window.since)
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
 
-    let open_prs: Vec<FactPr> = sqlx::query_as(&format!(
-        "SELECT {PR_COLS} FROM github_prs WHERE bucket = 'mine' ORDER BY updated_at DESC"
-    ))
-    .fetch_all(pool)
-    .await?;
+    let open_prs: Vec<FactPr> = if include_code_host {
+        sqlx::query_as(&format!(
+            "SELECT {PR_COLS} FROM github_prs WHERE bucket = 'mine' ORDER BY updated_at DESC"
+        ))
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
 
     Ok(ReportFacts {
         window,
@@ -467,7 +476,7 @@ mod tests {
         wip.due_date = Some("2026-07-26".into());
         insert(&pool, &wip).await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window())
+        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
             .await
             .unwrap();
         let ids: Vec<&str> = f.completed.iter().map(|i| i.identifier.as_str()).collect();
@@ -513,7 +522,7 @@ mod tests {
         )
         .await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window())
+        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
             .await
             .unwrap();
         assert_eq!(f.blocked.len(), 1);
@@ -530,7 +539,7 @@ mod tests {
 
         let mut w = daily_window();
         w.kind = ReportKind::Weekly;
-        let f = assemble(&pool, "me", "Abrar", w).await.unwrap();
+        let f = assemble(&pool, "me", "Abrar", w, true).await.unwrap();
         assert_eq!(f.new_this_week[0].identifier, "AST-1");
         assert!(f.due_today.is_empty());
     }
@@ -556,13 +565,45 @@ mod tests {
             .await
             .unwrap();
         }
-        let f = assemble(&pool, "me", "Abrar", daily_window())
+        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
             .await
             .unwrap();
         assert_eq!(f.merged_prs.len(), 1);
         assert_eq!(f.merged_prs[0].number, 1);
         assert_eq!(f.open_prs.len(), 1);
         assert_eq!(f.open_prs[0].review_decision.as_deref(), Some("approved"));
+    }
+
+    #[tokio::test]
+    async fn assemble_without_code_host_skips_prs() {
+        let (_d, pool) = pool().await;
+        for (id, bucket, merged_at) in [
+            ("o/r#1", "merged", Some("2026-07-24T10:00:00Z")),
+            ("o/r#3", "mine", None),
+        ] {
+            sqlx::query(
+                "INSERT INTO github_prs (id, bucket, repo, number, title, draft, ci_status,
+                   review_decision, updated_at, synced_at, merged_at)
+                 VALUES (?1, ?2, 'o/r', ?3, 'PR', 0, 'success', 'approved', 't', 't', ?4)",
+            )
+            .bind(id)
+            .bind(bucket)
+            .bind(id.rsplit('#').next().unwrap().parse::<i64>().unwrap())
+            .bind(merged_at)
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let off = assemble(&pool, "me", "Abrar", daily_window(), false)
+            .await
+            .unwrap();
+        assert!(off.merged_prs.is_empty());
+        assert!(off.open_prs.is_empty());
+        let on = assemble(&pool, "me", "Abrar", daily_window(), true)
+            .await
+            .unwrap();
+        assert_eq!(on.merged_prs.len(), 1);
+        assert_eq!(on.open_prs.len(), 1);
     }
 
     #[tokio::test]
@@ -573,7 +614,7 @@ mod tests {
         done.project_name = Some("Astryn".into());
         insert(&pool, &done).await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window())
+        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
             .await
             .unwrap();
         let sheet = render_fact_sheet(&f);

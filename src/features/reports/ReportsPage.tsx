@@ -9,6 +9,7 @@ import { dailyWindow, weeklyWindow } from "@/lib/reportWindow";
 import { generate, setDraft, useReportSlot } from "@/lib/reportsStore";
 import { useWorkdays } from "@/lib/workweek";
 import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
 
 const KINDS: { kind: ReportKind; label: string }[] = [
   { kind: "daily", label: "Daily Scrum" },
@@ -140,7 +141,10 @@ export function ReportsPage() {
               no AI endpoint —{" "}
               <button
                 type="button"
-                onClick={() => setActiveView("settings")}
+                onClick={() => {
+                  requestSettingsSection("ai");
+                  setActiveView("settings");
+                }}
                 className="cursor-pointer underline underline-offset-2 hover:text-foreground"
               >
                 configure one
@@ -187,7 +191,7 @@ export function ReportsPage() {
         )}
 
         {slot.result?.llmError && (
-          <p className="text-xs text-amber-400">
+          <p className="text-xs text-warning">
             AI pass failed — this is the deterministic fact sheet. {slot.result.llmError}
           </p>
         )}

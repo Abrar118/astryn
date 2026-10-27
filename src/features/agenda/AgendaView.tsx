@@ -12,10 +12,10 @@ import { buildHeatmap, agendaCounts, type AgendaCounts } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
 
 const STAT_TILES: { key: keyof AgendaCounts; label: string; color: string }[] = [
-  { key: "todo", label: "Todo", color: "#6b7280" },
-  { key: "inProgress", label: "In Progress", color: "#f59e0b" },
-  { key: "inReview", label: "In Review", color: "#8b5cf6" },
-  { key: "overdue", label: "Overdue", color: "#ef4444" },
+  { key: "todo", label: "Todo", color: "var(--muted-foreground)" },
+  { key: "inProgress", label: "In Progress", color: "var(--warning)" },
+  { key: "inReview", label: "In Review", color: "var(--info)" },
+  { key: "overdue", label: "Overdue", color: "var(--destructive)" },
 ];
 
 /** Four-count glance card shown beside the heatmap. */
@@ -167,7 +167,7 @@ export function AgendaView() {
     <div key={item.issue.id}>
       {item.contextOnly ? renderContextParent(item.issue) : renderRow(item.issue)}
       {item.children.length > 0 && (
-        <div className="ml-5 border-l border-white/15 pl-1">
+        <div className="ml-5 border-l border-border pl-1">
           {item.children.map((c) => (
             <div key={c.id}>{renderRow(c)}</div>
           ))}
@@ -246,7 +246,7 @@ export function AgendaView() {
         <div className="divide-y divide-border/40 pb-12">
           {groups.map((g) => (
             <section key={g.key}>
-              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background/95 px-4 py-2.5 backdrop-blur">
+              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-4 py-2.5">
                 <span className="text-base font-semibold">{g.label}</span>
                 {g.date && <span className="text-[13px] text-muted-foreground">{g.date}</span>}
                 <span className="ml-auto text-[13px] text-muted-foreground">{dueIssues(g).length}</span>

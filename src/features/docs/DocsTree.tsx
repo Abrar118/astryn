@@ -33,9 +33,9 @@ function TreeRow({
             className={`size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
           />
           {open ? (
-            <FolderOpen className="size-3.5 shrink-0 text-amber-400/70" />
+            <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
           ) : (
-            <Folder className="size-3.5 shrink-0 text-amber-400/70" />
+            <Folder className="size-3.5 shrink-0 text-muted-foreground" />
           )}
           <span className="truncate">{node.label}</span>
         </button>

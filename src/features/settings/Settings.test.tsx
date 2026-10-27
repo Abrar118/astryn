@@ -4,6 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  useModules: () => ({ isActive: () => true, hasCapability: () => true, ready: true }),
+}));
+
 const cmd = vi.hoisted(() => ({
   getConnectionStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getGithubStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
@@ -59,8 +64,11 @@ function renderAt(section: string) {
 afterEach(cleanup);
 
 describe("Settings navigation", () => {
-  it("opens on Linear and shows only that section", () => {
+  it("opens on Modules and shows only that section", () => {
     render(<Settings />, { wrapper });
+    expect(screen.getByRole("heading", { name: "Modules" })).toBeTruthy();
+    expect(screen.queryByLabelText(/linear personal api key/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Linear" }));
     expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
     // Another section's fields are not merely hidden — they aren't mounted.
     expect(screen.queryByLabelText(/github personal access token/i)).toBeNull();
@@ -81,7 +89,7 @@ describe("Settings navigation", () => {
     // The request is one-shot: a later visit opens on the default section.
     cleanup();
     render(<Settings />, { wrapper });
-    expect(screen.getByLabelText(/linear personal api key/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Modules" })).toBeTruthy();
   });
 });
 

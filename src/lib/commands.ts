@@ -749,3 +749,38 @@ export const clearLlmConfig = (): Promise<void> => invoke("clear_llm_config");
 export const testLlmConnection = (): Promise<string[]> => invoke("test_llm_connection");
 export const generateReport = (args: ReportWindowArgs, genId: number): Promise<ReportResult> =>
   invoke("generate_report", { args, genId });
+
+export type ModuleId =
+  | "linear"
+  | "github"
+  | "slack"
+  | "llm"
+  | "docs"
+  | "reports"
+  | "link-previews";
+
+export type Capability =
+  | "tracker"
+  | "notifications"
+  | "code-host"
+  | "docs-source"
+  | "chat"
+  | "llm";
+
+export type ModuleInfo = {
+  id: ModuleId;
+  kind: "provider" | "feature";
+  enabled: boolean;
+  available: boolean;
+  missing: Capability[];
+};
+
+export type ModulesView = { onboarded: boolean; modules: ModuleInfo[] };
+
+export const listModules = (): Promise<ModulesView> => invoke("list_modules");
+
+export const setEnabledModules = (ids: ModuleId[]): Promise<ModulesView> =>
+  invoke("set_enabled_modules", { ids });
+
+export const removeModuleData = (id: ModuleId): Promise<void> =>
+  invoke("remove_module_data", { id });

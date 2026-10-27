@@ -251,12 +251,16 @@ pub async fn list_conversations(pool: &SqlitePool) -> Result<Vec<ConversationRow
     .await
 }
 
-pub async fn list_mentions(pool: &SqlitePool) -> Result<Vec<MessageRow>, sqlx::Error> {
+pub async fn list_mentions(
+    pool: &SqlitePool,
+    include_tracker: bool,
+) -> Result<Vec<MessageRow>, sqlx::Error> {
     message_rows(
         pool,
         "m.is_mention = 1 AND m.is_unread = 1",
         "m.ts DESC",
         None,
+        include_tracker,
     )
     .await
 }
@@ -264,12 +268,14 @@ pub async fn list_mentions(pool: &SqlitePool) -> Result<Vec<MessageRow>, sqlx::E
 pub async fn list_conversation_messages(
     pool: &SqlitePool,
     conversation_id: &str,
+    include_tracker: bool,
 ) -> Result<Vec<MessageRow>, sqlx::Error> {
     message_rows(
         pool,
         "m.conversation_id = ?1 AND m.is_unread = 1",
         "m.ts ASC",
         Some(conversation_id),
+        include_tracker,
     )
     .await
 }
@@ -279,12 +285,21 @@ async fn message_rows(
     where_clause: &str,
     order: &str,
     bind: Option<&str>,
+    include_tracker: bool,
 ) -> Result<Vec<MessageRow>, sqlx::Error> {
+    let (issue_col, issue_join) = if include_tracker {
+        (
+            "i.id",
+            "LEFT JOIN issues i ON i.identifier = m.linear_identifier",
+        )
+    } else {
+        ("NULL", "")
+    };
     let sql = format!(
         "SELECT m.conversation_id, m.ts, m.thread_ts, m.user_id, m.user_name, m.user_avatar, m.text,
-                m.is_mention, m.linear_identifier, i.id AS linear_issue_id, m.created_at
+                m.is_mention, m.linear_identifier, {issue_col} AS linear_issue_id, m.created_at
          FROM slack_messages m
-         LEFT JOIN issues i ON i.identifier = m.linear_identifier
+         {issue_join}
          WHERE {where_clause}
          ORDER BY {order}"
     );
@@ -380,7 +395,10 @@ mod tests {
         .unwrap();
         assert_eq!(list_conversations(&pool).await.unwrap().len(), 1);
         assert_eq!(
-            list_conversation_messages(&pool, "C1").await.unwrap().len(),
+            list_conversation_messages(&pool, "C1", true)
+                .await
+                .unwrap()
+                .len(),
             2
         );
 
@@ -391,7 +409,7 @@ mod tests {
         let convs = list_conversations(&pool).await.unwrap();
         assert_eq!(convs.len(), 1);
         assert_eq!(convs[0].id, "C2");
-        assert!(list_conversation_messages(&pool, "C1")
+        assert!(list_conversation_messages(&pool, "C1", true)
             .await
             .unwrap()
             .is_empty());
@@ -413,7 +431,7 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(list_mentions(&pool).await.unwrap().len(), 2);
+        assert_eq!(list_mentions(&pool, true).await.unwrap().len(), 2);
         let threads = list_threads(&pool).await.unwrap();
         assert_eq!(threads.len(), 1);
         assert_eq!(threads[0].thread_ts, "9.0");
@@ -435,8 +453,29 @@ mod tests {
         )
         .await
         .unwrap();
-        let rows = list_conversation_messages(&pool, "C1").await.unwrap();
+        let rows = list_conversation_messages(&pool, "C1", true).await.unwrap();
         assert_eq!(rows[0].linear_issue_id.as_deref(), Some("iss-1"));
+    }
+
+    #[tokio::test]
+    async fn mentions_without_tracker_have_no_issue_id() {
+        let (_d, pool) = pool().await;
+        sqlx::query("INSERT INTO issues (id, identifier, title, url, created_at, updated_at, synced_at) VALUES ('iss-1','ENG-1','x','u','t','t','t')")
+            .execute(&pool).await.unwrap();
+        replace_catchup(
+            &pool,
+            &[conv("C1", "channel", 1)],
+            &[msg("C1", "10.0", true, None, Some("ENG-1"))],
+            &[],
+            "now",
+        )
+        .await
+        .unwrap();
+        let off = list_mentions(&pool, false).await.unwrap();
+        assert_eq!(off[0].linear_issue_id, None);
+        assert_eq!(off[0].linear_identifier.as_deref(), Some("ENG-1"));
+        let on = list_mentions(&pool, true).await.unwrap();
+        assert_eq!(on[0].linear_issue_id.as_deref(), Some("iss-1"));
     }
 
     #[tokio::test]
@@ -463,7 +502,7 @@ mod tests {
 
         wipe_slack_cache(&pool).await.unwrap();
         assert!(list_conversations(&pool).await.unwrap().is_empty());
-        assert!(list_conversation_messages(&pool, "C1")
+        assert!(list_conversation_messages(&pool, "C1", true)
             .await
             .unwrap()
             .is_empty());

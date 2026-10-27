@@ -2,8 +2,10 @@ mod commands;
 mod db;
 mod generators;
 mod github;
+mod issue_ref;
 mod linear;
 mod link_preview;
+mod modules;
 mod secrets;
 mod slack;
 
@@ -96,6 +98,8 @@ pub fn run() {
                 .expect("failed to initialize database (directory or migrations)");
             tauri::async_runtime::block_on(db::issues::recover_pending_deletes(&pool))
                 .expect("failed to recover pending issue deletions");
+            let module_state = tauri::async_runtime::block_on(modules::load_state(&pool))
+                .expect("failed to load module state");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -114,6 +118,7 @@ pub fn run() {
 
             app.manage(AppState {
                 pool,
+                modules: std::sync::RwLock::new(module_state),
                 secret_store: store,
                 credentials,
                 linear,
@@ -209,6 +214,9 @@ pub fn run() {
             commands::slack::get_slack_catchup,
             commands::slack::get_slack_conversation_messages,
             commands::slack::slack_deep_link,
+            commands::modules::list_modules,
+            commands::modules::set_enabled_modules,
+            commands::modules::remove_module_data,
             commands::reports::get_llm_config,
             commands::reports::set_llm_config,
             commands::reports::clear_llm_config,

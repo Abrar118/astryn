@@ -1,9 +1,10 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { useModules, viewActive } from "./modules";
 import {
   parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
   splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer, moveTab as moveTabAtReducer,
   swapPanes as swapPanesReducer, openIssueTabAcross, openIssueInRightSplit as openRightReducer,
-  openDocTabAcross, openDocInRightSplit as openDocRightReducer,
+  openDocTabAcross, openDocInRightSplit as openDocRightReducer, closeTabsWhere,
   type WorkspaceState, type Pane, type Tab, type ViewKind,
 } from "./paneModel";
 
@@ -55,6 +56,15 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
       // Storage unavailable / quota — keep in-memory state silently.
     }
   }, [state]);
+
+  // Tabs of a module that is off (or turned off later) close; nothing is dropped while modules load.
+  const { data: modulesData, isActive } = useModules();
+  useEffect(() => {
+    if (!modulesData) return;
+    setState((s) => closeTabsWhere(s, (t) => !viewActive(t.view, isActive)));
+    // isActive is rebuilt every render; modulesData is the real dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modulesData]);
 
   const focusedPane = state.panes.find((p) => p.id === state.focusedPaneId) ?? state.panes[0];
   const active = focusedPane.tabs.find((t) => t.id === focusedPane.activeTabId) ?? focusedPane.tabs[0];

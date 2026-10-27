@@ -125,7 +125,7 @@ export function PopoverItem({
       type="button"
       onClick={onClick}
       className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors ${
-        danger ? "text-red-400 hover:bg-red-500/10" : "text-foreground hover:bg-accent"
+        danger ? "text-destructive hover:bg-destructive/10" : "text-foreground hover:bg-accent"
       }`}
     >
       {icon !== undefined && <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>}

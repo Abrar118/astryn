@@ -246,10 +246,10 @@ pub fn thread_parents<'a>(
         .collect()
 }
 
-/// Uppercase Linear identifier embedded in message text, if any (reuses the
-/// GitHub dashboard's boundary-aware extractor).
+/// Uppercase Linear identifier embedded in message text, if any (shared
+/// boundary-aware extractor).
 pub fn linear_id(text: &str) -> Option<String> {
-    crate::github::prs::extract_linear_identifier(text, "")
+    crate::issue_ref::extract_linear_identifier(text, "")
 }
 
 #[cfg(test)]

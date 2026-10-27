@@ -1,6 +1,7 @@
 import { AtSign, MessageCircle, MessageSquare, MessagesSquare, Hash, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { useSlackCatchup, useSlackStatus, useSlackSync } from "@/lib/queries";
 import type { SlackConversation } from "@/lib/commands";
 import { SlackRow, SlackMentionRow, SlackThreadRow } from "./SlackRow";
@@ -24,7 +25,14 @@ export function SlackPage() {
             Link your Slack workspace to catch up on what you missed.
           </p>
         </div>
-        <Button onClick={() => setActiveView("settings")}>Connect Slack</Button>
+        <Button
+          onClick={() => {
+            requestSettingsSection("slack");
+            setActiveView("settings");
+          }}
+        >
+          Connect Slack
+        </Button>
       </main>
     );
   }
@@ -38,11 +46,11 @@ export function SlackPage() {
 
   return (
     <main className="flex h-full flex-col overflow-y-auto">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-6 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-background px-6 py-3">
         <div className="flex items-baseline gap-2">
           <h1 className="text-base font-semibold text-foreground">Slack</h1>
           {workspaceName && <span className="text-xs text-muted-foreground">{workspaceName}</span>}
-          {sync.isError && <span className="text-xs text-amber-400">Sync failed — showing cached data.</span>}
+          {sync.isError && <span className="text-xs text-warning">Sync failed — showing cached data.</span>}
         </div>
         <Button variant="ghost" size="sm" aria-label="Refresh" disabled={sync.isFetching} onClick={() => sync.refetch()}>
           <RefreshCw className={`size-4 ${sync.isFetching ? "animate-spin" : ""}`} />
@@ -50,16 +58,16 @@ export function SlackPage() {
       </header>
 
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 px-8 pt-7 pb-28">
-        <Section title="Mentions" count={mentions.length} icon={AtSign} tint="text-amber-400" empty="No unread mentions.">
+        <Section title="Mentions" count={mentions.length} icon={AtSign} empty="No unread mentions.">
           {mentions.map((m) => <SlackMentionRow key={`${m.conversationId}:${m.ts}`} msg={m} convName={convName(conversations, m.conversationId)} />)}
         </Section>
-        <Section title="Direct messages" count={dms.length} icon={MessageCircle} tint="text-emerald-400" empty="No unread DMs.">
+        <Section title="Direct messages" count={dms.length} icon={MessageCircle} empty="No unread DMs.">
           {dms.map((c) => <SlackRow key={c.id} conv={c} />)}
         </Section>
-        <Section title="Threads" count={threads.length} icon={MessagesSquare} tint="text-sky-400" empty="No unread threads.">
+        <Section title="Threads" count={threads.length} icon={MessagesSquare} empty="No unread threads.">
           {threads.map((t) => <SlackThreadRow key={`${t.conversationId}:${t.threadTs}`} thread={t} />)}
         </Section>
-        <Section title="Channels" count={channels.length} icon={Hash} tint="text-indigo-400" empty="No unread channels.">
+        <Section title="Channels" count={channels.length} icon={Hash} empty="No unread channels.">
           {channels.map((c) => <SlackRow key={c.id} conv={c} />)}
         </Section>
       </div>
@@ -73,12 +81,11 @@ function convName(conversations: SlackConversation[], id: string): string {
 }
 
 function Section({
-  title, count, icon: Icon, tint, empty, children,
+  title, count, icon: Icon, empty, children,
 }: {
   title: string;
   count: number;
   icon: typeof AtSign;
-  tint: string;
   empty: string;
   children: React.ReactNode;
 }) {
@@ -86,7 +93,7 @@ function Section({
     <section className="flex flex-col gap-2.5">
       <header className="flex items-center gap-2.5 px-0.5">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/50">
-          <Icon className={`size-4 ${tint}`} />
+          <Icon className="size-4 text-muted-foreground" />
         </span>
         <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground">

@@ -83,6 +83,21 @@ import {
   matchesFilters,
   reconcileList,
 } from "./optimistic";
+import { useModules } from "./modules";
+import type { ModuleId } from "./commands";
+
+/** The sanitized rejection every provider command returns while its module is off. */
+export const MODULE_OFF_MESSAGE = "That module is turned off.";
+
+/** True for the rejection above: the module was switched off mid-flight, so there is nothing to tell the user. */
+export function isModuleOff(err: unknown): boolean {
+  return errorText(err) === MODULE_OFF_MESSAGE;
+}
+
+/** Whether `id` is on; every query that reaches a guarded command must AND this into `enabled`. */
+function useOwnerActive(id: ModuleId): boolean {
+  return useModules().isActive(id);
+}
 
 /** Merge a patch's changed fields into a cached detail result (any branch). */
 function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueDetailResult {
@@ -160,6 +175,8 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
 const WORKSPACE_KEYS = [
   ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["relations"], ["users"], ["labels"], ["cycles"],
   ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
+  // Cross-module joins read the Linear cache too (PR to issue links, Slack issue refs).
+  ["github-prs"], ["slack-catchup"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {
@@ -179,7 +196,8 @@ export function invalidateWorkspaceQueries(qc: QueryClient) {
 }
 
 export function useMe() {
-  return useQuery({ queryKey: ["me"], queryFn: getMe, staleTime: Infinity });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["me"], queryFn: getMe, staleTime: Infinity, enabled: on });
 }
 
 export function useConnectionStatus() {
@@ -191,29 +209,34 @@ export function useConnectionStatus() {
 }
 
 export function useFilterOptions() {
-  return useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions, enabled: on });
 }
 
 export function useUsers() {
-  return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000 });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000, enabled: on });
 }
 
 /** Inbox notifications (live fetch, refreshed alongside the sync loop). */
 export function useNotifications({ enabled = true }: { enabled?: boolean } = {}) {
+  const on = useOwnerActive("linear");
   return useQuery({
     queryKey: ["notifications"],
     queryFn: listNotifications,
     staleTime: 60_000,
-    enabled,
+    enabled: enabled && on,
   });
 }
 
 export function useLabels() {
-  return useQuery({ queryKey: ["labels"], queryFn: listLabels, staleTime: 5 * 60_000 });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["labels"], queryFn: listLabels, staleTime: 5 * 60_000, enabled: on });
 }
 
 export function useCycles() {
-  return useQuery({ queryKey: ["cycles"], queryFn: listCycles, staleTime: 5 * 60_000 });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["cycles"], queryFn: listCycles, staleTime: 5 * 60_000, enabled: on });
 }
 
 export function useCreateLabel() {
@@ -227,7 +250,8 @@ export function useCreateLabel() {
 }
 
 export function useWorkflowStates() {
-  return useQuery({ queryKey: ["workflow-states"], queryFn: listWorkflowStates, staleTime: 5 * 60_000 });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["workflow-states"], queryFn: listWorkflowStates, staleTime: 5 * 60_000, enabled: on });
 }
 
 /** Delete (trash) an issue in Linear, then drop it from the renderer caches. */
@@ -305,35 +329,43 @@ export function useCreateIssueRelation() {
 }
 
 export function useCalendarIssues(range: { start: string; end: string }, filters: IssueFilters) {
+  const on = useOwnerActive("linear");
   return useQuery({
     queryKey: ["calendar", range.start, range.end, filters],
     queryFn: () => listCalendarIssues({ ...range, ...filters }),
+    enabled: on,
   });
 }
 
 export function useUnscheduled(filters: IssueFilters) {
+  const on = useOwnerActive("linear");
   return useQuery({
     queryKey: ["unscheduled", filters],
     queryFn: () => listUnscheduled(filters),
+    enabled: on,
   });
 }
 
 export function useIssues(filters: IssueFilters) {
+  const on = useOwnerActive("linear");
   return useQuery({
     queryKey: ["issues", filters],
     queryFn: () => listIssues(filters),
+    enabled: on,
   });
 }
 
 export function useRelations() {
-  return useQuery({ queryKey: ["relations"], queryFn: listRelations });
+  const on = useOwnerActive("linear");
+  return useQuery({ queryKey: ["relations"], queryFn: listRelations, enabled: on });
 }
 
 export function useIssueDetail(id: string | null, seed?: CalendarIssue) {
+  const on = useOwnerActive("linear");
   return useQuery({
     queryKey: ["issue", id],
     queryFn: () => getIssueDetail(id as string),
-    enabled: !!id,
+    enabled: !!id && on,
     placeholderData: seed ? ({ source: "preview", detail: seed } as IssueDetailResult) : undefined,
   });
 }
@@ -621,8 +653,8 @@ export function useRemoveReaction() {
   });
 }
 
-/** Runs sync on mount + every 5 minutes; exposes a manual refresh + status. */
-export function useSyncLoop() {
+/** Runs sync on mount + every 5 minutes while `enabled` (a tracker is on); exposes a manual refresh + status. */
+export function useSyncLoop(enabled: boolean) {
   const qc = useQueryClient();
   const mut = useMutation({
     mutationFn: () => syncIssues(false),
@@ -634,16 +666,24 @@ export function useSyncLoop() {
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-    onError: (err) => gooeyToast.error("Sync failed", { description: errorText(err) }),
+    onError: (err) => {
+      if (!isModuleOff(err)) gooeyToast.error("Sync failed", { description: errorText(err) });
+    },
   });
-  // Stable refs: trigger once on mount, then on an interval.
+  // Stable refs: trigger once when enabled, then on an interval.
   useEffect(() => {
+    if (!enabled) return;
     mut.mutate();
     const t = setInterval(() => mut.mutate(), 5 * 60_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return { isSyncing: mut.isPending, refresh: () => mut.mutate() };
+  }, [enabled]);
+  return {
+    isSyncing: mut.isPending,
+    refresh: () => {
+      if (enabled) mut.mutate();
+    },
+  };
 }
 
 export function useGithubStatus() {
@@ -651,7 +691,8 @@ export function useGithubStatus() {
 }
 
 export function useGithubPrs() {
-  return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs });
+  const on = useOwnerActive("github");
+  return useQuery({ queryKey: ["github-prs"], queryFn: listGithubPrs, enabled: on });
 }
 
 export function useGithubRepositories(enabled: boolean) {
@@ -711,9 +752,10 @@ export function useSetGithubRepoFavorite() {
  */
 export function useGithubSync(enabled: boolean) {
   const qc = useQueryClient();
+  const on = useOwnerActive("github");
   return useQuery({
     queryKey: ["github-sync"],
-    enabled,
+    enabled: enabled && on,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
@@ -736,7 +778,7 @@ export function useGithubSync(enabled: boolean) {
         }
         return results;
       } catch (err) {
-        gooeyToast.error("Couldn't refresh pull requests", { description: errorText(err) });
+        if (!isModuleOff(err)) gooeyToast.error("Couldn't refresh pull requests", { description: errorText(err) });
         throw err;
       }
     },
@@ -744,15 +786,17 @@ export function useGithubSync(enabled: boolean) {
 }
 
 export function useGithubContributions() {
-  return useQuery({ queryKey: ["github-contributions"], queryFn: getGithubContributions });
+  const on = useOwnerActive("github");
+  return useQuery({ queryKey: ["github-contributions"], queryFn: getGithubContributions, enabled: on });
 }
 
 /** Background refresh of the contribution calendar; mirrors useGithubSync. */
 export function useGithubContributionsSync(enabled: boolean) {
   const qc = useQueryClient();
+  const on = useOwnerActive("github");
   return useQuery({
     queryKey: ["github-contributions-sync"],
-    enabled,
+    enabled: enabled && on,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
@@ -772,6 +816,12 @@ export function clearGithubQueries(qc: QueryClient) {
     ["github-sync"],
     ["github-contributions"],
     ["github-contributions-sync"],
+    // Docs sources are GitHub repos, so a token change drops them too.
+    ["docs-status"],
+    ["docs-sources"],
+    ["docs-tree"],
+    ["doc-content"],
+    ["docs-sync"],
   ]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
@@ -779,11 +829,13 @@ export function clearGithubQueries(qc: QueryClient) {
 }
 
 export function useDocsStatus() {
-  return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus });
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus, enabled: on });
 }
 
 export function useDocsSources() {
-  return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources });
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources, enabled: on });
 }
 
 export function useDocsTree(sourceId: string | null) {
@@ -812,9 +864,10 @@ export function useDocContent(sourceId: string | null, path: string | null) {
  */
 export function useDocsSync(sourceId: string | null, enabled: boolean) {
   const qc = useQueryClient();
+  const on = useOwnerActive("docs");
   return useQuery({
     queryKey: ["docs-sync", sourceId],
-    enabled: enabled && !!sourceId,
+    enabled: enabled && !!sourceId && on,
     refetchOnWindowFocus: false,
     queryFn: async () => {
       try {
@@ -826,7 +879,7 @@ export function useDocsSync(sourceId: string | null, enabled: boolean) {
         await qc.invalidateQueries({ queryKey: ["docs-status"] });
         return result;
       } catch (err) {
-        gooeyToast.error("Couldn't refresh docs", { description: errorText(err) });
+        if (!isModuleOff(err)) gooeyToast.error("Couldn't refresh docs", { description: errorText(err) });
         throw err;
       }
     },
@@ -838,7 +891,8 @@ export function useSlackStatus() {
 }
 
 export function useSlackCatchup() {
-  return useQuery({ queryKey: ["slack-catchup"], queryFn: getSlackCatchup });
+  const on = useOwnerActive("slack");
+  return useQuery({ queryKey: ["slack-catchup"], queryFn: getSlackCatchup, enabled: on });
 }
 
 /**
@@ -848,9 +902,10 @@ export function useSlackCatchup() {
  */
 export function useSlackSync(enabled: boolean) {
   const qc = useQueryClient();
+  const on = useOwnerActive("slack");
   return useQuery({
     queryKey: ["slack-sync"],
-    enabled,
+    enabled: enabled && on,
     refetchInterval: 5 * 60_000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
@@ -859,7 +914,7 @@ export function useSlackSync(enabled: boolean) {
         await qc.invalidateQueries({ queryKey: ["slack-catchup"] });
         return summary;
       } catch (err) {
-        gooeyToast.error("Couldn't refresh Slack", { description: errorText(err) });
+        if (!isModuleOff(err)) gooeyToast.error("Couldn't refresh Slack", { description: errorText(err) });
         throw err;
       }
     },

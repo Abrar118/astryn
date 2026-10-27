@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildHeatmap, statusBreakdown, priorityBreakdown, agendaCounts } from "./agendaStats";
 import type { AgendaGroup, AgendaItem } from "./agenda";
 import type { IssueListItem } from "../../lib/commands";
+import { PRIORITY_COLORS } from "../issues/IssueRow";
 
 /** Minimal fixture factory — only fills in fields the functions under test read. */
 function iss(over: Partial<IssueListItem> & { id: string }): IssueListItem {
@@ -171,7 +172,7 @@ describe("priorityBreakdown", () => {
   it("attaches correct label and color for each priority", () => {
     const items = [iss({ id: "1", priority: 1 })];
     const [entry] = priorityBreakdown(items);
-    expect(entry).toMatchObject({ priority: 1, label: "Urgent", color: "#ef4444", count: 1 });
+    expect(entry).toMatchObject({ priority: 1, label: "Urgent", color: PRIORITY_COLORS[1], count: 1 });
   });
 
   it("counts multiple issues in the same bucket", () => {

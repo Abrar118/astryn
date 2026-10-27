@@ -1,6 +1,7 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
-import { BookText, Calendar, CalendarRange, GitPullRequest, Inbox, LayoutDashboard, List, MessageSquare, Network, NotebookPen, Plus, RefreshCw, Settings as SettingsIcon } from "lucide-react";
+import { Plus, RefreshCw } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 
 function DockButton({
   label,
@@ -24,7 +25,7 @@ function DockButton({
       className={`group relative flex size-11 cursor-pointer items-center justify-center rounded-xl transition-colors ${
         active
           ? "bg-primary/20 text-primary"
-          : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
       }`}
     >
       {children}
@@ -35,24 +36,9 @@ function DockButton({
   );
 }
 
-const NAV: { view: Exclude<ViewKind, "issue">; label: string; icon: ReactNode }[] = [
-  { view: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="size-5" /> },
-  { view: "calendar", label: "Calendar", icon: <Calendar className="size-5" /> },
-  { view: "list", label: "Issues", icon: <List className="size-5" /> },
-  { view: "this-week", label: "This Week", icon: <CalendarRange className="size-5" /> },
-  { view: "graph", label: "Dependencies", icon: <Network className="size-5" /> },
-  { view: "inbox", label: "Inbox", icon: <Inbox className="size-5" /> },
-  { view: "prs", label: "Pull Requests", icon: <GitPullRequest className="size-5" /> },
-  { view: "slack", label: "Slack", icon: <MessageSquare className="size-5" /> },
-  { view: "docs", label: "Docs", icon: <BookText className="size-5" /> },
-  { view: "reports", label: "Reports", icon: <NotebookPen className="size-5" /> },
-  { view: "settings", label: "Settings", icon: <SettingsIcon className="size-5" /> },
-];
-
-const META: Record<Exclude<ViewKind, "issue">, string> = { dashboard: "Dashboard", calendar: "Calendar", list: "Issues", "this-week": "This Week", graph: "Dependencies", inbox: "Inbox", prs: "Pull Requests", slack: "Slack", docs: "Docs", reports: "Reports", settings: "Settings" };
-
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();
+  const { isActive } = useModules();
   const [menu, setMenu] = useState<{ view: Exclude<ViewKind, "issue">; x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -71,21 +57,24 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
   return (
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-white/10 bg-sidebar/90 p-1.5 shadow-2xl shadow-black/50 ring-1 ring-primary/15 backdrop-blur-md">
-          {NAV.map((n) => (
-            <DockButton
-              key={n.view}
-              label={n.label}
-              active={active.view === n.view}
-              onClick={() => setActiveView(n.view)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ view: n.view, x: e.clientX, y: e.clientY });
-              }}
-            >
-              {n.icon}
-            </DockButton>
-          ))}
+        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-border bg-sidebar p-1.5 shadow-2xl">
+          {visibleViews(isActive).map((view) => {
+            const { label, icon: Icon } = VIEW_META[view];
+            return (
+              <DockButton
+                key={view}
+                label={label}
+                active={active.view === view}
+                onClick={() => setActiveView(view)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ view, x: e.clientX, y: e.clientY });
+                }}
+              >
+                <Icon className="size-5" />
+              </DockButton>
+            );
+          })}
           <div className="mx-1 h-6 w-px bg-border" />
           <DockButton label={isSyncing ? "Syncing…" : "Refresh"} active={false} onClick={refresh}>
             <RefreshCw className={`size-5 ${isSyncing ? "animate-spin" : ""}`} />
@@ -108,7 +97,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
             className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs text-foreground transition-colors hover:bg-accent"
           >
             <Plus className="size-3.5 text-muted-foreground" />
-            Open {META[menu.view]} in new tab
+            Open {VIEW_META[menu.view].label} in new tab
           </button>
         </div>
       )}

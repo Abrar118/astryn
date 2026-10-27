@@ -1,16 +1,20 @@
 import { useState } from "react";
+import { ownerActive, useModules } from "@/lib/modules";
 import { SettingsNav } from "./SettingsNav";
-import { DEFAULT_SECTION, takeRequestedSection, type SettingsSection } from "./settingsSection";
+import { DEFAULT_SECTION, SETTINGS_GROUPS, takeRequestedSection, type SettingsSection } from "./settingsSection";
 import { AiSection } from "./sections/AiSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
 import { CalendarSection } from "./sections/CalendarSection";
 import { DocsSection } from "./sections/DocsSection";
 import { GithubSection } from "./sections/GithubSection";
 import { LinearSection } from "./sections/LinearSection";
+import { ModulesSection } from "./sections/ModulesSection";
 import { SlackSection } from "./sections/SlackSection";
 
 function SectionBody({ section }: { section: SettingsSection }) {
   switch (section) {
+    case "modules":
+      return <ModulesSection />;
     case "linear":
       return <LinearSection />;
     case "github":
@@ -31,9 +35,14 @@ function SectionBody({ section }: { section: SettingsSection }) {
 export function Settings() {
   // Consumed once on mount so a deep-link (Docs' "add a repository") lands on the
   // right section; ordinary visits open on the default.
-  const [section, setSection] = useState<SettingsSection>(
+  const { isActive, ready } = useModules();
+  const [selected, setSection] = useState<SettingsSection>(
     () => takeRequestedSection() ?? DEFAULT_SECTION,
   );
+
+  // A section whose module was just turned off falls back to Modules.
+  const owner = SETTINGS_GROUPS.flatMap((g) => g.items).find((i) => i.id === selected)?.module ?? "core";
+  const section: SettingsSection = !ready || ownerActive(owner, isActive) ? selected : "modules";
 
   return (
     <main className="flex h-full min-h-0">
