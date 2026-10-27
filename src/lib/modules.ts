@@ -63,7 +63,14 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
 };
 
-export const MODULES_KEY = ["modules"] as const;
+/** Capabilities `id` requires that no module in `selected` provides. */
+export function previewMissing(id: ModuleId, selected: Set<ModuleId>): Capability[] {
+  const provided = new Set<Capability>();
+  for (const m of selected) MODULE_MANIFEST[m].provides.forEach((c) => provided.add(c));
+  return MODULE_MANIFEST[id].requires.filter((c) => !provided.has(c));
+}
+
+export const MODULES_KEY =["modules"] as const;
 
 export function useModules(): {
   data?: ModulesView;
