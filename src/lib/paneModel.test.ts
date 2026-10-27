@@ -3,7 +3,7 @@ import { parsePersisted, nextPaneId, clampRatio, FALLBACK, VIEWS } from "./paneM
 import {
   addTabIn, closeTabIn, splitTabRight, moveTabToOtherPane, moveTab, swapPanes,
   selectTabIn, openIssueTabAcross, openIssueInRightSplit, assertInvariants,
-  openDocTabAcross, openDocInRightSplit,
+  openDocTabAcross, openDocInRightSplit, closeTabsWhere,
 } from "./paneModel";
 import type { Pane, WorkspaceState } from "./paneModel";
 
@@ -423,5 +423,30 @@ describe("openDocTabAcross / openDocInRightSplit", () => {
       docPath: "a.md",
       docSourceId: DESIGN,
     });
+  });
+});
+
+describe("closeTabsWhere", () => {
+  const split = (): WorkspaceState => ({
+    panes: [
+      { id: "pane-0", tabs: [{ id: "tab-0", view: "calendar" }, { id: "tab-1", view: "prs" }], activeTabId: "tab-0" },
+      { id: "pane-1", tabs: [{ id: "tab-2", view: "slack" }], activeTabId: "tab-2" },
+    ],
+    focusedPaneId: "pane-1", ratio: 0.5, seq: 3,
+  });
+  it("drops matching tabs, collapses an emptied pane and repairs the active tab", () => {
+    const s = closeTabsWhere(split(), (t) => t.view === "slack" || t.view === "calendar");
+    expect(s.panes).toHaveLength(1);
+    expect(s.panes[0].tabs.map((t) => t.view)).toEqual(["prs"]);
+    expect(s.panes[0].activeTabId).toBe("tab-1");
+    expect(s.focusedPaneId).toBe("pane-0");
+    assertInvariants(s);
+  });
+  it("falls back to the dashboard when every tab is dropped", () => {
+    expect(closeTabsWhere(split(), () => true)).toEqual(FALLBACK);
+  });
+  it("returns the same state when nothing matches", () => {
+    const s = split();
+    expect(closeTabsWhere(s, () => false)).toBe(s);
   });
 });

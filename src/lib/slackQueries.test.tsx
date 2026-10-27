@@ -6,6 +6,9 @@ import type { ReactNode } from "react";
 
 const invoke = vi.hoisted(() => vi.fn());
 vi.mock("@tauri-apps/api/core", () => ({ invoke }));
+vi.mock("@/lib/modules", () => ({
+  useModules: () => ({ isActive: () => true, hasCapability: () => true, ready: true }),
+}));
 vi.mock("goey-toast", () => ({ gooeyToast: { error: vi.fn(), success: vi.fn() } }));
 
 import { useSlackCatchup, useSlackSync } from "./queries";

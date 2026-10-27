@@ -1,4 +1,5 @@
 import { useSyncLoop } from "@/lib/queries";
+import { useModules } from "@/lib/modules";
 import { WorkspaceProvider } from "@/lib/tabs";
 import { SplitLayout } from "@/components/SplitLayout";
 import { Dock } from "@/components/Dock";
@@ -7,7 +8,8 @@ import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
 function Shell() {
-  const { isSyncing, refresh } = useSyncLoop();
+  const { hasCapability } = useModules();
+  const { isSyncing, refresh } = useSyncLoop(hasCapability("tracker"));
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">

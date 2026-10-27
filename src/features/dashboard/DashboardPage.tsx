@@ -35,6 +35,7 @@ import {
   useSlackStatus,
 } from "@/lib/queries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { dhakaToday } from "@/lib/dates";
@@ -42,6 +43,7 @@ import {
   attentionItems,
   dashboardMetrics,
   dueLoad,
+  noModulesActive,
   weekPreview,
   workloadBuckets,
   type AttentionItem,
@@ -636,6 +638,9 @@ export function DashboardPage() {
   const now = useDashboardNow();
   const today = dhakaToday(now);
   const sourcesHeadingId = useId();
+  const { isActive } = useModules();
+  const active = { linear: isActive("linear"), github: isActive("github"), slack: isActive("slack") };
+  const docsOn = isActive("docs");
 
   const issuesQuery = useIssues({});
   const meQuery = useMe();
@@ -660,6 +665,7 @@ export function DashboardPage() {
     slack,
     viewerId,
     today,
+    active,
   });
   const attention = attentionItems({
     issues,
@@ -668,6 +674,7 @@ export function DashboardPage() {
     slack,
     viewerId,
     today,
+    active,
   });
   const workload = workloadBuckets(issues, viewerId);
   const dueDays = dueLoad(issues, viewerId, today);
@@ -769,6 +776,29 @@ export function DashboardPage() {
               tone: "muted" as const,
             };
 
+  if (noModulesActive(active)) {
+    return (
+      <main className="dashboard-surface h-full overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[1500px] flex-col items-start gap-2 px-4 pt-6">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground">Your workspace</h1>
+          <p className="text-[12px] text-muted-foreground">No modules are on. Turn some on in Settings → Modules.</p>
+          <button
+            type="button"
+            onClick={() => setActiveView("settings")}
+            className="mt-1 cursor-pointer rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            Open Settings
+          </button>
+        </div>
+      </main>
+    );
+  }
+
+  const openProviderSettings = (section: "github" | "slack") => {
+    requestSettingsSection(section);
+    setActiveView("settings");
+  };
+
   return (
     <main className="dashboard-surface h-full overflow-y-auto">
       <div className="relative mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-28">
@@ -792,7 +822,7 @@ export function DashboardPage() {
         </header>
 
         <div className="dashboard-kpi-grid grid min-w-0 gap-3">
-          <KpiCard
+          {active.linear && <KpiCard
             label="Overdue"
             value={linearDataAvailable ? metrics.overdue : null}
             description={
@@ -807,8 +837,8 @@ export function DashboardPage() {
             loading={issuesQuery.isLoading || meQuery.isLoading}
             actionLabel="Open overdue issues"
             onOpen={() => setActiveView("this-week")}
-          />
-          <KpiCard
+          />}
+          {active.github && <KpiCard
             label="Reviews"
             value={githubDataAvailable ? metrics.reviews : null}
             description={
@@ -821,8 +851,8 @@ export function DashboardPage() {
             loading={githubQuery.isLoading}
             actionLabel="Open pull requests"
             onOpen={() => setActiveView("prs")}
-          />
-          <KpiCard
+          />}
+          {active.linear && <KpiCard
             label="Inbox"
             value={notificationsQuery.data ? metrics.inbox : null}
             description={
@@ -835,8 +865,8 @@ export function DashboardPage() {
             loading={notificationsQuery.isLoading}
             actionLabel="Open inbox"
             onOpen={() => setActiveView("inbox")}
-          />
-          <KpiCard
+          />}
+          {active.slack && <KpiCard
             label="Mentions"
             value={slackDataAvailable ? metrics.mentions : null}
             description={
@@ -851,7 +881,7 @@ export function DashboardPage() {
             loading={slackQuery.isLoading}
             actionLabel="Open Slack mentions"
             onOpen={() => setActiveView("slack")}
-          />
+          />}
         </div>
 
         <div className="dashboard-main-grid grid min-w-0 gap-4">
@@ -867,33 +897,41 @@ export function DashboardPage() {
             }
             partial={attentionPartial}
           />
-          <div className="dashboard-side-grid grid min-w-0 gap-4">
-            <WorkloadChart buckets={workload} available={linearDataAvailable} />
-            <DueLoadChart days={dueDays} available={linearDataAvailable} />
-          </div>
+          {active.linear && (
+            <div className="dashboard-side-grid grid min-w-0 gap-4">
+              <WorkloadChart buckets={workload} available={linearDataAvailable} />
+              <DueLoadChart days={dueDays} available={linearDataAvailable} />
+            </div>
+          )}
         </div>
 
         <div className="dashboard-lower-grid grid min-w-0 gap-4">
-          <WeekCard
-            issues={preview}
-            today={today}
-            onOpenIssue={(id) => setParams({ issue: id })}
-            onOpenWeek={() => setActiveView("this-week")}
-            available={linearDataAvailable}
-          />
-          <PrHealthCard
-            stats={pullRequestStats}
-            onOpen={() => setActiveView("prs")}
-            available={githubDataAvailable}
-          />
-          <CommunicationCard
-            inbox={notificationsQuery.data ? metrics.inbox : null}
-            mentions={slackDataAvailable ? metrics.mentions : null}
-            directMessages={slackDataAvailable ? dms : null}
-            threads={slackDataAvailable ? unreadThreads : null}
-            loading={slackQuery.isLoading}
-            onOpen={() => setActiveView("slack")}
-          />
+          {active.linear && (
+            <WeekCard
+              issues={preview}
+              today={today}
+              onOpenIssue={(id) => setParams({ issue: id })}
+              onOpenWeek={() => setActiveView("this-week")}
+              available={linearDataAvailable}
+            />
+          )}
+          {active.github && (
+            <PrHealthCard
+              stats={pullRequestStats}
+              onOpen={() => setActiveView("prs")}
+              available={githubDataAvailable}
+            />
+          )}
+          {(active.linear || active.slack) && (
+            <CommunicationCard
+              inbox={active.linear && notificationsQuery.data ? metrics.inbox : null}
+              mentions={slackDataAvailable ? metrics.mentions : null}
+              directMessages={slackDataAvailable ? dms : null}
+              threads={slackDataAvailable ? unreadThreads : null}
+              loading={slackQuery.isLoading}
+              onOpen={() => setActiveView(active.slack ? "slack" : "inbox")}
+            />
+          )}
           <GlassCard className="p-4" ariaLabelledBy={sourcesHeadingId}>
             <SectionHeading
               id={sourcesHeadingId}
@@ -901,7 +939,7 @@ export function DashboardPage() {
               description="Cached provider availability and freshness"
             />
             <div className="dashboard-source-grid mt-2 grid gap-0.5">
-              <SourceRow
+              {active.linear && <SourceRow
                 Icon={Layers3}
                 name="Linear"
                 status={linearReadError ? "Unavailable" : linearStatus.status}
@@ -912,8 +950,8 @@ export function DashboardPage() {
                     ? "settings"
                     : "list",
                 )}
-              />
-              <SourceRow
+              />}
+              {active.github && <SourceRow
                 Icon={GitPullRequest}
                 name="GitHub"
                 status={
@@ -935,9 +973,9 @@ export function DashboardPage() {
                       ? "muted"
                       : githubStatus.tone
                 }
-                onOpen={() => setActiveView(githubStatusQuery.data?.state === "not_configured" ? "settings" : "prs")}
-              />
-              <SourceRow
+                onOpen={() => (githubStatusQuery.data?.state === "not_configured" ? openProviderSettings("github") : setActiveView("prs"))}
+              />}
+              {active.slack && <SourceRow
                 Icon={MessageSquare}
                 name="Slack"
                 status={
@@ -959,9 +997,9 @@ export function DashboardPage() {
                       ? "muted"
                       : slackStatus.tone
                 }
-                onOpen={() => setActiveView(slackStatusQuery.data?.state === "not_configured" ? "settings" : "slack")}
-              />
-              <SourceRow
+                onOpen={() => (slackStatusQuery.data?.state === "not_configured" ? openProviderSettings("slack") : setActiveView("slack"))}
+              />}
+              {docsOn && <SourceRow
                 Icon={BookText}
                 name="Docs"
                 status={
@@ -990,7 +1028,7 @@ export function DashboardPage() {
                         : "muted"
                 }
                 onOpen={() => setActiveView(docsConnected ? "docs" : "settings")}
-              />
+              />}
             </div>
           </GlassCard>
         </div>

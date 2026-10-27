@@ -23,6 +23,7 @@ import {
   useSetGithubRepoFavorite,
 } from "@/lib/queries";
 import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { PrHeatMap } from "./PrHeatMap";
 import { PrContextMenu } from "./PrContextMenu";
 import { PrDrawer } from "./PrDrawer";
@@ -176,7 +177,14 @@ export function PrsPage() {
             Link your GitHub account to see your pull requests.
           </p>
         </div>
-        <Button onClick={() => setActiveView("settings")}>Connect GitHub</Button>
+        <Button
+          onClick={() => {
+            requestSettingsSection("github");
+            setActiveView("settings");
+          }}
+        >
+          Connect GitHub
+        </Button>
       </main>
     );
   }

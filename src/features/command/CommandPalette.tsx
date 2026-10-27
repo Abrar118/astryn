@@ -85,6 +85,8 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const { addTab, closeTab, active } = useWorkspace();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { hasCapability } = useModules();
+  const tracker = hasCapability("tracker");
 
   const resync = useCallback(
     (full: boolean) => {
@@ -99,8 +101,8 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 
   // A single stable keydown listener reads the latest handlers via this ref, so
   // the global shortcuts never re-subscribe on every render.
-  const handlers = useRef({ mode, addTab, navigate, resync, closeTab, activeId: active.id });
-  handlers.current = { mode, addTab, navigate, resync, closeTab, activeId: active.id };
+  const handlers = useRef({ mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker });
+  handlers.current = { mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -111,10 +113,10 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         setMode((m) => (m === "palette" ? null : "palette"));
         return;
       }
-      // Cmd/Ctrl+T opens a new tab (defaults to calendar).
+      // Cmd/Ctrl+T opens a new tab (calendar when a tracker is on, else the dashboard).
       if (mod && !e.altKey && (e.key === "t" || e.key === "T")) {
         e.preventDefault();
-        handlers.current.addTab("calendar");
+        handlers.current.addTab(handlers.current.tracker ? "calendar" : "dashboard");
         return;
       }
       // Cmd/Ctrl+W closes the active tab (NOT the window/app). The macOS native
@@ -130,14 +132,14 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
         handlers.current.navigate(-1);
         return;
       }
-      // Cmd/Ctrl+R resyncs the workspace; add Shift for a full resync.
+      // Cmd/Ctrl+R resyncs the workspace; add Shift for a full resync. No tracker, nothing to sync.
       if (mod && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
-        handlers.current.resync(e.shiftKey);
+        if (handlers.current.tracker) handlers.current.resync(e.shiftKey);
         return;
       }
-      // Bare "c" opens the create modal, unless typing or an overlay is open.
-      if (shouldOpenCreateShortcut({
+      // Bare "c" opens the create modal, unless typing or an overlay is open (or no tracker is on).
+      if (handlers.current.tracker && shouldOpenCreateShortcut({
         key: e.key,
         editable: isEditableTarget(e.target),
         overlayOpen: !!handlers.current.mode || !!document.querySelector("[data-command-shortcut-blocker], [data-popover-open]"),
@@ -193,8 +195,9 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
   const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
-  const { isActive } = useModules();
-  const modulesKey = visibleViews(isActive).join();
+  const { isActive, hasCapability } = useModules();
+  const tracker = hasCapability("tracker");
+  const modulesKey = `${visibleViews(isActive).join()}|${tracker}`;
   const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -221,13 +224,17 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
 
   const commands: Command[] = useMemo(
     () => [
-      { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
+      ...(tracker ? [{ key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate }] : []),
       ...goCommands,
-      { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab("calendar"); onClose(); } },
+      { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab(tracker ? "calendar" : "dashboard"); onClose(); } },
       { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", hint: HINT.back, onSelect: () => { navigate(-1); onClose(); } },
-      { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
-      { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", hint: HINT.sync, onSelect: () => { onClose(); resync(false); } },
-      { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", hint: HINT.fullSync, onSelect: () => { onClose(); resync(true); } },
+      ...(tracker
+        ? [
+            { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
+            { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", hint: HINT.sync, onSelect: () => { onClose(); resync(false); } },
+            { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", hint: HINT.fullSync, onSelect: () => { onClose(); resync(true); } },
+          ]
+        : []),
     ],
     // handlers are stable enough for this overlay's lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps

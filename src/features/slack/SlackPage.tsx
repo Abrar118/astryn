@@ -1,6 +1,7 @@
 import { AtSign, MessageCircle, MessageSquare, MessagesSquare, Hash, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { useSlackCatchup, useSlackStatus, useSlackSync } from "@/lib/queries";
 import type { SlackConversation } from "@/lib/commands";
 import { SlackRow, SlackMentionRow, SlackThreadRow } from "./SlackRow";
@@ -24,7 +25,14 @@ export function SlackPage() {
             Link your Slack workspace to catch up on what you missed.
           </p>
         </div>
-        <Button onClick={() => setActiveView("settings")}>Connect Slack</Button>
+        <Button
+          onClick={() => {
+            requestSettingsSection("slack");
+            setActiveView("settings");
+          }}
+        >
+          Connect Slack
+        </Button>
       </main>
     );
   }

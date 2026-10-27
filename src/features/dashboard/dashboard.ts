@@ -13,7 +13,25 @@ export type DashboardInput = {
   slack: SlackCatchup | undefined;
   viewerId: string | null;
   today: string;
+  /** Which source modules are on; an absent key counts as on. */
+  active?: { linear?: boolean; github?: boolean; slack?: boolean };
 };
+
+export function noModulesActive(active: NonNullable<DashboardInput["active"]>): boolean {
+  return !active.linear && !active.github && !active.slack;
+}
+
+/** Drop the data of every source module that is off. */
+function gated(input: DashboardInput): DashboardInput {
+  const { linear = true, github = true, slack = true } = input.active ?? {};
+  return {
+    ...input,
+    issues: linear ? input.issues : [],
+    notifications: linear ? input.notifications : [],
+    prs: github ? input.prs : [],
+    slack: slack ? input.slack : undefined,
+  };
+}
 
 export type DashboardMetrics = {
   overdue: number;
@@ -75,7 +93,8 @@ function distinctPrCount(prs: GithubPr[], predicate: (pr: GithubPr) => boolean):
   return new Set(prs.filter(predicate).map((pr) => pr.id)).size;
 }
 
-export function dashboardMetrics(input: DashboardInput): DashboardMetrics {
+export function dashboardMetrics(raw: DashboardInput): DashboardMetrics {
+  const input = gated(raw);
   return {
     overdue: input.issues.filter((issue) => isOverdue(issue, input.viewerId, input.today)).length,
     reviews: distinctPrCount(input.prs, (pr) => pr.bucket === "needs_review"),
@@ -117,7 +136,8 @@ function compareAttention(a: AttentionItem, b: AttentionItem): number {
   return timeOrder || a.key.localeCompare(b.key);
 }
 
-export function attentionItems(input: DashboardInput, limit = 8): AttentionItem[] {
+export function attentionItems(raw: DashboardInput, limit = 8): AttentionItem[] {
+  const input = gated(raw);
   const items: AttentionItem[] = input.issues
     .filter((issue) => isOverdue(issue, input.viewerId, input.today))
     .map((issue) => ({

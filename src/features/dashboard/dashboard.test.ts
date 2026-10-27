@@ -10,6 +10,7 @@ import {
   attentionItems,
   dashboardMetrics,
   dueLoad,
+  noModulesActive,
   weekPreview,
   workloadBuckets,
   type DashboardInput,
@@ -329,5 +330,28 @@ describe("weekPreview", () => {
       "monday-high",
       "monday-low",
     ]);
+  });
+});
+
+describe("module gating", () => {
+  const data = () => input({
+    issues: [issue({ dueDate: "2026-07-20" })],
+    notifications: [notification()],
+    prs: [pr({ bucket: "needs_review" })],
+    slack: catchup({ mentions: [message()] }),
+  });
+  it("omits linear and inbox attention when linear is off", () => {
+    const sources = attentionItems({ ...data(), active: { linear: false, github: true, slack: true } }).map((i) => i.source);
+    expect(sources).not.toContain("linear");
+    expect(sources).not.toContain("inbox");
+    expect(sources).toEqual(expect.arrayContaining(["github", "slack"]));
+  });
+  it("zeroes the metrics of inactive modules", () => {
+    const m = dashboardMetrics({ ...data(), active: { linear: false, github: false, slack: false } });
+    expect(m).toEqual({ overdue: 0, reviews: 0, inbox: 0, mentions: 0 });
+  });
+  it("reports the empty state only when nothing is active", () => {
+    expect(noModulesActive({ linear: false, github: false, slack: false })).toBe(true);
+    expect(noModulesActive({ linear: false, github: true, slack: false })).toBe(false);
   });
 });
