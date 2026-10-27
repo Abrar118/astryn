@@ -70,7 +70,7 @@ export function previewMissing(id: ModuleId, selected: Set<ModuleId>): Capabilit
   return MODULE_MANIFEST[id].requires.filter((c) => !provided.has(c));
 }
 
-export const MODULES_KEY =["modules"] as const;
+export const MODULES_KEY = ["modules"] as const;
 
 export function useModules(): {
   data?: ModulesView;

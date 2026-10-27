@@ -35,6 +35,7 @@ export function ModulePicker() {
       await qc.invalidateQueries({ queryKey: MODULES_KEY });
     } catch {
       gooeyToast.error("Couldn't save your choices");
+    } finally {
       setBusy(false);
     }
   }
