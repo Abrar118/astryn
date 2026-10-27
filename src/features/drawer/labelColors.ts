@@ -1,6 +1,7 @@
 import type { Label } from "@/lib/commands";
 
 /** Linear-style label color palette. */
+// data: these hex values are written to Linear as the new label's `color` (API data, not app theme colors).
 export const LABEL_COLORS = [
   "#6e79d6", "#4cb782", "#f2c94c", "#f2994a", "#eb5757",
   "#bb87fc", "#4ea7fc", "#2dd4bf", "#e879a6", "#95a2b3",

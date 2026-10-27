@@ -119,7 +119,7 @@ export function UnscheduledRail({
             <div className="flex items-center gap-1.5">
               <span
                 className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: i.stateColor || "#6b7280" }}
+                style={{ backgroundColor: i.stateColor || "var(--muted-foreground)" }}
               />
               <span className="font-medium text-muted-foreground">{i.identifier}</span>
             </div>

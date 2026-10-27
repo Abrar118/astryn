@@ -30,7 +30,7 @@ export type AttentionItem = {
   context: string;
   title: string;
   detail: string;
-  tone: "danger" | "warning" | "violet" | "cyan";
+  tone: "danger" | "warning" | "info" | "neutral";
   rank: number;
   sortAt: string;
 };
@@ -49,9 +49,9 @@ export type DueLoadDay = {
 };
 
 const WORKLOAD_BUCKETS: Omit<WorkloadBucket, "count">[] = [
-  { key: "started", label: "In progress", color: "#818cf8" },
-  { key: "unstarted", label: "Todo", color: "#22d3ee" },
-  { key: "backlog", label: "Backlog", color: "#64748b" },
+  { key: "started", label: "In progress", color: "var(--primary)" },
+  { key: "unstarted", label: "Todo", color: "color-mix(in oklab, var(--primary) 45%, transparent)" },
+  { key: "backlog", label: "Backlog", color: "var(--muted-foreground)" },
 ];
 
 const PRIORITY_ORDER = [1, 2, 3, 4, 0];
@@ -103,7 +103,7 @@ function prAttention(pr: GithubPr): AttentionItem | null {
       : conflicting
         ? "Merge conflict"
         : "Review requested",
-    tone: critical ? "danger" : "violet",
+    tone: critical ? "danger" : "info",
     rank: critical ? 1 : 2,
     sortAt: pr.updatedAt ?? "",
   };
@@ -171,7 +171,7 @@ export function attentionItems(input: DashboardInput, limit = 8): AttentionItem[
       detail: notification.actorName
         ? `${notification.actorName} · Inbox`
         : "Unread notification",
-      tone: "cyan",
+      tone: "neutral",
       rank: 4,
       sortAt: notification.createdAt,
     });

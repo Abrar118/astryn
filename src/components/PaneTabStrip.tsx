@@ -11,17 +11,17 @@ import { DualClock } from "@/features/home/DualClock";
 import { TabContextMenu } from "./TabContextMenu";
 
 const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
-  dashboard: { label: "Dashboard", icon: <LayoutDashboard className="size-3.5 text-cyan-400" /> },
-  calendar: { label: "Calendar", icon: <Calendar className="size-3.5 text-sky-400" /> },
-  list: { label: "Issues", icon: <List className="size-3.5 text-indigo-400" /> },
-  "this-week": { label: "This Week", icon: <CalendarRange className="size-3.5 text-violet-400" /> },
-  graph: { label: "Dependencies", icon: <Network className="size-3.5 text-teal-400" /> },
-  inbox: { label: "Inbox", icon: <Inbox className="size-3.5 text-amber-400" /> },
-  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5 text-emerald-400" /> },
-  slack: { label: "Slack", icon: <MessageSquare className="size-3.5 text-green-400" /> },
-  docs: { label: "Docs", icon: <BookText className="size-3.5 text-rose-400" /> },
-  reports: { label: "Reports", icon: <NotebookPen className="size-3.5 text-fuchsia-400" /> },
-  settings: { label: "Settings", icon: <SettingsIcon className="size-3.5 text-slate-400" /> },
+  dashboard: { label: "Dashboard", icon: <LayoutDashboard className="size-3.5" /> },
+  calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
+  list: { label: "Issues", icon: <List className="size-3.5" /> },
+  "this-week": { label: "This Week", icon: <CalendarRange className="size-3.5" /> },
+  graph: { label: "Dependencies", icon: <Network className="size-3.5" /> },
+  inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
+  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5" /> },
+  slack: { label: "Slack", icon: <MessageSquare className="size-3.5" /> },
+  docs: { label: "Docs", icon: <BookText className="size-3.5" /> },
+  reports: { label: "Reports", icon: <NotebookPen className="size-3.5" /> },
+  settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
 };
 
 /** Display label for a tab. Issue tabs read "<ID> <title>" from the cache. */

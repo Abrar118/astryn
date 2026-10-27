@@ -33,3 +33,9 @@ dist-ssr
 
 # Claude Code local state (skills, settings)
 .claude/
+
+# impeccable's per-OS engine binary (its launcher re-downloads it on first run)
+.agents/skills/impeccable/scripts/bin/
+
+# impeccable local review captures (screenshots, diffs)
+.impeccable/review/

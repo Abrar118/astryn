@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "@fontsource-variable/geist";
+@import "./themes.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -24,6 +25,10 @@
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-info: var(--info);
+    --color-merged: var(--merged);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -48,74 +53,10 @@
 }
 
 :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
-    --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
-    --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0);
 }
 
-.dark {
-    /* Surface elevation ladder (darkest → lightest): sidebar < background < card < popover */
-    --background: oklch(0.185 0.006 285);
-    --foreground: oklch(0.92 0.004 285);
-    --card: oklch(0.215 0.006 285);
-    --card-foreground: oklch(0.92 0.004 285);
-    --popover: oklch(0.225 0.006 285);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.62 0.19 277);
-    --primary-foreground: oklch(0.98 0.003 285);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
-    --border: oklch(0.27 0.005 285);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.62 0.19 277);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.15 0.006 285);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
-    --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0);
-}
+/* Color tokens live per theme in themes.css (Settings → Appearance). */
 
 @layer base {
   * {
@@ -172,24 +113,13 @@
   }
 }
 
-/* ── Dashboard — frosted, data-dense command center ─────────────────────── */
+/* ── Dashboard — matte, data-dense command center ───────────────────────── */
 .dashboard-surface {
   position: relative;
   isolation: isolate;
   container-type: inline-size;
   container-name: dashboard-pane;
-  background:
-    radial-gradient(
-      circle at 82% 0%,
-      color-mix(in oklab, var(--primary) 12%, transparent),
-      transparent 34%
-    ),
-    radial-gradient(
-      circle at 4% 72%,
-      color-mix(in oklab, #22d3ee 7%, transparent),
-      transparent 28%
-    ),
-    var(--background);
+  background: var(--background);
 }
 
 .dashboard-kpi-grid,
@@ -241,36 +171,8 @@
 }
 
 .dashboard-glass {
-  border-color: color-mix(in oklab, var(--foreground) 10%, transparent);
-  background: color-mix(in oklab, var(--card) 88%, transparent);
-  box-shadow:
-    inset 0 1px color-mix(in oklab, white 6%, transparent),
-    0 12px 36px color-mix(in oklab, black 15%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-.dashboard-aurora {
-  position: fixed;
-  z-index: -1;
-  width: 22rem;
-  height: 22rem;
-  border-radius: 9999px;
-  opacity: 0.12;
-  filter: blur(90px);
-  pointer-events: none;
-}
-
-.dashboard-aurora-primary {
-  top: -10rem;
-  right: 2rem;
-  background: var(--primary);
-}
-
-.dashboard-aurora-cyan {
-  bottom: 4rem;
-  left: -12rem;
-  background: #22d3ee;
+  border-color: var(--border);
+  background: var(--card);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -416,7 +318,7 @@
   background: var(--popover);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px var(--overlay-shadow);
 }
 .fc .fc-popover-header {
   background: var(--secondary);
@@ -526,7 +428,7 @@
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.25rem 0;
-  box-shadow: 0 4px 16px rgb(0 0 0 / 40%);
+  box-shadow: 0 4px 16px var(--overlay-shadow);
 }
 .md-slash-menu li {
   list-style: none;
@@ -550,7 +452,7 @@
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   padding: 0.2rem 0.3rem;
-  box-shadow: 0 2px 10px rgb(0 0 0 / 35%);
+  box-shadow: 0 2px 10px var(--overlay-shadow);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -649,10 +551,18 @@
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
   border-color: var(--primary);
   background-color: var(--primary);
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 0.7rem;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>");
+}
+/* The check is a mask filled with --primary-foreground, so it keeps contrast on every theme's accent. */
+.milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.18em;
+  width: 1.05rem;
+  height: 1.05rem;
+  background-color: var(--primary-foreground);
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 0.7rem no-repeat;
+  pointer-events: none;
 }
 .milkdown .ProseMirror blockquote { border-left: 2px solid var(--border); padding-left: 0.875rem; color: var(--muted-foreground); margin: 0.75rem 0; }
 .milkdown .ProseMirror pre { overflow-x: auto; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--card); padding: 0.75rem; }
@@ -792,27 +702,28 @@
 }
 .md-codeblock pre { margin: 0; padding: 8px; overflow-x: auto; }
 
-/* Syntax highlighting — lowlight/highlight.js token classes, dark theme.
+/* Syntax highlighting — lowlight/highlight.js token classes, from theme tokens
+   so every theme keeps AA contrast.
    Scoped to .md-codeblock so it never affects the rest of the UI. */
 .md-codeblock .hljs-keyword,
 .md-codeblock .hljs-built_in,
-.md-codeblock .hljs-literal { color: #c792ea; }
+.md-codeblock .hljs-literal { color: var(--merged); }
 .md-codeblock .hljs-string,
 .md-codeblock .hljs-attr,
 .md-codeblock .hljs-regexp,
-.md-codeblock .hljs-addition { color: #c3e88d; }
+.md-codeblock .hljs-addition { color: var(--success); }
 .md-codeblock .hljs-number,
-.md-codeblock .hljs-symbol { color: #f78c6c; }
+.md-codeblock .hljs-symbol { color: var(--warning); }
 .md-codeblock .hljs-title,
 .md-codeblock .hljs-title.function_,
-.md-codeblock .hljs-section { color: #82aaff; }
+.md-codeblock .hljs-section { color: var(--info); }
 .md-codeblock .hljs-variable,
 .md-codeblock .hljs-name,
-.md-codeblock .hljs-deletion { color: #f07178; }
+.md-codeblock .hljs-deletion { color: var(--destructive); }
 .md-codeblock .hljs-type,
 .md-codeblock .hljs-class .hljs-title,
 .md-codeblock .hljs-attribute,
-.md-codeblock .hljs-tag { color: #ffcb6b; }
+.md-codeblock .hljs-tag { color: var(--primary); }
 .md-codeblock .hljs-comment,
 .md-codeblock .hljs-quote,
 .md-codeblock .hljs-meta { color: var(--muted-foreground); font-style: italic; }
@@ -864,3 +775,6 @@
 .react-flow__attribution a {
   color: var(--muted-foreground);
 }
+
+/* goey-toast hard-codes its timestamp gray (#777, 4.0:1); use the theme token for AA. */
+[data-theme] .gooey-timestamp { color: var(--muted-foreground); }

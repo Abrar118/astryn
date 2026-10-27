@@ -55,7 +55,7 @@ function mentionTargetFromRelation(rel: Relation): MentionTarget {
     identifier: rel.relatedIdentifier ?? rel.relatedId,
     title: rel.relatedTitle ?? rel.relatedIdentifier ?? rel.relatedId,
     stateType: rel.relatedStateType ?? "unstarted",
-    stateColor: rel.relatedStateColor ?? "#6B7280",
+    stateColor: rel.relatedStateColor ?? "var(--muted-foreground)",
     stateName: rel.relatedStateName,
     projectName: null,
     priority: 0,
@@ -65,21 +65,27 @@ function mentionTargetFromRelation(rel: Relation): MentionTarget {
 
 // ── Edge styling per relation kind ───────────────────────────────────────────
 
-type EdgeKind = { label: string; color: string; dashed?: boolean; animated?: boolean };
+// Color carries meaning only: blocking is danger, every other relation is neutral.
+// Neutral kinds are told apart by dash pattern (sub-issue dashed, related dotted).
+type EdgeKind = { label: string; color: string; dash?: string; animated?: boolean };
 
-const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: "#6366f1", dashed: true };
+const NEUTRAL = "var(--muted-foreground)";
+const DASHED = "5 4";
+const DOTTED = "1.5 3";
+
+const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: NEUTRAL, dash: DASHED };
 
 const EDGE_KINDS: Record<string, EdgeKind> = {
-  blocks: { label: "Blocks", color: "#ef4444", animated: true },
-  blocked_by: { label: "Blocked by", color: "#f59e0b", animated: true },
-  related: { label: "Related to", color: "#64748b", dashed: true },
-  duplicate: { label: "Duplicate", color: "#a855f7", dashed: true },
-  duplicate_of: { label: "Duplicate of", color: "#a855f7", dashed: true },
+  blocks: { label: "Blocks", color: "var(--destructive)", animated: true },
+  blocked_by: { label: "Blocked by", color: "var(--destructive)", animated: true },
+  related: { label: "Related to", color: NEUTRAL, dash: DOTTED },
+  duplicate: { label: "Duplicate", color: NEUTRAL, dash: DOTTED },
+  duplicate_of: { label: "Duplicate of", color: NEUTRAL, dash: DOTTED },
 };
 
 function edgeKindFor(kind: string): EdgeKind {
   if (kind === "sub_issue") return SUB_ISSUE;
-  return EDGE_KINDS[kind] ?? { label: kind.replace(/_/g, " "), color: "#64748b", dashed: true };
+  return EDGE_KINDS[kind] ?? { label: kind.replace(/_/g, " "), color: NEUTRAL, dash: DOTTED };
 }
 
 const LEGEND: EdgeKind[] = [SUB_ISSUE, EDGE_KINDS.blocks, EDGE_KINDS.related];
@@ -160,7 +166,7 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       className={cn(
         "relative flex w-[200px] cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg border bg-card py-1.5 pl-3 pr-1.5 text-foreground shadow-sm transition-all hover:bg-accent focus-visible:outline-none",
         data.highlight
-          ? "border-amber-400 ring-2 ring-amber-400"
+          ? "border-primary ring-2 ring-primary"
           : data.isRoot
             ? "border-primary/40 ring-1 ring-primary/15"
             : "border-border",
@@ -240,12 +246,12 @@ function fallbackDisplay(id: string): Display {
   return {
     identifier: id,
     title: id,
-    stateColor: "#6B7280",
+    stateColor: "var(--muted-foreground)",
     mentionTarget: {
       identifier: id,
       title: id,
       stateType: "unstarted",
-      stateColor: "#6B7280",
+      stateColor: "var(--muted-foreground)",
       stateName: null,
       projectName: null,
       priority: 0,
@@ -351,7 +357,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         return {
           identifier: ref.relatedIdentifier ?? id,
           title: ref.relatedTitle ?? id,
-          stateColor: ref.relatedStateColor ?? "#6B7280",
+          stateColor: ref.relatedStateColor ?? "var(--muted-foreground)",
           mentionTarget: mentionTargetFromRelation(ref),
         };
       }
@@ -412,7 +418,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
           stroke: kind.color,
           strokeWidth: 1.5,
           strokeOpacity: 0.8,
-          ...(kind.dashed ? { strokeDasharray: "5 4" } : {}),
+          ...(kind.dash ? { strokeDasharray: kind.dash } : {}),
         },
         labelStyle: { fontSize: 10, fontWeight: 500, fill: kind.color },
         labelShowBg: Boolean(kind.label),
@@ -526,7 +532,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search issues…"
-                className="h-7 w-48 rounded-md border border-border bg-card/90 pl-7 pr-6 text-xs text-foreground shadow-sm backdrop-blur placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                className="h-7 w-48 rounded-md border border-border bg-card pl-7 pr-6 text-xs text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
               {query && (
                 <button
@@ -543,12 +549,12 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
               type="button"
               onClick={relayout}
               title="Re-layout"
-              className="flex items-center gap-1.5 rounded-md border border-border bg-card/90 px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm transition-colors hover:text-foreground"
             >
               <RotateCcw className="size-3.5" />
               Re-layout
             </button>
-            <div className="flex items-center gap-0.5 rounded-md border border-border bg-card/90 p-0.5 shadow-sm backdrop-blur">
+            <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
               {GROUP_OPTIONS.map((o) => (
                 <button
                   key={o.value}
@@ -567,18 +573,18 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
             </div>
           </div>
         </Panel>
-        <Background gap={16} size={1} color="rgba(255,255,255,0.04)" />
+        <Background gap={16} size={1} color="var(--border)" />
         <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
         <MiniMap
           pannable
           zoomable
-          nodeColor={(n) => (n.type === "issueNode" ? (n.data as IssueNodeData).stateColor : "rgba(255,255,255,0.06)")}
+          nodeColor={(n) => (n.type === "issueNode" ? (n.data as IssueNodeData).stateColor : "var(--muted)")}
           nodeStrokeWidth={2}
           className="!border !border-border !bg-card"
-          maskColor="rgba(0,0,0,0.5)"
+          maskColor="color-mix(in oklab, var(--background) 60%, transparent)"
         />
         <Panel position="top-right">
-          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card/90 px-3 py-2 backdrop-blur">
+          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-3 py-2">
             {LEGEND.map((k) => (
               <div key={k.label} className="flex items-center gap-2">
                 <svg width="22" height="6" className="shrink-0" aria-hidden>
@@ -589,7 +595,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
                     y2="3"
                     stroke={k.color}
                     strokeWidth="1.5"
-                    strokeDasharray={k.dashed ? "5 4" : undefined}
+                    strokeDasharray={k.dash}
                   />
                 </svg>
                 <span className="text-[10px] text-muted-foreground">{k.label}</span>

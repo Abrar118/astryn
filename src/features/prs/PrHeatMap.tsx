@@ -15,12 +15,17 @@ function formatDate(date: string): string {
   return `${days[d.getUTCDay()] ?? ""} ${monthOf(date)} ${d.getUTCDate()}`;
 }
 
-/** Indigo cell background scaled to the busiest day, matching the Overview heatmap. */
+/** A step of the theme primary mixed into the muted empty-cell color. */
+function heatColor(opacity: number): string {
+  return `color-mix(in oklab, var(--primary) ${Math.round(opacity * 100)}%, var(--muted))`;
+}
+
+/** Primary-tinted cell background scaled to the busiest day. */
 function cellBg(count: number, maxCount: number): string | undefined {
   if (count === 0 || maxCount === 0) return undefined;
   const ratio = count / maxCount;
   const opacity = ratio <= 0.2 ? 0.2 : ratio <= 0.4 ? 0.4 : ratio <= 0.6 ? 0.6 : ratio <= 0.8 ? 0.8 : 1;
-  return `rgba(99, 102, 241, ${opacity})`;
+  return heatColor(opacity);
 }
 
 /** A non-interactive GitHub-style contribution grid (contributions per day). */
@@ -70,7 +75,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
                       title={label}
                       className={[
                         "aspect-square w-full rounded-[2px]",
-                        cell.count === 0 ? "bg-muted/40" : "",
+                        cell.count === 0 ? "bg-muted" : "",
                       ].join(" ")}
                       style={bg ? { backgroundColor: bg } : undefined}
                     />
@@ -91,8 +96,8 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             className="h-2.5 w-2.5 rounded-[2px]"
             style={
               opacity === 0
-                ? { backgroundColor: "var(--color-muted)", opacity: 0.4 }
-                : { backgroundColor: `rgba(99, 102, 241, ${opacity})` }
+                ? { backgroundColor: "var(--muted)" }
+                : { backgroundColor: heatColor(opacity) }
             }
           />
         ))}

@@ -17,9 +17,9 @@ import { DiffStat, ReviewProgress, ReviewState, WaitingBadge, LinearIssueState }
 function CiBadge({ status }: { status: GithubPr["ciStatus"] }) {
   if (!status || status === "none") return null;
   const map = {
-    success: { Icon: CheckCircle2, cls: "text-emerald-400", label: "CI passing" },
-    failure: { Icon: XCircle, cls: "text-red-400", label: "CI failing" },
-    pending: { Icon: Clock, cls: "text-amber-400", label: "CI pending" },
+    success: { Icon: CheckCircle2, cls: "text-success", label: "CI passing" },
+    failure: { Icon: XCircle, cls: "text-destructive", label: "CI failing" },
+    pending: { Icon: Clock, cls: "text-warning", label: "CI pending" },
   } as const;
   const { Icon, cls, label } = map[status];
   return <Icon aria-label={label} className={`size-4 ${cls}`} />;
@@ -81,11 +81,11 @@ export function PrRow({
             event.currentTarget,
           );
         }}
-        className="absolute inset-0 z-0 cursor-pointer outline-none transition-colors hover:bg-white/[0.03] focus-visible:bg-primary/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50"
+        className="absolute inset-0 z-0 cursor-pointer outline-none transition-colors hover:bg-foreground/[0.03] focus-visible:bg-primary/[0.06] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/50"
       />
 
       <span className="pointer-events-none relative z-10 mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/40">
-        <GitPullRequest className={`size-4 ${pr.draft ? "text-muted-foreground" : "text-emerald-400"}`} />
+        <GitPullRequest className={`size-4 ${pr.draft ? "text-muted-foreground" : pr.bucket === "merged" ? "text-merged" : "text-success"}`} />
       </span>
 
       <div className="pointer-events-none relative z-10 flex min-w-0 flex-1 flex-col gap-2.5">
@@ -101,13 +101,13 @@ export function PrRow({
             </span>
           )}
           {pr.bucket === "merged" && (
-            <span className="flex shrink-0 items-center gap-1 rounded-md border border-purple-500/30 bg-purple-500/10 px-1.5 py-0.5 text-[11px] font-medium text-purple-300">
+            <span className="flex shrink-0 items-center gap-1 rounded-md border border-merged/30 bg-merged/10 px-1.5 py-0.5 text-[11px] font-medium text-merged">
               <GitMerge className="size-3.5" /> Merged
             </span>
           )}
           {pr.bucket !== "merged" && <ReviewState pr={pr} viewerLogin={viewerLogin} />}
           {pr.mergeable === "conflicting" && (
-            <span className="flex shrink-0 items-center gap-1 rounded-md border border-amber-500/30 bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300">
+            <span className="flex shrink-0 items-center gap-1 rounded-md border border-destructive/30 bg-destructive/10 px-1.5 py-0.5 text-[11px] font-medium text-destructive">
               <GitMerge className="size-3.5" /> Conflict
             </span>
           )}

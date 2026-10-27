@@ -56,7 +56,7 @@ export function BulkActionBar({
   const toggle = (k: MenuKey) => setOpen((cur) => (cur === k ? null : k));
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-card/95 px-2 py-1 text-xs shadow-xl backdrop-blur">
+    <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-xs shadow-xl">
       <span className="px-1 font-medium text-foreground">{selectedIds.length} selected</span>
       <span className="mx-0.5 h-4 w-px bg-border" />
 

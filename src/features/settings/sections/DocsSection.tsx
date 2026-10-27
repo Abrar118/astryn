@@ -159,7 +159,7 @@ export function DocsSection() {
       />
 
       {status && !status.tokenPresent && (
-        <p className="text-sm text-amber-400">
+        <p className="text-sm text-warning">
           Connect a GitHub token first — docs are fetched with it.
         </p>
       )}

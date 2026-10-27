@@ -61,14 +61,14 @@ const METRICS: {
   tint: string;
 }[] = [
   { key: "open", label: "Open", icon: GitPullRequest, tint: "text-foreground" },
-  { key: "needsReview", label: "Needs review", icon: Eye, tint: "text-indigo-400" },
+  { key: "needsReview", label: "Needs review", icon: Eye, tint: "text-muted-foreground" },
   {
     key: "changesRequested",
     label: "Changes req.",
     icon: MessageSquareWarning,
-    tint: "text-amber-400",
+    tint: "text-warning",
   },
-  { key: "conflicts", label: "Conflicts", icon: GitMerge, tint: "text-red-400" },
+  { key: "conflicts", label: "Conflicts", icon: GitMerge, tint: "text-destructive" },
 ];
 
 function applyControls(
@@ -223,14 +223,14 @@ export function PrsPage() {
 
   return (
     <main className="flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 py-3 backdrop-blur">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 py-3">
         <div className="flex items-baseline gap-2">
           <h1 className="text-base font-semibold text-foreground">Pull Requests</h1>
           {status?.state === "connected" && (
             <span className="text-xs text-muted-foreground">@{status.login}</span>
           )}
           {sync.isError && (
-            <span className="text-xs text-amber-400">
+            <span className="text-xs text-warning">
               Sync failed — showing cached data.
             </span>
           )}

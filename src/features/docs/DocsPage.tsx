@@ -241,7 +241,7 @@ export function DocsPage({
 
   return (
     <main className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-background/60 px-4 py-2.5 backdrop-blur">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-background px-4 py-2.5">
         <div className="flex min-w-0 items-center gap-2">
           <Button
             variant="ghost"
@@ -266,7 +266,7 @@ export function DocsPage({
             <h1 className="text-sm font-semibold tracking-tight text-foreground">Docs</h1>
           )}
           {sync.isError && (
-            <span className="shrink-0 text-xs text-amber-400">Sync failed — showing cached.</span>
+            <span className="shrink-0 text-xs text-warning">Sync failed — showing cached.</span>
           )}
         </div>
         <Button

@@ -187,7 +187,7 @@ export function ReportsPage() {
         )}
 
         {slot.result?.llmError && (
-          <p className="text-xs text-amber-400">
+          <p className="text-xs text-warning">
             AI pass failed — this is the deterministic fact sheet. {slot.result.llmError}
           </p>
         )}

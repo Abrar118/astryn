@@ -186,7 +186,7 @@ export function PrSidebar({
             {repositoryQuery.isError && (
               <div
                 role="alert"
-                className="flex items-center gap-2 border-b border-border/60 px-2 py-2 text-xs text-amber-300"
+                className="flex items-center gap-2 border-b border-border/60 px-2 py-2 text-xs text-warning"
               >
                 <span className="min-w-0 flex-1">
                   Couldn't load all repositories.
@@ -202,7 +202,7 @@ export function PrSidebar({
               </div>
             )}
             {repositoryQuery.data?.truncated && (
-              <p className="px-2 py-2 text-xs text-amber-300">
+              <p className="px-2 py-2 text-xs text-warning">
                 Showing the first 10,000 accessible repositories.
               </p>
             )}
@@ -250,7 +250,7 @@ export function PrSidebar({
                 <Star
                   className={`size-4 shrink-0 ${
                     stale
-                      ? "text-amber-400"
+                      ? "text-warning"
                       : active
                         ? "fill-primary/25 text-primary"
                         : ""
@@ -272,7 +272,7 @@ export function PrSidebar({
                     event.stopPropagation();
                     onRetry();
                   }}
-                  className="absolute right-8 top-1 hidden size-7 items-center justify-center rounded-md text-amber-400 hover:bg-muted hover:text-amber-300 lg:flex"
+                  className="absolute right-8 top-1 hidden size-7 items-center justify-center rounded-md text-warning hover:bg-muted hover:text-warning/80 lg:flex"
                 >
                   <RefreshCw className="size-3.5" />
                 </button>

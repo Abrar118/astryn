@@ -16,7 +16,7 @@ import { StatusIcon } from "../drawer/issueGlyphs";
 import type { DisplayProps, Ordering } from "./viewConfig";
 
 export const PRIORITY_LABELS = ["No priority", "Urgent", "High", "Medium", "Low"];
-export const PRIORITY_COLORS = ["#6b7280", "#ef4444", "#f97316", "#eab308", "#3b82f6"];
+export const PRIORITY_COLORS = ["var(--muted-foreground)", "var(--destructive)", "var(--warning)", "var(--info)", "var(--muted-foreground)"];
 export const PRIORITY_ORDER = [1, 2, 3, 4, 0]; // Urgent → High → Medium → Low → None
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -66,7 +66,7 @@ export function PriorityIcon({ p }: { p: number }) {
         <span
           key={i}
           style={{ height: h }}
-          className={`w-[3px] rounded-[1px] ${i < filled ? (urgent ? "bg-red-500" : "bg-muted-foreground") : "bg-border"}`}
+          className={`w-[3px] rounded-[1px] ${i < filled ? (urgent ? "bg-destructive" : "bg-muted-foreground") : "bg-border"}`}
         />
       ))}
     </span>
@@ -93,7 +93,7 @@ export function LabelPills({ labels, max = 2 }: { labels: Label[]; max?: number 
     <span className="flex shrink-0 items-center gap-1">
       {shown.map((l) => (
         <Pill key={l.id} title={`Label: ${l.name ?? "label"}`}>
-          <span className="size-1.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
+          <span className="size-1.5 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
           <span className="max-w-24 truncate">{l.name ?? "label"}</span>
         </Pill>
       ))}
@@ -171,7 +171,7 @@ export function MetaCluster({
       )}
       {display.dueDate && issue.dueDate && (
         <Pill
-          className={overdue ? "border-red-500/40 text-red-400" : ""}
+          className={overdue ? "border-destructive/40 text-destructive" : ""}
           title={`Due date: ${fmtDate(issue.dueDate)}${overdue ? " (overdue)" : ""}`}
         >
           <CalendarDays className="size-3" />
@@ -249,7 +249,7 @@ export function IssueRow({
         )}
         <span className="min-w-[10rem] flex-1 truncate text-foreground">{issue.title}</span>
         {startedOn && (
-          <Pill className="shrink-0 border-emerald-500/30 text-emerald-300/90" title={`Started working on ${startedOn}`}>
+          <Pill className="shrink-0 border-info/30 text-info" title={`Started working on ${startedOn}`}>
             <PlayCircle className="size-3" />
             Started {startedOn}
           </Pill>

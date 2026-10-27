@@ -26,10 +26,10 @@ function fileIcon(changeType: string): {
 } {
   switch (changeType.toLowerCase()) {
     case "added":
-      return { Icon: FilePlus2, className: "text-emerald-400" };
+      return { Icon: FilePlus2, className: "text-success" };
     case "deleted":
     case "removed":
-      return { Icon: FileMinus2, className: "text-red-400" };
+      return { Icon: FileMinus2, className: "text-destructive" };
     case "renamed":
     case "modified":
       return { Icon: FilePen, className: "text-muted-foreground" };
@@ -43,11 +43,11 @@ function openExternal(url: string, message: string) {
 }
 
 const rowClasses: Record<PrDiffRow["kind"], string> = {
-  hunk: "bg-sky-500/[0.055] text-sky-300/80",
+  hunk: "bg-info/[0.055] text-info/80",
   context: "text-foreground/85",
   addition:
-    "bg-emerald-500/[0.10] text-emerald-100 selection:bg-emerald-400/35",
-  deletion: "bg-red-500/[0.10] text-red-100 selection:bg-red-400/35",
+    "bg-success/[0.10] text-foreground selection:bg-success/35",
+  deletion: "bg-destructive/[0.10] text-foreground selection:bg-destructive/35",
   metadata: "text-muted-foreground italic",
 };
 
@@ -96,7 +96,7 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
   const rows = file.patch ? parseUnifiedPatch(file.patch) : [];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border/70 bg-[#101011]">
+    <section className="overflow-hidden rounded-lg border border-border/70 bg-card">
       <header className="flex h-10 items-center gap-2 border-b border-border/60 bg-muted/20 px-3">
         <Icon className={`size-3.5 shrink-0 ${className}`} />
         <h3 className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground">
@@ -107,10 +107,10 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
             from {file.previousPath}
           </span>
         )}
-        <span className="shrink-0 text-xs tabular-nums text-emerald-400">
+        <span className="shrink-0 text-xs tabular-nums text-success">
           +{file.additions}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-red-400">
+        <span className="shrink-0 text-xs tabular-nums text-destructive">
           −{file.deletions}
         </span>
         {file.blobUrl && (
@@ -193,8 +193,8 @@ export function PrDrawerChanges({
           <GitCommitHorizontal className="size-3.5" />
           Commits {commitCount}
         </span>
-        <span className="ml-auto tabular-nums text-emerald-400">+{additions}</span>
-        <span className="tabular-nums text-red-400">−{deletions}</span>
+        <span className="ml-auto tabular-nums text-success">+{additions}</span>
+        <span className="tabular-nums text-destructive">−{deletions}</span>
         <Button
           variant="ghost"
           size="xs"
@@ -221,7 +221,7 @@ export function PrDrawerChanges({
       ) : error ? (
         <div
           role="alert"
-          className="rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-5 py-10 text-center text-sm text-amber-200"
+          className="rounded-lg border border-warning/20 bg-warning/[0.06] px-5 py-10 text-center text-sm text-warning"
         >
           <p>Couldn't load the full diff.</p>
           {onRetry && (

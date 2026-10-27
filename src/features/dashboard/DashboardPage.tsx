@@ -97,29 +97,15 @@ function SectionHeading({
 
 function CacheUnavailable({ children }: { children: ReactNode }) {
   return (
-    <p className="mt-3 rounded-lg bg-amber-500/5 px-3 py-5 text-center text-xs text-amber-300 ring-1 ring-amber-400/15">
+    <p className="mt-3 rounded-lg bg-warning/5 px-3 py-5 text-center text-xs text-warning ring-1 ring-warning/15">
       {children}
     </p>
   );
 }
 
 const KPI_STYLES = {
-  rose: {
-    icon: "bg-rose-500/12 text-rose-400 ring-rose-400/20",
-    glow: "from-rose-500/16 via-rose-500/4",
-  },
-  violet: {
-    icon: "bg-violet-500/12 text-violet-400 ring-violet-400/20",
-    glow: "from-violet-500/16 via-violet-500/4",
-  },
-  cyan: {
-    icon: "bg-cyan-500/12 text-cyan-400 ring-cyan-400/20",
-    glow: "from-cyan-500/16 via-cyan-500/4",
-  },
-  amber: {
-    icon: "bg-amber-500/12 text-amber-400 ring-amber-400/20",
-    glow: "from-amber-500/16 via-amber-500/4",
-  },
+  danger: { icon: "bg-destructive/12 text-destructive ring-destructive/20" },
+  neutral: { icon: "bg-muted text-muted-foreground ring-border" },
 } as const;
 
 function KpiCard({
@@ -149,13 +135,6 @@ function KpiCard({
       onClick={onOpen}
       className="dashboard-glass group relative min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 text-left transition-colors duration-150 hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
     >
-      <span
-        aria-hidden
-        className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-b to-transparent opacity-70",
-          style.glow,
-        )}
-      />
       <span className="relative flex items-start justify-between gap-3">
         <span>
           <span className="block text-[11px] font-medium text-muted-foreground">{label}</span>
@@ -185,10 +164,10 @@ const ATTENTION_ICON: Record<AttentionItem["source"], LucideIcon> = {
 };
 
 const ATTENTION_TONE: Record<AttentionItem["tone"], string> = {
-  danger: "bg-rose-500/12 text-rose-400 ring-rose-400/20",
-  warning: "bg-amber-500/12 text-amber-400 ring-amber-400/20",
-  violet: "bg-violet-500/12 text-violet-400 ring-violet-400/20",
-  cyan: "bg-cyan-500/12 text-cyan-400 ring-cyan-400/20",
+  danger: "bg-destructive/12 text-destructive ring-destructive/20",
+  warning: "bg-warning/12 text-warning ring-warning/20",
+  info: "bg-info/12 text-info ring-info/20",
+  neutral: "bg-muted text-muted-foreground ring-border",
 };
 
 function AttentionTable({
@@ -220,7 +199,7 @@ function AttentionTable({
       {items.length === 0 ? (
         loading ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-400 ring-1 ring-violet-400/20">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground ring-1 ring-border">
               <Clock3 className="size-5" />
             </span>
             <p className="text-sm font-medium text-foreground">
@@ -232,7 +211,7 @@ function AttentionTable({
           </div>
         ) : partial ? (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 ring-1 ring-amber-400/20">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-warning/10 text-warning ring-1 ring-warning/20">
               <AlertTriangle className="size-5" />
             </span>
             <p className="text-sm font-medium text-foreground">
@@ -244,7 +223,7 @@ function AttentionTable({
           </div>
         ) : (
           <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-400/20">
+            <span className="flex size-10 items-center justify-center rounded-xl bg-success/10 text-success ring-1 ring-success/20">
               <CheckCircle2 className="size-5" />
             </span>
             <p className="text-sm font-medium text-foreground">Nothing urgent right now</p>
@@ -402,10 +381,8 @@ function DueLoadChart({
             >
               <span
                 className={cn(
-                  "block w-full rounded-md bg-gradient-to-t transition-[height] duration-200",
-                  index === 0
-                    ? "from-cyan-500/70 to-indigo-400"
-                    : "from-indigo-600/45 to-violet-400/85",
+                  "block w-full rounded-md transition-[height] duration-200",
+                  index === 0 ? "bg-primary" : "bg-primary/45",
                 )}
                 style={{ height: `${day.count === 0 ? 5 : Math.max(18, (day.count / max) * 100)}%` }}
               />
@@ -467,7 +444,7 @@ function WeekCard({
             {issue.dueDate && (
               <span className={cn(
                 "shrink-0 text-[10px]",
-                issue.dueDate < today ? "text-rose-400" : "text-muted-foreground",
+                issue.dueDate < today ? "text-destructive" : "text-muted-foreground",
               )}>
                 {dueLabel(issue.dueDate, today)}
               </span>
@@ -488,11 +465,11 @@ function MetricLine({
   Icon: LucideIcon;
   label: string;
   value: number | null;
-  tint: string;
+  tint?: string;
 }) {
   return (
     <div className="flex items-center gap-2.5 rounded-lg bg-foreground/[0.025] px-2.5 py-2 ring-1 ring-foreground/[0.055]">
-      <Icon className={cn("size-3.5 shrink-0", tint)} />
+      <Icon className={cn("size-3.5 shrink-0", tint ?? "text-muted-foreground")} />
       <span className="min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{label}</span>
       <span className="text-xs font-semibold tabular-nums text-foreground">
         {value ?? "—"}
@@ -529,10 +506,10 @@ function PrHealthCard({
         )}
       />
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricLine Icon={GitPullRequest} label="Open" value={available ? stats.open : null} tint="text-emerald-400" />
-        <MetricLine Icon={CircleDot} label="Needs review" value={available ? stats.needsReview : null} tint="text-violet-400" />
-        <MetricLine Icon={MessageCircle} label="Changes req." value={available ? stats.changesRequested : null} tint="text-amber-400" />
-        <MetricLine Icon={GitMerge} label="Conflicts" value={available ? stats.conflicts : null} tint="text-rose-400" />
+        <MetricLine Icon={GitPullRequest} label="Open" value={available ? stats.open : null} />
+        <MetricLine Icon={CircleDot} label="Needs review" value={available ? stats.needsReview : null} />
+        <MetricLine Icon={MessageCircle} label="Changes req." value={available ? stats.changesRequested : null} tint="text-warning" />
+        <MetricLine Icon={GitMerge} label="Conflicts" value={available ? stats.conflicts : null} tint="text-destructive" />
       </div>
     </GlassCard>
   );
@@ -572,10 +549,10 @@ function CommunicationCard({
         )}
       />
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricLine Icon={Inbox} label="Inbox" value={inbox} tint="text-cyan-400" />
-        <MetricLine Icon={AtSign} label="Mentions" value={mentions} tint="text-amber-400" />
-        <MetricLine Icon={MessageSquare} label="Unread DMs" value={directMessages} tint="text-emerald-400" />
-        <MetricLine Icon={MessagesSquare} label="Threads" value={threads} tint="text-indigo-400" />
+        <MetricLine Icon={Inbox} label="Inbox" value={inbox} />
+        <MetricLine Icon={AtSign} label="Mentions" value={mentions} />
+        <MetricLine Icon={MessageSquare} label="Unread DMs" value={directMessages} />
+        <MetricLine Icon={MessagesSquare} label="Threads" value={threads} />
       </div>
     </GlassCard>
   );
@@ -600,8 +577,8 @@ function SourceRow({ Icon, name, status, detail, tone, onOpen }: SourceRowProps)
     >
       <span className={cn(
         "flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
-        tone === "ready" && "bg-emerald-500/10 text-emerald-400 ring-emerald-400/20",
-        tone === "warning" && "bg-amber-500/10 text-amber-400 ring-amber-400/20",
+        tone === "ready" && "bg-success/10 text-success ring-success/20",
+        tone === "warning" && "bg-warning/10 text-warning ring-warning/20",
         tone === "muted" && "bg-muted/50 text-muted-foreground ring-border",
       )}>
         <Icon className="size-3.5" />
@@ -619,14 +596,14 @@ function SourceRow({ Icon, name, status, detail, tone, onOpen }: SourceRowProps)
 }
 
 function QuickActions({ onOpen }: { onOpen: (view: ViewKind) => void }) {
-  const actions: { view: ViewKind; label: string; Icon: LucideIcon; tint: string }[] = [
-    { view: "calendar", label: "Calendar", Icon: Calendar, tint: "text-sky-400" },
-    { view: "list", label: "Issues", Icon: List, tint: "text-indigo-400" },
-    { view: "this-week", label: "This Week", Icon: CalendarRange, tint: "text-violet-400" },
-    { view: "prs", label: "Pull Requests", Icon: GitPullRequest, tint: "text-emerald-400" },
-    { view: "slack", label: "Slack", Icon: MessageSquare, tint: "text-amber-400" },
-    { view: "docs", label: "Docs", Icon: BookText, tint: "text-rose-400" },
-    { view: "reports", label: "Reports", Icon: NotebookPen, tint: "text-fuchsia-400" },
+  const actions: { view: ViewKind; label: string; Icon: LucideIcon }[] = [
+    { view: "calendar", label: "Calendar", Icon: Calendar },
+    { view: "list", label: "Issues", Icon: List },
+    { view: "this-week", label: "This Week", Icon: CalendarRange },
+    { view: "prs", label: "Pull Requests", Icon: GitPullRequest },
+    { view: "slack", label: "Slack", Icon: MessageSquare },
+    { view: "docs", label: "Docs", Icon: BookText },
+    { view: "reports", label: "Reports", Icon: NotebookPen },
   ];
   return (
     <nav aria-label="Dashboard quick actions" className="dashboard-glass rounded-xl border p-2">
@@ -634,14 +611,14 @@ function QuickActions({ onOpen }: { onOpen: (view: ViewKind) => void }) {
         <span className="hidden shrink-0 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:block">
           Jump to
         </span>
-        {actions.map(({ view, label, Icon, tint }) => (
+        {actions.map(({ view, label, Icon }) => (
           <button
             key={view}
             type="button"
             onClick={() => onOpen(view)}
             className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
-            <Icon className={cn("size-3.5", tint)} />
+            <Icon className="size-3.5" />
             {label}
           </button>
         ))}
@@ -800,9 +777,6 @@ export function DashboardPage() {
 
   return (
     <main className="dashboard-surface h-full overflow-y-auto">
-      <div aria-hidden className="dashboard-aurora dashboard-aurora-primary" />
-      <div aria-hidden className="dashboard-aurora dashboard-aurora-cyan" />
-
       <div className="relative mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-28">
         <header className="dashboard-header flex flex-col gap-3">
           <div className="min-w-0">
@@ -810,7 +784,7 @@ export function DashboardPage() {
               <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/20">
                 <Radio className="size-3.5" />
               </span>
-              <span className="rounded-full bg-emerald-500/8 px-2 py-0.5 text-[9.5px] font-medium text-emerald-400 ring-1 ring-emerald-400/15">
+              <span className="rounded-full bg-muted px-2 py-0.5 text-[9.5px] font-medium text-muted-foreground ring-1 ring-border">
                 Local cache · offline ready
               </span>
             </div>
@@ -818,7 +792,7 @@ export function DashboardPage() {
             <p className="mt-0.5 text-[11px] text-muted-foreground">{dateLabel} · Asia/Dhaka</p>
           </div>
           <div className="dashboard-glass flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2">
-            <Clock3 className="size-3.5 text-cyan-400" />
+            <Clock3 className="size-3.5 text-muted-foreground" />
             <DualClock compact />
           </div>
         </header>
@@ -835,7 +809,7 @@ export function DashboardPage() {
                   : "Connect Linear to calculate"
             }
             Icon={AlertTriangle}
-            tone="rose"
+            tone="danger"
             loading={issuesQuery.isLoading || meQuery.isLoading}
             actionLabel="Open overdue issues"
             onOpen={() => setActiveView("this-week")}
@@ -849,7 +823,7 @@ export function DashboardPage() {
                 : "Pull requests awaiting you"
             }
             Icon={GitPullRequest}
-            tone="violet"
+            tone="neutral"
             loading={githubQuery.isLoading}
             actionLabel="Open pull requests"
             onOpen={() => setActiveView("prs")}
@@ -863,7 +837,7 @@ export function DashboardPage() {
                 : "Open Inbox to read"
             }
             Icon={Inbox}
-            tone="cyan"
+            tone="neutral"
             loading={notificationsQuery.isLoading}
             actionLabel="Open inbox"
             onOpen={() => setActiveView("inbox")}
@@ -879,7 +853,7 @@ export function DashboardPage() {
                   : "No Slack cache yet"
             }
             Icon={AtSign}
-            tone="amber"
+            tone="neutral"
             loading={slackQuery.isLoading}
             actionLabel="Open Slack mentions"
             onOpen={() => setActiveView("slack")}

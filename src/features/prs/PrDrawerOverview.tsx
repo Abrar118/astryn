@@ -86,12 +86,12 @@ function TimelineIcon({ event }: { event: PrTimelineEvent }) {
   }
   if (event.kind === "review") {
     return event.review.state.toLowerCase() === "approved" ? (
-      <CheckCircle2 className="size-4 text-emerald-400" />
+      <CheckCircle2 className="size-4 text-success" />
     ) : (
-      <UserRoundCheck className="size-4 text-amber-400" />
+      <UserRoundCheck className="size-4 text-warning" />
     );
   }
-  return <MessageSquare className="size-4 text-sky-400" />;
+  return <MessageSquare className="size-4 text-info" />;
 }
 
 function TimelineItem({ event }: { event: PrTimelineEvent }) {
@@ -274,7 +274,17 @@ export function PrDrawerOverview({
         <section>
           <h2 className="mb-3 text-sm text-muted-foreground">Status</h2>
           <div className="flex items-center gap-2 text-sm text-foreground">
-            <GitMerge className="size-4 text-emerald-400" />
+            <GitMerge
+              className={`size-4 ${
+                detail?.draft ?? seed.draft
+                  ? "text-muted-foreground"
+                  : detail?.state.toLowerCase() === "merged"
+                    ? "text-merged"
+                    : detail?.state.toLowerCase() === "closed"
+                      ? "text-destructive"
+                      : "text-success"
+              }`}
+            />
             <span>
               {detail?.draft ?? seed.draft
                 ? "Draft"
@@ -306,7 +316,7 @@ export function PrDrawerOverview({
                   className="flex items-center gap-2 text-sm"
                 >
                   <Actor avatar={reviewer.avatar} login={reviewer.login} />
-                  <CheckCircle2 className="ml-auto size-4 text-emerald-400" />
+                  <CheckCircle2 className="ml-auto size-4 text-success" />
                 </div>
               ))}
             </div>
@@ -317,7 +327,7 @@ export function PrDrawerOverview({
           <h2 className="mb-3 text-sm text-muted-foreground">Checks</h2>
           <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
             {checks.length > 0 && passingChecks === checks.length ? (
-              <CheckCircle2 className="size-4 text-emerald-400" />
+              <CheckCircle2 className="size-4 text-success" />
             ) : (
               <ShieldCheck className="size-4 text-muted-foreground" />
             )}
@@ -334,9 +344,9 @@ export function PrDrawerOverview({
                 className="flex items-center gap-2 text-xs text-muted-foreground"
               >
                 {check.conclusion?.toLowerCase() === "success" ? (
-                  <Check className="size-3 text-emerald-400" />
+                  <Check className="size-3 text-success" />
                 ) : (
-                  <XCircle className="size-3 text-amber-400" />
+                  <XCircle className="size-3 text-warning" />
                 )}
                 <span className="truncate">{check.name}</span>
               </div>
@@ -366,10 +376,10 @@ export function PrDrawerOverview({
                 >
                   <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
                   <span className="min-w-0 truncate">{file.path}</span>
-                  <span className="ml-auto shrink-0 tabular-nums text-emerald-400">
+                  <span className="ml-auto shrink-0 tabular-nums text-success">
                     +{file.additions}
                   </span>
-                  <span className="shrink-0 tabular-nums text-red-400">
+                  <span className="shrink-0 tabular-nums text-destructive">
                     −{file.deletions}
                   </span>
                 </div>

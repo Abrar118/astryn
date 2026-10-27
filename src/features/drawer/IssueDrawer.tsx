@@ -118,7 +118,7 @@ function LabelDropdown({
             <span className={`flex size-3.5 items-center justify-center rounded border ${appliedIds.has(l.id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
               {appliedIds.has(l.id) && <Check className="size-2.5" />}
             </span>
-            <span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
+            <span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
             <span className="flex-1 truncate">{l.name ?? "label"}</span>
           </button>
         ))}
@@ -372,28 +372,28 @@ function FallbackChildRow({
 }
 
 function eventIcon(event: ActivityItem): ReactNode {
-  if (event.kind === "created") return <CircleDot className="size-4 text-emerald-400" />;
+  if (event.kind === "created") return <CircleDot className="size-4 text-muted-foreground" />;
   switch (event.category) {
     case "status":
       return event.toStateType
         ? <StatusIcon type={event.toStateType} color={event.toStateColor ?? ""} />
-        : <IterationCcw className="size-3.5 text-amber-400" />;
+        : <IterationCcw className="size-3.5 text-muted-foreground" />;
     case "assignee":
       return event.toAssigneeName
         ? <Avatar name={event.toAssigneeName} size={20} />
-        : <User className="size-3.5 text-indigo-400" />;
+        : <User className="size-3.5 text-muted-foreground" />;
     case "priority":
       return (
         <span
           className="size-2.5 rounded-full"
-          style={{ backgroundColor: PRIORITIES.find((p) => p.value === event.toPriority)?.color ?? "#6b7280" }}
+          style={{ backgroundColor: PRIORITIES.find((p) => p.value === event.toPriority)?.color ?? "var(--muted-foreground)" }}
         />
       );
-    case "title": return <Pencil className="size-3.5 text-blue-400" />;
-    case "description": return <FileText className="size-3.5 text-sky-400" />;
-    case "relation": return <Link2 className="size-3.5 text-violet-400" />;
-    case "attachment": return <Paperclip className="size-3.5 text-cyan-400" />;
-    default: return <IterationCcw className="size-3.5 text-amber-400" />;
+    case "title": return <Pencil className="size-3.5 text-muted-foreground" />;
+    case "description": return <FileText className="size-3.5 text-muted-foreground" />;
+    case "relation": return <Link2 className="size-3.5 text-muted-foreground" />;
+    case "attachment": return <Paperclip className="size-3.5 text-muted-foreground" />;
+    default: return <IterationCcw className="size-3.5 text-muted-foreground" />;
   }
 }
 
@@ -649,7 +649,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
     [cycles, d.teamId],
   );
 
-  const stateColor = "stateColor" in d ? d.stateColor : "#6b7280";
+  const stateColor = "stateColor" in d ? d.stateColor : "var(--muted-foreground)";
   const stateType = d.stateType;
   const stateName = "stateName" in d ? d.stateName ?? stateType : stateType;
   const cycleLabel = cycleName ?? (cycleNumber != null ? `Cycle ${cycleNumber}` : null);
@@ -1062,7 +1062,7 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
             <div className="flex flex-wrap items-center gap-1.5 px-1.5">
               {live?.labels.map((l) => (
                 <span key={l.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
-                  <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "#6b7280" }} />
+                  <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
                   {l.name}
                 </span>
               ))}

@@ -6,16 +6,16 @@ import type { GithubPr } from "@/lib/commands";
  * Mirrors the row's badge palette so the graph reads at a glance.
  */
 function accentFor(pr: GithubPr): string {
-  if (pr.draft) return "#9ca3af"; // gray-400 — not ready
-  if (pr.mergeable === "conflicting") return "#fbbf24"; // amber-400
-  if (pr.ciStatus === "failure") return "#f87171"; // red-400
-  if (pr.ciStatus === "pending") return "#fbbf24"; // amber-400
-  return "#34d399"; // emerald-400 — healthy / open
+  if (pr.draft) return "var(--muted-foreground)"; // not ready
+  if (pr.mergeable === "conflicting") return "var(--destructive)";
+  if (pr.ciStatus === "failure") return "var(--destructive)";
+  if (pr.ciStatus === "pending") return "var(--warning)";
+  return "var(--success)"; // healthy / open
 }
 
-const GOLD = "#e3b341"; // default-branch gold
+const DEFAULT_BRANCH_COLOR = "var(--info)"; // default-branch highlight
 
-/** Targeting the repo's default branch (main/master) is highlighted in gold. */
+/** Targeting the repo's default branch (main/master) is highlighted. */
 function isDefaultBranch(base: string | null): boolean {
   const b = base?.toLowerCase();
   return b === "main" || b === "master";
@@ -25,12 +25,12 @@ function isDefaultBranch(base: string | null): boolean {
  * A compact git-graph glyph: the head branch forks off the base lane (left),
  * carries the PR commit, then curves back toward an open merge node on the
  * base lane (right, dashed = not yet merged). Conveys head → base direction.
- * The base lane goes gold when the target is the default branch.
+ * The base lane is highlighted when the target is the default branch.
  */
-function Glyph({ accent, draft, gold }: { accent: string; draft: boolean; gold: boolean }) {
-  const baseStroke = gold ? GOLD : "currentColor";
-  const baseOpacity = gold ? 0.9 : 0.45;
-  const nodeOpacity = gold ? 1 : 0.55;
+function Glyph({ accent, draft, onDefault }: { accent: string; draft: boolean; onDefault: boolean }) {
+  const baseStroke = onDefault ? DEFAULT_BRANCH_COLOR : "currentColor";
+  const baseOpacity = onDefault ? 0.9 : 0.45;
+  const nodeOpacity = onDefault ? 1 : 0.55;
   return (
     <svg
       width="54"
@@ -59,17 +59,17 @@ function Glyph({ accent, draft, gold }: { accent: string; draft: boolean; gold: 
 export function BranchGraph({ pr }: { pr: GithubPr }) {
   if (!pr.branch) return null;
   const accent = accentFor(pr);
-  const gold = isDefaultBranch(pr.baseBranch);
+  const onDefault = isDefaultBranch(pr.baseBranch);
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-xs" title={pr.baseBranch ? `${pr.branch} → ${pr.baseBranch}` : pr.branch}>
-      <Glyph accent={accent} draft={pr.draft} gold={gold} />
+      <Glyph accent={accent} draft={pr.draft} onDefault={onDefault} />
       <span className="max-w-[200px] truncate font-medium text-foreground/85">{pr.branch}</span>
       {pr.baseBranch && (
         <>
           <ChevronRight className="size-3.5 shrink-0 text-muted-foreground/70" />
           <span
             className="max-w-[150px] truncate text-muted-foreground"
-            style={gold ? { color: GOLD } : undefined}
+            style={onDefault ? { color: DEFAULT_BRANCH_COLOR } : undefined}
           >
             {pr.baseBranch}
           </span>

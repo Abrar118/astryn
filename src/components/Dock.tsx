@@ -24,7 +24,7 @@ function DockButton({
       className={`group relative flex size-11 cursor-pointer items-center justify-center rounded-xl transition-colors ${
         active
           ? "bg-primary/20 text-primary"
-          : "text-muted-foreground hover:bg-white/10 hover:text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
       }`}
     >
       {children}
@@ -71,7 +71,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
   return (
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-white/10 bg-sidebar/90 p-1.5 shadow-2xl shadow-black/50 ring-1 ring-primary/15 backdrop-blur-md">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-border bg-sidebar p-1.5 shadow-2xl">
           {NAV.map((n) => (
             <DockButton
               key={n.view}

@@ -21,12 +21,12 @@ const PILL_CSS = [
   "align-items:center",
   "gap:4px",
   "border-radius:6px",
-  "border:1px solid var(--border,#3f4147)",
-  "background:var(--secondary,#1e2025)",
+  "border:1px solid var(--border)",
+  "background:var(--secondary)",
   "padding:1px 6px",
   "font-size:0.85em",
   "font-weight:500",
-  "color:var(--foreground,#e2e4ea)",
+  "color:var(--foreground)",
   "cursor:pointer",
   "vertical-align:baseline",
   "text-decoration:none",
@@ -74,8 +74,8 @@ export function makeLinkMarkView(
     if (userId) {
       const { dom, contentDOM } = makePillDom("user");
       dom.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); });
-      dom.addEventListener("mouseenter", () => { dom.style.background = "var(--accent,#2a2d35)"; });
-      dom.addEventListener("mouseleave", () => { dom.style.background = "var(--secondary,#1e2025)"; });
+      dom.addEventListener("mouseenter", () => { dom.style.background = "var(--accent)"; });
+      dom.addEventListener("mouseleave", () => { dom.style.background = "var(--secondary)"; });
       return { dom, contentDOM };
     }
 
@@ -96,7 +96,7 @@ export function makeLinkMarkView(
         "height:8px",
         "border-radius:50%",
         "flex-shrink:0",
-        `background:${target.stateColor || "#6b7280"}`,
+        `background:${target.stateColor || "var(--muted-foreground)"}`,
       ].join(";");
       dom.insertBefore(dot, contentDOM);
 
@@ -104,7 +104,7 @@ export function makeLinkMarkView(
       const titleSpan = document.createElement("span");
       titleSpan.textContent = target.title;
       titleSpan.style.cssText = [
-        "color:var(--muted-foreground,#8b909a)",
+        "color:var(--muted-foreground)",
         "margin-left:4px",
         "font-weight:400",
         "max-width:20em",
@@ -123,10 +123,10 @@ export function makeLinkMarkView(
       });
 
       dom.addEventListener("mouseenter", () => {
-        dom.style.background = "var(--accent,#2a2d35)";
+        dom.style.background = "var(--accent)";
       });
       dom.addEventListener("mouseleave", () => {
-        dom.style.background = "var(--secondary,#1e2025)";
+        dom.style.background = "var(--secondary)";
       });
 
       let openTimer: ReturnType<typeof setTimeout> | null = null;
@@ -156,7 +156,7 @@ export function makeLinkMarkView(
     const dom = document.createElement("a");
     if (href) dom.setAttribute("href", href);
     if (attrs.title) dom.setAttribute("title", attrs.title);
-    dom.style.cssText = "color:var(--primary,#6366f1);cursor:pointer;";
+    dom.style.cssText = "color:var(--primary);cursor:pointer;";
     dom.addEventListener("click", (e) => {
       // Prevent actual browser navigation inside the webview.
       e.preventDefault();

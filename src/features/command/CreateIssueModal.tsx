@@ -33,11 +33,11 @@ const SEED_LABEL: Record<CreateSeed["relation"], (identifier: string) => string>
 };
 
 const PRIORITIES = [
-  { value: 1, label: "Urgent", color: "#ef4444" },
-  { value: 2, label: "High", color: "#f97316" },
-  { value: 3, label: "Medium", color: "#eab308" },
-  { value: 4, label: "Low", color: "#3b82f6" },
-  { value: 0, label: "No priority", color: "#6b7280" },
+  { value: 1, label: "Urgent", color: "var(--destructive)" },
+  { value: 2, label: "High", color: "var(--warning)" },
+  { value: 3, label: "Medium", color: "var(--info)" },
+  { value: 4, label: "Low", color: "var(--muted-foreground)" },
+  { value: 0, label: "No priority", color: "var(--muted-foreground)" },
 ];
 const STATE_RANK: Record<string, number> = {
   backlog: 0,
@@ -391,7 +391,7 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
                 {(labels ?? []).map((l) => (
                   <Opt
                     key={l.id}
-                    icon={dot(l.color ?? "#6b7280")}
+                    icon={dot(l.color ?? "var(--muted-foreground)")}
                     label={l.name ?? "label"}
                     active={labelIds.includes(l.id)}
                     onClick={() =>
@@ -431,7 +431,7 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
             className="flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
           >
             <span className={`relative h-4 w-7 rounded-full transition-colors ${createMore ? "bg-primary" : "bg-secondary"}`}>
-              <span className={`absolute top-0.5 size-3 rounded-full bg-white transition-all ${createMore ? "left-3.5" : "left-0.5"}`} />
+              <span className={`absolute top-0.5 size-3 rounded-full transition-all ${createMore ? "left-3.5 bg-primary-foreground" : "left-0.5 bg-foreground"}`} />
             </span>
             Create more
           </button>

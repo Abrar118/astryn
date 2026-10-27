@@ -229,21 +229,23 @@ export function PrDrawer({
 
         <header
           aria-label="Pull request header"
-          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4 text-xs backdrop-blur"
+          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4 text-xs"
         >
-          <GitPullRequest className="size-4 shrink-0 text-emerald-400" />
+          <GitPullRequest
+            className={`size-4 shrink-0 ${pr.draft ? "text-muted-foreground" : pr.bucket === "merged" ? "text-merged" : "text-success"}`}
+          />
           <span className="shrink-0 font-medium text-foreground">
             {pr.repo} #{pr.number}
           </span>
           <span className="text-border">›</span>
-          <GitBranch className="size-3.5 shrink-0 text-emerald-400" />
+          <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
             {title}
           </span>
-          <span className="shrink-0 tabular-nums text-emerald-400">
+          <span className="shrink-0 tabular-nums text-success">
             +{additions}
           </span>
-          <span className="shrink-0 tabular-nums text-red-400">−{deletions}</span>
+          <span className="shrink-0 tabular-nums text-destructive">−{deletions}</span>
           <div className="ml-1 flex shrink-0 items-center gap-0.5">
             <Button
               variant="ghost"
@@ -255,7 +257,7 @@ export function PrDrawer({
               onClick={() => void onFavoriteChange(pr.repo, !favorite)}
             >
               <Star
-                className={`size-4 ${favorite ? "fill-current text-amber-400" : ""}`}
+                className={`size-4 ${favorite ? "fill-current text-primary" : ""}`}
               />
             </Button>
             <Button
@@ -334,7 +336,7 @@ export function PrDrawer({
         {detailQuery.isError && (
           <div
             role="alert"
-            className="flex shrink-0 items-center gap-3 border-b border-amber-500/20 bg-amber-500/[0.06] px-5 py-2 text-xs text-amber-200"
+            className="flex shrink-0 items-center gap-3 border-b border-warning/20 bg-warning/[0.06] px-5 py-2 text-xs text-warning"
           >
             <span className="min-w-0 flex-1">
               Couldn't load live details. Cached pull request data remains available.
