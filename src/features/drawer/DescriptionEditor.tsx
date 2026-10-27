@@ -24,6 +24,7 @@ import { descriptionMentionPlugin } from "./milkdownMention";
 import { descriptionPreviewView } from "./milkdownPreviewNode";
 import { createMarkdownComponents, mentionAwareUrlTransform, type MentionResolver } from "./markdownComponents";
 import type { UploadedAsset, User } from "@/lib/commands";
+import { useModules } from "@/lib/modules";
 import { createUserMentionRemarkPlugin } from "./remarkUserMentions";
 
 type InsertAssets = (assets: UploadedAsset[]) => void;
@@ -131,6 +132,7 @@ function MilkdownEditorInner({
   onOpenLinkRef.current = onOpenLink;
   const onPersistRef = useRef(onPersist);
   onPersistRef.current = onPersist;
+  const previewsOn = useModules().isActive("link-previews");
 
   // Drop the insert handle on unmount/remount so a pending attach can't dispatch
   // into a destroyed ProseMirror view (e.g. the issue changed mid-upload).
@@ -215,7 +217,7 @@ function MilkdownEditorInner({
         // deliberate UX choice so the embed doesn't re-render and re-fetch
         // metadata on every keystroke as the URL is typed. (Canonical Markdown
         // is unchanged either way; the card is pure presentation.)
-        .use(editable ? [] : ([descriptionPreviewView] as unknown as MilkdownPlugin[]))
+        .use(editable || !previewsOn ? [] : ([descriptionPreviewView] as unknown as MilkdownPlugin[]))
         .use(
           resolveMention
             ? descriptionMentionPlugin(resolveMention, (href) =>
@@ -227,7 +229,7 @@ function MilkdownEditorInner({
     // initially missed `resolveMention` are upgraded to pills. While editing,
     // keep the resolver dependency stable to avoid replacing an unsaved draft.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [editable, editable ? null : resolveMention],
+    [editable, editable ? null : resolveMention, previewsOn],
   );
 
   return <Milkdown />;

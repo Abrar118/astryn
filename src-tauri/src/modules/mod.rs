@@ -184,7 +184,15 @@ pub async fn load_state(pool: &SqlitePool) -> Result<ModuleState, sqlx::Error> {
             }),
         },
         None => {
-            if db::load_setting(pool, "linear_viewer_id").await?.is_some() {
+            let existing = db::load_setting(pool, "linear_viewer_id").await?.is_some()
+                || db::load_setting(pool, "github_login").await?.is_some()
+                || sqlx::query_scalar::<_, i64>(
+                    "SELECT (EXISTS(SELECT 1 FROM issues) OR EXISTS(SELECT 1 FROM slack_messages))",
+                )
+                .fetch_one(pool)
+                .await?
+                    != 0;
+            if existing {
                 let state = ModuleState {
                     enabled: all_enabled(),
                     onboarded: true,
@@ -224,6 +232,7 @@ pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sq
 }
 
 /// Management and provider-status commands that are always callable.
+#[cfg(test)]
 pub const CORE_COMMANDS: &[&str] = &[
     "list_modules",
     "set_enabled_modules",
@@ -236,6 +245,7 @@ pub const CORE_COMMANDS: &[&str] = &[
 ];
 
 /// The module that owns a registered Tauri command, if it is not core.
+#[cfg(test)]
 pub fn command_owner(name: &str) -> Option<ModuleId> {
     match name {
         "set_linear_key"
@@ -305,7 +315,7 @@ mod tests {
 
     #[test]
     fn every_registered_command_has_an_owner_or_is_core() {
-        let src = include_str!("../lib.rs");
+        let src = include_str!("../lib.rs").replace("\r\n", "\n");
         let list = src
             .split("generate_handler![")
             .nth(1)
@@ -339,6 +349,7 @@ mod tests {
             ("docs.rs", include_str!("../commands/docs.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
         ] {
+            let src = src.replace("\r\n", "\n");
             for chunk in src.split("#[tauri::command]").skip(1) {
                 let name = chunk
                     .split("fn ")
@@ -406,6 +417,17 @@ mod tests {
                 .as_deref(),
             Some("true")
         );
+    }
+
+    #[tokio::test]
+    async fn github_login_alone_marks_an_existing_install() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "github_login", "octocat")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert!(s.onboarded);
     }
 
     #[tokio::test]

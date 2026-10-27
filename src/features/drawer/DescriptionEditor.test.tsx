@@ -8,6 +8,8 @@ import { DescriptionEditor, EditorErrorBoundary, ReadOnlyDescription } from "./D
 const { milkdownThrows } = vi.hoisted(() => ({ milkdownThrows: { value: false } }));
 const { useEditorMock } = vi.hoisted(() => ({ useEditorMock: vi.fn() }));
 
+vi.mock("@/lib/modules", () => ({ useModules: () => ({ isActive: () => true }) }));
+
 // Stub DescriptionAutosave so we can assert how the editor drives it without a
 // real ProseMirror instance feeding markdownUpdated.
 const { autosave } = vi.hoisted(() => ({
@@ -126,7 +128,7 @@ describe("DescriptionEditor", () => {
     rerender(<DescriptionEditor {...props} resolveMention={nextResolver} />);
 
     const lastCall = useEditorMock.mock.calls[useEditorMock.mock.calls.length - 1];
-    expect(lastCall?.[1]).toEqual([false, nextResolver]);
+    expect(lastCall?.[1]).toEqual([false, nextResolver, true]);
   });
 
   it("shows a muted 'No description' affordance when empty", () => {

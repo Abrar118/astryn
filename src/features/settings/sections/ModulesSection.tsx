@@ -18,6 +18,8 @@ export function ModulesSection() {
     setBusy(true);
     try {
       qc.setQueryData(MODULES_KEY, await setEnabledModules(ids));
+      void qc.invalidateQueries({ queryKey: ["github-prs"] });
+      void qc.invalidateQueries({ queryKey: ["slack-catchup"] });
     } catch {
       gooeyToast.error("Couldn't update modules");
     } finally {
