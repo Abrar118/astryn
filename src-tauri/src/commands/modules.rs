@@ -1,7 +1,7 @@
 //! Module management commands: list, enable/disable, and remove a module's data.
 
 use std::collections::BTreeSet;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::RwLock;
 
 use serde::Serialize;
@@ -116,17 +116,39 @@ pub async fn remove_module_data_logic(
             store.delete(LLM_API_KEY_ACCOUNT).map_err(secret_err)?;
         }
         ModuleId::Docs => {
+            let mut tx = pool.begin().await.map_err(db_err)?;
             for t in ["docs_files", "docs_sync_meta", "docs_sources"] {
                 sqlx::query(&format!("DELETE FROM {t}"))
-                    .execute(pool)
+                    .execute(&mut *tx)
                     .await
                     .map_err(db_err)?;
             }
+            tx.commit().await.map_err(db_err)?;
         }
         // Nothing persisted: in-memory state only.
         ModuleId::Reports | ModuleId::LinkPreviews => {}
     }
     Ok(())
+}
+
+/// Bump the generation counter of every disabled provider.
+fn bump_generations(
+    disabled: &[ModuleId],
+    linear: &AtomicU64,
+    github: &AtomicU64,
+    slack: &AtomicU64,
+    llm: &AtomicU64,
+) {
+    for id in disabled {
+        let counter = match id {
+            ModuleId::Linear => linear,
+            ModuleId::Github => github,
+            ModuleId::Slack => slack,
+            ModuleId::Llm => llm,
+            _ => continue,
+        };
+        counter.fetch_add(1, Ordering::SeqCst);
+    }
 }
 
 #[tauri::command]
@@ -142,32 +164,28 @@ pub async fn set_enabled_modules(
 ) -> Result<ModulesView, CmdError> {
     let disabled = set_enabled_modules_logic(&state.pool, &state.modules, ids).await?;
     // Invalidate in-flight work of disabled providers so late writes are dropped.
-    for id in disabled {
-        match id {
-            ModuleId::Linear => {
-                let _g = state.workspace_lock.lock().await;
-                state.workspace_generation.fetch_add(1, Ordering::SeqCst);
-            }
-            ModuleId::Github => {
-                let _g = state.github_lock.lock().await;
-                state.github_generation.fetch_add(1, Ordering::SeqCst);
-            }
-            ModuleId::Slack => {
-                let _g = state.slack_lock.lock().await;
-                state.slack_generation.fetch_add(1, Ordering::SeqCst);
-            }
-            ModuleId::Llm => {
-                state.llm_generation.fetch_add(1, Ordering::SeqCst);
-            }
-            _ => {}
-        }
-    }
+    // No lock here: syncs hold their lock for their whole run, so waiting would
+    // block the toggle without stopping the write; remove_module_data takes the lock.
+    bump_generations(
+        &disabled,
+        &state.workspace_generation,
+        &state.github_generation,
+        &state.slack_generation,
+        &state.llm_generation,
+    );
     let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
     Ok(list_modules_logic(&guard))
 }
 
 #[tauri::command]
 pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Result<(), CmdError> {
+    // Wait out any running sync of the owning provider so it cannot repopulate the wipe.
+    let _g = match id {
+        ModuleId::Linear => Some(state.workspace_lock.lock().await),
+        ModuleId::Github | ModuleId::Docs => Some(state.github_lock.lock().await),
+        ModuleId::Slack => Some(state.slack_lock.lock().await),
+        _ => None,
+    };
     let snapshot = state
         .modules
         .read()
@@ -224,14 +242,17 @@ mod tests {
         assert_eq!(*lock.read().unwrap(), loaded);
     }
 
-    #[tokio::test]
-    async fn disabling_github_bumps_generation() {
-        let (_d, pool) = pool().await;
-        let lock = RwLock::new(state(&[ModuleId::Github, ModuleId::Slack]));
-        let disabled = set_enabled_modules_logic(&pool, &lock, vec![ModuleId::Slack])
-            .await
-            .unwrap();
-        assert!(disabled.contains(&ModuleId::Github));
+    #[test]
+    fn disabling_github_bumps_only_its_generation() {
+        let (l, g, s, m) = (
+            AtomicU64::new(0),
+            AtomicU64::new(0),
+            AtomicU64::new(0),
+            AtomicU64::new(0),
+        );
+        bump_generations(&[ModuleId::Github, ModuleId::Docs], &l, &g, &s, &m);
+        assert_eq!(g.load(Ordering::SeqCst), 1);
+        assert_eq!([&l, &s, &m].map(|c| c.load(Ordering::SeqCst)), [0, 0, 0]);
     }
 
     #[tokio::test]
