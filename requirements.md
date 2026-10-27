@@ -139,7 +139,7 @@ Canonical asset source is the in-repo folder **`public/icons/`** (the approved a
 
 - **Base timezone is `Asia/Dhaka` (UTC+6).** All date/time logic — due-date bucketing, the "This Week" agenda week window, and activity-feed grouping ("Today/Yesterday") — is computed in Bangladesh local time, not UTC and not the machine's locale.
 - **Week starts on Sunday** (drives the This Week agenda window and any calendar week view).
-- **Home view shows a live dual clock:** the user's local **Dhaka** time and **Germany** time side by side. Use the `Europe/Berlin` IANA zone so CET/CEST daylight-saving shifts are handled automatically — do **not** hard-code a fixed UTC offset. Update at least once per minute (per second is fine). Label each clock with its city/zone.
+- ~~**Home view shows a live dual clock**~~ — *removed 2026-10-27 by the owner's decision* (the Dhaka/Germany badges in the tab strip and Dashboard header are gone). If a Germany time display returns, use the `Europe/Berlin` IANA zone, never a fixed offset.
 
 ---
 
@@ -623,7 +623,7 @@ Resolved (locked):
 1. **Sync scope:** entire **`GAM Health Solutions`** workspace — all teams, all issues. ✅
 2. **Frontend:** React + TypeScript + Vite, Tailwind v4, shadcn/ui. ✅
 3. **Week start:** Sunday. ✅
-4. **Base timezone:** `Asia/Dhaka` for all date/time logic; home shows a live `Europe/Berlin` (Germany) clock alongside local time. ✅
+4. **Base timezone:** `Asia/Dhaka` for all date/time logic. ✅ (The live `Europe/Berlin` clock was removed on 2026-10-27.)
 5. **F5/F6 output (M3 revision):** the original standup/weekly markdown generators and the no-op `polish` seam are **dropped**. F5 + F6 are replaced by the "This Week" structured in-app view (due-date agenda, Sunday-started week, any state). Owner redefined these `[REQ]` items. ✅
 6. **Local LLM polish:** dropped along with the markdown generators in M3 — no `polish` seam exists in the shipped design. ✅ *Superseded in v0.4.0:* the separate **Reports** feature reintroduced daily/weekly text output with an optional OpenAI-compatible LLM pass (§4 LLM endpoint). The This Week agenda itself stays a structured in-app view.
 

@@ -18,7 +18,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
-import { DualClock } from "@/features/home/DualClock";
 import { dueLabel } from "@/features/issues/IssueRow";
 import { prStats } from "@/features/prs/prActivity";
 import { relativeTime } from "@/features/inbox/notifications";
@@ -814,10 +813,6 @@ export function DashboardPage() {
             </div>
             <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">{title}</h1>
             <p className="mt-0.5 text-[11px] text-muted-foreground">{dateLabel} · Asia/Dhaka</p>
-          </div>
-          <div className="dashboard-glass flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2">
-            <Clock3 className="size-3.5 text-muted-foreground" />
-            <DualClock compact />
           </div>
         </header>
 

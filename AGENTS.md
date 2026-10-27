@@ -123,9 +123,9 @@ must remain stable belong in `public/`; reuse `public/icons/` and the existing
 ## Product Conventions
 
 - All product date bucketing and work-week logic uses `Asia/Dhaka`; the week
-  starts Sunday. Germany time uses `Europe/Berlin` via `Intl.DateTimeFormat` so
-  DST is handled by the IANA database. Do not substitute UTC, machine locale,
-  or fixed offsets.
+  starts Sunday. Any other zone uses its IANA name via `Intl.DateTimeFormat`
+  (e.g. `Europe/Berlin`) so DST is handled. Do not substitute UTC, machine
+  locale, or fixed offsets.
 - Linear sync scope is the entire `GAM Health Solutions` workspace (all teams,
   all issues), not only the viewer's assignments.
 - UI direction (`requirements.md` §3): sober, matte, dense-but-calm, dark by

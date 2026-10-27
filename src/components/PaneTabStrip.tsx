@@ -8,7 +8,6 @@ import { VIEW_META } from "@/lib/modules";
 import { useIssues } from "@/lib/queries";
 import type { IssueListItem } from "@/lib/commands";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
-import { DualClock } from "@/features/home/DualClock";
 import { TabContextMenu } from "./TabContextMenu";
 
 /** Display label for a tab. Issue tabs read "<ID> <title>" from the cache. */
@@ -91,13 +90,11 @@ function SortableTab({
 export function PaneTabStrip({
   pane,
   focused,
-  showClock,
   canClose,
   isSplit,
 }: {
   pane: Pane;
   focused: boolean;
-  showClock: boolean;
   canClose: boolean;
   isSplit: boolean;
 }) {
@@ -143,14 +140,6 @@ export function PaneTabStrip({
           </button>
         </div>
       </SortableContext>
-      {showClock && (
-        <div
-          data-clock-slot
-          className="ml-3 shrink-0 rounded-md border border-border/60 bg-card/60 px-2.5 py-1"
-        >
-          <DualClock compact />
-        </div>
-      )}
       {menu && <TabContextMenu tabId={menu.tabId} isSplit={isSplit} canClose={canClose} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
     </div>
   );

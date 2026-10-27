@@ -234,14 +234,14 @@ Tinted near-neutrals with one quiet accent per theme and a five-token state voca
 - **Body** (400, 14px; 13px inside the calendar): rows, settings labels, buttons.
 - **Body Prose** (400, 15px, line-height 1.65; headings 650 at 24/20/17px): issue descriptions, comments, rendered markdown; scales with the editor font-size setting.
 - **Label** (500, 11px): pills, badges, row timestamps, tooltips, card subtitles. 11px is the functional-text floor.
-- **Mono** (400, 12px): issue identifiers, the Dhaka/Germany clock, diff counts.
+- **Mono** (400, 12px): issue identifiers, diff counts.
 
 ### Named Rules
 **The 11px Floor Rule.** No functional text renders below 11px. Weight and color, not shrinking, create the quiet tier.
 
 ## Layout
 
-A full-bleed desktop canvas: a top tab strip per pane (with the dual clock at the right), optional two-pane split, and content that runs edge to edge. Navigation is a floating dock centered 16px above the bottom edge. Spacing follows Tailwind's 4px grid; observed rhythm is 4/6/8px inside controls, 12px between row elements, 14–16px card padding, 24px for settings cards. Rows are dense (8px vertical padding at 14px text; 12px for the agenda's larger variant) and scroll horizontally per row when a narrow split pane cannot hold the metadata cluster.
+A full-bleed desktop canvas: a top tab strip per pane, optional two-pane split, and content that runs edge to edge. Navigation is a floating dock centered 16px above the bottom edge. Spacing follows Tailwind's 4px grid; observed rhythm is 4/6/8px inside controls, 12px between row elements, 14–16px card padding, 24px for settings cards. Rows are dense (8px vertical padding at 14px text; 12px for the agenda's larger variant) and scroll horizontally per row when a narrow split pane cannot hold the metadata cluster.
 
 The dashboard reflows by container queries on its own pane width, not the window: single column, then two columns at 520px, then a 4-up KPI row and a 1.8fr/0.8fr main split at 900px. App-wide zoom, icon scale and editor font scale are owner settings and must not be fought with fixed pixel layouts.
 
