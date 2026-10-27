@@ -4,8 +4,6 @@ import {
   ArrowRight,
   AtSign,
   BookText,
-  Calendar,
-  CalendarRange,
   CheckCircle2,
   CircleDot,
   Clock3,
@@ -13,11 +11,9 @@ import {
   GitPullRequest,
   Inbox,
   Layers3,
-  List,
   MessageCircle,
   MessageSquare,
   MessagesSquare,
-  NotebookPen,
   Radio,
   type LucideIcon,
 } from "lucide-react";
@@ -39,6 +35,7 @@ import {
   useSlackStatus,
 } from "@/lib/queries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { dhakaToday } from "@/lib/dates";
 import {
@@ -595,16 +592,13 @@ function SourceRow({ Icon, name, status, detail, tone, onOpen }: SourceRowProps)
   );
 }
 
+const QUICK_VIEWS: ViewKind[] = ["calendar", "list", "this-week", "prs", "slack", "docs", "reports"];
+
 function QuickActions({ onOpen }: { onOpen: (view: ViewKind) => void }) {
-  const actions: { view: ViewKind; label: string; Icon: LucideIcon }[] = [
-    { view: "calendar", label: "Calendar", Icon: Calendar },
-    { view: "list", label: "Issues", Icon: List },
-    { view: "this-week", label: "This Week", Icon: CalendarRange },
-    { view: "prs", label: "Pull Requests", Icon: GitPullRequest },
-    { view: "slack", label: "Slack", Icon: MessageSquare },
-    { view: "docs", label: "Docs", Icon: BookText },
-    { view: "reports", label: "Reports", Icon: NotebookPen },
-  ];
+  const { isActive } = useModules();
+  const actions = visibleViews(isActive)
+    .filter((v) => QUICK_VIEWS.includes(v))
+    .map((view) => ({ view, label: VIEW_META[view].label, Icon: VIEW_META[view].icon }));
   return (
     <nav aria-label="Dashboard quick actions" className="dashboard-glass rounded-xl border p-2">
       <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">

@@ -228,6 +228,10 @@ vi.mock("@/lib/queries", () => ({
   useDocsSources: () => queryState.docsSources,
 }));
 
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  useModules: () => ({ isActive: () => true, hasCapability: () => true, ready: true }),
+}));
 vi.mock("@/lib/tabs", () => ({
   useWorkspace: () => ({ setActiveView }),
 }));

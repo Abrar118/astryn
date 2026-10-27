@@ -1,32 +1,19 @@
 import { useState, type MouseEvent, type ReactNode } from "react";
-import { BookText, Calendar, CalendarRange, FileText, GitPullRequest, Inbox, LayoutDashboard, List, MessageSquare, Network, NotebookPen, Plus, Settings as SettingsIcon, X } from "lucide-react";
+import { FileText, Plus, X } from "lucide-react";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useWorkspace, type Pane, type Tab, type ViewKind } from "@/lib/tabs";
+import { useWorkspace, type Pane, type Tab } from "@/lib/tabs";
+import { VIEW_META } from "@/lib/modules";
 import { useIssues } from "@/lib/queries";
 import type { IssueListItem } from "@/lib/commands";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { DualClock } from "@/features/home/DualClock";
 import { TabContextMenu } from "./TabContextMenu";
 
-const META: Record<Exclude<ViewKind, "issue">, { label: string; icon: ReactNode }> = {
-  dashboard: { label: "Dashboard", icon: <LayoutDashboard className="size-3.5" /> },
-  calendar: { label: "Calendar", icon: <Calendar className="size-3.5" /> },
-  list: { label: "Issues", icon: <List className="size-3.5" /> },
-  "this-week": { label: "This Week", icon: <CalendarRange className="size-3.5" /> },
-  graph: { label: "Dependencies", icon: <Network className="size-3.5" /> },
-  inbox: { label: "Inbox", icon: <Inbox className="size-3.5" /> },
-  prs: { label: "Pull Requests", icon: <GitPullRequest className="size-3.5" /> },
-  slack: { label: "Slack", icon: <MessageSquare className="size-3.5" /> },
-  docs: { label: "Docs", icon: <BookText className="size-3.5" /> },
-  reports: { label: "Reports", icon: <NotebookPen className="size-3.5" /> },
-  settings: { label: "Settings", icon: <SettingsIcon className="size-3.5" /> },
-};
-
 /** Display label for a tab. Issue tabs read "<ID> <title>" from the cache. */
 export function tabLabel(tab: Tab, issues: Pick<IssueListItem, "id" | "identifier" | "title">[]): string {
-  if (tab.view !== "issue") return META[tab.view].label;
+  if (tab.view !== "issue") return VIEW_META[tab.view].label;
   const issue = issues.find((i) => i.id === tab.issueId);
   if (!issue) return "Issue";
   return issue.title ? `${issue.identifier} ${issue.title}` : issue.identifier;
@@ -37,7 +24,10 @@ export function tabIcon(
   tab: Tab,
   issues: Pick<IssueListItem, "id" | "stateType" | "stateColor">[],
 ): ReactNode {
-  if (tab.view !== "issue") return META[tab.view].icon;
+  if (tab.view !== "issue") {
+    const Icon = VIEW_META[tab.view].icon;
+    return <Icon className="size-3.5" />;
+  }
   const issue = issues.find((i) => i.id === tab.issueId);
   return issue ? <StatusIcon type={issue.stateType} color={issue.stateColor} /> : <FileText className="size-3.5" />;
 }

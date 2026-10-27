@@ -14,24 +14,17 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
   ArrowLeft,
-  Calendar,
-  CalendarRange,
   Copy,
   ExternalLink,
-  GitPullRequest,
-  Inbox,
-  LayoutDashboard,
-  List,
-  Network,
   Plus,
   RefreshCw,
   RotateCcw,
   Search,
-  Settings as SettingsIcon,
   SquareSplitHorizontal,
 } from "lucide-react";
 import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
+import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
 import { CreateIssueModal } from "./CreateIssueModal";
 import { shouldOpenCreateShortcut } from "./shortcuts";
@@ -200,6 +193,8 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
   const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
+  const { isActive } = useModules();
+  const modulesKey = visibleViews(isActive).join();
   const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -219,17 +214,15 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
     onClose();
   };
 
+  const goCommands: Command[] = visibleViews(isActive).map((view) => {
+    const { label, icon: Icon } = VIEW_META[view];
+    return { key: `go-${view}`, section: "Go to", icon: <Icon className="size-4" />, label: `Go to ${label}`, onSelect: () => goTo(view) };
+  });
+
   const commands: Command[] = useMemo(
     () => [
       { key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate },
-      { key: "go-dashboard", section: "Go to", icon: <LayoutDashboard className="size-4" />, label: "Go to Dashboard", onSelect: () => goTo("dashboard") },
-      { key: "go-calendar", section: "Go to", icon: <Calendar className="size-4" />, label: "Go to Calendar", onSelect: () => goTo("calendar") },
-      { key: "go-issues", section: "Go to", icon: <List className="size-4" />, label: "Go to Issues", onSelect: () => goTo("list") },
-      { key: "go-this-week", section: "Go to", icon: <CalendarRange className="size-4" />, label: "Go to This Week", onSelect: () => goTo("this-week") },
-      { key: "go-graph", section: "Go to", icon: <Network className="size-4" />, label: "Go to Dependencies", onSelect: () => goTo("graph") },
-      { key: "go-inbox", section: "Go to", icon: <Inbox className="size-4" />, label: "Go to Inbox", onSelect: () => goTo("inbox") },
-      { key: "go-prs", section: "Go to", icon: <GitPullRequest className="size-4" />, label: "Go to Pull Requests", onSelect: () => goTo("prs") },
-      { key: "go-settings", section: "Go to", icon: <SettingsIcon className="size-4" />, label: "Go to Settings", onSelect: () => goTo("settings") },
+      ...goCommands,
       { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab("calendar"); onClose(); } },
       { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", hint: HINT.back, onSelect: () => { navigate(-1); onClose(); } },
       { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
@@ -238,7 +231,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
     ],
     // handlers are stable enough for this overlay's lifetime
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [modulesKey],
   );
 
   const term = q.trim().toLowerCase();

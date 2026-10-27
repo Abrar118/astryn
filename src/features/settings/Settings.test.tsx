@@ -4,6 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 
+vi.mock("@/lib/modules", async (orig) => ({
+  ...(await orig<typeof import("@/lib/modules")>()),
+  useModules: () => ({ isActive: () => true, hasCapability: () => true, ready: true }),
+}));
+
 const cmd = vi.hoisted(() => ({
   getConnectionStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   getGithubStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),

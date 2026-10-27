@@ -1,3 +1,4 @@
+import { ownerActive, useModules } from "@/lib/modules";
 import { SETTINGS_GROUPS, type SettingsSection } from "./settingsSection";
 
 /** Left rail: grouped section list, Linear-style. */
@@ -8,13 +9,16 @@ export function SettingsNav({
   active: SettingsSection;
   onSelect: (section: SettingsSection) => void;
 }) {
+  const { isActive } = useModules();
   return (
     <nav
       aria-label="Settings sections"
       className="flex w-52 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border/60 bg-sidebar/40 px-3 pb-28 pt-10"
     >
       <span className="px-2 text-sm font-semibold tracking-tight text-foreground">Settings</span>
-      {SETTINGS_GROUPS.map((group) => (
+      {SETTINGS_GROUPS.map((group) => ({ ...group, items: group.items.filter((i) => ownerActive(i.module, isActive)) }))
+        .filter((group) => group.items.length > 0)
+        .map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
           <span className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
             {group.label}
