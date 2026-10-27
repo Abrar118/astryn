@@ -24,11 +24,12 @@ backend.
   (visual system, once written) at the repo root are read by the `impeccable`
   design skill. Keep them current when product direction or the visual system
   changes.
-- Planned direction: every integration, including the issue tracker, becomes a
-  module that can be enabled, disabled, or added (`requirements.md` §3 Module
-  architecture). New provider code should stay self-contained behind its own
-  client, credential provider, commands, tables, and feature folder so it can
-  be toggled later; don't add new hard-wired cross-provider coupling.
+- Module rule: new provider or feature code must declare a `ModuleId` (and its
+  capabilities) in `src-tauri/src/modules/mod.rs` and in the TS `MODULE_MANIFEST`
+  in `src/lib/modules.ts`; call `state.require(ModuleId::X)?` first in every
+  owned Tauri command (the guard-coverage test enforces this); gate its query
+  hooks with `useModules().isActive(...)`; and add its screens to `VIEW_META`.
+  See `requirements.md` §3 Module architecture.
 - Inspect `git status --short --branch` before editing. The working tree may
   contain another agent's changes; preserve them and keep your diff scoped.
 - Read the code you are changing before making claims about it, and trace a
