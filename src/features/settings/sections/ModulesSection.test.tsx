@@ -64,8 +64,10 @@ describe("ModulesSection", () => {
     await screen.findByRole("switch", { name: /slack/i });
     expect(screen.queryAllByRole("button", { name: /remove slack data/i }).length).toBe(1);
     expect(screen.queryByRole("button", { name: /remove linear data/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /remove reports data/i })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /remove slack data/i }));
-    expect(screen.getByText(/cached/i)).toBeTruthy();
+    expect(screen.getByText(/token/i)).toBeTruthy();
+    expect(screen.getByText(/cached Slack messages/i)).toBeTruthy();
     expect(commands.removeModuleData).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(commands.removeModuleData).toHaveBeenCalledWith("slack"));

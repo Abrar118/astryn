@@ -80,14 +80,14 @@ export function useModules(): {
 }
 
 /** User-facing name and one-line purpose for each module. */
-export const MODULE_COPY: Record<ModuleId, { name: string; description: string }> = {
-  linear: { name: "Linear", description: "Issues, calendar, dependencies and inbox." },
-  github: { name: "GitHub", description: "Pull requests and repository documentation." },
-  slack: { name: "Slack", description: "Messages and mentions from your workspace." },
-  llm: { name: "AI", description: "Summaries and polish for reports." },
-  docs: { name: "Docs", description: "Documentation linked to your issues." },
-  reports: { name: "Reports", description: "Standup and weekly generators." },
-  "link-previews": { name: "Link previews", description: "Rich previews for pasted links." },
+export const MODULE_COPY: Record<ModuleId, { name: string; description: string; removes: string[] }> = {
+  linear: { name: "Linear", description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
+  github: { name: "GitHub", description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
+  slack: { name: "Slack", description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
+  llm: { name: "AI", description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
+  docs: { name: "Docs", description: "Documentation linked to your issues.", removes: ["documentation sources", "cached docs"] },
+  reports: { name: "Reports", description: "Standup and weekly generators.", removes: [] },
+  "link-previews": { name: "Link previews", description: "Rich previews for pasted links.", removes: [] },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */

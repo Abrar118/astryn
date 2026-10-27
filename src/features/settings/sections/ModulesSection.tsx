@@ -29,6 +29,7 @@ export function ModulesSection() {
     close();
     try {
       await removeModuleData(id);
+      void qc.invalidateQueries({ queryKey: MODULES_KEY });
       gooeyToast.success(`${MODULE_COPY[id].name} data removed`);
     } catch {
       gooeyToast.error(`Couldn't remove ${MODULE_COPY[id].name} data`);
@@ -53,7 +54,7 @@ export function ModulesSection() {
                     </span>
                   ))}
               </div>
-              {!m.enabled && (
+              {!m.enabled && copy.removes.length > 0 && (
                 <Popover
                   align="end"
                   button={`Remove ${copy.name} data`}
@@ -62,21 +63,27 @@ export function ModulesSection() {
                 >
                   {(close) => (
                     <div className="flex flex-col gap-3">
-                      <p className="text-[13px] text-foreground">
-                        Deletes the cached {copy.name} data stored on this device. Your account is not affected.
-                      </p>
+                      <div className="text-[13px] text-foreground">
+                        <p>Permanently deletes from this device:</p>
+                        <ul className="mt-1 list-disc pl-5">
+                          {copy.removes.map((r) => (
+                            <li key={r}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
                       <div className="flex justify-end gap-2">
                         <button
                           type="button"
                           onClick={close}
-                          className="cursor-pointer rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent"
+                          autoFocus
+                          className="cursor-pointer rounded-md px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Cancel
                         </button>
                         <button
                           type="button"
                           onClick={() => void remove(m.id, close)}
-                          className="cursor-pointer rounded-md bg-destructive px-2.5 py-1 text-xs text-destructive-foreground"
+                          className="cursor-pointer rounded-md bg-destructive px-2.5 py-1 text-xs text-destructive-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           Delete
                         </button>
