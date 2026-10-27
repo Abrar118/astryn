@@ -1,10 +1,10 @@
 # Astryn — Design & Handoff Doc
 
 **Product:** Astryn — a local-first Linear power client (Phase 1) and Slack catch-up board (Phase 2, iteration 1)
-**Audience:** Claude Code (implementing agent)
+**Audience:** coding agents (Claude Code, Codex) — see `AGENTS.md` for repository working rules
 **Owner:** Abrar
-**Status:** Phase 1 in progress — M0–M1 + activity timeline (F4) + This Week agenda (M3/F5+F6) + GitHub PR dashboard (M4/F7) + dependency graph (M5/F8) shipped, with several workspace extensions beyond the original plan; F9 (doc links) remains. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
-**Last updated:** 2026-07-26
+**Status (v0.4.0):** Phase 1 in progress — M0–M5 shipped, plus a dashboard, a documentation browser, and LLM-assisted report generators beyond the original plan; only F9 (per-issue doc links) remains. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
+**Last updated:** 2026-10-27
 
 ---
 
@@ -14,7 +14,8 @@
 
 - **M0 — Scaffold.** Tauri v2 + React 19 + Tailwind v4 + shadcn/ui, SQLite migrations, OS-keychain secret storage, the Rust Linear GraphQL proxy, the Home dual clock (Dhaka + Germany), and the Settings key-entry/connection flow.
 - **M1 — Calendar + Drawer + Drag (F1–F3).** Month/week calendar with filters and the unscheduled rail, drag-to-reschedule, the shared issue detail (drawer **and** full-page tab) with inline editing, and a Milkdown markdown editor (GFM, Mermaid, code blocks, proxied images, issue mentions).
-- **F4 — Activity timeline.** Per-issue chronological activity with semantic, color-coded event icons.
+- **M2 — Activity timeline (F4).** Per-issue chronological activity in the issue drawer, built from live Linear history, with semantic, color-coded event icons. (The viewer-wide feed and `activity` cache table described in §9 F4 / §5 are not built.)
+- **M3 — This Week agenda (F5 + F6).** See §9.
 - **M4 — GitHub PR workspace (F7).** Three actionable viewer queues (needs-my-review / mine / assigned), favorite-repository views, row actions, a read-only live PR detail drawer, the real GitHub contribution heatmap, classic-PAT auth, and an offline-first per-scope cache. The involved bucket remains a backend compatibility cache but is not exposed in the page UI.
 - **M5 — Dependency graph (F8).** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
 
@@ -26,8 +27,12 @@
 - **Two-pane split view** — independent tab groups, resizable divider (pointer + keyboard), pane swap, drag-to-split, and `@dnd-kit` tab drag (reorder + cross-pane move); persisted layout with migration.
 - **Inbox** — Linear notifications in the dock with a master-detail layout.
 - **Command palette & global shortcuts** — go-to navigation, create, resync/full-resync, open-in-right-split, with `⌘/Ctrl`+`K`/`T`/`[`/`R` bindings.
+- **Slack catch-up board** (Phase 2 iteration 1) — see §4 Slack and §11.
+- **Dashboard** — the default destination: an action-first command center (ranked attention queue plus compact workload charts) over cached Linear, GitHub, Slack, Inbox, and Docs data; it never starts provider syncs of its own. See `docs/superpowers/specs/2026-07-26-app-dashboard-design.md`.
+- **Documentation browser** — read-only, offline-cached markdown from one or more GitHub repositories (`docs_sources`), synced lazily per source with the GitHub token. Repository-wide, **not** the per-issue links of F9. See `docs/superpowers/specs/2026-06-24-docs-viewer-design.md`.
+- **Reports** — Daily Scrum and Weekly Review generators. Rust (`generators/facts.rs`) builds a deterministic fact sheet from the local cache (Linear issues + GitHub PRs); an optional OpenAI-compatible endpoint (`generators/llm.rs`, streamed) turns it into prose, with the fact sheet as the offline/no-endpoint fallback.
 
-**Not yet built:** F9 (doc links) — see §9 and §11.
+**Not yet built:** F9 (per-issue doc links) — see §9 and §11. **Planned:** module architecture (§3) and multiple color themes (§3 UI direction).
 
 ---
 
@@ -66,7 +71,7 @@ The user already lives in Linear for issue tracking at work. The point of this a
 
 ### In scope (Phase 2, iteration 1) `[REQ]`
 
-9. **Slack catch-up board** — read-only unread mentions/DMs/threads/channels for one workspace. Surfaces what needs attention since last session, with Linear issue chips on relevant messages and an "Open in Slack" deep link. Auth is a Slack user token (classic or xoxp); no OAuth server required.
+9. **Slack catch-up board** — read-only unread mentions/DMs/threads/channels for one workspace. Surfaces what needs attention since last session, with Linear issue chips on relevant messages and an "Open in Slack" deep link. Auth is session-token auto-extraction on macOS or a pasted `xoxp` user token (see §4); no OAuth server required.
 
 ### Out of scope `[EXT]`
 
@@ -82,33 +87,48 @@ The user already lives in Linear for issue tracking at work. The point of this a
 
 - **Shell:** Tauri v2 `[REQ]` (cross-platform desktop, matches existing tooling).
 - **Backend (Tauri core):** Rust. Owns all secrets and all outbound API calls. `[REQ]`
-- **Frontend:** React + TypeScript + Vite `[REQ]` (resolved — not Svelte/Solid; this also keeps `gooey-toast`, which is React-only, valid).
-- **Styling:** Tailwind CSS **v4** + **shadcn/ui** `[REQ]`. Note Tailwind v4 specifics: CSS-first config via `@theme` in the stylesheet (no `tailwind.config.js` by default), `@import "tailwindcss"`, and the new Vite plugin `@tailwindcss/vite`. Use the shadcn CLI's Tailwind-v4-compatible setup. Define the Linear-style palette (see §3 UI direction) as `@theme` tokens so shadcn components inherit it.
+- **Frontend:** React + TypeScript + Vite `[REQ]` (resolved — not Svelte/Solid; this also keeps `goey-toast`, which is React-only, valid).
+- **Styling:** Tailwind CSS **v4** + **shadcn/ui** `[REQ]`. Note Tailwind v4 specifics: CSS-first config via `@theme` in the stylesheet (no `tailwind.config.js` by default), `@import "tailwindcss"`, and the new Vite plugin `@tailwindcss/vite`. Use the shadcn CLI's Tailwind-v4-compatible setup. Define each theme's palette (see §3 UI direction) as CSS-variable tokens so shadcn components inherit it.
 - **Server-state/cache layer:** TanStack Query against Tauri commands `[CHOICE]`.
 - **Local DB:** SQLite via `sqlx` (Rust side) `[REQ]`. The frontend never touches SQLite directly — it goes through Tauri commands.
 - **Secret storage:** OS keychain via the `keyring` crate (or Tauri's secure store plugin) `[REQ]`. **No tokens in SQLite, env files, or the webview.**
 - **Calendar UI:** FullCalendar (React adapter) `[CHOICE]` — has drag-and-drop and day/week/month out of the box.
 - **Graph UI:** React Flow `[CHOICE]` for the hierarchy/web view (better DX than raw D3 for node/edge graphs; use D3 only if you need a force layout React Flow can't do).
 - **HTTP/GraphQL (Rust):** `reqwest` + hand-written GraphQL request bodies, or `graphql-client` if you want typed queries `[CHOICE]`.
-- **Toasts/notifications (in-app):** `gooey-toast` `[REQ]` — https://goey-toast.vercel.app/ . React-only morphing toast library with promise tracking; use it for all in-app feedback (sync status, errors, optimistic-write rollbacks, promise toasts for in-flight mutations). Follow the install + API on that site; do not substitute another toast library.
-- **UI design skill:** `ui-ux-pro-max` `[REQ]` — use this skill for all UI/UX design work (layout, components, visual polish). Pair it with the built-in `frontend-design` skill for the environment's styling constraints. Consult the skill **before** building any screen, not after.
+- **Toasts/notifications (in-app):** `goey-toast` `[REQ]` — https://goey-toast.vercel.app/ . The npm package is `goey-toast`; it exports `GooeyToaster` / `gooeyToast` and needs `goey-toast/styles.css`. React-only morphing toast library with promise tracking; use it for all in-app feedback (sync status, errors, optimistic-write rollbacks, promise toasts for in-flight mutations). Follow the install + API on that site; do not substitute another toast library.
+- **UI design skill:** `impeccable` `[CHOICE]` (installed per project in `.claude/skills/` and `.agents/skills/`) — use it for all UI/UX work: `shape` before building a screen, `critique`/`audit`/`polish`/`harden` on existing ones. It reads `PRODUCT.md` (product truth) and `DESIGN.md` (visual system) at the repo root; keep both current. `ui-ux-pro-max` remains available as a reference for palettes, UX guidelines, and stack-specific patterns. Swapped from `ui-ux-pro-max` on 2026-10-27 by the owner's decision, alongside the design-direction change below.
 
 ### Hard architectural rule `[REQ]`
 
-All Linear and GitHub API calls happen in **Rust**, not the webview. The Rust core holds the tokens, executes GraphQL/REST, writes results to SQLite, and exposes typed Tauri commands to the frontend. The webview is a pure consumer of local data + command results. This keeps tokens out of the renderer and makes the cache authoritative.
+All Linear, GitHub, Slack, documentation-source, LLM, image-proxy, and link-preview requests happen in **Rust**, not the webview. The Rust core holds the tokens, executes GraphQL/REST, writes results to SQLite, and exposes typed Tauri commands to the frontend. The webview is a pure consumer of local data + command results. This keeps tokens out of the renderer and makes the cache authoritative.
 
 ### UI & design direction `[REQ]`
 
-The app should look and feel like **Linear itself** — the user lives in Linear all day and wants visual continuity, not a different-looking client. Target this aesthetic:
+*Revised 2026-10-27.* Astryn is its own product, not a Linear skin. Linear is a **reference, not a mandate**: where a surface represents Linear data (issue rows, drawer, states, comments), its UX should stay familiar to Linear users; everywhere else, better UX wins over matching Linear. Product truth lives in `PRODUCT.md`; the visual system is recorded in `DESIGN.md`. Target this character:
 
-- **Dark-first**, with a near-black background, low-chroma neutral grays, and a single saturated accent (Linear's is a blue/indigo-purple). Provide a light theme as secondary `[CHOICE]`.
-- **Dense but calm:** tight vertical rhythm, generous use of subtle 1px hairline borders and very low-contrast surfaces to separate regions rather than heavy cards/shadows.
-- **Typography:** Inter (or the system UI stack) `[CHOICE]`, small base size (~13–14px), medium weight for labels, high legibility. No decorative fonts.
+- **Sober and matte.** No gradients, glows, neon, or "AI-style" color washes (purple-to-blue, glassy accents). Flat surfaces separated by hairline borders and quiet tonal steps, not heavy cards or shadows.
+- **Multiple selectable color themes** `[REQ]`, each sober and meeting WCAG 2.2 AA contrast. Dark remains the default.
+- **Dense but calm:** tight vertical rhythm, built for all-day use beside other tools.
+- **Typography:** Geist `[CHOICE]` (swapped from the original Inter suggestion in M0 because it is the shadcn/ui default and ships via `@fontsource-variable/geist`), small base size (~13–14px), medium weight for labels, high legibility. No decorative fonts.
 - **Snappy and keyboard-driven:** instant transitions (no slow animations), hover affordances, and a **Cmd/Ctrl+K command palette** as a first-class navigation primitive `[CHOICE but strongly encouraged]`.
-- **Motion is minimal and functional** — the one place expressive motion is welcome is `gooey-toast` notifications. Everything else stays quick and understated.
+- **Motion is minimal and functional** — the one place expressive motion is welcome is `goey-toast` notifications. Everything else stays quick and understated.
 - Component patterns to mirror: the right-side **issue detail panel** (matches F2's drawer), compact list rows with state dots, inline editable fields, and quiet empty states.
 
-Use the `ui-ux-pro-max` skill to execute this direction; this section is the *intent*, the skill is the *how*. When in doubt about a component, match how Linear does it.
+- **Accessibility:** keyboard-first (every flow operable without a pointer) and WCAG 2.2 AA contrast in every theme `[REQ]`.
+
+Use the `impeccable` skill to execute this direction; this section is the *intent*, the skill is the *how*. When in doubt about a Linear-data component, match how Linear does it; otherwise follow `DESIGN.md`.
+
+### Module architecture `[REQ]` — planned, not yet built
+
+*Added 2026-10-27.* Astryn becomes a **module-based** app. Every integration is a module the owner can enable, disable, or add as their tool stack changes — including the **issue tracker** itself (Linear today; Jira or another tracker could replace it). Examples: turn Slack off, add Microsoft Teams, add Bitbucket alongside or instead of GitHub.
+
+Requirements to design for (details undecided; brainstorm a spec in `docs/superpowers/specs/` before building):
+
+- A disabled module disappears from navigation, the dock, the command palette, the dashboard, and Settings sections, and stops all of its sync/polling; the rest of the app keeps working.
+- Cross-cutting surfaces (Dashboard, Calendar, This Week, dependency graph, Reports, Linear chips on PRs/messages) consume **capabilities** (tracker, code host, chat, docs source, LLM) rather than a hard-coded provider.
+- Each module owns its Rust client, credential provider, keychain accounts, migrations/tables, Tauri commands, and frontend feature folder. Defined behavior is needed for credentials and cached data when a module is disabled or removed.
+- The existing seams (`*CredentialProvider` traits, per-provider `commands/` and `db/` modules, `src/features/<feature>/`) are the starting point; the Rust-only network rule and keychain-only secrets still apply to every module.
+- Single-user only; modules are compiled into the app, not third-party plugins, unless the owner decides otherwise.
 
 ### Assets (icons & favicons) `[REQ]`
 
@@ -163,13 +183,19 @@ If the user has an installable Slack app and an `xoxp-…` user token with the r
 
 ### GitHub `[CHOICE: classic PAT]`
 
-A **classic personal access token** with `repo` scope (private-repo visibility); add `read:org` only if org/team membership is queried or testing proves it is required. Stored in the keychain (account `github_token`) and sent as `Authorization: Bearer <token>`. Optional — the app degrades gracefully if no token is set (the dashboard shows a "Connect GitHub" prompt). Classic (not fine-grained) is chosen because fine-grained tokens cannot reliably cover arbitrary collaborations; document the broad-access trade-off and the SAML-SSO authorization requirement.
+A **classic personal access token** with `repo` scope (private-repo visibility); add `read:org` only if org/team membership is queried or testing proves it is required. Stored in the keychain (account `github_token`) and sent as `Authorization: Bearer <token>`. Optional — the app degrades gracefully if no token is set (the dashboard shows a "Connect GitHub" prompt). Classic (not fine-grained) is chosen because fine-grained tokens cannot reliably cover arbitrary collaborations; document the broad-access trade-off and the SAML-SSO authorization requirement. The same token also backs the documentation browser.
+
+### LLM endpoint (Reports) `[CHOICE: any OpenAI-compatible endpoint]`
+
+Optional. The base URL and model name are app settings; the optional API key is stored in the keychain (account `llm_api_key`) and never returned to the webview. Works with hosted or local servers (OpenAI, Ollama, LM Studio, vLLM). With no endpoint configured, Reports show the deterministic fact sheet only.
 
 ---
 
 ## 5. Data model (SQLite)
 
 The local DB is a **cache + a small amount of app-owned data**. Linear is the source of truth for issues; the app owns doc links, sync cursors, and settings.
+
+This is the target schema, not a migration listing — `src-tauri/migrations/` is authoritative. `comments`, `activity`, and `doc_links` are **not created yet** (comments and activity are read live in the drawer; `doc_links` arrives with M6). Created tables not shown below: `pending_issue_deletes` (offline delete queue) and the documentation browser's `docs_sources`, `docs_files` (keyed by `source_id, path`), and `docs_sync_meta` (one row per source).
 
 ```sql
 -- Cached Linear issues
@@ -514,7 +540,7 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 - **Offline-first:** reads cache only — shows data without network; manual resync updates via existing sync path.
 - **States:** loading → skeleton rows; whole-week empty → calm centered empty state.
 - **Reuse:** top-level and sub-issue rows use the shared `IssueRow` component (compact variant for sub-issues).
-- **Frontend:** `src/features/agenda/`. Week-window math via a new `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). Grouping and rendering in the frontend; data assembly in Rust (`generators/` module, `get_week_agenda` command).
+- **Frontend:** `src/features/agenda/`. Week-window math via the `weekWindow(now)` helper in `src/lib/dates.ts` (Sunday-started, `Asia/Dhaka`). The agenda is assembled and rendered in the frontend (`agenda.ts`) from the cached issue queries; there is no dedicated Rust command.
 - **AC:** groups match due dates in Dhaka time; Sunday week start; Overdue/Weekend sections shown only when non-empty; sub-issues threaded and deduped; relations shown per issue; clicking any row opens the F2 drawer; cache-only reads keep the view available offline.
 
 ### F7 — GitHub PR workspace `[REQ]` ✅ Done (M4)
@@ -533,31 +559,28 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 
 ---
 
-## 10. Suggested project structure
+## 10. Project structure
 
 ```
 src-tauri/
   src/
-    main.rs
-    commands/        # Tauri command handlers (thin)
+    lib.rs           # AppState setup + command registry (generate_handler!)
+    commands/        # Tauri command handlers (thin) — mod.rs plus github/slack/docs/reports
     linear/          # GraphQL client, queries, types, sync
-    github/          # REST client, correlation, status rollups
-    db/              # sqlx, migrations, repositories
-    secrets/         # keychain wrapper (trait-backed for future providers)
-    activity/        # history->activity transformer
-    generators/      # This Week agenda builder (get_week_agenda)
+    github/          # REST/GraphQL client, PR buckets, detail/diff, repositories, contributions, docs source
     slack/           # Slack Web API client, catch-up sync (replace_catchup), parsers, credential provider; extract.rs (macOS auto-extraction: LevelDB xoxc scan + Chromium cookie decrypt)
+    db/              # sqlx repositories (issues, github, slack, docs)
+    secrets/         # keychain wrapper (trait-backed for future providers)
+    generators/      # report fact sheets (facts.rs) + OpenAI-compatible streaming client (llm.rs)
+    link_preview/    # bounded, SSRF-aware link-preview fetching + cache
+    # activity/      # future: history->activity transformer for a viewer-wide F4 feed
   migrations/
 src/                 # React frontend
   features/
-    calendar/
-    drawer/
-    timeline/
-    agenda/
-    graph/
-    prs/
-  lib/               # tauri command bindings, query hooks
-  components/
+    dashboard/  calendar/  issues/  drawer/  agenda/ (This Week + dependency graph)
+    prs/  slack/  docs/  reports/  inbox/  command/  settings/  home/
+  lib/               # commands.ts (typed IPC), queries.ts (TanStack hooks), date/workweek helpers
+  components/        # shared shell, panes, tabs; ui/ = shadcn primitives
 ```
 
 ---
@@ -570,7 +593,10 @@ src/                 # React frontend
 - **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
 - **M4 — GitHub PR workspace (F7). ✅ Done.** Three visible `@me` queues, favorite-repository scopes, default grouping, row actions, a cached-first read-only Linear-style Overview/Diff drawer with lazy in-app unified patches, status/CI/conflict/review badges, the real GitHub contribution heatmap + viewer metrics, and the optional Linear chip; classic-PAT auth; offline-first per-scope cache. See `docs/superpowers/specs/2026-07-26-github-pr-page-revamp-design.md` and `docs/superpowers/specs/2026-07-26-github-pr-linear-drawer-diff-design.md`.
 - **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
-- **M6 — Doc links (F9).** Not started.
+- **M6 — Doc links (F9).** Not started. **Next.**
+- **Dashboard. ✅ Done.** See `docs/superpowers/specs/2026-07-26-app-dashboard-design.md`.
+- **Documentation browser. ✅ Done.** Multi-source GitHub markdown browser (`docs_sources` / `docs_files` / `docs_sync_meta`, migrations 0014 + 0016), lazy per-source sync, offline reads. See `docs/superpowers/specs/2026-06-24-docs-viewer-design.md`.
+- **Reports (Daily Scrum + Weekly Review). ✅ Done.** Deterministic fact sheet from the cache plus an optional streamed OpenAI-compatible LLM pass with a generation guard; `issues.completed_at` added in migration 0015.
 - **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackPage` with stacked sections (Mentions / DMs / Threads / Channels) rendered via a `Section` component and a `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.
 - **Slack session-token auth (local-app auto-extraction, macOS). ✅ Done.** `SlackAuth { authorization, cookie }` credential struct + `PersonalTokenProvider` with two keychain accounts (`slack_user_token` / `slack_cookie_d`); `slack/extract.rs` (LevelDB `xoxc` scan + Chromium AES-128-CBC `xoxd` cookie decryption using "Slack Safe Storage" keychain key); `detect_slack_credentials` Tauri command with self-healing rotation; Settings "Detect from Slack app" button; dual-header transport (`Authorization: Bearer <xoxc>` + `Cookie: d=<xoxd>`). macOS real-app smoke (live cookie decryption + xoxc transport) deferred to user.
 
@@ -583,7 +609,7 @@ Each milestone must be independently runnable and demoable. Don't start a milest
 - **Offline-first:** the app opens and shows cached data with no network. Network is for sync/edits only.
 - **Optimistic writes with rollback:** every mutation updates the UI immediately and reverts on failure with a visible error.
 - **No secrets in the renderer, DB, logs, or commits.** Keychain only.
-- **Errors are surfaced, not swallowed:** non-blocking `gooey-toast` notifications for sync/rate-limit/API errors and optimistic-write rollbacks.
+- **Errors are surfaced, not swallowed:** non-blocking `goey-toast` notifications for sync/rate-limit/API errors and optimistic-write rollbacks.
 - **Typed boundary:** Tauri commands have explicit input/output types shared with the frontend (generate or hand-maintain TS types).
 
 ---
@@ -597,7 +623,7 @@ Resolved (locked):
 3. **Week start:** Sunday. ✅
 4. **Base timezone:** `Asia/Dhaka` for all date/time logic; home shows a live `Europe/Berlin` (Germany) clock alongside local time. ✅
 5. **F5/F6 output (M3 revision):** the original standup/weekly markdown generators and the no-op `polish` seam are **dropped**. F5 + F6 are replaced by the "This Week" structured in-app view (due-date agenda, Sunday-started week, any state). Owner redefined these `[REQ]` items. ✅
-6. **Local LLM polish:** dropped along with the markdown generators in M3 — no `polish` seam exists in the shipped design. `[EXT]` if a future text-output mode is added. ✅
+6. **Local LLM polish:** dropped along with the markdown generators in M3 — no `polish` seam exists in the shipped design. ✅ *Superseded in v0.4.0:* the separate **Reports** feature reintroduced daily/weekly text output with an optional OpenAI-compatible LLM pass (§4 LLM endpoint). The This Week agenda itself stays a structured in-app view.
 
 Resolved during build:
 
@@ -607,4 +633,4 @@ Resolved during build:
 
 ## 14. Non-goals restated `[EXT]`
 
-The following remain out of scope: **Slack huddles** (live socket), **reply/compose** in Slack from within Astryn, **mark-as-read** write-back, **multi-workspace** Slack, **Slack/Discord OAuth** (the Phase 2 iter 1 flow uses session-token auto-extraction on macOS or a user-pasted `xoxp` token), **Windows/Linux Slack auto-extraction** (different DPAPI/libsecret key-derivation path; the manual `xoxp` fallback covers these platforms today), **Discord integration**, **multi-user / team sharing**, **OAuth-based Linear auth**, and **local-LLM polish** (the `polish` hook was removed in M3). Leave clean seams (provider trait for auth, source-agnostic `activity` table, `SlackCredentialProvider` for a future OAuth swap) but implement none of the above yet. **LLM integration is a future phase** once the Linear and Slack builds stabilize.
+The following remain out of scope: **Slack huddles** (live socket), **reply/compose** in Slack from within Astryn, **mark-as-read** write-back, **multi-workspace** Slack, **Slack/Discord OAuth** (the Phase 2 iter 1 flow uses session-token auto-extraction on macOS or a user-pasted `xoxp` token), **Windows/Linux Slack auto-extraction** (different DPAPI/libsecret key-derivation path; the manual `xoxp` fallback covers these platforms today), **Discord integration**, **multi-user / team sharing**, and **OAuth-based Linear auth**. Leave clean seams (provider trait for auth, source-agnostic `activity` table, `SlackCredentialProvider` for a future OAuth swap) but implement none of the above yet. LLM use is limited to the optional Reports prose pass (§13 item 6); broader LLM features remain a future phase.
