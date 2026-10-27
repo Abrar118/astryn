@@ -50,12 +50,17 @@ export function viewActive(view: ViewKind, isActive: IsActive): boolean {
   return view === "issue" ? isActive("linear") : ownerActive(VIEW_META[view].module, isActive);
 }
 
-const PROVIDES: Partial<Record<ModuleId, Capability[]>> = {
-  linear: ["tracker"],
-  github: ["code-host"],
-  slack: ["chat", "notifications"],
-  llm: ["llm"],
-  docs: ["docs-source"],
+type ManifestEntry = { kind: "provider" | "feature"; provides: Capability[]; requires: Capability[]; optional: Capability[] };
+
+/** TS mirror of the Rust module manifest. */
+export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
+  linear: { kind: "provider", provides: ["tracker", "notifications"], requires: [], optional: [] },
+  github: { kind: "provider", provides: ["code-host", "docs-source"], requires: [], optional: [] },
+  slack: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
+  llm: { kind: "provider", provides: ["llm"], requires: [], optional: [] },
+  docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
+  reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
+  "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
 };
 
 export const MODULES_KEY = ["modules"] as const;
@@ -70,6 +75,6 @@ export function useModules(): {
   // Until the first load resolves nothing is active, so only core entries render.
   const isActive: IsActive = (id) => !!data?.modules.find((m) => m.id === id && m.enabled && m.available);
   const hasCapability = (cap: Capability) =>
-    !!data?.modules.some((m) => m.enabled && m.available && PROVIDES[m.id]?.includes(cap));
+    !!data?.modules.some((m) => m.enabled && m.available && MODULE_MANIFEST[m.id].provides.includes(cap));
   return { data, isActive, hasCapability, ready: !!data };
 }
