@@ -28,8 +28,7 @@ const ORG_ID_KEY: &str = "linear_org_id";
 const ORG_NAME_KEY: &str = "linear_org_name";
 const ORG_URL_KEY_KEY: &str = "linear_org_url_key";
 
-/// Generic key-value write — used by save_identity; kept for future flexibility.
-#[allow(dead_code)]
+/// Generic key-value write.
 pub async fn save_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         "INSERT INTO settings (key, value) VALUES (?1, ?2)
@@ -42,8 +41,7 @@ pub async fn save_setting(pool: &SqlitePool, key: &str, value: &str) -> Result<(
     Ok(())
 }
 
-/// Generic key-value read — used by load_org_id / load_me; kept for future flexibility.
-#[allow(dead_code)]
+/// Generic key-value read.
 pub async fn load_setting(pool: &SqlitePool, key: &str) -> Result<Option<String>, sqlx::Error> {
     let row: Option<(String,)> = sqlx::query_as("SELECT value FROM settings WHERE key = ?1")
         .bind(key)

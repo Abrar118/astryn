@@ -4,6 +4,9 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
+use sqlx::SqlitePool;
+
+use crate::db;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -147,9 +150,150 @@ pub fn is_active(id: ModuleId, enabled: &BTreeSet<ModuleId>) -> bool {
     enabled.contains(&id) && missing_capabilities(id, enabled).is_empty()
 }
 
+const ENABLED_KEY: &str = "modules_enabled";
+const ONBOARDED_KEY: &str = "modules_onboarded";
+
+fn all_enabled() -> BTreeSet<ModuleId> {
+    ModuleId::ALL.into_iter().collect()
+}
+
+/// Load persisted module state. A missing `modules_enabled` key means either a
+/// fresh install (empty, not onboarded, nothing persisted) or an install that
+/// predates modules (identified by a stored Linear viewer id): enable
+/// everything once and persist it. Malformed JSON falls back to everything on.
+pub async fn load_state(pool: &SqlitePool) -> Result<ModuleState, sqlx::Error> {
+    let onboarded_flag = db::load_setting(pool, ONBOARDED_KEY).await?.as_deref() == Some("true");
+    match db::load_setting(pool, ENABLED_KEY).await? {
+        Some(raw) => match serde_json::from_str::<Vec<String>>(&raw) {
+            Ok(ids) => {
+                let enabled = ids
+                    .iter()
+                    .filter_map(|s| {
+                        serde_json::from_value::<ModuleId>(serde_json::Value::String(s.clone()))
+                            .ok()
+                    })
+                    .collect();
+                Ok(ModuleState {
+                    enabled,
+                    onboarded: onboarded_flag,
+                })
+            }
+            Err(_) => Ok(ModuleState {
+                enabled: all_enabled(),
+                onboarded: true,
+            }),
+        },
+        None => {
+            if db::load_setting(pool, "linear_viewer_id").await?.is_some() {
+                let state = ModuleState {
+                    enabled: all_enabled(),
+                    onboarded: true,
+                };
+                save_state(pool, &state).await?;
+                Ok(state)
+            } else {
+                Ok(ModuleState {
+                    enabled: BTreeSet::new(),
+                    onboarded: onboarded_flag,
+                })
+            }
+        }
+    }
+}
+
+pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sqlx::Error> {
+    let json = serde_json::to_string(&state.enabled).expect("module ids serialize");
+    let mut tx = pool.begin().await?;
+    for (k, v) in [
+        (ENABLED_KEY, json.as_str()),
+        (
+            ONBOARDED_KEY,
+            if state.onboarded { "true" } else { "false" },
+        ),
+    ] {
+        sqlx::query(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        )
+        .bind(k)
+        .bind(v)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::db;
+    use sqlx::SqlitePool;
+
+    async fn pool() -> (tempfile::TempDir, SqlitePool) {
+        let dir = tempfile::tempdir().unwrap();
+        let pool = db::init_pool(&dir.path().join("astryn/t.db"))
+            .await
+            .unwrap();
+        (dir, pool)
+    }
+
+    #[tokio::test]
+    async fn fresh_install_starts_empty_and_not_onboarded() {
+        let (_d, pool) = pool().await;
+        let s = load_state(&pool).await.unwrap();
+        assert!(s.enabled.is_empty());
+        assert!(!s.onboarded);
+    }
+
+    #[tokio::test]
+    async fn existing_install_enables_everything_once() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "linear_viewer_id", "u1")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert!(s.onboarded);
+        assert_eq!(
+            db::load_setting(&pool, "modules_onboarded")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("true")
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_ids_are_dropped_and_bad_json_falls_back() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "modules_enabled", r#"["slack","teams"]"#)
+            .await
+            .unwrap();
+        db::save_setting(&pool, "modules_onboarded", "true")
+            .await
+            .unwrap();
+        assert_eq!(
+            load_state(&pool).await.unwrap().enabled,
+            set(&[ModuleId::Slack])
+        );
+        db::save_setting(&pool, "modules_enabled", "{nope")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert!(s.onboarded);
+    }
+
+    #[tokio::test]
+    async fn save_then_load_round_trips() {
+        let (_d, pool) = pool().await;
+        let st = ModuleState {
+            enabled: set(&[ModuleId::Linear, ModuleId::Docs]),
+            onboarded: true,
+        };
+        save_state(&pool, &st).await.unwrap();
+        assert_eq!(load_state(&pool).await.unwrap(), st);
+    }
 
     fn set(ids: &[ModuleId]) -> BTreeSet<ModuleId> {
         ids.iter().copied().collect()

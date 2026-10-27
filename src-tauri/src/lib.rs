@@ -97,6 +97,8 @@ pub fn run() {
                 .expect("failed to initialize database (directory or migrations)");
             tauri::async_runtime::block_on(db::issues::recover_pending_deletes(&pool))
                 .expect("failed to recover pending issue deletions");
+            let module_state = tauri::async_runtime::block_on(modules::load_state(&pool))
+                .expect("failed to load module state");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -115,6 +117,7 @@ pub fn run() {
 
             app.manage(AppState {
                 pool,
+                modules: std::sync::RwLock::new(module_state),
                 secret_store: store,
                 credentials,
                 linear,

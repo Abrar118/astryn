@@ -135,6 +135,8 @@ pub enum CmdError {
     FileTooLarge,
     #[error("Couldn't upload the file.")]
     UploadFailed,
+    #[error("That module is turned off.")]
+    ModuleDisabled,
 }
 
 impl serde::Serialize for CmdError {
@@ -177,8 +179,22 @@ type PreviewGate = std::sync::Arc<
     >,
 >;
 
+/// Ok when `id` is enabled and every capability it requires is available.
+pub fn require_in(
+    state: &crate::modules::ModuleState,
+    id: crate::modules::ModuleId,
+) -> Result<(), CmdError> {
+    if crate::modules::is_active(id, &state.enabled) {
+        Ok(())
+    } else {
+        Err(CmdError::ModuleDisabled)
+    }
+}
+
 pub struct AppState {
     pub pool: SqlitePool,
+    /// Which modules are enabled; guard commands with `require`.
+    pub modules: std::sync::RwLock<crate::modules::ModuleState>,
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
@@ -212,6 +228,24 @@ pub struct AppState {
     /// The id of the LATEST generate_report call; an in-flight LLM stream
     /// stops as soon as a newer generation claims this slot.
     pub llm_generation: AtomicU64,
+}
+
+impl AppState {
+    fn modules_read(&self) -> std::sync::RwLockReadGuard<'_, crate::modules::ModuleState> {
+        self.modules.read().unwrap_or_else(|e| e.into_inner())
+    }
+
+    pub fn require(&self, id: crate::modules::ModuleId) -> Result<(), CmdError> {
+        require_in(&self.modules_read(), id)
+    }
+
+    pub fn module_active(&self, id: crate::modules::ModuleId) -> bool {
+        crate::modules::is_active(id, &self.modules_read().enabled)
+    }
+
+    pub fn capability(&self, cap: crate::modules::Capability) -> bool {
+        crate::modules::has_capability(cap, &self.modules_read().enabled)
+    }
 }
 
 /// Map a parsed wire issue to the cached read-shape (used after issueUpdate).
@@ -1417,6 +1451,26 @@ mod status_tests {
 #[cfg(test)]
 mod logic_tests {
     use super::*;
+
+    #[test]
+    fn require_guards_disabled_and_unavailable_modules() {
+        use crate::modules::{ModuleId, ModuleState};
+        let st = |ids: &[ModuleId]| ModuleState {
+            enabled: ids.iter().copied().collect(),
+            onboarded: true,
+        };
+        assert!(matches!(
+            require_in(&st(&[]), ModuleId::Slack),
+            Err(CmdError::ModuleDisabled)
+        ));
+        // Docs enabled but no DocsSource provider.
+        assert!(matches!(
+            require_in(&st(&[ModuleId::Docs]), ModuleId::Docs),
+            Err(CmdError::ModuleDisabled)
+        ));
+        assert!(require_in(&st(&[ModuleId::Docs, ModuleId::Github]), ModuleId::Docs).is_ok());
+    }
+
     use crate::linear::PersonalKeyProvider;
     use crate::secrets::fake::FakeSecretStore;
 
