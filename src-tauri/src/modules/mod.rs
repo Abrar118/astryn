@@ -194,7 +194,7 @@ pub async fn load_state(pool: &SqlitePool) -> Result<ModuleState, sqlx::Error> {
             } else {
                 Ok(ModuleState {
                     enabled: BTreeSet::new(),
-                    onboarded: onboarded_flag,
+                    onboarded: false,
                 })
             }
         }
@@ -282,6 +282,17 @@ mod tests {
         let s = load_state(&pool).await.unwrap();
         assert_eq!(s.enabled.len(), ModuleId::ALL.len());
         assert!(s.onboarded);
+    }
+
+    #[tokio::test]
+    async fn stray_onboarded_flag_is_ignored_on_fresh_install() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "modules_onboarded", "true")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert!(s.enabled.is_empty());
+        assert!(!s.onboarded);
     }
 
     #[tokio::test]

@@ -1452,6 +1452,9 @@ mod status_tests {
 mod logic_tests {
     use super::*;
 
+    use crate::linear::PersonalKeyProvider;
+    use crate::secrets::fake::FakeSecretStore;
+
     #[test]
     fn require_guards_disabled_and_unavailable_modules() {
         use crate::modules::{ModuleId, ModuleState};
@@ -1470,9 +1473,6 @@ mod logic_tests {
         ));
         assert!(require_in(&st(&[ModuleId::Docs, ModuleId::Github]), ModuleId::Docs).is_ok());
     }
-
-    use crate::linear::PersonalKeyProvider;
-    use crate::secrets::fake::FakeSecretStore;
 
     async fn temp_pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
