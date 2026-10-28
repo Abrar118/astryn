@@ -25,6 +25,7 @@ import {
   useDocPdf,
   useDocsSources,
   useDocsStatus,
+  useDocsRescan,
   useDocsSync,
   useDocsTree,
 } from "@/lib/queries";
@@ -172,8 +173,20 @@ export function DocsPage({
 
   const [selected, setSelected] = useState<string | null>(docPath ?? null);
   // An unavailable source (provider off) is never queried — its commands refuse.
-  const { data: flat, isError: treeError } = useDocsTree(available ? activeId : null);
-  const sync = useDocsSync(activeId, canSync);
+  const {
+    data: flat,
+    isError: treeError,
+    isFetching: treeFetching,
+  } = useDocsTree(available ? activeId : null);
+  // A repository syncs once when first viewed; a local folder never auto-syncs —
+  // its tree query is the one scan, and the button rescans on request.
+  const sync = useDocsSync(activeId, canSync && !isLocal);
+  const rescan = useDocsRescan();
+  const refreshing = isLocal ? treeFetching : sync.isFetching;
+  const refresh = () => {
+    if (isLocal && activeId) void rescan(activeId);
+    else void sync.refetch();
+  };
   const tree = useMemo(() => buildDocTree(flat ?? []), [flat]);
 
   // A selected path belongs to one repo, so drop it whenever the active source
@@ -354,10 +367,10 @@ export function DocsPage({
           size="sm"
           aria-label={isLocal ? "Rescan folder" : "Refresh"}
           title={isLocal ? "Rescan folder" : "Refresh"}
-          disabled={sync.isFetching || !canSync}
-          onClick={() => sync.refetch()}
+          disabled={refreshing || !canSync}
+          onClick={refresh}
         >
-          <RefreshCw className={`size-4 ${sync.isFetching ? "animate-spin" : ""}`} />
+          <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
         </Button>
       </header>
 
@@ -389,7 +402,7 @@ export function DocsPage({
               <div className="min-h-0 flex-1 overflow-y-auto pb-3">
                 {tree.length === 0 || !activeId ? (
                   <p className="px-4 py-6 text-xs text-muted-foreground">
-                    {sync.isFetching
+                    {refreshing
                       ? "Loading docs…"
                       : isLocal
                         ? "No Markdown, text or PDF files in this folder."

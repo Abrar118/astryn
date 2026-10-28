@@ -46,14 +46,16 @@ const state = vi.hoisted(() => ({
 }));
 
 const setActiveView = vi.hoisted(() => vi.fn());
+const rescan = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/queries", () => ({
   useDocsStatus: () => ({ data: { tokenPresent: state.tokenPresent, sourceCount: state.sources.length } }),
   useDocsSources: () => ({ data: state.sources }),
   useDocsTree: (sourceId: string | null) => {
     state.treeCalls.push(sourceId);
-    return { data: sourceId ? state.trees[sourceId] : undefined, isError: false };
+    return { data: sourceId ? state.trees[sourceId] : undefined, isError: false, isFetching: false };
   },
+  useDocsRescan: () => rescan,
   useDocContent: (sourceId: string | null, path: string | null, enabled = true) => ({
     data: enabled && sourceId && path ? (state.content[`${sourceId}:${path}`] ?? null) : undefined,
     isPending: !enabled,
@@ -89,6 +91,7 @@ beforeEach(() => {
   resetActiveSourceCache();
   takeRequestedSection(); // drain any pending deep-link from a previous test
   setActiveView.mockClear();
+  rescan.mockClear();
   state.sources = [CORE, DESIGN];
   state.tokenPresent = true;
   state.treeCalls = [];
@@ -189,11 +192,14 @@ describe("DocsPage local folders", () => {
     };
   });
 
-  it("reads a folder without a GitHub token and rescans it on refresh", () => {
+  it("reads a folder without a GitHub token and rescans it only on request", () => {
     render(<DocsPage />);
     expect(screen.getByTestId("doc").textContent).toBe("# Notes");
-    expect(state.syncEnabled.some(Boolean)).toBe(true);
-    expect(screen.getByRole("button", { name: /rescan folder/i })).toBeTruthy();
+    // Opening Docs must not rescan by itself (the tree query scans once).
+    expect(state.syncEnabled.every((e) => !e)).toBe(true);
+    expect(rescan).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /rescan folder/i }));
+    expect(rescan).toHaveBeenCalledWith(NOTES.id);
   });
 
   it("shows .txt files verbatim instead of parsing markdown", () => {
