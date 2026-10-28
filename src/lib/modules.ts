@@ -66,7 +66,7 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   github: { kind: "provider", provides: ["code-host", "docs-source"], requires: [], optional: [] },
   slack: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
   llm: { kind: "provider", provides: ["llm"], requires: [], optional: [] },
-  docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
+  docs: { kind: "feature", provides: [], requires: [], optional: ["docs-source"] },
   reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
 };
@@ -108,7 +108,7 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
   github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
   slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
   llm: { name: "AI", icon: Sparkles, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
-  docs: { name: "Docs", icon: BookText, description: "Markdown docs from your GitHub repositories.", removes: ["documentation sources", "cached docs"] },
+  docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories and local folders.", removes: ["documentation sources (your local files are kept)", "cached docs"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
 };

@@ -139,13 +139,16 @@ pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .bind(GITHUB_FAVORITE_REPOS_KEY)
         .execute(&mut *tx)
         .await?;
-    // Docs cache shares the GitHub credential, so it is wiped on the same seam as the PR cache.
-    sqlx::query("DELETE FROM docs_files")
+    // The GitHub-repo docs cache shares the GitHub credential, so it is wiped on
+    // the same seam as the PR cache. Other source kinds are not GitHub data.
+    for table in ["docs_files", "docs_sync_meta"] {
+        sqlx::query(&format!(
+            "DELETE FROM {table} WHERE source_id IN
+               (SELECT id FROM docs_sources WHERE kind = 'github')"
+        ))
         .execute(&mut *tx)
         .await?;
-    sqlx::query("DELETE FROM docs_sync_meta")
-        .execute(&mut *tx)
-        .await?;
+    }
     tx.commit().await?;
     Ok(())
 }
@@ -463,6 +466,14 @@ mod tests {
         )
         .await
         .unwrap();
+        // A local folder's scan metadata is not GitHub data and must survive.
+        crate::db::docs::insert_local_docs_source(&pool, "Notes", "/notes", "now")
+            .await
+            .unwrap();
+        let local = crate::db::docs::local_source_id("/notes");
+        crate::db::docs::write_scan_meta(&pool, &local, "now", 3, false)
+            .await
+            .unwrap();
         wipe_github_cache(&pool).await.unwrap();
         assert!(list_prs(&pool, true).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
@@ -472,12 +483,9 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
-        assert_eq!(
-            crate::db::docs::list_docs_sources(&pool)
-                .await
-                .unwrap()
-                .len(),
-            1
-        );
+        let sources = crate::db::docs::list_docs_sources(&pool).await.unwrap();
+        assert_eq!(sources.len(), 2);
+        assert_eq!(sources[0].last_synced_at, None);
+        assert_eq!(sources[1].file_count, 3);
     }
 }

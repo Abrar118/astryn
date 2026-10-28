@@ -103,8 +103,9 @@ static MANIFEST: [ModuleSpec; 7] = [
         id: ModuleId::Docs,
         kind: K::Feature,
         provides: &[],
-        requires: &[C::DocsSource],
-        optional: &[],
+        // Local folders need no provider; GitHub adds repository sources.
+        requires: &[],
+        optional: &[C::DocsSource],
     },
     ModuleSpec {
         id: ModuleId::Reports,
@@ -302,8 +303,15 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "get_slack_catchup"
         | "get_slack_conversation_messages"
         | "slack_deep_link" => Some(ModuleId::Slack),
-        "sync_docs" | "list_docs_sources" | "add_docs_source" | "rename_docs_source"
-        | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
+        "sync_docs"
+        | "list_docs_sources"
+        | "add_docs_source"
+        | "rename_docs_source"
+        | "remove_docs_source"
+        | "list_docs_tree"
+        | "get_doc_content"
+        | "add_local_docs_source"
+        | "get_doc_pdf" => Some(ModuleId::Docs),
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
         _ => None,
@@ -384,16 +392,15 @@ mod tests {
     #[test]
     fn enabling_another_module_does_not_enable_docs() {
         let off = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs]),
+            enabled: BTreeSet::from([ModuleId::Github]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&off, ModuleId::Docs).is_err());
         let on = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs, ModuleId::Github]),
+            enabled: BTreeSet::from([ModuleId::Docs]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&on, ModuleId::Docs).is_ok());
-        assert!(on.enabled.contains(&ModuleId::Docs));
     }
 
     #[tokio::test]
@@ -481,17 +488,13 @@ mod tests {
     }
 
     #[test]
-    fn docs_needs_a_docs_source() {
+    fn docs_works_without_a_provider_for_local_folders() {
+        // Local folders need no provider, so Docs is active on its own; GitHub
+        // (or another docs-source provider) only adds remote sources.
         let on = set(&[ModuleId::Docs]);
-        assert_eq!(
-            missing_capabilities(ModuleId::Docs, &on),
-            vec![Capability::DocsSource]
-        );
-        assert!(!is_active(ModuleId::Docs, &on));
-        assert!(is_active(
-            ModuleId::Docs,
-            &set(&[ModuleId::Docs, ModuleId::Github])
-        ));
+        assert!(missing_capabilities(ModuleId::Docs, &on).is_empty());
+        assert!(is_active(ModuleId::Docs, &on));
+        assert_eq!(spec(ModuleId::Docs).optional, &[Capability::DocsSource]);
     }
 
     #[test]

@@ -46,8 +46,8 @@ describe("previewMissing", () => {
   it("matches the manifest", () => {
     const none = new Set<ModuleId>();
     expect(previewMissing("linear", none)).toEqual([]);
-    expect(previewMissing("docs", none)).toEqual(["docs-source"]);
-    expect(previewMissing("docs", new Set<ModuleId>(["github"]))).toEqual([]);
+    // Docs reads local folders without any provider.
+    expect(previewMissing("docs", none)).toEqual([]);
     expect(previewMissing("reports", none)).toEqual(["tracker"]);
     expect(previewMissing("reports", new Set<ModuleId>(["linear"]))).toEqual([]);
     expect(previewMissing("link-previews", none)).toEqual([]);
@@ -66,12 +66,12 @@ describe("ModulePicker", () => {
     expect(document.activeElement).toBe(boxes[0]);
   });
 
-  it("shows the Needs hint for Docs until GitHub is also checked", async () => {
+  it("shows the Needs hint for Reports until Linear is also checked", async () => {
     renderIt();
-    fireEvent.click(await screen.findByRole("checkbox", { name: /^docs/i }));
-    const hint = new RegExp(`Needs ${CAPABILITY_PROVIDERS["docs-source"]}`);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /^reports/i }));
+    const hint = new RegExp(`Needs ${CAPABILITY_PROVIDERS.tracker}`);
     expect(screen.getByText(hint)).toBeTruthy();
-    fireEvent.click(screen.getByRole("checkbox", { name: /^github/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^linear/i }));
     expect(screen.queryByText(hint)).toBeNull();
   });
 

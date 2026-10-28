@@ -8,14 +8,26 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
   addDocsSource,
+  addLocalDocsSource,
   errorText,
   removeDocsSource,
   renameDocsSource,
   type DocsSource,
 } from "@/lib/commands";
 import { useDocsSources, useDocsStatus } from "@/lib/queries";
+import { useModules } from "@/lib/modules";
 import { timeAgo } from "@/features/drawer/timeAgo";
+import { sourceDetail, unavailableReason } from "@/features/docs/docSource";
+import { SourceKindIcon } from "@/features/docs/SourceKindIcon";
 import { SectionHeader } from "../SectionHeader";
+
+/** "12 files · synced 3m ago", or the not-yet state, per source kind. */
+function freshness(source: DocsSource): string {
+  const verb = source.kind === "local" ? "scanned" : "synced";
+  if (!source.lastSyncedAt) return `not ${verb} yet`;
+  const files = `${source.fileCount} file${source.fileCount === 1 ? "" : "s"}`;
+  return `${files} · ${verb} ${timeAgo(source.lastSyncedAt)}`;
+}
 
 /** Everything that changes when the set of sources changes. */
 function refreshSources(qc: QueryClient): void {
@@ -52,7 +64,7 @@ function SourceRow({
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center gap-2">
         <Input
-          aria-label={`Name for ${source.owner}/${source.repo}`}
+          aria-label={`Name for ${sourceDetail(source)}`}
           value={draft}
           disabled={busy}
           onChange={(e) => setDraft(e.currentTarget.value)}
@@ -84,13 +96,15 @@ function SourceRow({
           </Button>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {source.owner}/{source.repo} · {source.branch}
-        {" — "}
-        {source.lastSyncedAt
-          ? `${source.fileCount} file${source.fileCount === 1 ? "" : "s"} · synced ${timeAgo(source.lastSyncedAt)}`
-          : "not synced yet"}
-        {source.truncated && " · tree truncated"}
+      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        <SourceKindIcon kind={source.kind} className="size-3 shrink-0" />
+        <span className="truncate" title={sourceDetail(source)}>
+          {sourceDetail(source)}
+          {" — "}
+          {freshness(source)}
+          {source.truncated && (source.kind === "local" ? " · too many files, list cut short" : " · tree truncated")}
+          {!source.available && ` · ${unavailableReason(source.kind)}`}
+        </span>
       </p>
     </Card>
   );
@@ -100,6 +114,7 @@ export function DocsSection() {
   const qc = useQueryClient();
   const { data: sources } = useDocsSources();
   const { data: status } = useDocsStatus();
+  const githubOn = useModules().isActive("github");
 
   const [urlInput, setUrlInput] = useState("");
   const [nameInput, setNameInput] = useState("");
@@ -141,7 +156,19 @@ export function DocsSection() {
       gooeyToast.error("Could not remove the source", { description: errorText(err) }),
   });
 
-  const busy = addMut.isPending || renameMut.isPending || removeMut.isPending;
+  const addLocalMut = useMutation({
+    // Rust opens the folder picker itself; no path crosses from the webview.
+    mutationFn: () => addLocalDocsSource(),
+    onSuccess: (saved) => {
+      if (!saved) return; // picker cancelled
+      refreshSources(qc);
+      gooeyToast.success(`Added ${saved.name}`);
+    },
+    onError: (err) => gooeyToast.error("Could not add the folder", { description: errorText(err) }),
+  });
+
+  const busy =
+    addMut.isPending || addLocalMut.isPending || renameMut.isPending || removeMut.isPending;
 
   const handleAdd = (e: FormEvent) => {
     e.preventDefault();
@@ -155,21 +182,15 @@ export function DocsSection() {
     <>
       <SectionHeader
         title="Documentation"
-        description="Repositories the Docs page reads from. Switch between them in the Docs header."
+        description="GitHub repositories and folders on this computer that the Docs page reads from. Switch between them in the Docs header."
       />
-
-      {status && !status.tokenPresent && (
-        <p className="text-sm text-warning">
-          Connect a GitHub token first — docs are fetched with it.
-        </p>
-      )}
 
       <div className="flex flex-col gap-3">
         <Label>Sources</Label>
         {sources === undefined ? (
           <p className="text-sm text-muted-foreground">Checking…</p>
         ) : sources.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No documentation repositories yet.</p>
+          <p className="text-sm text-muted-foreground">No documentation sources yet.</p>
         ) : (
           sources.map((s) => (
             <SourceRow
@@ -185,7 +206,30 @@ export function DocsSection() {
         )}
       </div>
 
+      <Card className="flex flex-col gap-3 p-6">
+        <Label>Add a local folder</Label>
+        <p className="text-xs text-muted-foreground">
+          Markdown, plain-text and PDF files in the folder and its subfolders are read in place —
+          nothing is copied. Use the Docs page's rescan button after changing files.
+        </p>
+        <div className="flex gap-2">
+          <Button type="button" variant="secondary" disabled={busy} onClick={() => addLocalMut.mutate()}>
+            Choose folder…
+          </Button>
+        </div>
+      </Card>
+
+      {!githubOn ? (
+        <p className="text-sm text-muted-foreground">
+          Turn on GitHub in Modules to add documentation repositories.
+        </p>
+      ) : (
       <Card className="flex flex-col gap-4 p-6">
+        {status && !status.tokenPresent && (
+          <p className="text-sm text-warning">
+            Connect a GitHub token first — repositories are fetched with it.
+          </p>
+        )}
         <form className="flex flex-col gap-3" onSubmit={handleAdd}>
           <Label htmlFor="docs-repo">Add a repository</Label>
           <Input
@@ -216,6 +260,7 @@ export function DocsSection() {
           </div>
         </form>
       </Card>
+      )}
     </>
   );
 }

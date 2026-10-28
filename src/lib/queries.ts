@@ -21,6 +21,7 @@ import {
   getConnectionStatus,
   getDocsStatus,
   getDocContent,
+  getDocPdf,
   getGithubContributions,
   getGithubPrDiff,
   getGithubPrDetail,
@@ -853,19 +854,53 @@ export function useDocsSources() {
   return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources, enabled: on });
 }
 
+// Trees and documents only change on an explicit refresh (`useDocsSync`
+// invalidates them), so they never go stale on their own. For a local folder
+// this is what keeps a rescan on-demand rather than on every focus.
 export function useDocsTree(sourceId: string | null) {
   return useQuery({
     queryKey: ["docs-tree", sourceId],
     queryFn: () => listDocsTree(sourceId as string),
     enabled: !!sourceId,
+    staleTime: Infinity,
   });
 }
 
-export function useDocContent(sourceId: string | null, path: string | null) {
+export function useDocContent(sourceId: string | null, path: string | null, enabled = true) {
   return useQuery({
     queryKey: ["doc-content", sourceId, path],
     queryFn: () => getDocContent(sourceId as string, path as string),
-    enabled: !!sourceId && !!path,
+    enabled: enabled && !!sourceId && !!path,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * Rescan a local folder on request: re-run its tree query (one scan, which also
+ * records the scan time and count in Rust) and re-read its open documents.
+ * Local folders never auto-sync, so this is the only thing that rescans.
+ */
+export function useDocsRescan() {
+  const qc = useQueryClient();
+  return (sourceId: string) =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] }),
+      qc.invalidateQueries({ queryKey: ["doc-content", sourceId] }),
+    ]).then(() =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["docs-sources"] }),
+        qc.invalidateQueries({ queryKey: ["docs-status"] }),
+      ]),
+    );
+}
+
+/** A local PDF's bytes; shares the `doc-content` prefix so a refresh re-reads it. */
+export function useDocPdf(sourceId: string | null, path: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["doc-content", sourceId, path, "pdf"],
+    queryFn: () => getDocPdf(sourceId as string, path as string),
+    enabled: enabled && !!sourceId && !!path,
+    staleTime: Infinity,
   });
 }
 
@@ -875,7 +910,9 @@ export function useDocContent(sourceId: string | null, path: string | null) {
  * configured repo up front would multiply that), then on a manual refetch.
  * Keying the query by source means switching back to an already-synced source is
  * a cache read, not another round trip.
- * Disabled (no network) when no token is configured or no source is selected.
+ * For a local folder a "sync" is a rescan of the folder (no network).
+ * Disabled when the caller says the source can't sync (GitHub source without a
+ * token, unavailable provider) or no source is selected.
  */
 export function useDocsSync(sourceId: string | null, enabled: boolean) {
   const qc = useQueryClient();

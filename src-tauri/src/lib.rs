@@ -5,6 +5,7 @@ mod github;
 mod issue_ref;
 mod linear;
 mod link_preview;
+mod local_docs;
 mod modules;
 mod secrets;
 mod slack;
@@ -209,6 +210,8 @@ pub fn run() {
             commands::docs::add_docs_source,
             commands::docs::rename_docs_source,
             commands::docs::remove_docs_source,
+            commands::docs::add_local_docs_source,
+            commands::docs::get_doc_pdf,
             commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,

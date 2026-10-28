@@ -17,6 +17,10 @@ const cmd = vi.hoisted(() => ({
     id: "acme/docs@main", name: "docs", owner: "acme", repo: "docs", branch: "main",
     url: "https://github.com/acme/docs/tree/main", lastSyncedAt: null, fileCount: 0, truncated: false,
   }),
+  addLocalDocsSource: vi.fn().mockResolvedValue({
+    id: "local:/home/me/notes", kind: "local", name: "notes", owner: null, repo: null, branch: null,
+    location: "/home/me/notes", url: null, lastSyncedAt: null, fileCount: 0, truncated: false, available: true,
+  }),
   renameDocsSource: vi.fn(),
   removeDocsSource: vi.fn().mockResolvedValue(undefined),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
@@ -131,10 +135,30 @@ describe("Settings documentation section", () => {
     await waitFor(() => expect(cmd.addDocsSource).toHaveBeenCalledWith("acme/docs", "Core docs"));
   });
 
+  it("adds a local folder through the native picker", async () => {
+    queries.docsSources = [];
+    renderAt("Documentation");
+    fireEvent.click(screen.getByRole("button", { name: /choose folder/i }));
+    // No path is sent from the webview — Rust opens the picker itself.
+    await waitFor(() => expect(cmd.addLocalDocsSource).toHaveBeenCalledWith());
+  });
+
+  it("shows a local folder by its path", () => {
+    queries.docsSources = [
+      {
+        id: "local:/home/me/notes", kind: "local", name: "Notes", owner: null, repo: null, branch: null,
+        location: "/home/me/notes", url: null, lastSyncedAt: null, fileCount: 0, truncated: false, available: true,
+      },
+    ];
+    renderAt("Documentation");
+    expect(screen.getByText(/\/home\/me\/notes/)).toBeTruthy();
+    expect(screen.getByText(/not scanned yet/i)).toBeTruthy();
+  });
+
   it("requires confirmation before removing a source", async () => {
     queries.docsSources = [
       {
-        id: "acme/docs@main", name: "Core docs", owner: "acme", repo: "docs", branch: "main",
+        id: "acme/docs@main", kind: "github", name: "Core docs", owner: "acme", repo: "docs", branch: "main", location: null, available: true,
         url: "", lastSyncedAt: null, fileCount: 3, truncated: false,
       },
     ];
@@ -149,7 +173,7 @@ describe("Settings documentation section", () => {
   it("only renames when the name actually changed", async () => {
     queries.docsSources = [
       {
-        id: "acme/docs@main", name: "Core docs", owner: "acme", repo: "docs", branch: "main",
+        id: "acme/docs@main", kind: "github", name: "Core docs", owner: "acme", repo: "docs", branch: "main", location: null, available: true,
         url: "", lastSyncedAt: null, fileCount: 0, truncated: false,
       },
     ];
