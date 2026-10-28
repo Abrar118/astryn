@@ -19,7 +19,7 @@ as a tree and render as Markdown, offline from the cache.
   - `GET https://api.clickup.com/api/v2/user` → `{ "user": { "id", "username", … } }` (connection test).
   - `GET https://api.clickup.com/api/v3/workspaces/{workspace_id}/docs/{doc_id}` → `{ "id", "name", … }` (validate a link, default name).
   - `GET https://api.clickup.com/api/v3/workspaces/{workspace_id}/docs/{doc_id}/pages?max_page_depth=-1&content_format=text/md` → array of pages `{ "id", "name", "content", "pages": [ …nested… ], "archived", "deleted", … }`.
-- **Caching:** pages are cached in `docs_files` exactly like GitHub Markdown (one row per page, `kind = 'blob'`, content = Markdown) and refreshed on demand. **No new migration** — `kind` is free text and the doc reference lives in `docs_sources.location` (`"{workspace_id}/{doc_id}"`).
+- **Caching:** pages are cached in `docs_files` exactly like GitHub Markdown (one row per page, `kind = 'blob'`, content = Markdown) and refreshed on demand. `kind` is free text and the doc reference lives in `docs_sources.location` (`"{workspace_id}/{doc_id}"`); the only migration (`0018`) adds `docs_files.position` for page order.
 - **Tree:** a page's path is its id chain (`p1/p2`), parent path the parent's chain, name the page name. A page with sub-pages is a document *and* a parent, so the tree shows an expand toggle on file rows that have children.
 
 ## Rulings
@@ -28,7 +28,9 @@ as a tree and render as Markdown, offline from the cache.
 - **Source id:** `clickup:{workspace_id}/{doc_id}` — stable across renames, doubles as the duplicate guard (same pattern as GitHub and local folders).
 - **Adding requires a token and network:** the Doc is fetched once on add, so a wrong link or missing access fails immediately; the name defaults to the Doc's own name.
 - **Skipped pages:** pages flagged `archived` or `deleted` are not cached (nor their sub-pages). A page without a name shows as "Untitled".
-- **Order:** sibling pages are sorted by the Docs tree's existing rules (numeric prefix, then name), not ClickUp's manual order — v1 keeps one ordering rule.
+- **Order:** pages keep the order ClickUp returns (the author's arrangement): `docs_files.position` (migration `0018_docs_files_position.sql`) records it and the tree skips its name sort for ClickUp sources.
+- **Deleted/archived Docs** are refused when added.
+- **Removal vs. sync:** removal doesn't take `clickup_lock`, so `replace_docs` re-checks inside its write transaction that the source still exists and writes nothing otherwise — a sync landing after removal leaves no orphan rows.
 - **Errors:** 401/403 → "ClickUp rejected the request." (`ClickUpApi`); 429 → `RateLimited`; 5xx / transport → `Network`; any other non-2xx or an `err` body → `ClickUpApi`; unparsable → `ClickUpApi`. Error bodies are never forwarded.
 - **Concurrency:** `clickup_lock` serializes token mutations, link checks and syncs; `clickup_generation` is bumped on token change / module disable so a late sync write is dropped.
 - **Token change / Clear token / Remove module data** wipe the ClickUp-cached pages and their sync metadata (and the cached ClickUp username), leaving the configured Doc entries (they are Docs config, not credential-derived) so a new token just resyncs them. Removing the Docs module's data deletes the entries.

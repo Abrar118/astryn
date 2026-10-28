@@ -91,10 +91,14 @@ pub fn pages_path(doc: &DocRef) -> String {
 /// `GET` path for the token's user (v2), used to test a connection.
 pub const USER_PATH: &str = "/v2/user";
 
-/// The Doc's name from a "get doc" response (`"Untitled"` when blank).
+/// The Doc's name from a "get doc" response (`"Untitled"` when blank). A Doc
+/// the API reports as deleted or archived is refused — it can't be a live source.
 pub fn parse_doc_name(v: &Value) -> Result<String, ClickUpError> {
     if v.get("id").is_none() {
         return Err(ClickUpError::Malformed);
+    }
+    if flag(v, "deleted") || flag(v, "archived") {
+        return Err(ClickUpError::Api("doc is deleted or archived".into()));
     }
     Ok(page_name(v))
 }
@@ -241,6 +245,19 @@ mod tests {
             parse_doc_name(&json!({})),
             Err(ClickUpError::Malformed)
         ));
+    }
+
+    #[test]
+    fn a_deleted_or_archived_doc_is_not_accepted() {
+        for flag in ["deleted", "archived"] {
+            let v = json!({ "id": "abc-1", "name": "Old", flag: true });
+            assert!(
+                matches!(parse_doc_name(&v), Err(ClickUpError::Api(_))),
+                "{flag}"
+            );
+        }
+        let live = json!({ "id": "abc-1", "name": "Live", "deleted": false, "archived": false });
+        assert_eq!(parse_doc_name(&live).unwrap(), "Live");
     }
 
     #[test]

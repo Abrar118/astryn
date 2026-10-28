@@ -191,7 +191,9 @@ export function DocsPage({
     if (isLocal && activeId) void rescan(activeId);
     else void sync.refetch();
   };
-  const tree = useMemo(() => buildDocTree(flat ?? []), [flat]);
+  // ClickUp pages keep their author's order; files and repos sort by name.
+  const keepOrder = active?.kind === "clickup";
+  const tree = useMemo(() => buildDocTree(flat ?? [], { keepOrder }), [flat, keepOrder]);
 
   // A selected path belongs to one repo, so drop it whenever the active source
   // actually changes — whether the user picked another one or the current one was
