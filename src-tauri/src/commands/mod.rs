@@ -147,6 +147,8 @@ pub enum CmdError {
     InvalidLocalInput,
     #[error("That file isn't a usable Astryn local-tasks backup.")]
     InvalidBackup,
+    #[error("Couldn't save the file there. Check the folder and try again.")]
+    FileWrite,
 }
 
 impl serde::Serialize for CmdError {

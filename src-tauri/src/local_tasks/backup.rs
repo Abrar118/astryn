@@ -99,10 +99,13 @@ fn cell(row: &sqlx::sqlite::SqliteRow, i: usize) -> Value {
 
 /// The whole local-tasks dataset as one JSON document.
 pub async fn snapshot(pool: &SqlitePool) -> Result<Value, LtError> {
+    // One read transaction: every table comes from the same moment, so a write
+    // landing mid-snapshot can't produce rows that break a later restore's FKs.
+    let mut tx = pool.begin().await?;
     let mut tables = Map::new();
     for (table, cols) in TABLES {
         let rows = sqlx::query(&format!("SELECT {} FROM {table}", cols.join(", ")))
-            .fetch_all(pool)
+            .fetch_all(&mut *tx)
             .await?;
         let out: Vec<Value> = rows
             .iter()
@@ -116,6 +119,7 @@ pub async fn snapshot(pool: &SqlitePool) -> Result<Value, LtError> {
             .collect();
         tables.insert((*table).to_string(), Value::Array(out));
     }
+    tx.commit().await?;
     Ok(json!({ "format": FORMAT, "version": VERSION, "exportedAt": now(), "tables": tables }))
 }
 
@@ -201,15 +205,17 @@ pub async fn write_file(path: &Path, doc: &Value) -> Result<(), LtError> {
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|_| LtError::Io)?;
+            .map_err(|_| LtError::Write)?;
     }
-    let text = serde_json::to_vec_pretty(doc).map_err(|_| LtError::Io)?;
+    let text = serde_json::to_vec_pretty(doc).map_err(|_| LtError::Write)?;
     // Write then rename, so a crash never leaves a half-written backup behind.
     let tmp = path.with_extension("json.tmp");
     tokio::fs::write(&tmp, text)
         .await
-        .map_err(|_| LtError::Io)?;
-    tokio::fs::rename(&tmp, path).await.map_err(|_| LtError::Io)
+        .map_err(|_| LtError::Write)?;
+    tokio::fs::rename(&tmp, path)
+        .await
+        .map_err(|_| LtError::Write)
 }
 
 pub async fn read_file(path: &Path) -> Result<Value, LtError> {
@@ -225,8 +231,16 @@ fn daily_name(today: &str) -> String {
     format!("{DAILY_PREFIX}{today}.json")
 }
 
-/// Dates of the daily snapshots in `dir`, newest first.
-pub fn daily_backups(dir: &Path) -> Vec<String> {
+/// Dates of the daily snapshots in `dir`, newest first. The directory scan is
+/// blocking, so it runs off the async executor.
+pub async fn daily_backups(dir: &Path) -> Vec<String> {
+    let dir = dir.to_path_buf();
+    tokio::task::spawn_blocking(move || scan_daily(&dir))
+        .await
+        .unwrap_or_default()
+}
+
+fn scan_daily(dir: &Path) -> Vec<String> {
     let mut dates: Vec<String> = std::fs::read_dir(dir)
         .map(|entries| {
             entries
@@ -260,7 +274,7 @@ pub async fn ensure_daily(
         write_file(&path, &snapshot(pool).await?).await?;
         written = Some(path);
     }
-    for old in daily_backups(dir).into_iter().skip(KEEP_DAILY) {
+    for old in daily_backups(dir).await.into_iter().skip(KEEP_DAILY) {
         let _ = tokio::fs::remove_file(dir.join(daily_name(&old))).await;
     }
     Ok(written)
@@ -353,7 +367,7 @@ mod tests {
             .await
             .unwrap()
             .is_none());
-        let kept = daily_backups(&backups);
+        let kept = daily_backups(&backups).await;
         assert_eq!(kept.len(), KEEP_DAILY);
         assert_eq!(kept[0], "2026-10-16");
         assert!(matches!(

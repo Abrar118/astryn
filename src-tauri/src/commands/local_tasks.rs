@@ -26,6 +26,7 @@ impl From<LtError> for CmdError {
             LtError::Invalid => CmdError::InvalidLocalInput,
             LtError::BadBackup => CmdError::InvalidBackup,
             LtError::Io => CmdError::FileRead,
+            LtError::Write => CmdError::FileWrite,
         }
     }
 }
@@ -85,8 +86,14 @@ pub async fn rename_local_space(
 }
 
 #[tauri::command]
-pub async fn delete_local_space(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+pub async fn delete_local_space(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), CmdError> {
     state.require(crate::modules::ModuleId::LocalTasks)?;
+    // Deleting a space cascades to its tasks; keep a copy first.
+    backup::write_safety(&state.pool, &backups_dir(&app)?, "before-delete").await?;
     Ok(db::delete_space(&state.pool, &id).await?)
 }
 
@@ -113,8 +120,14 @@ pub async fn update_local_list(
 }
 
 #[tauri::command]
-pub async fn delete_local_list(state: State<'_, AppState>, id: String) -> Result<(), CmdError> {
+pub async fn delete_local_list(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<(), CmdError> {
     state.require(crate::modules::ModuleId::LocalTasks)?;
+    // Deleting a list cascades to its tasks; keep a copy first.
+    backup::write_safety(&state.pool, &backups_dir(&app)?, "before-delete").await?;
     Ok(db::delete_list(&state.pool, &id).await?)
 }
 
@@ -383,7 +396,7 @@ pub async fn ensure_local_tasks_backup(
     state.require(crate::modules::ModuleId::LocalTasks)?;
     let dir = backups_dir(&app)?;
     backup::ensure_daily(&state.pool, &dir, &today).await?;
-    let dates = backup::daily_backups(&dir);
+    let dates = backup::daily_backups(&dir).await;
     Ok(BackupStatus {
         folder: dir.to_string_lossy().into_owned(),
         latest: dates.first().cloned(),

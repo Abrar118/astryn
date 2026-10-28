@@ -21,8 +21,10 @@ pub enum LtError {
     Invalid,
     #[error("invalid backup")]
     BadBackup,
-    #[error("file error")]
+    #[error("file read error")]
     Io,
+    #[error("file write error")]
+    Write,
 }
 
 static ID_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -53,7 +55,11 @@ pub fn now() -> String {
         .unwrap_or_default()
 }
 
-/// `YYYY-MM-DD` with plausible ranges (dates are calendar days, no time zone).
+/// Years a task date may fall in; anything else is a typo (and would make the
+/// timeline span centuries).
+pub const DATE_YEARS: std::ops::RangeInclusive<i32> = 1970..=2200;
+
+/// A real `YYYY-MM-DD` calendar day (no time zone) within `DATE_YEARS`.
 pub fn valid_date(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() != 10 || b[4] != b'-' || b[7] != b'-' {
@@ -63,9 +69,18 @@ pub fn valid_date(s: &str) -> bool {
     if !(digits(0..4) && digits(5..7) && digits(8..10)) {
         return false;
     }
-    let month: u32 = s[5..7].parse().unwrap_or(0);
-    let day: u32 = s[8..10].parse().unwrap_or(0);
-    (1..=12).contains(&month) && (1..=31).contains(&day)
+    let (Ok(year), Ok(month), Ok(day)) = (
+        s[0..4].parse::<i32>(),
+        s[5..7].parse::<u8>(),
+        s[8..10].parse::<u8>(),
+    ) else {
+        return false;
+    };
+    DATE_YEARS.contains(&year)
+        && time::Month::try_from(month)
+            .ok()
+            .and_then(|m| time::Date::from_calendar_date(year, m, day).ok())
+            .is_some()
 }
 
 #[cfg(test)]
@@ -86,5 +101,10 @@ mod tests {
         assert!(!valid_date("2026-13-01"));
         assert!(!valid_date("2026-1-01"));
         assert!(!valid_date("../etc/pas"));
+        assert!(!valid_date("2026-02-31"));
+        assert!(!valid_date("2026-04-31"));
+        assert!(valid_date("2028-02-29"));
+        assert!(!valid_date("9999-12-31"));
+        assert!(!valid_date("0001-01-01"));
     }
 }

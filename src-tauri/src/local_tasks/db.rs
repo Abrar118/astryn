@@ -12,6 +12,8 @@ use crate::linear::issues::double_option;
 
 /// The local viewer: tasks "assigned to me" carry this assignee id.
 pub const ME: &str = "lt_me";
+/// Longest title or name, in characters.
+pub const MAX_NAME_CHARS: usize = 200;
 pub const CATEGORIES: [&str; 5] = ["backlog", "unstarted", "started", "completed", "canceled"];
 
 /// Every new space starts with this workflow.
@@ -314,7 +316,7 @@ pub async fn load_tree(pool: &SqlitePool) -> Result<Tree, LtError> {
 
 fn clean_name(name: &str) -> Result<String, LtError> {
     let name = name.trim();
-    if name.is_empty() || name.chars().count() > 200 {
+    if name.is_empty() || name.chars().count() > MAX_NAME_CHARS {
         return Err(LtError::Invalid);
     }
     Ok(name.to_string())
@@ -1684,6 +1686,19 @@ pub async fn create_relation(
     if !task_exists(&mut tx, task).await? || !task_exists(&mut tx, related).await? {
         return Err(LtError::NotFound);
     }
+    // Two tasks blocking each other is a deadlock, not a plan.
+    if kind == "blocks" {
+        let reverse: bool = sqlx::query_scalar(
+            "SELECT EXISTS(SELECT 1 FROM lt_relations WHERE type = 'blocks' AND task_id = ?1 AND related_id = ?2)",
+        )
+        .bind(related)
+        .bind(task)
+        .fetch_one(&mut *tx)
+        .await?;
+        if reverse {
+            return Err(LtError::Invalid);
+        }
+    }
     let exists: bool = sqlx::query_scalar(
         "SELECT EXISTS(SELECT 1 FROM lt_relations WHERE type = ?3 AND
             ((task_id = ?1 AND related_id = ?2) OR (?3 = 'related' AND task_id = ?2 AND related_id = ?1)))",
@@ -2186,6 +2201,94 @@ pub(crate) mod tests {
             ),
             (1, 1, 1)
         );
+    }
+
+    #[tokio::test]
+    async fn delete_list_drops_its_workflow_and_detaches_subtasks_elsewhere() {
+        let (_d, pool, list, _) = seeded().await;
+        let space = load_tree(&pool).await.unwrap().spaces[0].id.clone();
+        let doomed = create_list(&pool, &space, "Doomed", "DOOM").await.unwrap();
+        set_statuses(
+            &pool,
+            &doomed.id,
+            vec![StatusInput {
+                id: None,
+                name: "Own".into(),
+                category: "unstarted".into(),
+                color: "#999999".into(),
+            }],
+        )
+        .await
+        .unwrap();
+        let parent = create_task(&pool, &input(&doomed.id, "Parent"))
+            .await
+            .unwrap();
+        let mut child = input(&list, "Child elsewhere");
+        child.parent_id = Some(parent.id.clone());
+        let child = create_task(&pool, &child).await.unwrap();
+
+        delete_list(&pool, &doomed.id).await.unwrap();
+        let own: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM lt_statuses WHERE scope_id = ?1")
+            .bind(&doomed.id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(own, 0);
+        assert!(matches!(
+            get_task(&pool, &parent.id).await,
+            Err(LtError::NotFound)
+        ));
+        assert_eq!(get_task(&pool, &child.id).await.unwrap().parent_id, None);
+        assert!(matches!(
+            delete_list(&pool, &doomed.id).await,
+            Err(LtError::NotFound)
+        ));
+    }
+
+    #[tokio::test]
+    async fn migrations_index_the_child_lookups() {
+        let (_d, pool) = pool().await;
+        let indexed: Vec<(String, String)> = sqlx::query_as(
+            "SELECT m.tbl_name, i.name FROM sqlite_master m, pragma_index_info(m.name) i
+             WHERE m.type = 'index' AND m.tbl_name LIKE 'lt_%' AND i.seqno = 0",
+        )
+        .fetch_all(&pool)
+        .await
+        .unwrap();
+        for (table, column) in [
+            ("lt_checklist_items", "task_id"),
+            ("lt_attachments", "task_id"),
+            ("lt_comments", "task_id"),
+            ("lt_relations", "related_id"),
+            ("lt_task_labels", "label_id"),
+        ] {
+            assert!(
+                indexed.iter().any(|(t, c)| t == table && c == column),
+                "missing index on {table}({column})"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn a_block_cannot_run_both_ways() {
+        let (_d, pool, list, _) = seeded().await;
+        let a = create_task(&pool, &input(&list, "A")).await.unwrap();
+        let b = create_task(&pool, &input(&list, "B")).await.unwrap();
+        create_relation(&pool, &a.id, &b.id, "blocks")
+            .await
+            .unwrap();
+        assert!(matches!(
+            create_relation(&pool, &b.id, &a.id, "blocks").await,
+            Err(LtError::Invalid)
+        ));
+        // Related stays symmetric and idempotent.
+        create_relation(&pool, &a.id, &b.id, "related")
+            .await
+            .unwrap();
+        create_relation(&pool, &b.id, &a.id, "related")
+            .await
+            .unwrap();
+        assert_eq!(relations(&pool).await.unwrap().len(), 4);
     }
 
     #[tokio::test]

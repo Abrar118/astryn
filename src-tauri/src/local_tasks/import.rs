@@ -150,10 +150,11 @@ pub async fn import_linear_team(
         }
         let input = CreateTaskInput {
             list_id: list_id.to_string(),
+            // Local titles are capped; one long Linear title must not abort the import.
             title: if row.title.trim().is_empty() {
                 "Untitled".into()
             } else {
-                row.title.clone()
+                row.title.trim().chars().take(db::MAX_NAME_CHARS).collect()
             },
             description: row.description.clone(),
             status_id: Some(status_id),
@@ -342,6 +343,23 @@ mod tests {
             .iter()
             .any(|r| r.issue_id == one.id && r.r#type == "blocks"));
 
+        let long = IssueRecord {
+            title: "x".repeat(300),
+            ..rec("3", ("To do", "unstarted"), "someone", None)
+        };
+        let mut tx = pool.begin().await.unwrap();
+        upsert_issue(&mut tx, &long).await.unwrap();
+        tx.commit().await.unwrap();
+        let with_long = import_linear_team(&pool, "team", &list, Some("viewer"))
+            .await
+            .unwrap();
+        assert_eq!(with_long.imported, 1);
+        let tasks = db::list_tasks(&pool, &db::Filters::default())
+            .await
+            .unwrap();
+        let truncated = tasks.iter().find(|t| t.title.starts_with("xxx")).unwrap();
+        assert_eq!(truncated.title.chars().count(), 200);
+
         let again = import_linear_team(&pool, "team", &list, Some("viewer"))
             .await
             .unwrap();
@@ -349,7 +367,7 @@ mod tests {
             again,
             ImportResult {
                 imported: 0,
-                skipped: 2
+                skipped: 3
             }
         );
         assert_eq!(
@@ -357,7 +375,7 @@ mod tests {
                 .await
                 .unwrap()
                 .len(),
-            2
+            3
         );
     }
 }
