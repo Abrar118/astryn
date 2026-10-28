@@ -20,6 +20,10 @@ describe("view registry", () => {
     const active = (id: ModuleId) => id === "github";
     expect(visibleViews(active)).toEqual(["dashboard", "prs", "settings"]);
   });
+  it("shows the Teams view only while Teams is active", () => {
+    expect(visibleViews((id) => id === "teams")).toEqual(["dashboard", "teams", "settings"]);
+    expect(viewActive("teams", (id) => id === "slack")).toBe(false);
+  });
   it("issue tabs follow the tracker", () => {
     expect(viewActive("issue", () => false)).toBe(false);
     expect(viewActive("issue", (id) => id === "linear")).toBe(true);
@@ -36,6 +40,7 @@ describe("MODULE_MANIFEST", () => {
       docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
       reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
       "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+      teams: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
     });
   });
 });

@@ -10,6 +10,7 @@ import {
   Link2,
   List,
   MessageSquare,
+  MessagesSquare,
   Network,
   NotebookPen,
   Settings as SettingsIcon,
@@ -32,6 +33,7 @@ export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; modul
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
   prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
   slack: { label: "Slack", icon: MessageSquare, module: "slack" },
+  teams: { label: "Teams", icon: MessagesSquare, module: "teams" },
   docs: { label: "Docs", icon: BookText, module: "docs" },
   reports: { label: "Reports", icon: NotebookPen, module: "reports" },
   settings: { label: "Settings", icon: SettingsIcon, module: "core" },
@@ -65,6 +67,7 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
   reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+  teams: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
 };
 
 /** Capabilities `id` requires that no module in `selected` provides. */
@@ -99,6 +102,7 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
   docs: { name: "Docs", icon: BookText, description: "Markdown docs from your GitHub repositories.", removes: ["documentation sources", "cached docs"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
+  teams: { name: "Microsoft Teams", icon: MessagesSquare, description: "Unread chats and mentions from Teams.", removes: ["Teams sign-in", "app registration settings", "cached Teams messages"] },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */
@@ -107,6 +111,6 @@ export const CAPABILITY_PROVIDERS: Record<Capability, string> = {
   notifications: "a notification source — turn on Linear",
   "code-host": "a code host — turn on GitHub",
   "docs-source": "a docs source — turn on GitHub",
-  chat: "a chat provider — turn on Slack",
+  chat: "a chat provider — turn on Slack or Teams",
   llm: "an AI provider — turn on AI",
 };

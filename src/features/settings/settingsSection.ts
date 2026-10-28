@@ -4,6 +4,7 @@ import {
   Calendar,
   GitBranch,
   MessageSquare,
+  MessagesSquare,
   Palette,
   Sparkles,
   SquareKanban,
@@ -16,6 +17,7 @@ export type SettingsSection =
   | "linear"
   | "github"
   | "slack"
+  | "teams"
   | "documentation"
   | "ai"
   | "appearance"
@@ -43,6 +45,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { id: "linear", label: "Linear", icon: SquareKanban, module: "linear" },
       { id: "github", label: "GitHub", icon: GitBranch, module: "github" },
       { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
+      { id: "teams", label: "Teams", icon: MessagesSquare, module: "teams" },
     ],
   },
   {

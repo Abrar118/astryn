@@ -642,14 +642,10 @@ export const renameDocsSource = (sourceId: string, name: string): Promise<DocsSo
 export const removeDocsSource = (sourceId: string): Promise<void> =>
   invoke("remove_docs_source", { sourceId });
 
-// ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
+// ── Chat catch-up board (provider-neutral: Slack, Teams) ─────────────────────
 
-export type SlackStatus =
-  | { state: "not_configured" }
-  | { state: "unverified" }
-  | { state: "connected"; workspaceName: string | null; userName: string };
-
-export type SlackConversation = {
+/** One unread conversation. `latestTs` is the provider's id for its newest unread message. */
+export type ChatConversation = {
   id: string;
   kind: "channel" | "dm" | "group_dm";
   name: string | null;
@@ -661,7 +657,8 @@ export type SlackConversation = {
   latestSnippet: string | null;
 };
 
-export type SlackMessage = {
+/** One cached unread message. `ts` is the provider's message id (Slack ts, Graph message id). */
+export type ChatMessage = {
   conversationId: string;
   ts: string;
   threadTs: string | null;
@@ -675,7 +672,7 @@ export type SlackMessage = {
   createdAt: string;
 };
 
-export type SlackThread = {
+export type ChatThread = {
   conversationId: string;
   conversationName: string | null;
   threadTs: string;
@@ -684,14 +681,27 @@ export type SlackThread = {
   latestTs: string;
 };
 
-export type SlackCatchup = {
-  conversations: SlackConversation[];
-  mentions: SlackMessage[];
-  threads: SlackThread[];
+export type ChatCatchup = {
+  conversations: ChatConversation[];
+  mentions: ChatMessage[];
+  threads: ChatThread[];
   lastSyncedAt: string | null;
 };
 
-export type SlackSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
+export type ChatSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
+
+// ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
+
+export type SlackStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; workspaceName: string | null; userName: string };
+
+export type SlackConversation = ChatConversation;
+export type SlackMessage = ChatMessage;
+export type SlackThread = ChatThread;
+export type SlackCatchup = ChatCatchup;
+export type SlackSyncSummary = ChatSyncSummary;
 export type SlackDeepLink = { app: string; web: string };
 
 export const setSlackCredentials = (token: string, cookie?: string | null): Promise<void> =>
@@ -706,6 +716,41 @@ export const getSlackConversationMessages = (conversationId: string): Promise<Sl
   invoke("get_slack_conversation_messages", { conversationId });
 export const slackDeepLink = (conversationId: string, ts?: string | null): Promise<SlackDeepLink> =>
   invoke("slack_deep_link", { conversationId, ts: ts ?? null });
+
+// ── Microsoft Teams (chat provider; read-only chats) ─────────────────────────
+
+export type TeamsStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; userName: string };
+
+/** Shown to the user during the device-code sign-in; the device code itself stays in Rust. */
+export type TeamsDeviceCode = {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+  message: string | null;
+};
+
+export type TeamsSignInPoll =
+  | { state: "pending"; interval: number }
+  | { state: "connected"; userName: string };
+
+export const startTeamsSignIn = (clientId: string, tenant?: string | null): Promise<TeamsDeviceCode> =>
+  invoke("start_teams_sign_in", { clientId, tenant: tenant ?? null });
+export const pollTeamsSignIn = (): Promise<TeamsSignInPoll> => invoke("poll_teams_sign_in");
+export const cancelTeamsSignIn = (): Promise<void> => invoke("cancel_teams_sign_in");
+export const clearTeamsAccount = (): Promise<void> => invoke("clear_teams_account");
+export const getTeamsStatus = (): Promise<TeamsStatus> => invoke("get_teams_status");
+export const testTeamsConnection = (): Promise<TeamsStatus> => invoke("test_teams_connection");
+export const syncTeamsCatchup = (): Promise<ChatSyncSummary> => invoke("sync_teams_catchup");
+export const getTeamsCatchup = (): Promise<ChatCatchup> => invoke("get_teams_catchup");
+export const getTeamsChatMessages = (conversationId: string): Promise<ChatMessage[]> =>
+  invoke("get_teams_chat_messages", { conversationId });
+/** An https://teams.microsoft.com/ link to a chat, or to one message in it. */
+export const teamsOpenLink = (conversationId: string, messageId?: string | null): Promise<string> =>
+  invoke("teams_open_link", { conversationId, messageId: messageId ?? null });
 
 // ---- Report generators (daily scrum / weekly review) ----
 
@@ -757,7 +802,8 @@ export type ModuleId =
   | "llm"
   | "docs"
   | "reports"
-  | "link-previews";
+  | "link-previews"
+  | "teams";
 
 export type Capability =
   | "tracker"

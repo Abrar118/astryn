@@ -15,7 +15,7 @@ vi.mock("@/lib/commands", async (orig) => ({
 vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
 
 import * as commands from "@/lib/commands";
-import { CAPABILITY_PROVIDERS, previewMissing } from "@/lib/modules";
+import { CAPABILITY_PROVIDERS, MODULE_MANIFEST, previewMissing } from "@/lib/modules";
 import { ModulePicker } from "./ModulePicker";
 
 function mk(onboarded: boolean): ModulesView {
@@ -60,7 +60,7 @@ describe("ModulePicker", () => {
     expect(screen.getByText("Integrations")).toBeTruthy();
     expect(screen.getByText("Features")).toBeTruthy();
     const boxes = screen.getAllByRole("checkbox");
-    expect(boxes.length).toBe(7);
+    expect(boxes.length).toBe(Object.keys(MODULE_MANIFEST).length);
     expect(document.activeElement).toBe(boxes[0]);
   });
 
