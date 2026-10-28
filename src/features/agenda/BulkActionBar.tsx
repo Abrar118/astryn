@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 import { gooeyToast } from "goey-toast";
 import { CalendarClock, Check, SignalHigh, User as UserIcon, X } from "lucide-react";
-import { useUsers, useUpdateIssue } from "@/lib/queries";
+import { useTaskUsers, useUpdateTask } from "@/lib/taskQueries";
+import { trackerOf, type TaskPatch } from "@/lib/tracker";
 import { dhakaToday } from "@/lib/dates";
 import { cn } from "@/lib/utils";
-import type { UpdateIssuePatch } from "@/lib/commands";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
 import { bulkStatusTeamId, type GraphIndex } from "./graphModel";
 
@@ -19,9 +19,14 @@ export function BulkActionBar({
   index: GraphIndex;
   onClear: () => void;
 }) {
-  const { data: users } = useUsers();
-  const update = useUpdateIssue();
+  const { data: allUsers } = useTaskUsers();
+  const update = useUpdateTask();
   const [open, setOpen] = useState<MenuKey | null>(null);
+
+  // Assignees exist per tracker, so offer only the selection's tracker's users.
+  const trackers = new Set(selectedIds.map(trackerOf));
+  const tracker = trackers.size === 1 ? [...trackers][0] : null;
+  const users = tracker ? (allUsers ?? []).filter((u) => trackerOf(u.id) === tracker) : [];
 
   const teamId = bulkStatusTeamId(selectedIds, index);
   const teamStates = useMemo(() => {
@@ -35,7 +40,7 @@ export function BulkActionBar({
     return [...seen.values()].sort((a, b) => (STATE_RANK[a.type] ?? 9) - (STATE_RANK[b.type] ?? 9));
   }, [teamId, index]);
 
-  const apply = async (patch: UpdateIssuePatch, label: string) => {
+  const apply = async (patch: TaskPatch, label: string) => {
     setOpen(null);
     const n = selectedIds.length;
     let failed = 0;
@@ -73,7 +78,7 @@ export function BulkActionBar({
         )}
       </BarButton>
 
-      <BarButton icon={<UserIcon className="size-3.5" />} label="Assignee" onClick={() => toggle("assignee")} open={open === "assignee"}>
+      <BarButton icon={<UserIcon className="size-3.5" />} label="Assignee" disabled={!tracker} title={tracker ? undefined : "Select tasks from one tracker to set the assignee"} onClick={() => toggle("assignee")} open={open === "assignee"}>
         <Item onClick={() => apply({ assigneeId: null }, "Unassigned")}>
           <span className="size-3.5 rounded-full border border-dashed border-border" />
           Unassigned

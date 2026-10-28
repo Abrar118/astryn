@@ -45,16 +45,14 @@ import {
 } from "lucide-react";
 import {
   useCreateAttachmentLink,
-  useCreateIssueRelation,
   useCycles,
   useGithubPrs,
-  useDeleteIssue,
   useFilterOptions,
   useIssues,
   useLabels,
-  useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
+import { useCreateTaskRelation, useDeleteTask, useUpdateTask } from "@/lib/taskQueries";
 import { useQueryClient } from "@tanstack/react-query";
 import { dhakaToday } from "@/lib/dates";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
@@ -189,8 +187,8 @@ function MarkAsSubmenu({
   flip: boolean;
   onClose: () => void;
 }) {
-  const update = useUpdateIssue();
-  const createRel = useCreateIssueRelation();
+  const update = useUpdateTask();
+  const createRel = useCreateTaskRelation();
   const [action, setAction] = useState<RelAction | null>(null);
   const [query, setQuery] = useState("");
 
@@ -387,8 +385,8 @@ function Menu({
   y: number;
   onClose: () => void;
 }) {
-  const update = useUpdateIssue();
-  const del = useDeleteIssue();
+  const update = useUpdateTask();
+  const del = useDeleteTask();
   const { data: labels } = useLabels();
   const { data: cycles } = useCycles();
   const { data: filterOpts } = useFilterOptions();

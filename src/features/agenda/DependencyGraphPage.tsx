@@ -1,6 +1,6 @@
 import { useSearchParams } from "react-router-dom";
 import { Network } from "lucide-react";
-import { useIssues, useRelations, useMe } from "../../lib/queries";
+import { useTaskRelations, useTasks, useViewer } from "../../lib/taskQueries";
 import { weekWindow } from "../../lib/dates";
 import { buildAgenda, dueIssues } from "./agenda";
 import { DependencyGraph } from "./DependencyGraph";
@@ -11,14 +11,14 @@ import { DependencyGraph } from "./DependencyGraph";
  * This Week agenda's default window.
  */
 export function DependencyGraphPage() {
-  const me = useMe();
-  const { data: issues, isLoading: issuesLoading } = useIssues({});
-  const { data: relations, isLoading: relsLoading } = useRelations();
+  const viewer = useViewer();
+  const { data: issues, isLoading: issuesLoading } = useTasks({});
+  const { data: relations, isLoading: relsLoading } = useTaskRelations();
   const [, setParams] = useSearchParams();
 
   const open = (id: string) => setParams({ issue: id });
 
-  if (issuesLoading || relsLoading || me.isLoading) {
+  if (issuesLoading || relsLoading || viewer.isLoading) {
     return (
       <div className="p-4">
         <div className="h-72 animate-pulse rounded-lg bg-muted/40" />
@@ -26,10 +26,10 @@ export function DependencyGraphPage() {
     );
   }
 
-  const viewerId = me.data?.viewerId;
+  const { viewerIds } = viewer;
   const win = weekWindow(new Date(), 0);
-  const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], viewerId, window: win })
+  const groups = viewerIds.length > 0
+    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win })
     : [];
   const rootIds = groups.flatMap((g) => dueIssues(g).map((i) => i.id));
 

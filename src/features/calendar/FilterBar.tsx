@@ -1,7 +1,8 @@
-import type { ChangeEventHandler, ReactNode } from "react";
+import { useMemo, type ChangeEventHandler, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { useFilterOptions, useUsers } from "@/lib/queries";
-import type { IssueFilters } from "@/lib/commands";
+import { useTaskFilterOptions, useTaskUsers, useViewer } from "@/lib/taskQueries";
+import { ME, type TaskFilters } from "@/lib/tracker";
+import type { User } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 
 function Select({
@@ -27,29 +28,41 @@ function Select({
   );
 }
 
+/** Assignee choices: one "me" entry (your tasks in every tracker), then everyone else. */
+export function assigneeChoices(users: User[], viewerIds: readonly string[], viewerName: string | null): User[] {
+  const me = users.find((u) => viewerIds.includes(u.id));
+  return [
+    { id: ME, name: viewerName ?? me?.name ?? "Me", avatarUrl: me?.avatarUrl ?? null },
+    ...users.filter((u) => !viewerIds.includes(u.id)),
+  ];
+}
+
 export function FilterBar({
   filters,
   colorBy,
-  meId,
   onFilters,
   onColorBy,
 }: {
-  filters: IssueFilters;
+  filters: TaskFilters;
   colorBy: "state" | "priority";
-  meId?: string;
-  onFilters: (f: IssueFilters) => void;
+  onFilters: (f: TaskFilters) => void;
   onColorBy: (c: "state" | "priority") => void;
 }) {
-  const { data } = useFilterOptions();
-  const { data: users } = useUsers();
+  const { data } = useTaskFilterOptions();
+  const { data: users } = useTaskUsers();
+  const viewer = useViewer();
+  const choices = useMemo(
+    () => assigneeChoices(users ?? [], viewer.viewerIds, viewer.name),
+    [users, viewer.viewerIds, viewer.name],
+  );
 
   return (
     <div className="mb-3 flex flex-wrap items-center gap-2">
       <AssigneeSelect
         value={filters.assigneeId ?? null}
         onChange={(id) => onFilters({ ...filters, assigneeId: id ?? undefined })}
-        users={users ?? []}
-        meId={meId}
+        users={choices}
+        meId={ME}
         emptyLabel="All assignees"
       />
 

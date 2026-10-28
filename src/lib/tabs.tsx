@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useModules, viewActive } from "./modules";
+import { tabActive, useModules } from "./modules";
 import {
   parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
   splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer, moveTab as moveTabAtReducer,
@@ -61,7 +61,7 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { data: modulesData, isActive } = useModules();
   useEffect(() => {
     if (!modulesData) return;
-    setState((s) => closeTabsWhere(s, (t) => !viewActive(t.view, isActive)));
+    setState((s) => closeTabsWhere(s, (t) => !tabActive(t, isActive)));
     // isActive is rebuilt every render; modulesData is the real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulesData]);

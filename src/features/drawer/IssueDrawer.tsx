@@ -41,15 +41,13 @@ import {
   useCreateLabel,
   useCycles,
   useDeleteAttachment,
-  useDeleteIssue,
   useFilterOptions,
-  useIssueDetail,
   useIssues,
   useLabels,
   useUpdateAttachment,
-  useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
+import { useDeleteTask, useUpdateTask } from "@/lib/taskQueries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { IssueRow, compareIssues } from "@/features/issues/IssueRow";
 import { DisplayOptions } from "@/features/issues/DisplayOptions";
@@ -57,7 +55,7 @@ import { type Ordering, type Completed, type DisplayKey, type DisplayProps } fro
 import { loadSubIssueDisplay, saveSubIssueDisplay, type SubIssueDisplay } from "./subIssueDisplay";
 import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
-import type { CalendarIssue, DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch, User as LinearUser } from "@/lib/commands";
+import type { DetailAttachment, DetailChild, DetailRelation, IssueDetailResult, Label, LiveDetail, UpdateIssuePatch, User as LinearUser } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 import { DatePicker } from "@/components/DatePicker";
@@ -135,19 +133,6 @@ function LabelDropdown({
   );
 }
 
-const WIDTH_KEY = "astryn.drawer-width";
-const DEFAULT_WIDTH = 920;
-const MIN_WIDTH = 480;
-
-function loadWidth(): number {
-  try {
-    const v = Number(localStorage.getItem(WIDTH_KEY));
-    return v >= MIN_WIDTH ? v : DEFAULT_WIDTH;
-  } catch {
-    return DEFAULT_WIDTH;
-  }
-}
-
 async function copyText(text: string, label: string) {
   try {
     await navigator.clipboard.writeText(text);
@@ -163,18 +148,6 @@ async function copyText(text: string, label: string) {
     }
   }
   gooeyToast.success(`${label} copied`);
-}
-
-function useSeed(id: string | null): CalendarIssue | undefined {
-  const qc = useQueryClient();
-  if (!id) return undefined;
-  for (const key of [["calendar"], ["unscheduled"]] as const) {
-    for (const [, list] of qc.getQueriesData<CalendarIssue[]>({ queryKey: key })) {
-      const found = list?.find((i) => i.id === id);
-      if (found) return found;
-    }
-  }
-  return undefined;
 }
 
 const priorityDot = (value: number) => {
@@ -397,101 +370,10 @@ function eventIcon(event: ActivityItem): ReactNode {
   }
 }
 
-export function IssueDrawer() {
-  const [params, setParams] = useSearchParams();
-  const id = params.get("issue");
-  const [shownId, setShownId] = useState<string | null>(id);
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (id) {
-      setShownId(id);
-      const r = requestAnimationFrame(() => setOpen(true));
-      return () => cancelAnimationFrame(r);
-    }
-    setOpen(false);
-    const t = setTimeout(() => setShownId(null), 220);
-    return () => clearTimeout(t);
-  }, [id]);
-
-  if (!shownId) return null;
-  return <DrawerShell id={shownId} open={open} onClose={() => setParams({})} />;
-}
-
-function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose: () => void }) {
-  const seed = useSeed(id);
-  const { data: result } = useIssueDetail(id, seed);
-  const [width, setWidth] = useState(loadWidth);
-  const widthRef = useRef(width);
-  widthRef.current = width;
-  const resizing = useRef(false);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !e.defaultPrevented && !document.querySelector("[data-drawer-resource-modal]")) onClose();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!resizing.current) return;
-      setWidth(Math.max(MIN_WIDTH, Math.min(window.innerWidth * 0.96, window.innerWidth - e.clientX)));
-    };
-    const onUp = () => {
-      if (!resizing.current) return;
-      resizing.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      try {
-        localStorage.setItem(WIDTH_KEY, String(Math.round(widthRef.current)));
-      } catch {
-        /* storage unavailable */
-      }
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-    return () => {
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-  }, []);
-
-  const startResize = (e: React.PointerEvent) => {
-    e.preventDefault();
-    resizing.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  };
-
-  return (
-    <div className="fixed inset-0 z-30" data-command-shortcut-blocker>
-      <div
-        className={`absolute inset-0 bg-black/40 transition-opacity duration-200 motion-reduce:transition-none ${open ? "opacity-100" : "opacity-0"}`}
-        onClick={onClose}
-      />
-      <aside
-        style={{ width }}
-        className={`absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
-          open ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        <div
-          onPointerDown={startResize}
-          title="Drag to resize"
-          className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary/40"
-        />
-        {result ? <IssueDetail id={id} result={result} mode="drawer" onClose={onClose} /> : null}
-      </aside>
-    </div>
-  );
-}
-
 export function IssueDetail({ id, result, mode, onClose }: { id: string; result: IssueDetailResult; mode: "drawer" | "page"; onClose: () => void }) {
   const [, setParams] = useSearchParams();
-  const update = useUpdateIssue();
-  const del = useDeleteIssue();
+  const update = useUpdateTask();
+  const del = useDeleteTask();
   const createComment = useCreateComment();
   const [composerKey, setComposerKey] = useState(0);
   const users = useUsers();

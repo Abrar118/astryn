@@ -8,7 +8,7 @@ import type { ModuleId } from "@/lib/commands";
 const listModules = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/commands", () => ({ listModules }));
 
-import { MODULE_MANIFEST, useModules, viewActive, visibleViews } from "./modules";
+import { MODULE_MANIFEST, tabActive, useModules, viewActive, visibleViews } from "./modules";
 
 const wrap = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -20,9 +20,17 @@ describe("view registry", () => {
     const active = (id: ModuleId) => id === "github";
     expect(visibleViews(active)).toEqual(["dashboard", "prs", "settings"]);
   });
-  it("issue tabs follow the tracker", () => {
+  it("shows tracker views while any tracker module is on", () => {
+    expect(visibleViews((id) => id === "linear")).toEqual(expect.arrayContaining(["calendar", "this-week", "graph", "list", "inbox"]));
+    expect(viewActive("calendar", () => false)).toBe(false);
+  });
+  it("issue tabs follow their own tracker", () => {
     expect(viewActive("issue", () => false)).toBe(false);
     expect(viewActive("issue", (id) => id === "linear")).toBe(true);
+    const tab = { id: "t1", view: "issue" as const, issueId: "0b6c7c4e-uuid" };
+    expect(tabActive(tab, (id) => id === "linear")).toBe(true);
+    expect(tabActive(tab, () => false)).toBe(false);
+    expect(tabActive({ id: "t2", view: "calendar" }, (id) => id === "linear")).toBe(true);
   });
 });
 

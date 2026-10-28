@@ -26,7 +26,7 @@ const ws = vi.hoisted(() => ({
   moveTab: vi.fn(),
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
-vi.mock("@/lib/queries", () => ({ useIssues: () => ({ data: [] }) }));
+vi.mock("@/lib/taskQueries", () => ({ useTasks: () => ({ data: [] }) }));
 vi.mock("./PaneTabStrip", () => ({
   PaneTabStrip: ({ pane }: { pane: { id: string } }) => <div data-testid={`strip-${pane.id}`} />,
   tabIcon: () => null,

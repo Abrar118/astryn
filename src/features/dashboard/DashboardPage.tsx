@@ -27,12 +27,12 @@ import {
   useConnectionStatus,
   useGithubPrs,
   useGithubStatus,
-  useIssues,
-  useMe,
   useNotifications,
   useSlackCatchup,
   useSlackStatus,
 } from "@/lib/queries";
+import { useTasks, useViewer } from "@/lib/taskQueries";
+import { trackerModulesActive } from "@/lib/tracker";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
@@ -155,7 +155,7 @@ function KpiCard({
 }
 
 const ATTENTION_ICON: Record<AttentionItem["source"], LucideIcon> = {
-  linear: Layers3,
+  task: Layers3,
   github: GitPullRequest,
   slack: MessageSquare,
   inbox: Inbox,
@@ -186,7 +186,7 @@ function AttentionTable({
         <SectionHeading
           id={headingId}
           title="Needs your attention"
-          description="Ranked across Linear, GitHub, Slack, and Inbox"
+          description="Ranked across tasks, GitHub, Slack, and Inbox"
           action={(
             <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-primary ring-1 ring-primary/20">
               {items.length}
@@ -244,7 +244,7 @@ function AttentionTable({
             <tbody>
               {items.map((item) => {
                 const Icon = ATTENTION_ICON[item.source];
-                const actionName = item.source === "linear"
+                const actionName = item.source === "task"
                   ? `Open ${item.context}`
                   : `Open ${item.source} ${item.context}`;
                 return (
@@ -319,7 +319,7 @@ function WorkloadChart({
         description={`${total} viewer-assigned issue${total === 1 ? "" : "s"}`}
       />
       {!available ? (
-        <CacheUnavailable>Linear workload cache unavailable.</CacheUnavailable>
+        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
       ) : <div className="mt-4 space-y-3">
         {buckets.map((bucket) => (
           <div key={bucket.key}>
@@ -365,7 +365,7 @@ function DueLoadChart({
         description={`${total} issue${total === 1 ? "" : "s"} · next 7 days`}
       />
       {!available ? (
-        <CacheUnavailable>Linear due-date cache unavailable.</CacheUnavailable>
+        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
       ) : <div className="mt-4 grid h-24 grid-cols-7 items-end gap-1.5">
         {days.map((day, index) => (
           <div key={day.date} className="flex h-full min-w-0 flex-col items-center justify-end gap-1.5">
@@ -412,7 +412,7 @@ function WeekCard({
       <SectionHeading
         id={headingId}
         title="Today & this week"
-        description="Your nearest Linear deadlines"
+        description="Your nearest task deadlines"
         action={(
           <button
             type="button"
@@ -424,7 +424,7 @@ function WeekCard({
         )}
       />
       {!available ? (
-        <CacheUnavailable>Linear deadline cache unavailable.</CacheUnavailable>
+        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
       ) : <div className="mt-3 divide-y divide-border/45">
         {issues.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">Nothing due this week.</p>
@@ -638,11 +638,17 @@ export function DashboardPage() {
   const today = dhakaToday(now);
   const sourcesHeadingId = useId();
   const { isActive } = useModules();
-  const active = { linear: isActive("linear"), github: isActive("github"), slack: isActive("slack") };
+  const linearOn = isActive("linear");
+  const active = {
+    tracker: trackerModulesActive(isActive),
+    inbox: linearOn,
+    github: isActive("github"),
+    slack: isActive("slack"),
+  };
   const docsOn = isActive("docs");
 
-  const issuesQuery = useIssues({});
-  const meQuery = useMe();
+  const issuesQuery = useTasks({});
+  const viewer = useViewer();
   const connectionStatusQuery = useConnectionStatus();
   const notificationsQuery = useNotifications({ enabled: false });
   const githubStatusQuery = useGithubStatus();
@@ -653,7 +659,7 @@ export function DashboardPage() {
   const docsSourcesQuery = useDocsSources();
 
   const issues = issuesQuery.data ?? [];
-  const viewerId = meQuery.data?.viewerId ?? null;
+  const { viewerIds } = viewer;
   const notifications = notificationsQuery.data?.notifications ?? [];
   const prs = githubQuery.data?.prs ?? [];
   const slack = slackQuery.data;
@@ -662,7 +668,7 @@ export function DashboardPage() {
     prs,
     notifications,
     slack,
-    viewerId,
+    viewerIds,
     today,
     active,
   });
@@ -671,24 +677,24 @@ export function DashboardPage() {
     prs,
     notifications,
     slack,
-    viewerId,
+    viewerIds,
     today,
     active,
   });
-  const workload = workloadBuckets(issues, viewerId);
-  const dueDays = dueLoad(issues, viewerId, today);
-  const preview = weekPreview(issues, viewerId, today);
+  const workload = workloadBuckets(issues, viewerIds);
+  const dueDays = dueLoad(issues, viewerIds, today);
+  const preview = weekPreview(issues, viewerIds, today);
   const pullRequestStats = prStats(prs.filter((pr) => pr.bucket !== "merged"));
-  const linearReadError = issuesQuery.isError || meQuery.isError;
+  const linearReadError = issuesQuery.isError || viewer.isError;
   const githubReadError = githubStatusQuery.isError || githubQuery.isError;
   const slackReadError = slackStatusQuery.isError || slackQuery.isError;
   const docsReadError = docsStatusQuery.isError || docsSourcesQuery.isError;
-  const linearDataAvailable = issuesQuery.data !== undefined && viewerId !== null;
+  const taskDataAvailable = issuesQuery.data !== undefined && viewerIds.length > 0;
   const githubDataAvailable = githubQuery.data !== undefined;
   const slackDataAvailable = slackQuery.data !== undefined;
   const attentionPartial = (
     (issuesQuery.isError && issuesQuery.data === undefined)
-    || (meQuery.isError && meQuery.data === undefined)
+    || (viewer.isError && viewerIds.length === 0)
     || (notificationsQuery.isError && notificationsQuery.data === undefined)
     || (githubQuery.isError && githubQuery.data === undefined)
     || (slackQuery.isError && slackQuery.data === undefined)
@@ -715,8 +721,8 @@ export function DashboardPage() {
     hour12: false,
   }).format(now));
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const title = meQuery.data?.viewerName
-    ? `${greeting}, ${meQuery.data.viewerName}`
+  const title = viewer.name
+    ? `${greeting}, ${viewer.name}`
     : "Your workspace";
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Dhaka",
@@ -817,19 +823,19 @@ export function DashboardPage() {
         </header>
 
         <div className="dashboard-kpi-grid grid min-w-0 gap-3">
-          {active.linear && <KpiCard
+          {active.tracker && <KpiCard
             label="Overdue"
-            value={linearDataAvailable ? metrics.overdue : null}
+            value={taskDataAvailable ? metrics.overdue : null}
             description={
               issuesQuery.isError && issuesQuery.data === undefined
-                ? "Linear cache unavailable"
-                : viewerId
-                  ? "Active Linear issues"
-                  : "Connect Linear to calculate"
+                ? "Task cache unavailable"
+                : viewerIds.length > 0
+                  ? "Active tasks assigned to you"
+                  : "Connect a tracker to calculate"
             }
             Icon={AlertTriangle}
             tone="danger"
-            loading={issuesQuery.isLoading || meQuery.isLoading}
+            loading={issuesQuery.isLoading || viewer.isLoading}
             actionLabel="Open overdue issues"
             onOpen={() => setActiveView("this-week")}
           />}
@@ -847,7 +853,7 @@ export function DashboardPage() {
             actionLabel="Open pull requests"
             onOpen={() => setActiveView("prs")}
           />}
-          {active.linear && <KpiCard
+          {active.inbox && <KpiCard
             label="Inbox"
             value={notificationsQuery.data ? metrics.inbox : null}
             description={
@@ -885,29 +891,29 @@ export function DashboardPage() {
             onOpen={openAttention}
             loading={
               issuesQuery.isLoading
-              || meQuery.isLoading
+              || viewer.isLoading
               || notificationsQuery.isLoading
               || githubQuery.isLoading
               || slackQuery.isLoading
             }
             partial={attentionPartial}
           />
-          {active.linear && (
+          {active.tracker && (
             <div className="dashboard-side-grid grid min-w-0 gap-4">
-              <WorkloadChart buckets={workload} available={linearDataAvailable} />
-              <DueLoadChart days={dueDays} available={linearDataAvailable} />
+              <WorkloadChart buckets={workload} available={taskDataAvailable} />
+              <DueLoadChart days={dueDays} available={taskDataAvailable} />
             </div>
           )}
         </div>
 
         <div className="dashboard-lower-grid grid min-w-0 gap-4">
-          {active.linear && (
+          {active.tracker && (
             <WeekCard
               issues={preview}
               today={today}
               onOpenIssue={(id) => setParams({ issue: id })}
               onOpenWeek={() => setActiveView("this-week")}
-              available={linearDataAvailable}
+              available={taskDataAvailable}
             />
           )}
           {active.github && (
@@ -917,9 +923,9 @@ export function DashboardPage() {
               available={githubDataAvailable}
             />
           )}
-          {(active.linear || active.slack) && (
+          {(active.inbox || active.slack) && (
             <CommunicationCard
-              inbox={active.linear && notificationsQuery.data ? metrics.inbox : null}
+              inbox={active.inbox && notificationsQuery.data ? metrics.inbox : null}
               mentions={slackDataAvailable ? metrics.mentions : null}
               directMessages={slackDataAvailable ? dms : null}
               threads={slackDataAvailable ? unreadThreads : null}
@@ -934,7 +940,7 @@ export function DashboardPage() {
               description="Cached provider availability and freshness"
             />
             <div className="dashboard-source-grid mt-2 grid gap-0.5">
-              {active.linear && <SourceRow
+              {linearOn && <SourceRow
                 Icon={Layers3}
                 name="Linear"
                 status={linearReadError ? "Unavailable" : linearStatus.status}

@@ -34,7 +34,8 @@ import {
   RotateCcw,
   SlidersHorizontal,
 } from "lucide-react";
-import { useFilterOptions, useIssues, useMe, useUpdateIssue, useUsers, useWorkflowStates } from "@/lib/queries";
+import { useFilterOptions, useIssues, useMe, useUsers, useWorkflowStates } from "@/lib/queries";
+import { useUpdateTask } from "@/lib/taskQueries";
 import { dhakaDateFromTimestamp, dhakaToday, isOverdue } from "@/lib/dates";
 import type { IssueListItem, IssueFilters, UpdateIssuePatch, WorkflowState } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
@@ -356,7 +357,7 @@ export function IssuesView() {
   const { data: filterOpts } = useFilterOptions();
   const { data: users } = useUsers();
   const { data: workflowStates } = useWorkflowStates();
-  const update = useUpdateIssue();
+  const update = useUpdateTask();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
 

@@ -18,17 +18,21 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { listModules, type Capability, type ModuleId, type ModulesView } from "@/lib/commands";
-import type { ViewKind } from "@/lib/paneModel";
+import type { Tab, ViewKind } from "@/lib/paneModel";
+import { TRACKERS, trackerModulesActive, trackerOf } from "@/lib/tracker";
 
 type NavView = Exclude<ViewKind, "issue">;
 
-/** The one view registry: label, icon and owning module for every navigable view. */
-export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; module: ModuleId | "core" }> = {
+/** A view's owner: a module, the app core, or "tracker" (shown while any tracker module is on). */
+export type ViewOwner = ModuleId | "core" | "tracker";
+
+/** The one view registry: label, icon and owner for every navigable view. */
+export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; module: ViewOwner }> = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard, module: "core" },
-  calendar: { label: "Calendar", icon: Calendar, module: "linear" },
+  calendar: { label: "Calendar", icon: Calendar, module: "tracker" },
   list: { label: "Issues", icon: List, module: "linear" },
-  "this-week": { label: "This Week", icon: CalendarRange, module: "linear" },
-  graph: { label: "Dependencies", icon: Network, module: "linear" },
+  "this-week": { label: "This Week", icon: CalendarRange, module: "tracker" },
+  graph: { label: "Dependencies", icon: Network, module: "tracker" },
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
   prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
   slack: { label: "Slack", icon: MessageSquare, module: "slack" },
@@ -41,17 +45,25 @@ export const NAV_VIEWS = Object.keys(VIEW_META) as NavView[];
 
 export type IsActive = (id: ModuleId) => boolean;
 
-export function ownerActive(owner: ModuleId | "core", isActive: IsActive): boolean {
-  return owner === "core" || isActive(owner);
+export function ownerActive(owner: ViewOwner, isActive: IsActive): boolean {
+  if (owner === "core") return true;
+  if (owner === "tracker") return trackerModulesActive(isActive);
+  return isActive(owner);
 }
 
 export function visibleViews(isActive: IsActive): NavView[] {
   return NAV_VIEWS.filter((v) => ownerActive(VIEW_META[v].module, isActive));
 }
 
-/** Issue tabs belong to the tracker module. */
+/** Issue views need a tracker; use `tabActive` when the tab (and so its task) is known. */
 export function viewActive(view: ViewKind, isActive: IsActive): boolean {
-  return view === "issue" ? isActive("linear") : ownerActive(VIEW_META[view].module, isActive);
+  return ownerActive(view === "issue" ? "tracker" : VIEW_META[view].module, isActive);
+}
+
+/** A task tab stays open only while the tracker that owns its task is on. */
+export function tabActive(tab: Tab, isActive: IsActive): boolean {
+  if (tab.view === "issue" && tab.issueId) return isActive(TRACKERS[trackerOf(tab.issueId)].module);
+  return viewActive(tab.view, isActive);
 }
 
 type ManifestEntry = { kind: "provider" | "feature"; provides: Capability[]; requires: Capability[]; optional: Capability[] };

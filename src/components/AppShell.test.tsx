@@ -20,7 +20,7 @@ vi.mock("@/lib/tabs", () => ({
   useWorkspace: () => ({ active: { view: "dashboard" }, setActiveView: vi.fn(), addTab: vi.fn() }),
 }));
 vi.mock("@/components/SplitLayout", () => ({ SplitLayout: () => <div data-testid="split" /> }));
-vi.mock("@/features/drawer/IssueDrawer", () => ({ IssueDrawer: () => null }));
+vi.mock("@/features/drawer/TaskDrawer", () => ({ TaskDrawer: () => null }));
 vi.mock("@/features/issues/IssueContextMenu", () => ({
   IssueMenuProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));

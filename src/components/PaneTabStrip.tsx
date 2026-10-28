@@ -5,7 +5,7 @@ import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dn
 import { CSS } from "@dnd-kit/utilities";
 import { useWorkspace, type Pane, type Tab } from "@/lib/tabs";
 import { VIEW_META } from "@/lib/modules";
-import { useIssues } from "@/lib/queries";
+import { useTasks } from "@/lib/taskQueries";
 import type { IssueListItem } from "@/lib/commands";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { TabContextMenu } from "./TabContextMenu";
@@ -99,7 +99,7 @@ export function PaneTabStrip({
   isSplit: boolean;
 }) {
   const { addTabIn, focusPane } = useWorkspace();
-  const { data: issues } = useIssues({});
+  const { data: issues } = useTasks({});
   const [menu, setMenu] = useState<{ tabId: string; x: number; y: number } | null>(null);
   const { setNodeRef } = useDroppable({ id: pane.id });
 

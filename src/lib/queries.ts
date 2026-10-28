@@ -11,11 +11,9 @@ import {
   createAttachmentLink,
   createComment,
   createIssue,
-  createIssueRelation,
   createLabel,
   deleteAttachment,
   deleteComment,
-  deleteIssue,
   addReaction,
   errorText,
   getConnectionStatus,
@@ -29,7 +27,6 @@ import {
   getSlackStatus,
   getIssueDetail,
   getMe,
-  listCalendarIssues,
   listCycles,
   listDocsSources,
   listDocsTree,
@@ -39,8 +36,6 @@ import {
   listIssues,
   listLabels,
   listNotifications,
-  listRelations,
-  listUnscheduled,
   listUsers,
   listWorkflowStates,
   removeReaction,
@@ -52,18 +47,12 @@ import {
   syncSlackCatchup,
   updateAttachment,
   updateComment,
-  updateIssue,
   type CalendarIssue,
   type CreateIssueInput,
   type DetailAttachment,
   type IssueDetailResult,
   type IssueFilters,
-  type IssueListItem,
-  type Label,
-  type LiveDetail,
   type Me,
-  type RelationType,
-  type UpdateIssuePatch,
 } from "./commands";
 import {
   addComment,
@@ -76,13 +65,6 @@ import {
   replaceComment,
   replaceReaction,
 } from "@/features/drawer/comments/commentCache";
-import {
-  applyPatchToCalendarIssue,
-  calendarIssueFromList,
-  inRange,
-  matchesFilters,
-  reconcileList,
-} from "./optimistic";
 import { useModules } from "./modules";
 import type { ModuleId } from "./commands";
 
@@ -99,73 +81,6 @@ function useOwnerActive(id: ModuleId): boolean {
   return useModules().isActive(id);
 }
 
-/** Merge a patch's changed fields into a cached detail result (any branch). */
-function patchDetail(result: IssueDetailResult, patch: UpdateIssuePatch): IssueDetailResult {
-  const d = { ...(result.detail as Record<string, unknown>) };
-  if (patch.title !== undefined) d.title = patch.title;
-  if (patch.priority !== undefined) d.priority = patch.priority;
-  if (patch.dueDate !== undefined) d.dueDate = patch.dueDate;
-  if (patch.assigneeId !== undefined) d.assigneeId = patch.assigneeId;
-  if (patch.description !== undefined) d.description = patch.description;
-  if (patch.stateId !== undefined) {
-    d.stateId = patch.stateId;
-    if (result.source === "live") {
-      const st = (result.detail as LiveDetail).teamStates.find((s) => s.id === patch.stateId);
-      if (st) { d.stateName = st.name; d.stateType = st.type; d.stateColor = st.color; }
-    }
-  }
-  return { ...result, detail: d } as IssueDetailResult;
-}
-
-type StateInfo = { stateName: string | null; stateType: string; stateColor: string };
-
-/**
- * Apply a patch to a cached list item, re-deriving the denormalized fields the
- * board groups on (assignee name, status name/type/color) from lookup maps built
- * out of the other cached issues. Best-effort: unknown targets leave fields as-is.
- */
-type ListLookups = {
-  stateById: Map<string, StateInfo>;
-  nameById: Map<string, string | null>;
-  labelById: Map<string, Label>;
-  projectNameById: Map<string, string | null>;
-};
-
-function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: ListLookups): IssueListItem {
-  const next: IssueListItem = { ...it };
-  if (patch.title !== undefined) next.title = patch.title;
-  if (patch.priority !== undefined) next.priority = patch.priority;
-  if (patch.dueDate !== undefined) next.dueDate = patch.dueDate;
-  if (patch.description !== undefined) next.description = patch.description;
-  if (patch.estimate !== undefined) next.estimate = patch.estimate;
-  if (patch.assigneeId !== undefined) {
-    next.assigneeId = patch.assigneeId;
-    next.assigneeName = patch.assigneeId ? lk.nameById.get(patch.assigneeId) ?? null : null;
-  }
-  if (patch.stateId !== undefined) {
-    next.stateId = patch.stateId;
-    const st = patch.stateId ? lk.stateById.get(patch.stateId) : undefined;
-    if (st) {
-      next.stateName = st.stateName;
-      next.stateType = st.stateType;
-      next.stateColor = st.stateColor;
-    }
-  }
-  if (patch.projectId !== undefined) {
-    next.projectId = patch.projectId;
-    next.projectName = patch.projectId ? lk.projectNameById.get(patch.projectId) ?? null : null;
-  }
-  if (patch.labelIds !== undefined) {
-    // Resolve known labels; ids not yet seen in the cache fill in on refetch.
-    next.labels = patch.labelIds.map((id) => lk.labelById.get(id)).filter((l): l is Label => !!l);
-  }
-  if (patch.teamId !== undefined) {
-    // Team key + the now-invalid team-scoped state reconcile on the settle refetch.
-    next.teamId = patch.teamId;
-  }
-  return next;
-}
-
 /**
  * Drop every workspace-scoped query so the renderer cannot keep showing the old
  * workspace's data after the Rust cache is wiped (key set/clear). Call this on
@@ -173,8 +88,10 @@ function applyPatchToListItem(it: IssueListItem, patch: UpdateIssuePatch, lk: Li
  * keyring write, so a failed write still leaves an empty cache.
  */
 const WORKSPACE_KEYS = [
-  ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["relations"], ["users"], ["labels"], ["cycles"],
-  ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
+  // Tracker data is keyed [root, tracker, …] (taskQueries.ts); only Linear's entries go.
+  ["calendar", "linear"], ["unscheduled", "linear"], ["issues", "linear"], ["relations", "linear"],
+  ["users", "linear"], ["filter-options", "linear"], ["workflow-states", "linear"],
+  ["issue"], ["labels"], ["cycles"], ["me"], ["notifications"],
   // Cross-module joins read the Linear cache too (PR to issue links, Slack issue refs).
   ["github-prs"], ["slack-catchup"],
 ];
@@ -210,12 +127,12 @@ export function useConnectionStatus() {
 
 export function useFilterOptions() {
   const on = useOwnerActive("linear");
-  return useQuery({ queryKey: ["filter-options"], queryFn: listFilterOptions, enabled: on });
+  return useQuery({ queryKey: ["filter-options", "linear"], queryFn: listFilterOptions, enabled: on });
 }
 
 export function useUsers() {
   const on = useOwnerActive("linear");
-  return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000, enabled: on });
+  return useQuery({ queryKey: ["users", "linear"], queryFn: listUsers, staleTime: 5 * 60_000, enabled: on });
 }
 
 /** Inbox notifications (live fetch, refreshed alongside the sync loop). */
@@ -251,45 +168,7 @@ export function useCreateLabel() {
 
 export function useWorkflowStates() {
   const on = useOwnerActive("linear");
-  return useQuery({ queryKey: ["workflow-states"], queryFn: listWorkflowStates, staleTime: 5 * 60_000, enabled: on });
-}
-
-/** Delete (trash) an issue in Linear, then drop it from the renderer caches. */
-export function useDeleteIssue() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (id: string) => deleteIssue(id),
-    onMutate: async (id) => {
-      await Promise.all([
-        qc.cancelQueries({ queryKey: ["calendar"] }),
-        qc.cancelQueries({ queryKey: ["unscheduled"] }),
-        qc.cancelQueries({ queryKey: ["issues"] }),
-        qc.cancelQueries({ queryKey: ["issue", id] }),
-      ]);
-      const entries = ["calendar", "unscheduled", "issues"].flatMap((root) =>
-        qc.getQueriesData<{ id: string }[]>({ queryKey: [root] }),
-      );
-      const snapshot: Snapshot = [...entries, [["issue", id], qc.getQueryData(["issue", id])]];
-      for (const [key, list] of entries) {
-        if (list) qc.setQueryData(key, list.filter((issue) => issue.id !== id));
-      }
-      return { snapshot };
-    },
-    onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: ["issue", id] });
-      qc.invalidateQueries({ queryKey: ["filter-options"] });
-      gooeyToast.success("Issue deleted");
-    },
-    onError: (err, _id, context) => {
-      context?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
-      gooeyToast.error("Delete failed", { description: errorText(err) });
-    },
-    onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["calendar"] });
-      qc.invalidateQueries({ queryKey: ["unscheduled"] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
-    },
-  });
+  return useQuery({ queryKey: ["workflow-states", "linear"], queryFn: listWorkflowStates, staleTime: 5 * 60_000, enabled: on });
 }
 
 /** Create an issue in Linear, then refresh the workspace caches so it appears. */
@@ -308,56 +187,14 @@ export function useCreateIssue() {
   });
 }
 
-/** Create an issue relation, then refresh the relations cache (agenda/graph). */
-export function useCreateIssueRelation() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ issueId, relatedIssueId, type }: {
-      issueId: string;
-      relatedIssueId: string;
-      type: RelationType;
-    }) => createIssueRelation(issueId, relatedIssueId, type),
-    onSuccess: (_data, { issueId, relatedIssueId }) => {
-      qc.invalidateQueries({ queryKey: ["relations"] });
-      // The drawer/full-page detail reads relations live, so refresh both ends.
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issue", relatedIssueId] });
-      gooeyToast.success("Relation added");
-    },
-    onError: (err) => gooeyToast.error("Couldn't add relation", { description: errorText(err) }),
-  });
-}
-
-export function useCalendarIssues(range: { start: string; end: string }, filters: IssueFilters) {
-  const on = useOwnerActive("linear");
-  return useQuery({
-    queryKey: ["calendar", range.start, range.end, filters],
-    queryFn: () => listCalendarIssues({ ...range, ...filters }),
-    enabled: on,
-  });
-}
-
-export function useUnscheduled(filters: IssueFilters) {
-  const on = useOwnerActive("linear");
-  return useQuery({
-    queryKey: ["unscheduled", filters],
-    queryFn: () => listUnscheduled(filters),
-    enabled: on,
-  });
-}
-
+/** Linear issues only (the Issues screen, Linear pickers); merged tasks live in taskQueries.ts. */
 export function useIssues(filters: IssueFilters) {
   const on = useOwnerActive("linear");
   return useQuery({
-    queryKey: ["issues", filters],
+    queryKey: ["issues", "linear", filters],
     queryFn: () => listIssues(filters),
     enabled: on,
   });
-}
-
-export function useRelations() {
-  const on = useOwnerActive("linear");
-  return useQuery({ queryKey: ["relations"], queryFn: listRelations, enabled: on });
 }
 
 export function useIssueDetail(id: string | null, seed?: CalendarIssue) {
@@ -367,105 +204,6 @@ export function useIssueDetail(id: string | null, seed?: CalendarIssue) {
     queryFn: () => getIssueDetail(id as string),
     enabled: !!id && on,
     placeholderData: seed ? ({ source: "preview", detail: seed } as IssueDetailResult) : undefined,
-  });
-}
-
-type UpdateVars = { id: string; patch: UpdateIssuePatch; silent?: boolean };
-
-// Snapshot of every calendar/unscheduled cache entry we touch, for rollback.
-type Snapshot = [QueryKey, unknown][];
-
-export function useUpdateIssue() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, patch }: UpdateVars) => updateIssue(id, patch),
-    onMutate: async ({ id, patch }) => {
-      await qc.cancelQueries({ queryKey: ["calendar"] });
-      await qc.cancelQueries({ queryKey: ["unscheduled"] });
-      await qc.cancelQueries({ queryKey: ["issues"] });
-      await qc.cancelQueries({ queryKey: ["issue", id] });
-
-      const calEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["calendar"] });
-      const unschedEntries = qc.getQueriesData<CalendarIssue[]>({ queryKey: ["unscheduled"] });
-      const issuesEntries = qc.getQueriesData<IssueListItem[]>({ queryKey: ["issues"] });
-      const snapshot: Snapshot = [
-        ...calEntries,
-        ...unschedEntries,
-        ...issuesEntries,
-        [["issue", id], qc.getQueryData(["issue", id])],
-      ];
-
-      // Optimistically move the issue within the list/board caches so a board
-      // drag lands immediately (and rolls back on error) instead of snapping back.
-      const allListed = issuesEntries.flatMap(([, l]) => l ?? []);
-      const lookups: ListLookups = {
-        stateById: new Map(),
-        nameById: new Map(),
-        labelById: new Map(),
-        projectNameById: new Map(),
-      };
-      for (const it of allListed) {
-        if (it.stateId) {
-          lookups.stateById.set(it.stateId, {
-            stateName: it.stateName,
-            stateType: it.stateType,
-            stateColor: it.stateColor,
-          });
-        }
-        if (it.assigneeId) lookups.nameById.set(it.assigneeId, it.assigneeName);
-        if (it.projectId) lookups.projectNameById.set(it.projectId, it.projectName);
-        for (const l of it.labels) lookups.labelById.set(l.id, l);
-      }
-      const currentList = allListed.find((item) => item.id === id);
-      if (currentList) {
-        const updatedList = applyPatchToListItem(currentList, patch, lookups);
-        for (const [key, list] of issuesEntries) {
-          const filters = (key[1] ?? {}) as IssueFilters;
-          qc.setQueryData(key, reconcileList(list ?? [], updatedList, matchesFilters(updatedList, filters)));
-        }
-      }
-
-      // Find the issue's current CalendarIssue from any cache, then compute its patched form.
-      const current =
-        calEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id) ??
-        unschedEntries.flatMap(([, l]) => l ?? []).find((i) => i.id === id) ??
-        (currentList ? calendarIssueFromList(currentList) : undefined);
-
-      if (current) {
-        const updated = applyPatchToCalendarIssue(current, patch);
-        // Each calendar cache reconciles against ITS OWN range + filters.
-        for (const [key, list] of calEntries) {
-          const start = key[1] as string;
-          const end = key[2] as string;
-          const filters = (key[3] ?? {}) as IssueFilters;
-          const belongs = inRange(updated.dueDate, start, end) && matchesFilters(updated, filters);
-          qc.setQueryData(key, reconcileList(list ?? [], updated, belongs));
-        }
-        // Each unscheduled cache reconciles against its filters (belongs iff dueDate === null).
-        for (const [key, list] of unschedEntries) {
-          const filters = (key[1] ?? {}) as IssueFilters;
-          const belongs = updated.dueDate === null && matchesFilters(updated, filters);
-          qc.setQueryData(key, reconcileList(list ?? [], updated, belongs));
-        }
-      }
-
-      // Patch the drawer detail cache (any branch) so the open drawer reflects the edit.
-      const detail = qc.getQueryData<IssueDetailResult>(["issue", id]);
-      if (detail) qc.setQueryData(["issue", id], patchDetail(detail, patch));
-
-      return { snapshot };
-    },
-    onError: (err, vars, ctx) => {
-      ctx?.snapshot.forEach(([key, data]) => qc.setQueryData(key, data));
-      if (!vars.silent) gooeyToast.error("Update failed", { description: errorText(err) });
-    },
-    onSettled: (_data, _err, { id }) => {
-      qc.invalidateQueries({ queryKey: ["calendar"] });
-      qc.invalidateQueries({ queryKey: ["unscheduled"] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["issue", id] });
-      qc.invalidateQueries({ queryKey: ["filter-options"] });
-    },
   });
 }
 
@@ -659,10 +397,10 @@ export function useSyncLoop(enabled: boolean) {
   const mut = useMutation({
     mutationFn: () => syncIssues(false),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["calendar"] });
-      qc.invalidateQueries({ queryKey: ["unscheduled"] });
-      qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["filter-options"] });
+      qc.invalidateQueries({ queryKey: ["calendar", "linear"] });
+      qc.invalidateQueries({ queryKey: ["unscheduled", "linear"] });
+      qc.invalidateQueries({ queryKey: ["issues", "linear"] });
+      qc.invalidateQueries({ queryKey: ["filter-options", "linear"] });
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },

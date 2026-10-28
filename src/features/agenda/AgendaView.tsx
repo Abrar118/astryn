@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import { CalendarRange, ChevronLeft, ChevronRight, CornerDownRight } from "lucide-react";
-import { useIssues, useMe, useUsers } from "../../lib/queries";
+import { useTasks, useTaskUsers, useViewer } from "../../lib/taskQueries";
 import { dhakaToday, weekWindow, addDays, isoWeek } from "../../lib/dates";
 import { buildAgenda, dueIssues, type AgendaItem } from "./agenda";
-import type { IssueListItem } from "../../lib/commands";
+import type { Task } from "../../lib/tracker";
 import { IssueRow } from "../issues/IssueRow";
 import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
@@ -64,9 +64,9 @@ export function AgendaView() {
   const [weekOffset, setWeekOffset] = useState(0);
   const win = weekWindow(new Date(), weekOffset);
 
-  const me = useMe();
-  const { data: issues, isLoading: issuesLoading } = useIssues({});
-  const { data: users } = useUsers();
+  const viewer = useViewer();
+  const { data: issues, isLoading: issuesLoading } = useTasks({});
+  const { data: users } = useTaskUsers();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
 
@@ -99,7 +99,7 @@ export function AgendaView() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  if (issuesLoading || me.isLoading) {
+  if (issuesLoading || viewer.isLoading) {
     return (
       <div className="space-y-2 p-6">
         {[0, 1, 2, 3, 4].map((i) => (
@@ -109,9 +109,10 @@ export function AgendaView() {
     );
   }
 
-  const viewerId = me.data?.viewerId;
-  const groups = viewerId
-    ? buildAgenda({ issues: issues ?? [], viewerId, window: win, includeOverdue: weekOffset === 0 })
+  const { viewerIds } = viewer;
+  const hasViewer = viewerIds.length > 0;
+  const groups = hasViewer
+    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win, includeOverdue: weekOffset === 0 })
     : [];
 
   const isEmpty = groups.every((g) => g.items.length === 0);
@@ -124,13 +125,13 @@ export function AgendaView() {
   const rangeLabel = `${shortDate(win.weekStart)} – ${shortDate(addDays(win.weekStart, 6))}`;
 
   // Dashboard data
-  const heatmapWeeks = viewerId
-    ? buildHeatmap(issues ?? [], viewerId, { now: new Date(), weeksBack: 51, weeksForward: 1 })
+  const heatmapWeeks = hasViewer
+    ? buildHeatmap(issues ?? [], viewerIds, { now: new Date(), weeksBack: 51, weeksForward: 1 })
     : [];
   const counts = agendaCounts(groups);
   const weekTotal = groups.reduce((n, g) => n + dueIssues(g).length, 0);
 
-  const renderRow = (issue: IssueListItem) => (
+  const renderRow = (issue: Task) => (
     <IssueRow
       issue={issue}
       display={DEFAULT_DISPLAY}
@@ -145,7 +146,7 @@ export function AgendaView() {
 
   // A parent shown only to give its due sub-issues context (it isn't itself due
   // in this group) — a muted heading, still clickable/right-clickable.
-  const renderContextParent = (issue: IssueListItem) => (
+  const renderContextParent = (issue: Task) => (
     <button
       type="button"
       onClick={() => open(issue.id)}
@@ -216,7 +217,7 @@ export function AgendaView() {
       </header>
 
       {/* Dashboard — heatmap (full-width) + glance card on the same row */}
-      {viewerId && (
+      {hasViewer && (
         <div className="border-b border-border/60 px-4 py-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <div className="flex min-w-0 flex-1 flex-col">

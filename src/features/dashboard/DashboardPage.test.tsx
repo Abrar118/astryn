@@ -213,9 +213,18 @@ const queryState = vi.hoisted(() => ({
   },
 }));
 
+vi.mock("@/lib/taskQueries", () => ({
+  useTasks: () => queryState.issues,
+  useViewer: () => ({
+    ids: {},
+    viewerIds: queryState.me.data ? [queryState.me.data.viewerId] : [],
+    name: queryState.me.data?.viewerName ?? null,
+    isLoading: queryState.me.isLoading,
+    isError: queryState.me.isError,
+  }),
+}));
+
 vi.mock("@/lib/queries", () => ({
-  useIssues: () => queryState.issues,
-  useMe: () => queryState.me,
   useConnectionStatus: () => queryState.connectionStatus,
   useNotifications: (options?: unknown) => {
     useNotificationsCall(options);

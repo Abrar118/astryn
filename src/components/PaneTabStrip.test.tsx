@@ -15,7 +15,7 @@ const ws = vi.hoisted(() => ({
   addTabIn: vi.fn(), closeTab: vi.fn(), selectTab: vi.fn(), focusPane: vi.fn(),
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
-vi.mock("@/lib/queries", () => ({ useIssues: () => ({ data: [] }) }));
+vi.mock("@/lib/taskQueries", () => ({ useTasks: () => ({ data: [] }) }));
 
 import { PaneTabStrip } from "./PaneTabStrip";
 

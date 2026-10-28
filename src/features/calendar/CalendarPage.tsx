@@ -6,10 +6,10 @@ import timeGridPlugin from "@fullcalendar/timegrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import type { DatesSetArg, EventClickArg, EventContentArg, EventDropArg, EventMountArg } from "@fullcalendar/core";
 import type { DropArg } from "@fullcalendar/interaction";
-import { useCalendarIssues, useIssues, useMe, useUnscheduled, useUpdateIssue } from "@/lib/queries";
+import { useCalendarTasks, useTasks, useUnscheduledTasks, useUpdateTask } from "@/lib/taskQueries";
+import { ME, type Task, type TaskFilters } from "@/lib/tracker";
 import { dhakaToday, rangeFromDates, toDateStr } from "@/lib/dates";
 import { hiddenDaysFor, useWorkdays } from "@/lib/workweek";
-import type { IssueFilters, IssueListItem } from "@/lib/commands";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
@@ -20,8 +20,8 @@ import { UnscheduledRail } from "./UnscheduledRail";
 // Native contextmenu handlers per FullCalendar event element (for cleanup).
 const ctxHandlers = new WeakMap<HTMLElement, (e: MouseEvent) => void>();
 
-/** Build the shared hover-card payload from a cached issue. */
-function toMentionTarget(i: IssueListItem): MentionTarget {
+/** Build the shared hover-card payload from a cached task. */
+function toMentionTarget(i: Task): MentionTarget {
   return {
     identifier: i.identifier,
     title: i.title,
@@ -101,29 +101,19 @@ function currentDhakaMonth(today: string) {
 
 export function CalendarPage() {
   const today = dhakaToday();
-  const me = useMe();
   const [range, setRange] = useState(() => currentDhakaMonth(today));
-  const [filters, setFilters] = useState<IssueFilters>({});
-  const [initialized, setInitialized] = useState(false);
+  // Defaults to "my tasks" in every tracker; undefined assignee means "All assignees".
+  const [filters, setFilters] = useState<TaskFilters>({ assigneeId: ME });
   const [colorBy, setColorBy] = useState<"state" | "priority">("state");
   const [, setParams] = useSearchParams();
-  const update = useUpdateIssue();
+  const update = useUpdateTask();
   const { openMenu } = useIssueMenu();
   const workdays = useWorkdays();
   const hiddenDays = useMemo(() => hiddenDaysFor(workdays), [workdays]);
 
-  // Default the assignee filter to "me" exactly once, when identity loads. After
-  // that, filters.assigneeId === undefined genuinely means "All assignees".
-  useEffect(() => {
-    if (!initialized && me.data) {
-      setFilters({ assigneeId: me.data.viewerId });
-      setInitialized(true);
-    }
-  }, [me.data, initialized]);
-
-  const { data: scheduled } = useCalendarIssues(range, filters);
-  const { data: unscheduled } = useUnscheduled(filters);
-  const { data: allIssues } = useIssues({});
+  const { data: scheduled } = useCalendarTasks(range, filters);
+  const { data: unscheduled } = useUnscheduledTasks(filters);
+  const { data: allIssues } = useTasks({});
 
   // FullCalendar caches its size and only re-measures on window resize, so it
   // won't reclaim space when the unscheduled rail collapses. Nudge it directly.
@@ -135,13 +125,6 @@ export function CalendarPage() {
   // Cached full issues power the hover-card (calendar/unscheduled shapes lack
   // assignee/project/state names).
   const issuesById = useMemo(() => new Map((allIssues ?? []).map((i) => [i.id, i])), [allIssues]);
-
-  // Any explicit filter interaction counts as "initialized" so the me-default
-  // effect above can never later clobber a deliberate "All assignees" choice.
-  const handleFilters = (f: IssueFilters) => {
-    setInitialized(true);
-    setFilters(f);
-  };
 
   const events = useMemo(
     () =>
@@ -198,7 +181,7 @@ export function CalendarPage() {
 
   return (
     <div className="flex h-full flex-col gap-3 p-4 pb-4">
-      <FilterBar filters={filters} colorBy={colorBy} meId={me.data?.viewerId} onFilters={handleFilters} onColorBy={setColorBy} />
+      <FilterBar filters={filters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
       <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         <div className="min-h-0 min-w-0 flex-1 p-3 pb-20">
           <FullCalendar

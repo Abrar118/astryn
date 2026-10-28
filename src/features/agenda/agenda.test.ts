@@ -55,9 +55,19 @@ const shape = (gs: ReturnType<typeof buildAgenda>, key: string) =>
   });
 
 describe("buildAgenda", () => {
+  it("merges the viewer's tasks from every tracker", () => {
+    const issues = [
+      iss({ id: "1", dueDate: "2026-06-22", assigneeId: "linear-me" }),
+      iss({ id: "lt_2", dueDate: "2026-06-22", assigneeId: "local-me" }),
+      iss({ id: "3", dueDate: "2026-06-22", assigneeId: "someone" }),
+    ];
+    const gs = buildAgenda({ issues, viewerIds: ["linear-me", "local-me"], window: WINDOW });
+    expect(shape(gs, "2026-06-22")).toEqual(["1", "lt_2"]);
+  });
+
   it("buckets the viewer's issues by weekday and always renders Sun-Thu", () => {
     const issues = [iss({ id: "1", dueDate: "2026-06-22" })];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(gs.filter((g) => g.date).map((g) => g.key)).toEqual(WINDOW.weekdays);
     expect(shape(gs, "2026-06-22")).toEqual(["1"]);
     expect(find(gs, "2026-06-21")!.items).toEqual([]); // empty weekday still present
@@ -68,7 +78,7 @@ describe("buildAgenda", () => {
       iss({ id: "1", dueDate: "2026-06-22", assigneeId: "someone" }),
       iss({ id: "2", dueDate: null }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(gs.flatMap((g) => g.items)).toEqual([]);
   });
 
@@ -77,19 +87,19 @@ describe("buildAgenda", () => {
       iss({ id: "1", dueDate: "2026-06-10", stateType: "started" }),
       iss({ id: "2", dueDate: "2026-06-10", stateType: "completed" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(shape(gs, "overdue")).toEqual(["1"]);
   });
 
   it("folds Friday/Saturday into a Weekend group only when non-empty", () => {
     const noWeekend = buildAgenda({
       issues: [iss({ id: "1", dueDate: "2026-06-22" })],
-      viewerId: "me", window: WINDOW,
+      viewerIds: ["me"], window: WINDOW,
     });
     expect(find(noWeekend, "weekend")).toBeUndefined();
     const withWeekend = buildAgenda({
       issues: [iss({ id: "2", dueDate: "2026-06-26" })],
-      viewerId: "me", window: WINDOW,
+      viewerIds: ["me"], window: WINDOW,
     });
     expect(shape(withWeekend, "weekend")).toEqual(["2"]);
   });
@@ -99,7 +109,7 @@ describe("buildAgenda", () => {
       iss({ id: "p", dueDate: "2026-06-22" }),
       iss({ id: "c", dueDate: "2026-06-22", parentId: "p" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(shape(gs, "2026-06-22")).toEqual(["p>[c]"]);
   });
 
@@ -108,7 +118,7 @@ describe("buildAgenda", () => {
       iss({ id: "p", dueDate: "2026-06-22" }),
       iss({ id: "c", dueDate: "2026-06-23", parentId: "p" }), // mine AND due this week
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(shape(gs, "2026-06-22")).toEqual(["p"]);
     expect(shape(gs, "2026-06-23")).toEqual(["(p)>[c]"]);
   });
@@ -120,7 +130,7 @@ describe("buildAgenda", () => {
       iss({ id: "c2", dueDate: "2026-06-22", parentId: "p" }),
       iss({ id: "orphan", identifier: "ENG-9", dueDate: "2026-06-22", parentId: "missing" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(shape(gs, "2026-06-22")).toEqual(["(p)>[c1,c2]", "orphan"]);
   });
 
@@ -133,7 +143,7 @@ describe("buildAgenda", () => {
       iss({ id: "402", dueDate: "2026-06-23", parentId: "355" }),
       iss({ id: "403", dueDate: "2026-06-23", parentId: "355" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(shape(gs, "overdue")).toEqual(["126"]);
     expect(shape(gs, "2026-06-24")).toEqual(["(126)>[355]"]);
     expect(shape(gs, "2026-06-23")).toEqual(["(355)>[402,403]"]);
@@ -145,7 +155,7 @@ describe("buildAgenda", () => {
       iss({ id: "c", dueDate: "2026-06-23", parentId: "p" }),
       iss({ id: "d", dueDate: "2026-06-23" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     expect(dueIssues(find(gs, "2026-06-22")!).map((i) => i.id)).toEqual(["p"]);
     expect(dueIssues(find(gs, "2026-06-23")!).map((i) => i.id).sort()).toEqual(["c", "d"]);
   });
@@ -158,7 +168,7 @@ describe("buildAgenda", () => {
       iss({ id: "p", identifier: "ENG-9", dueDate: null }),
       iss({ id: "u", identifier: "ENG-4", dueDate: "2026-06-22", priority: 1, parentId: "p" }),
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW });
     // Urgent child ranks its (priority-less) context heading among the urgent rows.
     expect(shape(gs, "2026-06-22")).toEqual(["c", "b", "(p)>[u]", "a"]);
   });
@@ -168,7 +178,7 @@ describe("buildAgenda", () => {
       iss({ id: "1", dueDate: "2026-06-10", stateType: "started" }), // past-due open issue
       iss({ id: "2", dueDate: "2026-06-22" }), // normal weekday issue
     ];
-    const gs = buildAgenda({ issues, viewerId: "me", window: WINDOW, includeOverdue: false });
+    const gs = buildAgenda({ issues, viewerIds: ["me"], window: WINDOW, includeOverdue: false });
     expect(find(gs, "overdue")).toBeUndefined();
     // Weekday groups still present
     expect(gs.filter((g) => g.date).map((g) => g.key)).toEqual(WINDOW.weekdays);

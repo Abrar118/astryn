@@ -10,9 +10,9 @@ beforeAll(() => {
 const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn(), closeTab: vi.fn(), active: { id: "tab-1", view: "calendar" } }));
 const setParams = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
-vi.mock("@/lib/queries", () => ({
-  invalidateWorkspaceQueries: vi.fn(),
-  useIssues: () => ({ data: [{ id: "iss-1", identifier: "AB-1", title: "First", url: "u", stateColor: "#fff", labels: [] }] }),
+vi.mock("@/lib/queries", () => ({ invalidateWorkspaceQueries: vi.fn() }));
+vi.mock("@/lib/taskQueries", () => ({
+  useTasks: () => ({ data: [{ id: "iss-1", identifier: "AB-1", title: "First", url: "u", stateColor: "#fff", labels: [] }] }),
 }));
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
 vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn(), useSearchParams: () => [new URLSearchParams(), setParams] }));
@@ -138,12 +138,20 @@ describe("CommandPalette module gating", () => {
 
   it("hides tracker commands and opens dashboard tabs when no tracker is on", () => {
     capsActive.current = () => false;
+    modulesActive.current = (id) => id !== "linear";
     openPalette();
     for (const l of ["Create new issue", "Resync workspace", "Full resync", "Open issue in right split"]) {
       expect(screen.queryByText(l)).toBeNull();
     }
     fireEvent.click(screen.getByText("Open new tab"));
     expect(ws.addTab).toHaveBeenCalledWith("dashboard");
+  });
+
+  it("keeps Linear's create and resync off while another tracker is the only one on", () => {
+    modulesActive.current = (id) => id !== "linear";
+    openPalette();
+    expect(screen.getByText("Open issue in right split")).toBeTruthy();
+    for (const l of ["Create new issue", "Resync workspace", "Full resync"]) expect(screen.queryByText(l)).toBeNull();
   });
 
   it("offers Slack, Docs and Reports when their modules are active", () => {
