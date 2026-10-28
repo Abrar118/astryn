@@ -328,10 +328,7 @@ pub(crate) mod tests {
         assert_eq!(p.branch.as_deref(), Some("feature/eng-12-widget"));
         assert_eq!(p.base_branch.as_deref(), Some("main"));
         assert_eq!(p.author_login.as_deref(), Some("author"));
-        assert_eq!(
-            p.author_avatar.as_deref(),
-            Some("https://avatar/author.png")
-        );
+        assert_eq!(p.author_avatar, None);
         assert_eq!(p.comment_count, Some(4));
         assert_eq!(
             p.url.as_deref(),

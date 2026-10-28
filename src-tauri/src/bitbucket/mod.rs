@@ -243,11 +243,12 @@ pub(crate) fn account_login(account: Option<&Value>) -> Option<String> {
     str_at(a, "nickname").or_else(|| str_at(a, "display_name"))
 }
 
-pub(crate) fn account_avatar(account: Option<&Value>) -> Option<String> {
-    account?
-        .get("links")
-        .and_then(|l| l.get("avatar"))
-        .and_then(|a| str_at(a, "href"))
+/// Avatars are deliberately not surfaced. Bitbucket serves them from several
+/// Atlassian and Gravatar hosts that the webview CSP does not allow; showing
+/// them needs either a verified CSP addition or the Rust image proxy. Until
+/// then rows and the drawer fall back to initials. This is the single seam.
+pub(crate) fn account_avatar(_account: Option<&Value>) -> Option<String> {
+    None
 }
 
 #[cfg(test)]
@@ -338,7 +339,7 @@ mod tests {
     fn account_helpers_prefer_nickname() {
         let a = json!({ "nickname": "abrar", "display_name": "Abrar E", "links": { "avatar": { "href": "https://a/x.png" } } });
         assert_eq!(account_login(Some(&a)).as_deref(), Some("abrar"));
-        assert_eq!(account_avatar(Some(&a)).as_deref(), Some("https://a/x.png"));
+        assert_eq!(account_avatar(Some(&a)), None);
         let b = json!({ "display_name": "Abrar E" });
         assert_eq!(account_login(Some(&b)).as_deref(), Some("Abrar E"));
         assert_eq!(account_login(None), None);
