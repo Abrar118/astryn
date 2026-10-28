@@ -40,8 +40,7 @@ screen, no "Sync failed" toast when Linear has no key, and no blank KPI slot.
   `save_disabled` over the existing `settings` table key `screens_disabled`
   (JSON array). Missing key → empty; unknown ids dropped; malformed JSON → empty
   (everything on). **No migration.**
-- `AppState` gains `screens: RwLock<BTreeSet<ScreenId>>` (loaded at startup) and
-  `modules_write: tokio::sync::Mutex<()>`.
+- `AppState` gains `screens: RwLock<BTreeSet<ScreenId>>` (loaded at startup).
 - `list_modules` / `set_enabled_modules` return `ModulesView` with a new
   `disabledScreens` field.
 - `set_disabled_screens(screens)` (new, core like the other module-management
@@ -59,7 +58,10 @@ screen, no "Sync failed" toast when Linear has no key, and no blank KPI slot.
 `set_enabled_modules_logic` persisted the new set and then swapped the in-memory
 state without serialization, so two overlapping calls could leave SQLite and
 memory disagreeing (and compute the wrong "disabled" list). Every module or
-screen write now holds `modules_write` across persist + swap.
+screen write now holds one process-wide async mutex (`MODULES_WRITE` in
+`commands/modules.rs`) across persist + swap. A static rather than an
+`AppState` field keeps the shared `AppState`/`lib.rs` edits small while other
+lanes change them.
 
 ## 4. Frontend
 

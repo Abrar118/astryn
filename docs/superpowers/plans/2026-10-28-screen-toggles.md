@@ -11,9 +11,9 @@ then the smallest change, then the focused test.
    `modules/mod.rs`.
 2. `commands/modules.rs`: `ModulesView.disabled_screens`; `modules_view`
    helper; `set_enabled_modules_logic` and new `set_disabled_screens_logic`
-   take the `modules_write` mutex; `AppState::require_screen`. Tests:
+   take the `MODULES_WRITE` mutex; `AppState::require_screen`. Tests:
    concurrent sets keep DB == memory; screens persist + swap; `require_screen`.
-3. `AppState` fields `screens`, `modules_write`; `lib.rs` loads screens and
+3. `AppState` field `screens`; `lib.rs` loads screens and
    registers `set_disabled_screens`; add it to `CORE_COMMANDS`.
 4. `list_notifications` → `state.require_screen(ScreenId::Inbox)?`.
 5. `cargo test`, `cargo clippy`, `cargo fmt --check`.
