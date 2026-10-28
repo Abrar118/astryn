@@ -84,7 +84,7 @@ where
     if generation.load(Ordering::SeqCst) != gen0 {
         return Err(CmdError::WorkspaceChanged);
     }
-    ddb::replace_docs(
+    let written = ddb::replace_docs(
         pool,
         source_id,
         &files,
@@ -94,6 +94,9 @@ where
     )
     .await
     .map_err(|_| CmdError::Internal)?;
+    if !written {
+        return Err(CmdError::DocsSourceNotFound); // removed while syncing
+    }
     let file_count = files.iter().filter(|f| f.kind == "blob").count() as i64;
     Ok(DocsSyncResult {
         file_count,
@@ -249,9 +252,14 @@ where
     if generation.load(Ordering::SeqCst) != gen0 {
         return Err(CmdError::WorkspaceChanged);
     }
-    ddb::replace_docs(pool, &source.id, &files, &now, None, false)
+    // Refused (nothing written) if the Doc was removed while fetching — removal
+    // doesn't take `clickup_lock`, so this check is what prevents orphan rows.
+    let written = ddb::replace_docs(pool, &source.id, &files, &now, None, false)
         .await
         .map_err(|_| CmdError::Internal)?;
+    if !written {
+        return Err(CmdError::DocsSourceNotFound);
+    }
     Ok(DocsSyncResult {
         file_count: files.len() as i64,
         truncated: false,
@@ -281,14 +289,17 @@ pub async fn add_local_docs_source_logic(
     folder: PathBuf,
     now: String,
 ) -> Result<ddb::DocsSource, CmdError> {
-    let probe = folder.clone();
-    let is_dir = tokio::task::spawn_blocking(move || probe.is_dir())
-        .await
-        .map_err(|_| CmdError::Internal)?;
-    if !is_dir {
-        return Err(CmdError::DocsFolderUnavailable);
-    }
-    let location = folder.to_string_lossy().into_owned();
+    // Canonical (symlinks resolved, `..` removed, on-disk letter case on Windows)
+    // so the same folder reached two ways is one source. Non-UTF-8 paths are
+    // refused: the id and the stored location must round-trip exactly.
+    let canonical = tokio::task::spawn_blocking(move || {
+        std::fs::canonicalize(&folder).ok().filter(|p| p.is_dir())
+    })
+    .await
+    .map_err(|_| CmdError::Internal)?
+    .ok_or(CmdError::DocsFolderUnavailable)?;
+    let location = local_docs::plain_path(&canonical).ok_or(CmdError::DocsFolderUnavailable)?;
+    let folder = PathBuf::from(&location);
     let name = folder
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())
@@ -319,9 +330,12 @@ pub async fn rescan_local_logic(
 ) -> Result<DocsSyncResult, CmdError> {
     let found = scan(local_root(source)?).await?;
     let file_count = found.file_count as i64;
-    ddb::write_scan_meta(pool, &source.id, &now, file_count, found.truncated)
+    let written = ddb::write_scan_meta(pool, &source.id, &now, file_count, found.truncated)
         .await
         .map_err(|_| CmdError::Internal)?;
+    if !written {
+        return Err(CmdError::DocsSourceNotFound); // removed while scanning
+    }
     Ok(DocsSyncResult {
         file_count,
         truncated: found.truncated,
@@ -337,7 +351,21 @@ pub async fn list_source_tree_logic(
         DocsSourceKind::Github | DocsSourceKind::Clickup => {
             list_docs_logic(pool, source.id.clone()).await
         }
-        DocsSourceKind::Local => Ok(scan(local_root(source)?).await?.nodes),
+        DocsSourceKind::Local => {
+            // Listing a folder is its scan (the frontend never auto-syncs a
+            // folder), so record when and how much it found for Settings.
+            let found = scan(local_root(source)?).await?;
+            ddb::write_scan_meta(
+                pool,
+                &source.id,
+                &now_iso(),
+                found.file_count as i64,
+                found.truncated,
+            )
+            .await
+            .map_err(|_| CmdError::Internal)?;
+            Ok(found.nodes)
+        }
     }
 }
 
@@ -962,16 +990,65 @@ mod tests {
             source.name,
             folder.path().file_name().unwrap().to_string_lossy()
         );
-        assert_eq!(
-            source.location.as_deref(),
-            Some(folder.path().to_string_lossy().as_ref())
-        );
+        // Stored as the canonical path, without a Windows `\\?\` prefix.
+        let canonical = std::fs::canonicalize(folder.path()).unwrap();
+        let expected = local_docs::plain_path(&canonical).unwrap();
+        assert_eq!(source.location.as_deref(), Some(expected.as_str()));
+        assert!(!expected.starts_with(r"\\?\"));
+        assert_eq!(source.id, format!("local:{expected}"));
         assert!(matches!(
             add_local_docs_source_logic(&pool, folder.path().to_path_buf(), "now".into()).await,
             Err(CmdError::DuplicateDocsSource)
         ));
         assert!(matches!(
             add_local_docs_source_logic(&pool, folder.path().join("nope"), "now".into()).await,
+            Err(CmdError::DocsFolderUnavailable)
+        ));
+    }
+
+    #[tokio::test]
+    async fn the_same_folder_spelled_differently_is_one_source() {
+        let (_d, pool) = pool().await;
+        let (folder, _source) = local_source(&pool).await;
+        // `guide/..` is the folder itself.
+        assert!(matches!(
+            add_local_docs_source_logic(
+                &pool,
+                folder.path().join("guide").join(".."),
+                "now".into()
+            )
+            .await,
+            Err(CmdError::DuplicateDocsSource)
+        ));
+        // Different letter case names the same folder on case-insensitive disks.
+        #[cfg(windows)]
+        {
+            let upper = PathBuf::from(folder.path().to_string_lossy().to_uppercase());
+            assert!(matches!(
+                add_local_docs_source_logic(&pool, upper, "now".into()).await,
+                Err(CmdError::DuplicateDocsSource)
+            ));
+        }
+        #[cfg(unix)]
+        {
+            let link = _d.path().join("link");
+            std::os::unix::fs::symlink(folder.path(), &link).unwrap();
+            assert!(matches!(
+                add_local_docs_source_logic(&pool, link, "now".into()).await,
+                Err(CmdError::DuplicateDocsSource)
+            ));
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn a_folder_path_that_is_not_utf8_is_refused() {
+        use std::os::unix::ffi::OsStrExt;
+        let (d, pool) = pool().await;
+        let odd = d.path().join(std::ffi::OsStr::from_bytes(b"notes\xff"));
+        std::fs::create_dir(&odd).unwrap();
+        assert!(matches!(
+            add_local_docs_source_logic(&pool, odd, "now".into()).await,
             Err(CmdError::DocsFolderUnavailable)
         ));
     }
@@ -987,11 +1064,15 @@ mod tests {
             paths,
             ["README.md", "guide", "guide/plain.txt", "guide/spec.pdf"]
         );
-        // Read in place: nothing was written to the cache.
+        // Read in place: nothing was written to the cache…
         assert!(list_docs_logic(&pool, source.id.clone())
             .await
             .unwrap()
             .is_empty());
+        // …but the scan itself is recorded, since listing *is* the (only) scan.
+        let listed = load_source(&pool, &source.id).await.unwrap();
+        assert_eq!(listed.file_count, 3);
+        assert!(listed.last_synced_at.is_some());
 
         let read = |p: &str| get_source_content_logic(&pool, &source, p.into());
         assert_eq!(read("README.md").await.unwrap().as_deref(), Some("# Notes"));
@@ -1257,6 +1338,73 @@ mod tests {
             .await
             .unwrap()
             .is_empty());
+    }
+
+    /// Removal takes `github_lock`, a ClickUp sync holds `clickup_lock`, so they
+    /// can interleave: a sync that lands after its Doc (or all Docs data) was
+    /// removed must leave no orphan rows that no later wipe could reach.
+    #[tokio::test]
+    async fn clickup_sync_finishing_after_removal_leaves_no_orphans() {
+        let (_d, pool) = pool().await;
+        let source = add_clickup(&pool, None).await;
+        let result = sync_clickup_logic(
+            clickup_creds(Some("pk_x")),
+            &pool,
+            &AtomicU64::new(0),
+            &source,
+            "t1".into(),
+            |_, _| {
+                let pool = pool.clone();
+                let id = source.id.clone();
+                async move {
+                    remove_docs_source_logic(&pool, id).await.unwrap(); // removed mid-fetch
+                    Ok(pages())
+                }
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(CmdError::DocsSourceNotFound)));
+        for table in ["docs_files", "docs_sync_meta"] {
+            let n: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(n, 0, "{table} has orphans");
+        }
+    }
+
+    #[tokio::test]
+    async fn clickup_pages_keep_the_order_the_author_set() {
+        let (_d, pool) = pool().await;
+        let source = add_clickup(&pool, None).await;
+        sync_clickup_logic(
+            clickup_creds(Some("pk_x")),
+            &pool,
+            &AtomicU64::new(0),
+            &source,
+            "t1".into(),
+            |_, _| async {
+                Ok(serde_json::json!([
+                    { "id": "z9", "name": "Zeta first", "pages": [
+                        { "id": "b2", "name": "Second child" },
+                        { "id": "a1", "name": "First child" }
+                    ]},
+                    { "id": "a0", "name": "Alpha last" }
+                ]))
+            },
+        )
+        .await
+        .unwrap();
+        let names: Vec<String> = list_source_tree_logic(&pool, &source)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|n| n.name)
+            .collect();
+        assert_eq!(
+            names,
+            ["Zeta first", "Second child", "First child", "Alpha last"]
+        );
     }
 
     #[tokio::test]

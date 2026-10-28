@@ -868,6 +868,25 @@ export function useDocContent(sourceId: string | null, path: string | null, enab
   });
 }
 
+/**
+ * Rescan a local folder on request: re-run its tree query (one scan, which also
+ * records the scan time and count in Rust) and re-read its open documents.
+ * Local folders never auto-sync, so this is the only thing that rescans.
+ */
+export function useDocsRescan() {
+  const qc = useQueryClient();
+  return (sourceId: string) =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] }),
+      qc.invalidateQueries({ queryKey: ["doc-content", sourceId] }),
+    ]).then(() =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["docs-sources"] }),
+        qc.invalidateQueries({ queryKey: ["docs-status"] }),
+      ]),
+    );
+}
+
 /** A local PDF's bytes; shares the `doc-content` prefix so a refresh re-reads it. */
 export function useDocPdf(sourceId: string | null, path: string | null, enabled: boolean) {
   return useQuery({

@@ -13,10 +13,25 @@ use crate::db::docs::DocNode;
 pub const TEXT_MAX_BYTES: u64 = 5 * 1024 * 1024;
 /// PDFs larger than this are skipped.
 pub const PDF_MAX_BYTES: u64 = 50 * 1024 * 1024;
-/// A scan stops (and reports `truncated`) after this many files…
-pub const MAX_FILES: usize = 5_000;
-/// …or below this many nested folders.
-pub const MAX_DEPTH: usize = 32;
+/// How far one scan may go before it stops and reports `truncated`.
+#[derive(Debug, Clone, Copy)]
+pub struct Limits {
+    /// Listed documents.
+    pub max_files: usize,
+    /// Directory entries looked at, listed or not — so picking a home folder or
+    /// a whole drive (full of non-doc files) can't turn into a full disk walk.
+    pub max_entries: usize,
+    /// Nested folder depth.
+    pub max_depth: usize,
+}
+
+impl Limits {
+    pub const DEFAULT: Self = Self {
+        max_files: 5_000,
+        max_entries: 50_000,
+        max_depth: 32,
+    };
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DocFormat {
@@ -58,6 +73,8 @@ pub struct Scan {
     pub nodes: Vec<DocNode>,
     pub file_count: usize,
     pub truncated: bool,
+    /// Directory entries looked at so far (bounded by `Limits::max_entries`).
+    visited: usize,
 }
 
 /// Recursively list the readable documents under `root`. Unsupported, hidden,
@@ -65,24 +82,40 @@ pub struct Scan {
 /// silently; folders without any listed file are pruned. Fails only when `root`
 /// itself can't be read (moved, deleted, permission denied).
 pub fn scan_folder(root: &Path) -> std::io::Result<Scan> {
+    scan_folder_with(root, Limits::DEFAULT)
+}
+
+pub fn scan_folder_with(root: &Path, limits: Limits) -> std::io::Result<Scan> {
     let entries = fs::read_dir(root)?;
     let mut scan = Scan::default();
-    walk_entries(entries, "", 0, &mut scan);
+    walk_entries(entries, "", 0, &limits, &mut scan);
     Ok(scan)
 }
 
-fn walk(dir: &Path, rel: &str, depth: usize, scan: &mut Scan) {
+fn walk(dir: &Path, rel: &str, depth: usize, limits: &Limits, scan: &mut Scan) {
     if let Ok(entries) = fs::read_dir(dir) {
-        walk_entries(entries, rel, depth, scan);
+        walk_entries(entries, rel, depth, limits, scan);
     }
 }
 
-fn walk_entries(entries: fs::ReadDir, rel: &str, depth: usize, scan: &mut Scan) {
+fn walk_entries(entries: fs::ReadDir, rel: &str, depth: usize, limits: &Limits, scan: &mut Scan) {
+    // Collecting a directory's names is itself bounded by the entry budget, so a
+    // single enormous folder can't be read in full either.
+    let budget = limits.max_entries.saturating_sub(scan.visited);
+    let mut entries: Vec<fs::DirEntry> = entries.filter_map(Result::ok).take(budget + 1).collect();
+    if entries.len() > budget {
+        entries.truncate(budget);
+        scan.truncated = true;
+    }
     // Sorted so the listing (and which files survive truncation) is deterministic.
-    let mut entries: Vec<fs::DirEntry> = entries.filter_map(Result::ok).collect();
     entries.sort_by_key(|e| e.file_name());
     for entry in entries {
-        if scan.truncated {
+        if scan.visited >= limits.max_entries {
+            scan.truncated = true;
+            return;
+        }
+        scan.visited += 1;
+        if scan.truncated && scan.file_count >= limits.max_files {
             return;
         }
         let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
@@ -101,7 +134,7 @@ fn walk_entries(entries: fs::ReadDir, rel: &str, depth: usize, scan: &mut Scan) 
             format!("{rel}/{name}")
         };
         if file_type.is_dir() {
-            if depth + 1 >= MAX_DEPTH {
+            if depth + 1 >= limits.max_depth {
                 scan.truncated = true;
                 continue;
             }
@@ -113,12 +146,12 @@ fn walk_entries(entries: fs::ReadDir, rel: &str, depth: usize, scan: &mut Scan) 
                 kind: "tree".into(),
                 parent_path: rel.to_string(),
             });
-            walk(&entry.path(), &path, depth + 1, scan);
+            walk(&entry.path(), &path, depth + 1, limits, scan);
             if scan.file_count == files_before {
                 scan.nodes.truncate(at); // prune a folder with nothing to show
             }
         } else if file_type.is_file() && is_listable(&entry.path(), &name) {
-            if scan.file_count >= MAX_FILES {
+            if scan.file_count >= limits.max_files {
                 scan.truncated = true;
                 return;
             }
@@ -142,6 +175,21 @@ fn is_listable(path: &Path, name: &str) -> bool {
         Ok(meta) if meta.len() <= format.max_bytes() => fs::File::open(path).is_ok(),
         _ => false,
     }
+}
+
+/// A canonical path as a plain UTF-8 string: `None` if it isn't valid UTF-8,
+/// and on Windows without the `\\?\` verbatim prefix `canonicalize` adds.
+pub fn plain_path(path: &Path) -> Option<String> {
+    let s = path.to_str()?;
+    if cfg!(windows) {
+        if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
+            return Some(format!(r"\\{rest}"));
+        }
+        if let Some(rest) = s.strip_prefix(r"\\?\") {
+            return Some(rest.to_string());
+        }
+    }
+    Some(s.to_string())
 }
 
 /// Resolve a document path the webview asked for to a file inside `root`.
@@ -169,11 +217,18 @@ pub fn resolve_file(root: &Path, rel: &str) -> Option<(PathBuf, DocFormat)> {
     Some((full, format))
 }
 
+/// Read at most `max` bytes. The cap is enforced on the bytes actually read (one
+/// byte past it means "too large"), not on an earlier size check, so a file that
+/// grows after it was listed — or a device that never ends — can't exceed it.
 fn read_capped(path: &Path, max: u64) -> Option<Vec<u8>> {
-    if fs::metadata(path).ok()?.len() > max {
-        return None;
-    }
-    fs::read(path).ok()
+    use std::io::Read;
+    let mut buf = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(max + 1)
+        .read_to_end(&mut buf)
+        .ok()?;
+    (buf.len() as u64 <= max).then_some(buf)
 }
 
 /// A Markdown / text file's contents, decoded as UTF-8 (lossily, so a stray
@@ -254,12 +309,50 @@ mod tests {
     #[test]
     fn scan_stops_at_the_file_cap_and_reports_truncation() {
         let dir = tempfile::tempdir().unwrap();
-        for i in 0..=MAX_FILES {
-            write(dir.path(), &format!("{i:05}.md"), b"x");
+        for i in 0..=5 {
+            write(dir.path(), &format!("{i:02}.md"), b"x");
         }
-        let scan = scan_folder(dir.path()).unwrap();
-        assert_eq!(scan.file_count, MAX_FILES);
+        let limits = Limits {
+            max_files: 5,
+            ..Limits::DEFAULT
+        };
+        let scan = scan_folder_with(dir.path(), limits).unwrap();
+        assert_eq!(scan.file_count, 5);
         assert!(scan.truncated);
+    }
+
+    #[test]
+    fn scan_stops_after_visiting_too_many_entries_even_if_none_are_listed() {
+        // A home folder or drive full of non-doc files must not be walked whole.
+        let dir = tempfile::tempdir().unwrap();
+        for i in 0..20 {
+            write(dir.path(), &format!("noise/{i:02}.png"), b"x");
+        }
+        write(dir.path(), "zz.md", b"late");
+        let limits = Limits {
+            max_entries: 10,
+            ..Limits::DEFAULT
+        };
+        let scan = scan_folder_with(dir.path(), limits).unwrap();
+        assert!(scan.truncated);
+        assert_eq!(scan.file_count, 0);
+    }
+
+    #[test]
+    fn reads_are_capped_by_bytes_read_not_by_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        write(dir.path(), "a.txt", b"12345");
+        let p = dir.path().join("a.txt");
+        assert_eq!(read_capped(&p, 5).as_deref(), Some(&b"12345"[..]));
+        assert_eq!(read_capped(&p, 4), None);
+    }
+
+    /// `/dev/zero` reports a length of 0 but never ends — the stand-in for a file
+    /// that grows after its size was checked. Capped reads must stop at the cap.
+    #[cfg(unix)]
+    #[test]
+    fn an_endless_file_is_rejected_at_the_cap() {
+        assert_eq!(read_capped(Path::new("/dev/zero"), 1024), None);
     }
 
     #[test]

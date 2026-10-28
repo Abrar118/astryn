@@ -91,18 +91,19 @@ export default function PdfViewer({ data }: { data: ArrayBuffer }) {
     // CSP allows no fetches besides IPC, so pdf.js uses its built-in fallbacks.
     const task = getDocument({ data: new Uint8Array(data.slice(0)) });
     let cancelled = false;
-    task.promise.then(
-      async (loaded) => {
+    // One chain, one catch: a failed load *or* an unreadable first page ends in
+    // the error state rather than an unhandled rejection stuck on "Opening".
+    task.promise
+      .then(async (loaded) => {
         const first = await loaded.getPage(1);
         if (cancelled) return;
         const vp = first.getViewport({ scale: 1 });
         setRatio(vp.height / vp.width);
         setDoc(loaded);
-      },
-      () => {
+      })
+      .catch(() => {
         if (!cancelled) setFailed(true);
-      },
-    );
+      });
     return () => {
       cancelled = true;
       void task.destroy();
