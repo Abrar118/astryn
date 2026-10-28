@@ -1,4 +1,4 @@
-export type ViewKind = "dashboard" | "calendar" | "list" | "this-week" | "graph" | "inbox" | "prs" | "slack" | "teams" | "docs" | "reports" | "settings" | "issue";
+export type ViewKind = "dashboard" | "calendar" | "list" | "this-week" | "graph" | "inbox" | "prs" | "bitbucket-prs" | "slack" | "teams" | "docs" | "reports" | "settings" | "issue";
 /**
  * A doc tab carries `docSourceId` alongside `docPath` because a path alone stops
  * identifying a document once several docs repos are configured — two of them
@@ -19,7 +19,7 @@ export type WorkspaceState = {
   seq: number; // monotonic tab-id counter
 };
 
-export const VIEWS: ViewKind[] = ["dashboard", "calendar", "list", "this-week", "graph", "inbox", "prs", "slack", "teams", "docs", "reports", "settings", "issue"];
+export const VIEWS: ViewKind[] = ["dashboard", "calendar", "list", "this-week", "graph", "inbox", "prs", "bitbucket-prs", "slack", "teams", "docs", "reports", "settings", "issue"];
 export const MIN_PANE_PX = 320;
 
 export const FALLBACK: WorkspaceState = {

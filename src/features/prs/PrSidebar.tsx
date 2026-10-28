@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { GithubPr } from "@/lib/commands";
-import { useGithubRepositories } from "@/lib/queries";
+import { useCodeHost } from "./codeHost";
 import {
   knownRepos,
   repoScope,
@@ -54,7 +54,9 @@ export function PrSidebar({
   const [query, setQuery] = useState("");
   const pickerRef = useRef<HTMLDivElement>(null);
   const pickerTriggerRef = useRef<HTMLButtonElement>(null);
-  const repositoryQuery = useGithubRepositories(pickerOpen);
+  const host = useCodeHost();
+  const repositoryQuery = host.useRepositories(pickerOpen);
+  const primaryItems = PRIMARY_ITEMS.filter((item) => host.primaryScopes.includes(item.scope));
   const candidates = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return knownRepos(
@@ -103,7 +105,7 @@ export function PrSidebar({
   return (
     <aside className="relative flex w-14 shrink-0 flex-col border-r border-border/60 bg-card/35 px-1.5 py-3 lg:w-52 lg:px-2.5">
       <nav aria-label="Pull request queues" className="space-y-1">
-        {PRIMARY_ITEMS.map(({ scope, label, Icon }) => {
+        {primaryItems.map(({ scope, label, Icon }) => {
           const active = activeScope === scope;
           return (
             <button

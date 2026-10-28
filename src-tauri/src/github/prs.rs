@@ -77,39 +77,7 @@ pub fn build_search_body(query: &str, first: i64, after: Option<&str>) -> Value 
     })
 }
 
-/// One reviewer's relationship to a PR: an opinionated review (approved /
-/// changes_requested / commented) or a still-pending requested review.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct Reviewer {
-    pub login: String,
-    pub avatar: Option<String>,
-    pub state: String, // approved | changes_requested | commented | dismissed | pending
-}
-
-#[derive(Debug, Clone)]
-pub struct ParsedPr {
-    pub id: String,
-    pub repo: String,
-    pub number: i64,
-    pub title: Option<String>,
-    pub draft: bool,
-    pub mergeable: Option<String>,
-    pub ci_status: Option<String>,
-    pub review_decision: Option<String>,
-    pub author_login: Option<String>,
-    pub author_avatar: Option<String>,
-    pub comment_count: Option<i64>,
-    pub branch: Option<String>,
-    pub base_branch: Option<String>,
-    pub url: Option<String>,
-    pub linear_identifier: Option<String>,
-    pub updated_at: Option<String>,
-    pub merged_at: Option<String>,
-    pub additions: Option<i64>,
-    pub deletions: Option<i64>,
-    pub changed_files: Option<i64>,
-    pub reviewers: Vec<Reviewer>,
-}
+pub use crate::code_host::{ParsedPr, Reviewer};
 
 /// Combine a PR's opinionated reviews with its still-pending review requests
 /// into one deduped list (an explicit review wins over a pending request).

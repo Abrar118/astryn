@@ -243,7 +243,7 @@ Tinted near-neutrals with one quiet accent per theme and a five-token state voca
 
 A full-bleed desktop canvas: a top tab strip per pane, optional two-pane split, and content that runs edge to edge. Navigation is a floating dock centered 16px above the bottom edge. Spacing follows Tailwind's 4px grid; observed rhythm is 4/6/8px inside controls, 12px between row elements, 14–16px card padding, 24px for settings cards. Rows are dense (8px vertical padding at 14px text; 12px for the agenda's larger variant) and scroll horizontally per row when a narrow split pane cannot hold the metadata cluster.
 
-The dashboard reflows by container queries on its own pane width, not the window: single column, then two columns at 520px, then a 4-up KPI row and a 1.8fr/0.8fr main split at 900px. App-wide zoom, icon scale and editor font scale are owner settings and must not be fought with fixed pixel layouts.
+The dashboard reflows by container queries on its own pane width, not the window: single column, then two columns at 520px, then a KPI row with one column per visible tile (up to four, so a hidden module or screen leaves no blank slot; an odd last tile spans the row in the two-column layout) and a 1.8fr/0.8fr main split at 900px. App-wide zoom, icon scale and editor font scale are owner settings and must not be fought with fixed pixel layouts.
 
 ## Elevation & Depth
 

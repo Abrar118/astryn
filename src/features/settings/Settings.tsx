@@ -4,7 +4,9 @@ import { SettingsNav } from "./SettingsNav";
 import { DEFAULT_SECTION, SETTINGS_GROUPS, takeRequestedSection, type SettingsSection } from "./settingsSection";
 import { AiSection } from "./sections/AiSection";
 import { AppearanceSection } from "./sections/AppearanceSection";
+import { BitbucketSection } from "./sections/BitbucketSection";
 import { CalendarSection } from "./sections/CalendarSection";
+import { ClickupSection } from "./sections/ClickupSection";
 import { DocsSection } from "./sections/DocsSection";
 import { GithubSection } from "./sections/GithubSection";
 import { LinearSection } from "./sections/LinearSection";
@@ -20,10 +22,14 @@ function SectionBody({ section }: { section: SettingsSection }) {
       return <LinearSection />;
     case "github":
       return <GithubSection />;
+    case "bitbucket":
+      return <BitbucketSection />;
     case "slack":
       return <SlackSection />;
     case "teams":
       return <TeamsSection />;
+    case "clickup":
+      return <ClickupSection />;
     case "documentation":
       return <DocsSection />;
     case "ai":

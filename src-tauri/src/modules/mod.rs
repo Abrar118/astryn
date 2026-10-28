@@ -1,6 +1,8 @@
 //! Module manifest: which integrations exist, what capabilities they provide,
 //! and the rules deciding whether an enabled module is actually active.
 
+pub mod screens;
+
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
@@ -18,11 +20,13 @@ pub enum ModuleId {
     Docs,
     Reports,
     LinkPreviews,
+    Bitbucket,
+    Clickup,
     Teams,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 8] = [
+    pub const ALL: [ModuleId; 10] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -30,7 +34,21 @@ impl ModuleId {
         ModuleId::Docs,
         ModuleId::Reports,
         ModuleId::LinkPreviews,
+        ModuleId::Bitbucket,
+        ModuleId::Clickup,
         ModuleId::Teams,
+    ];
+
+    /// Modules that existed before the module system; an upgraded install that
+    /// predates it gets exactly these turned on (never a later, unconfigured one).
+    const LEGACY: [ModuleId; 7] = [
+        ModuleId::Linear,
+        ModuleId::Github,
+        ModuleId::Slack,
+        ModuleId::Llm,
+        ModuleId::Docs,
+        ModuleId::Reports,
+        ModuleId::LinkPreviews,
     ];
 }
 
@@ -70,7 +88,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 8] = [
+static MANIFEST: [ModuleSpec; 10] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -103,8 +121,9 @@ static MANIFEST: [ModuleSpec; 8] = [
         id: ModuleId::Docs,
         kind: K::Feature,
         provides: &[],
-        requires: &[C::DocsSource],
-        optional: &[],
+        // Local folders need no provider; GitHub adds repository sources.
+        requires: &[],
+        optional: &[C::DocsSource],
     },
     ModuleSpec {
         id: ModuleId::Reports,
@@ -117,6 +136,20 @@ static MANIFEST: [ModuleSpec; 8] = [
         id: ModuleId::LinkPreviews,
         kind: K::Feature,
         provides: &[],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Bitbucket,
+        kind: K::Provider,
+        provides: &[C::CodeHost],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Clickup,
+        kind: K::Provider,
+        provides: &[C::DocsSource],
         requires: &[],
         optional: &[],
     },
@@ -162,15 +195,8 @@ pub fn is_active(id: ModuleId, enabled: &BTreeSet<ModuleId>) -> bool {
 const ENABLED_KEY: &str = "modules_enabled";
 const ONBOARDED_KEY: &str = "modules_onboarded";
 
-/// Modules added after the module system shipped. An install that predates
-/// modules upgrades with everything it already had, not these new providers.
-const POST_MODULE_ADDITIONS: [ModuleId; 1] = [ModuleId::Teams];
-
 fn all_enabled() -> BTreeSet<ModuleId> {
-    ModuleId::ALL
-        .into_iter()
-        .filter(|id| !POST_MODULE_ADDITIONS.contains(id))
-        .collect()
+    ModuleId::LEGACY.into_iter().collect()
 }
 
 /// Load persisted module state. A missing `modules_enabled` key means either a
@@ -252,6 +278,7 @@ pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sq
 pub const CORE_COMMANDS: &[&str] = &[
     "list_modules",
     "set_enabled_modules",
+    "set_disabled_screens",
     "remove_module_data",
     "get_connection_status",
     "get_github_status",
@@ -259,6 +286,8 @@ pub const CORE_COMMANDS: &[&str] = &[
     "get_teams_status",
     "get_llm_config",
     "get_docs_status",
+    "get_bitbucket_status",
+    "get_clickup_status",
 ];
 
 /// The module that owns a registered Tauri command, if it is not core.
@@ -325,10 +354,30 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "get_teams_catchup"
         | "get_teams_chat_messages"
         | "teams_open_link" => Some(ModuleId::Teams),
-        "sync_docs" | "list_docs_sources" | "add_docs_source" | "rename_docs_source"
-        | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
+        "sync_docs"
+        | "list_docs_sources"
+        | "add_docs_source"
+        | "rename_docs_source"
+        | "remove_docs_source"
+        | "list_docs_tree"
+        | "get_doc_content"
+        | "add_local_docs_source"
+        | "get_doc_pdf"
+        | "add_clickup_docs_source" => Some(ModuleId::Docs),
+        "set_clickup_token" | "clear_clickup_token" | "test_clickup_connection" => {
+            Some(ModuleId::Clickup)
+        }
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
+        "set_bitbucket_credentials"
+        | "clear_bitbucket_credentials"
+        | "test_bitbucket_connection"
+        | "sync_bitbucket_prs"
+        | "list_bitbucket_prs"
+        | "set_bitbucket_repo_favorite"
+        | "list_bitbucket_repositories"
+        | "get_bitbucket_pr_detail"
+        | "get_bitbucket_pr_diff" => Some(ModuleId::Bitbucket),
         _ => None,
     }
 }
@@ -374,7 +423,9 @@ mod tests {
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("teams.rs", include_str!("../commands/teams.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
+            ("clickup.rs", include_str!("../commands/clickup.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
+            ("bitbucket.rs", include_str!("../commands/bitbucket.rs")),
         ] {
             let src = src.replace("\r\n", "\n");
             for chunk in src.split("#[tauri::command]").skip(1) {
@@ -408,16 +459,15 @@ mod tests {
     #[test]
     fn enabling_another_module_does_not_enable_docs() {
         let off = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs]),
+            enabled: BTreeSet::from([ModuleId::Github]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&off, ModuleId::Docs).is_err());
         let on = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs, ModuleId::Github]),
+            enabled: BTreeSet::from([ModuleId::Docs]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&on, ModuleId::Docs).is_ok());
-        assert!(on.enabled.contains(&ModuleId::Docs));
     }
 
     #[tokio::test]
@@ -435,7 +485,7 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled, all_enabled());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(!s.enabled.contains(&ModuleId::Teams));
         assert!(s.onboarded);
         assert_eq!(
@@ -448,13 +498,35 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_upgrade_does_not_turn_on_bitbucket() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "linear_viewer_id", "u1")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert!(!s.enabled.contains(&ModuleId::Bitbucket));
+    }
+
+    #[test]
+    fn bitbucket_is_a_code_host_provider() {
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Bitbucket).unwrap(),
+            "\"bitbucket\""
+        );
+        let on = set(&[ModuleId::Bitbucket, ModuleId::Reports, ModuleId::Linear]);
+        assert!(has_capability(Capability::CodeHost, &on));
+        assert!(!has_capability(Capability::DocsSource, &on));
+        assert!(is_active(ModuleId::Bitbucket, &on));
+    }
+
+    #[tokio::test]
     async fn github_login_alone_marks_an_existing_install() {
         let (_d, pool) = pool().await;
         db::save_setting(&pool, "github_login", "octocat")
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled, all_enabled());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(s.onboarded);
     }
 
@@ -479,7 +551,7 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled, all_enabled());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(s.onboarded);
     }
 
@@ -510,17 +582,25 @@ mod tests {
     }
 
     #[test]
-    fn docs_needs_a_docs_source() {
+    fn docs_works_without_a_provider_for_local_folders() {
+        // Local folders need no provider, so Docs is active on its own; GitHub
+        // (or another docs-source provider) only adds remote sources.
         let on = set(&[ModuleId::Docs]);
-        assert_eq!(
-            missing_capabilities(ModuleId::Docs, &on),
-            vec![Capability::DocsSource]
-        );
-        assert!(!is_active(ModuleId::Docs, &on));
-        assert!(is_active(
-            ModuleId::Docs,
-            &set(&[ModuleId::Docs, ModuleId::Github])
+        assert!(missing_capabilities(ModuleId::Docs, &on).is_empty());
+        assert!(is_active(ModuleId::Docs, &on));
+        assert_eq!(spec(ModuleId::Docs).optional, &[Capability::DocsSource]);
+    }
+
+    #[test]
+    fn clickup_is_a_docs_source_provider() {
+        assert!(has_capability(
+            Capability::DocsSource,
+            &set(&[ModuleId::Clickup])
         ));
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Clickup).unwrap(),
+            "\"clickup\""
+        );
     }
 
     #[test]

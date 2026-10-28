@@ -13,13 +13,17 @@ export const ACTIVE_DOCS_SOURCE_KEY = "astryn.docsSource";
  * Pure: the source to display, given what's configured and what was last chosen.
  * Falls back to the first source when the stored id names a source that has since
  * been removed, so deleting the active source doesn't strand the page on nothing.
+ * Sources whose provider is off (`available: false`) are only chosen when no
+ * readable source exists, so the page shows an explanation instead of nothing.
  */
 export function resolveActiveSource(
   sources: readonly DocsSource[],
   preferredId: string | null,
 ): DocsSource | null {
   if (sources.length === 0) return null;
-  return sources.find((s) => s.id === preferredId) ?? sources[0];
+  const preferred = sources.find((s) => s.id === preferredId);
+  if (preferred?.available) return preferred;
+  return sources.find((s) => s.available) ?? preferred ?? sources[0];
 }
 
 let cached: string | null | undefined;
