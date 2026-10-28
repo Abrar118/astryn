@@ -6,14 +6,12 @@
 import { useMutation, useQueries, useQueryClient, type QueryKey, type UseQueryResult } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
 import { errorText, type FilterOptions, type Me, type RelationType, type User } from "./commands";
-import { useModules } from "./modules";
+import { TRACKER_MODULES, useModules } from "./modules";
 import { applyPatchToCalendarIssue, calendarIssueFromList, inRange, matchesFilters, reconcileList } from "./optimistic";
 import {
   ME,
   TRACKER_ADAPTERS,
-  TRACKER_IDS,
-  TRACKERS,
-  resolveFilters,
+  resolveAllFilters,
   trackerOf,
   type Task,
   type TaskFilters,
@@ -27,7 +25,7 @@ import {
 /** Trackers whose module is on, in registry order. */
 export function useActiveTrackers(): TrackerId[] {
   const { isActive } = useModules();
-  return TRACKER_IDS.filter((t) => isActive(TRACKERS[t].module));
+  return TRACKER_MODULES.filter((t) => isActive(t));
 }
 
 export type Merged<T> = { data: T[] | undefined; isLoading: boolean; isError: boolean };
@@ -103,10 +101,10 @@ function useTrackerList<T>(
   const waiting = filters.assigneeId === ME && viewer.isLoading;
   const queries = waiting
     ? []
-    : trackers.flatMap((t) => {
-        const f = resolveFilters(t, filters, viewer.ids);
-        return f ? [{ queryKey: [root, t, ...extraKey, f] as QueryKey, queryFn: () => fetch(t, f) }] : [];
-      });
+    : resolveAllFilters(trackers, filters, viewer.ids).map(([t, f]) => ({
+        queryKey: [root, t, ...extraKey, f] as QueryKey,
+        queryFn: () => fetch(t, f),
+      }));
   const merged = useQueries({ queries, combine: mergeResults<T> });
   return waiting ? WAITING : merged;
 }
@@ -142,8 +140,24 @@ export function useTaskStatuses(): Merged<TaskStatus> {
   return useTrackerSimple("workflow-states", (t) => TRACKER_ADAPTERS[t].listStatuses(), 5 * 60_000);
 }
 
-export function useTaskUsers(): Merged<User> {
-  return useTrackerSimple("users", (t) => TRACKER_ADAPTERS[t].listUsers(), 5 * 60_000);
+/** A user plus the tracker it belongs to (assignees only apply within their tracker). */
+export type TaskUser = User & { tracker: TrackerId };
+
+/**
+ * Users of every active tracker, tagged with their tracker. Tagged in `select`,
+ * so the shared `["users", tracker]` cache keeps the plain list Linear screens read.
+ */
+export function useTaskUsers(): Merged<TaskUser> {
+  const trackers = useActiveTrackers();
+  return useQueries({
+    queries: trackers.map((t) => ({
+      queryKey: ["users", t] as QueryKey,
+      queryFn: () => TRACKER_ADAPTERS[t].listUsers(),
+      staleTime: 5 * 60_000,
+      select: (users: User[]): TaskUser[] => users.map((u) => ({ ...u, tracker: t })),
+    })),
+    combine: mergeResults<TaskUser>,
+  });
 }
 
 function combineFilterOptions(results: UseQueryResult<FilterOptions>[]): { data: FilterOptions | undefined } {
@@ -244,7 +258,8 @@ export function useUpdateTask() {
       await qc.cancelQueries({ queryKey: ["calendar"] });
       await qc.cancelQueries({ queryKey: ["unscheduled"] });
       await qc.cancelQueries({ queryKey: ["issues"] });
-      const detailKey = TRACKER_ADAPTERS[tracker].detailKey(id);
+      const adapter = TRACKER_ADAPTERS[tracker];
+      const detailKey = adapter.detailKey(id);
       await qc.cancelQueries({ queryKey: detailKey });
 
       // Only this tracker's entries: a task never belongs to another tracker's cache.
@@ -312,9 +327,9 @@ export function useUpdateTask() {
         }
       }
 
-      // Patch the open drawer's detail cache so it reflects the edit.
+      // Patch the open drawer's detail cache, in that tracker's own detail shape.
       const detail = qc.getQueryData(detailKey);
-      if (detail) qc.setQueryData(detailKey, TRACKER_ADAPTERS[tracker].patchDetail(detail, patch));
+      if (detail) qc.setQueryData(detailKey, adapter.patchDetail(detail, patch));
 
       return { snapshot };
     },

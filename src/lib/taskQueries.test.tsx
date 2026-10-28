@@ -23,12 +23,14 @@ const cmd = vi.hoisted(() => ({
 }));
 
 vi.mock("./commands", () => ({ ...cmd, errorText: (e: unknown) => String(e) }));
-vi.mock("./modules", () => ({
+vi.mock("./modules", async (orig) => ({
+  ...(await orig<typeof import("./modules")>()),
   useModules: () => ({ isActive: (id: string) => active.ids.has(id), hasCapability: () => true, ready: true }),
 }));
-vi.mock("goey-toast", () => ({ gooeyToast: { error: vi.fn(), success: vi.fn() } }));
+const toast = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+vi.mock("goey-toast", () => ({ gooeyToast: toast }));
 
-import { mergeResults, useTasks, useUpdateTask, useViewer } from "./taskQueries";
+import { mergeResults, useDeleteTask, useTaskUsers, useTasks, useUpdateTask, useViewer } from "./taskQueries";
 import { ME } from "./tracker";
 
 function issue(id: string, extra: Partial<IssueListItem> = {}): IssueListItem {
@@ -128,6 +130,22 @@ describe("two trackers", () => {
     await waitFor(() => expect(cmd.updateLocalTask).toHaveBeenCalledWith("lt_2", { priority: 1 }));
     expect(cmd.updateIssue).not.toHaveBeenCalled();
   });
+
+  it("patches a local task's own detail cache, never the Linear-shaped one", async () => {
+    active.ids = new Set(["local-tasks"]);
+    cmd.updateLocalTask.mockReturnValue(new Promise(() => {}));
+    const { qc, wrapper } = setup();
+    const statuses = [{ id: "doing", scopeId: "lt_s", name: "Doing", category: "started", color: "#d99a2b", position: 1 }];
+    qc.setQueryData(["local-task", "lt_2"], { ...issue("lt_2"), statuses });
+    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate({ id: "lt_2", patch: { stateId: "doing" } });
+    });
+    await waitFor(() =>
+      expect(qc.getQueryData<IssueListItem>(["local-task", "lt_2"])).toMatchObject({ stateName: "Doing", stateType: "started" }),
+    );
+    expect(qc.getQueryData(["issue", "lt_2"])).toBeUndefined();
+  });
 });
 
 describe("useViewer", () => {
@@ -157,5 +175,107 @@ describe("useUpdateTask", () => {
     expect(qc.getQueryData<IssueListItem[]>(["issues", "linear", {}])?.[0].title).toBe("Renamed");
     expect(qc.getQueryData<IssueListItem[]>(["issues", "other", {}])?.map((i) => i.id)).toEqual(["lt_9"]);
     expect(qc.getQueryData(["calendar", "other", "2026-06-01", "2026-07-01", {}])).toEqual([]);
+  });
+});
+
+const JUNE = ["calendar", "linear", "2026-06-01", "2026-07-01", {}];
+const JULY = ["calendar", "linear", "2026-07-01", "2026-08-01", {}];
+const UNSCHEDULED = ["unscheduled", "linear", {}];
+
+describe("useUpdateTask calendar reconcile", () => {
+  it("moves a dragged task between month ranges and into the unscheduled rail", async () => {
+    active.ids = new Set(["linear"]);
+    cmd.updateIssue.mockReturnValue(new Promise(() => {}));
+    const { qc, wrapper } = setup();
+    qc.setQueryData(JUNE, [issue("1", { dueDate: "2026-06-10" })]);
+    qc.setQueryData(JULY, []);
+    qc.setQueryData(UNSCHEDULED, []);
+    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate({ id: "1", patch: { dueDate: "2026-07-05" } });
+    });
+    await waitFor(() => expect(qc.getQueryData<IssueListItem[]>(JULY)?.map((i) => i.dueDate)).toEqual(["2026-07-05"]));
+    expect(qc.getQueryData(JUNE)).toEqual([]);
+    await act(async () => {
+      result.current.mutate({ id: "1", patch: { dueDate: null } });
+    });
+    await waitFor(() => expect(qc.getQueryData<IssueListItem[]>(UNSCHEDULED)?.map((i) => i.id)).toEqual(["1"]));
+    expect(qc.getQueryData(JULY)).toEqual([]);
+  });
+
+  it("rolls every cache back and names the failure when the write fails", async () => {
+    active.ids = new Set(["linear"]);
+    toast.error.mockReset();
+    cmd.updateIssue.mockRejectedValue("Linear rejected the request.");
+    const { qc, wrapper } = setup();
+    const june = [issue("1", { dueDate: "2026-06-10" })];
+    qc.setQueryData(JUNE, june);
+    qc.setQueryData(JULY, []);
+    qc.setQueryData(["issue", "1"], { source: "cache", detail: issue("1", { dueDate: "2026-06-10" }) });
+    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate({ id: "1", patch: { dueDate: "2026-07-05" } });
+    });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Update failed", { description: "Linear rejected the request." }));
+    expect(qc.getQueryData(JUNE)).toEqual(june);
+    expect(qc.getQueryData(JULY)).toEqual([]);
+    expect((qc.getQueryData(["issue", "1"]) as { detail: IssueListItem }).detail.dueDate).toBe("2026-06-10");
+  });
+});
+
+describe("useDeleteTask", () => {
+  it("removes the task everywhere, then restores it if the delete fails", async () => {
+    active.ids = new Set(["linear"]);
+    toast.error.mockReset();
+    let reject: (e: unknown) => void = () => {};
+    cmd.deleteIssue.mockReturnValue(new Promise((_, r) => (reject = r)));
+    const { qc, wrapper } = setup();
+    qc.setQueryData(["issues", "linear", {}], [issue("1"), issue("2")]);
+    qc.setQueryData(JUNE, [issue("1", { dueDate: "2026-06-10" })]);
+    const { result } = renderHook(() => useDeleteTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate("1");
+    });
+    await waitFor(() => expect(qc.getQueryData<IssueListItem[]>(["issues", "linear", {}])?.map((i) => i.id)).toEqual(["2"]));
+    expect(qc.getQueryData(JUNE)).toEqual([]);
+    await act(async () => reject("Linear rejected the request."));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Delete failed", expect.anything()));
+    expect(qc.getQueryData<IssueListItem[]>(["issues", "linear", {}])?.map((i) => i.id)).toEqual(["1", "2"]);
+  });
+
+  it("routes the delete to the owning tracker and confirms it", async () => {
+    active.ids = new Set(["linear"]);
+    toast.success.mockReset();
+    cmd.deleteIssue.mockResolvedValue(undefined);
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useDeleteTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate("1");
+    });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Issue deleted"));
+    expect(cmd.deleteIssue).toHaveBeenCalledWith("1");
+  });
+});
+
+describe("ME without a known viewer", () => {
+  it("falls back to every assignee instead of an empty screen", async () => {
+    active.ids = new Set(["linear"]);
+    cmd.getMe.mockResolvedValue(null);
+    cmd.listIssues.mockResolvedValue([issue("1")]);
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useTasks({ assigneeId: ME }), { wrapper });
+    await waitFor(() => expect(result.current.data).toHaveLength(1));
+    expect(cmd.listIssues).toHaveBeenCalledWith({});
+  });
+});
+
+describe("useTaskUsers", () => {
+  it("tags users with their tracker without changing the shared cache", async () => {
+    active.ids = new Set(["linear"]);
+    cmd.listUsers.mockResolvedValue([{ id: "u1", name: "Ada" }]);
+    const { qc, wrapper } = setup();
+    const { result } = renderHook(() => useTaskUsers(), { wrapper });
+    await waitFor(() => expect(result.current.data).toEqual([{ id: "u1", name: "Ada", tracker: "linear" }]));
+    expect(qc.getQueryData(["users", "linear"])).toEqual([{ id: "u1", name: "Ada" }]);
   });
 });

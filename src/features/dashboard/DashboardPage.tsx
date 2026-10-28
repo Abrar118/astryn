@@ -32,10 +32,10 @@ import {
   useSlackStatus,
 } from "@/lib/queries";
 import { useTasks, useViewer } from "@/lib/taskQueries";
-import { trackerModulesActive } from "@/lib/tracker";
+
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
-import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
+import { VIEW_META, trackerModulesActive, visibleViews, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { dhakaToday } from "@/lib/dates";
 import {

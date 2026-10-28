@@ -41,8 +41,12 @@ import {
   type WorkflowState,
 } from "./commands";
 
-/** Every tracker the app can merge. Ids of non-Linear trackers carry a prefix (see `trackerOf`). */
-export type TrackerId = "linear" | "local-tasks";
+/**
+ * Every tracker the app can merge: the modules that provide the `tracker`
+ * capability (`TRACKER_MODULES` in modules.ts, checked against the adapters by
+ * a test). Ids of non-Linear trackers carry a prefix (see `trackerOf`).
+ */
+export type TrackerId = Extract<ModuleId, "linear" | "local-tasks">;
 
 /** Local-task ids (tasks, lists, statuses, …) start with this. */
 export const LOCAL_PREFIX = "lt_";
@@ -65,21 +69,9 @@ export type StatusCategory = "triage" | "backlog" | "unstarted" | "started" | "c
 /** Filter sentinel: assigned to the viewer of each tracker. */
 export const ME = "@me";
 
-export const TRACKERS: Record<TrackerId, { module: ModuleId; label: string }> = {
-  linear: { module: "linear", label: "Linear" },
-  "local-tasks": { module: "local-tasks", label: "Local tasks" },
-};
-
-export const TRACKER_IDS = Object.keys(TRACKERS) as TrackerId[];
-
 /** The tracker that owns a task (or user/status) id. Linear ids are bare; other trackers prefix theirs. */
 export function trackerOf(id: string): TrackerId {
   return id.startsWith(LOCAL_PREFIX) ? "local-tasks" : "linear";
-}
-
-/** True while at least one tracker module is active (the `tracker` capability). */
-export function trackerModulesActive(isActive: (id: ModuleId) => boolean): boolean {
-  return TRACKER_IDS.some((t) => isActive(TRACKERS[t].module));
 }
 
 /**
@@ -94,6 +86,26 @@ export function resolveFilters(
   if (filters.assigneeId !== ME) return filters;
   const viewer = viewerIds[tracker];
   return viewer ? { ...filters, assigneeId: viewer } : null;
+}
+
+/**
+ * Concrete filters for every tracker. When `ME` is asked for but no tracker
+ * knows its viewer (e.g. Linear's identity isn't cached yet), the assignee
+ * filter is dropped rather than showing an empty screen.
+ */
+export function resolveAllFilters(
+  trackers: TrackerId[],
+  filters: TaskFilters,
+  viewerIds: Partial<Record<TrackerId, string>>,
+): [TrackerId, TaskFilters][] {
+  if (filters.assigneeId === ME && !trackers.some((t) => viewerIds[t])) {
+    const { assigneeId: _ignored, ...rest } = filters;
+    return trackers.map((t) => [t, rest]);
+  }
+  return trackers.flatMap((t) => {
+    const f = resolveFilters(t, filters, viewerIds);
+    return f ? [[t, f] as [TrackerId, TaskFilters]] : [];
+  });
 }
 
 export type TrackerAdapter = {

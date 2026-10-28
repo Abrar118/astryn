@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { listModules, type Capability, type ModuleId, type ModulesView } from "@/lib/commands";
 import type { Tab, ViewKind } from "@/lib/paneModel";
-import { TRACKERS, trackerModulesActive, trackerOf } from "@/lib/tracker";
+import { trackerOf, type TrackerId } from "@/lib/tracker";
 
 type NavView = Exclude<ViewKind, "issue">;
 
@@ -64,7 +64,7 @@ export function viewActive(view: ViewKind, isActive: IsActive): boolean {
 
 /** A task tab stays open only while the tracker that owns its task is on. */
 export function tabActive(tab: Tab, isActive: IsActive): boolean {
-  if (tab.view === "issue" && tab.issueId) return isActive(TRACKERS[trackerOf(tab.issueId)].module);
+  if (tab.view === "issue" && tab.issueId) return isActive(trackerOf(tab.issueId));
   return viewActive(tab.view, isActive);
 }
 
@@ -81,6 +81,16 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
   "local-tasks": { kind: "provider", provides: ["tracker"], requires: [], optional: [] },
 };
+
+/** The modules that provide the `tracker` capability — the one list of trackers. */
+export const TRACKER_MODULES = (Object.keys(MODULE_MANIFEST) as ModuleId[]).filter((id) =>
+  MODULE_MANIFEST[id].provides.includes("tracker"),
+) as TrackerId[];
+
+/** True while at least one tracker module is active (the `tracker` capability). */
+export function trackerModulesActive(isActive: IsActive): boolean {
+  return TRACKER_MODULES.some((t) => isActive(t));
+}
 
 /** Capabilities `id` requires that no module in `selected` provides. */
 export function previewMissing(id: ModuleId, selected: Set<ModuleId>): Capability[] {

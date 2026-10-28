@@ -26,7 +26,7 @@ export function BulkActionBar({
   // Assignees exist per tracker, so offer only the selection's tracker's users.
   const trackers = new Set(selectedIds.map(trackerOf));
   const tracker = trackers.size === 1 ? [...trackers][0] : null;
-  const users = tracker ? (allUsers ?? []).filter((u) => trackerOf(u.id) === tracker) : [];
+  const users = tracker ? (allUsers ?? []).filter((u) => u.tracker === tracker) : [];
 
   const teamId = bulkStatusTeamId(selectedIds, index);
   const teamStates = useMemo(() => {
