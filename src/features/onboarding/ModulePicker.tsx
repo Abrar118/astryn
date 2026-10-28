@@ -48,7 +48,10 @@ export function ModulePicker() {
     setBusy(true);
     try {
       // Screens first: saving the modules marks the app onboarded and closes the picker.
-      await setDisabledScreens(SWITCHABLE_SCREENS.filter((s) => screensOff.has(s)));
+      // Only screens of chosen modules: a choice made under a module that was then unticked is dropped.
+      await setDisabledScreens(
+        SWITCHABLE_SCREENS.filter((s) => screensOff.has(s) && selected.has(VIEW_META[s].module as ModuleId)),
+      );
       const view = await setEnabledModules(IDS.filter((i) => selected.has(i)));
       qc.setQueryData(MODULES_KEY, view);
       await qc.invalidateQueries({ queryKey: MODULES_KEY });

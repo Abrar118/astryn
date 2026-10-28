@@ -90,6 +90,18 @@ describe("ModulesSection", () => {
     expect(screen.queryByText(/couldn't load modules/i)).toBeNull();
   });
 
+  it("locks the switches while module data is being removed", async () => {
+    let finish: () => void = () => {};
+    vi.mocked(commands.removeModuleData).mockImplementationOnce(() => new Promise<void>((r) => { finish = r; }));
+    view = mk(["linear"]);
+    renderIt();
+    fireEvent.click(await screen.findByRole("button", { name: /remove slack data/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
+    await waitFor(() => expect((screen.getByRole("switch", { name: /slack/i }) as HTMLInputElement).disabled).toBe(true));
+    finish();
+    await waitFor(() => expect((screen.getByRole("switch", { name: /slack/i }) as HTMLInputElement).disabled).toBe(false));
+  });
+
   it("offers data removal only for disabled modules, behind a confirmation", async () => {
     view = mk(["linear", "github"]);
     renderIt();

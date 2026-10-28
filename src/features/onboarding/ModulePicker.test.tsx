@@ -103,6 +103,16 @@ describe("ModulePicker", () => {
     expect(order(commands.setDisabledScreens)).toBeLessThan(order(commands.setEnabledModules));
   });
 
+  it("drops screen choices of a module that ends up unselected", async () => {
+    renderIt();
+    fireEvent.click(await screen.findByRole("checkbox", { name: /^linear/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^inbox/i }));
+    fireEvent.click(screen.getByRole("checkbox", { name: /^linear/i }));
+    fireEvent.click(screen.getByRole("button", { name: /continue/i }));
+    await waitFor(() => expect(commands.setEnabledModules).toHaveBeenCalledWith([]));
+    expect(commands.setDisabledScreens).toHaveBeenCalledWith([]);
+  });
+
   it("submits selected ids on Enter", async () => {
     renderIt();
     fireEvent.click(await screen.findByRole("checkbox", { name: /^linear/i }));

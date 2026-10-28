@@ -44,12 +44,15 @@ export function ModulesSection() {
 
   const remove = async (id: ModuleId, close: () => void) => {
     close();
+    setBusy(true);
     try {
       await removeModuleData(id);
       void qc.invalidateQueries({ queryKey: MODULES_KEY });
       gooeyToast.success(`${MODULE_COPY[id].name} data removed`);
     } catch {
       gooeyToast.error(`Couldn't remove ${MODULE_COPY[id].name} data`);
+    } finally {
+      setBusy(false);
     }
   };
 
