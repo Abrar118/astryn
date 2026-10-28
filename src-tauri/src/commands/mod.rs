@@ -116,8 +116,10 @@ pub enum CmdError {
     GitHubNotConfigured,
     #[error("That documentation source no longer exists.")]
     DocsSourceNotFound,
-    #[error("That repository is already a documentation source.")]
+    #[error("That's already a documentation source.")]
     DuplicateDocsSource,
+    #[error("That folder can't be read.")]
+    DocsFolderUnavailable,
     #[error("GitHub rejected the request.")]
     GitHubApi,
     #[error("No Slack token is configured.")]
@@ -1499,12 +1501,18 @@ mod logic_tests {
             require_in(&st(&[]), ModuleId::Slack),
             Err(CmdError::ModuleDisabled)
         ));
-        // Docs enabled but no DocsSource provider.
+        // Reports enabled but no Tracker provider.
         assert!(matches!(
-            require_in(&st(&[ModuleId::Docs]), ModuleId::Docs),
+            require_in(&st(&[ModuleId::Reports]), ModuleId::Reports),
             Err(CmdError::ModuleDisabled)
         ));
-        assert!(require_in(&st(&[ModuleId::Docs, ModuleId::Github]), ModuleId::Docs).is_ok());
+        assert!(require_in(
+            &st(&[ModuleId::Reports, ModuleId::Linear]),
+            ModuleId::Reports
+        )
+        .is_ok());
+        // Docs needs no provider (local folders).
+        assert!(require_in(&st(&[ModuleId::Docs]), ModuleId::Docs).is_ok());
     }
 
     async fn temp_pool() -> (tempfile::TempDir, SqlitePool) {
