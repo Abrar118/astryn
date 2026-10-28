@@ -147,4 +147,8 @@ else null. Lists carry no build or merge status, so `ci_status = "none"`,
   legacy app passwords work with the username in the email field.
 - Pre-module installs that auto-enable everything on upgrade do not get Bitbucket
   turned on; it was never configured there.
+- Avatars are not shown for Bitbucket (initials fallback, one seam in
+  `bitbucket::account_avatar`): they come from several Atlassian/Gravatar hosts the CSP
+  does not allow, and widening CSP or proxying them is left until live verification.
+  No CSP or capability change in this work.
 - Live verification against a Bitbucket account is pending (no credentials available).
