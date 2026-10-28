@@ -18,10 +18,11 @@ pub enum ModuleId {
     Docs,
     Reports,
     LinkPreviews,
+    Clickup,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 7] = [
+    pub const ALL: [ModuleId; 8] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -29,6 +30,7 @@ impl ModuleId {
         ModuleId::Docs,
         ModuleId::Reports,
         ModuleId::LinkPreviews,
+        ModuleId::Clickup,
     ];
 }
 
@@ -68,7 +70,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 7] = [
+static MANIFEST: [ModuleSpec; 8] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -116,6 +118,13 @@ static MANIFEST: [ModuleSpec; 7] = [
         id: ModuleId::LinkPreviews,
         kind: K::Feature,
         provides: &[],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Clickup,
+        kind: K::Provider,
+        provides: &[C::DocsSource],
         requires: &[],
         optional: &[],
     },
@@ -243,6 +252,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "get_slack_status",
     "get_llm_config",
     "get_docs_status",
+    "get_clickup_status",
 ];
 
 /// The module that owns a registered Tauri command, if it is not core.
@@ -308,7 +318,11 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "list_docs_tree"
         | "get_doc_content"
         | "add_local_docs_source"
-        | "get_doc_pdf" => Some(ModuleId::Docs),
+        | "get_doc_pdf"
+        | "add_clickup_docs_source" => Some(ModuleId::Docs),
+        "set_clickup_token" | "clear_clickup_token" | "test_clickup_connection" => {
+            Some(ModuleId::Clickup)
+        }
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
         _ => None,
@@ -355,6 +369,7 @@ mod tests {
             ("github.rs", include_str!("../commands/github.rs")),
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
+            ("clickup.rs", include_str!("../commands/clickup.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
         ] {
             let src = src.replace("\r\n", "\n");
@@ -492,6 +507,18 @@ mod tests {
         assert!(missing_capabilities(ModuleId::Docs, &on).is_empty());
         assert!(is_active(ModuleId::Docs, &on));
         assert_eq!(spec(ModuleId::Docs).optional, &[Capability::DocsSource]);
+    }
+
+    #[test]
+    fn clickup_is_a_docs_source_provider() {
+        assert!(has_capability(
+            Capability::DocsSource,
+            &set(&[ModuleId::Clickup])
+        ));
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Clickup).unwrap(),
+            "\"clickup\""
+        );
     }
 
     #[test]

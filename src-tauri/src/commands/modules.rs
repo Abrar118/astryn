@@ -125,6 +125,12 @@ pub async fn remove_module_data_logic(
             }
             tx.commit().await.map_err(db_err)?;
         }
+        ModuleId::Clickup => {
+            db::docs::wipe_clickup_cache(pool).await.map_err(db_err)?;
+            store
+                .delete(super::clickup::CLICKUP_TOKEN_ACCOUNT)
+                .map_err(secret_err)?;
+        }
         // Nothing persisted: in-memory state only.
         ModuleId::Reports | ModuleId::LinkPreviews => {}
     }
@@ -151,6 +157,14 @@ fn bump_generations(
     }
 }
 
+/// Disabling ClickUp invalidates an in-flight Doc sync (kept separate so the
+/// shared signature above stays as other provider lanes extend it).
+fn bump_clickup_generation(disabled: &[ModuleId], clickup: &AtomicU64) {
+    if disabled.contains(&ModuleId::Clickup) {
+        clickup.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
 #[tauri::command]
 pub async fn list_modules(state: State<'_, AppState>) -> Result<ModulesView, CmdError> {
     let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
@@ -173,6 +187,7 @@ pub async fn set_enabled_modules(
         &state.slack_generation,
         &state.llm_generation,
     );
+    bump_clickup_generation(&disabled, &state.clickup_generation);
     let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
     Ok(list_modules_logic(&guard))
 }
@@ -184,6 +199,7 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         ModuleId::Linear => Some(state.workspace_lock.lock().await),
         ModuleId::Github | ModuleId::Docs => Some(state.github_lock.lock().await),
         ModuleId::Slack => Some(state.slack_lock.lock().await),
+        ModuleId::Clickup => Some(state.clickup_lock.lock().await),
         _ => None,
     };
     let snapshot = state
@@ -290,6 +306,51 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n.0, 0);
+    }
+
+    #[test]
+    fn disabling_clickup_bumps_its_generation() {
+        let c = AtomicU64::new(0);
+        bump_clickup_generation(&[ModuleId::Github], &c);
+        assert_eq!(c.load(Ordering::SeqCst), 0);
+        bump_clickup_generation(&[ModuleId::Clickup], &c);
+        assert_eq!(c.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn remove_clickup_wipes_its_pages_and_token_but_keeps_doc_entries() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        store.set("clickup_token", "pk").unwrap();
+        store.set("github_token", "ghp").unwrap();
+        db::docs::insert_clickup_docs_source(&pool, "Handbook", "901/abc-1", "now")
+            .await
+            .unwrap();
+        let id = db::docs::clickup_source_id("901/abc-1");
+        db::docs::replace_docs(
+            &pool,
+            &id,
+            &[db::docs::DocFile {
+                path: "p1".into(),
+                name: "Overview".into(),
+                kind: "blob".into(),
+                parent_path: "".into(),
+                sha: "p1".into(),
+                content: Some("# Hi".into()),
+            }],
+            "now",
+            None,
+            false,
+        )
+        .await
+        .unwrap();
+        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Clickup)
+            .await
+            .unwrap();
+        assert_eq!(store.get("clickup_token").unwrap(), None);
+        assert!(store.get("github_token").unwrap().is_some());
+        assert!(db::docs::list_docs(&pool, &id).await.unwrap().is_empty());
+        assert_eq!(db::docs::list_docs_sources(&pool).await.unwrap().len(), 1);
     }
 
     #[tokio::test]

@@ -27,6 +27,8 @@ pub enum DocsSourceKind {
     Github,
     /// A folder on this machine, read in place (never copied into the cache).
     Local,
+    /// A ClickUp Doc, its pages synced into `docs_files`.
+    Clickup,
 }
 
 impl DocsSourceKind {
@@ -34,6 +36,7 @@ impl DocsSourceKind {
         match s {
             "github" => Some(Self::Github),
             "local" => Some(Self::Local),
+            "clickup" => Some(Self::Clickup),
             _ => None,
         }
     }
@@ -87,6 +90,11 @@ impl SourceRow {
             (DocsSourceKind::Github, Some(o), Some(r), Some(b)) => {
                 Some(format!("https://github.com/{o}/{r}/tree/{b}"))
             }
+            (DocsSourceKind::Clickup, ..) => self
+                .location
+                .as_deref()
+                .and_then(crate::clickup::docs::from_location)
+                .map(|d| crate::clickup::docs::doc_url(&d)),
             _ => None,
         };
         Some(DocsSource {
@@ -169,6 +177,57 @@ pub async fn insert_local_docs_source(
     .execute(pool)
     .await?;
     Ok(result.rows_affected() > 0)
+}
+
+/// Settings key caching the ClickUp user name shown in Settings.
+pub const CLICKUP_USERNAME_KEY: &str = "clickup_username";
+
+/// Stable id for a ClickUp Doc source (same role as `source_id`).
+pub fn clickup_source_id(location: &str) -> String {
+    format!("clickup:{location}")
+}
+
+/// Append a ClickUp Doc source (`location` = `"{workspace_id}/{doc_id}"`).
+/// Returns `false` if that Doc is already a source.
+pub async fn insert_clickup_docs_source(
+    pool: &SqlitePool,
+    name: &str,
+    location: &str,
+    created_at: &str,
+) -> Result<bool, sqlx::Error> {
+    let result = sqlx::query(
+        "INSERT INTO docs_sources (id, kind, name, location, position, created_at)
+         VALUES (?1, 'clickup', ?2, ?3,
+                 (SELECT COALESCE(MAX(position) + 1, 0) FROM docs_sources), ?4)
+         ON CONFLICT(id) DO NOTHING",
+    )
+    .bind(clickup_source_id(location))
+    .bind(name)
+    .bind(location)
+    .bind(created_at)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected() > 0)
+}
+
+/// Drop every ClickUp Doc's cached pages and sync metadata (token change or
+/// module data removal). The configured Doc entries stay — they are Docs
+/// configuration, and a new token simply resyncs them.
+pub async fn wipe_clickup_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for table in ["docs_files", "docs_sync_meta"] {
+        sqlx::query(&format!(
+            "DELETE FROM {table} WHERE source_id IN
+               (SELECT id FROM docs_sources WHERE kind = 'clickup')"
+        ))
+        .execute(&mut *tx)
+        .await?;
+    }
+    sqlx::query("DELETE FROM settings WHERE key = ?1")
+        .bind(CLICKUP_USERNAME_KEY)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 /// Record a local folder scan (time, file count, truncated) without storing the
@@ -582,6 +641,53 @@ mod tests {
         assert_eq!(local.last_synced_at.as_deref(), Some("t1"));
         // No listing or content was cached.
         assert!(list_docs(&pool, &id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn clickup_docs_cache_their_pages_and_wipe_alone() {
+        let (_d, pool) = pool().await;
+        let gh = add(&pool, "Core", "acme", "core", "main").await;
+        assert!(
+            insert_clickup_docs_source(&pool, "Handbook", "901/abc-1", "now")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !insert_clickup_docs_source(&pool, "Again", "901/abc-1", "now")
+                .await
+                .unwrap()
+        );
+        let cu = clickup_source_id("901/abc-1");
+        assert_eq!(cu, "clickup:901/abc-1");
+
+        replace_docs(&pool, &gh, &[file("a.md", "", "a")], "t", None, false)
+            .await
+            .unwrap();
+        replace_docs(&pool, &cu, &[file("p1", "", "# Page")], "t", None, false)
+            .await
+            .unwrap();
+        crate::db::save_setting(&pool, CLICKUP_USERNAME_KEY, "Abrar")
+            .await
+            .unwrap();
+
+        let s = load_docs_source(&pool, &cu).await.unwrap().unwrap();
+        assert_eq!(s.kind, DocsSourceKind::Clickup);
+        assert_eq!(
+            s.url.as_deref(),
+            Some("https://app.clickup.com/901/v/dc/abc-1")
+        );
+        assert_eq!(s.file_count, 1);
+
+        wipe_clickup_cache(&pool).await.unwrap();
+        assert!(list_docs(&pool, &cu).await.unwrap().is_empty());
+        assert_eq!(list_docs(&pool, &gh).await.unwrap().len(), 1); // GitHub untouched
+        assert_eq!(list_docs_sources(&pool).await.unwrap().len(), 2); // entries kept
+        assert_eq!(
+            crate::db::load_setting(&pool, CLICKUP_USERNAME_KEY)
+                .await
+                .unwrap(),
+            None
+        );
     }
 
     #[tokio::test]

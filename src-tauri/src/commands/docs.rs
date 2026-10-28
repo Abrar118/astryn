@@ -5,7 +5,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::State;
 
+use super::clickup::{clickup_auth, CLICKUP_TOKEN_ACCOUNT};
 use super::{AppState, CmdError, GITHUB_TOKEN_ACCOUNT};
+use crate::clickup::{docs as cdocs, ClickUpCredentialProvider, ClickUpError};
 use crate::db::docs::{self as ddb, DocsSourceKind};
 use crate::github::docs::{self as gdocs, RawEntry};
 use crate::github::{GitHubCredentialProvider, GitHubError};
@@ -23,6 +25,8 @@ pub struct DocsSyncResult {
 #[serde(rename_all = "camelCase")]
 pub struct DocsStatus {
     pub token_present: bool,
+    /// Whether a ClickUp token is stored (ClickUp Doc sources need it to sync).
+    pub clickup_token_present: bool,
     pub source_count: i64,
 }
 
@@ -120,41 +124,138 @@ pub async fn get_docs_status_logic(
     store: Arc<dyn SecretStore>,
     pool: &SqlitePool,
 ) -> Result<DocsStatus, CmdError> {
-    let s = store.clone();
-    let token_present = tokio::task::spawn_blocking(move || s.get(GITHUB_TOKEN_ACCOUNT))
-        .await
-        .map_err(|_| CmdError::Internal)?
-        .map_err(|_| CmdError::SecretStore)?
-        .is_some();
+    let has = |account: &'static str| {
+        let s = store.clone();
+        async move {
+            tokio::task::spawn_blocking(move || s.get(account))
+                .await
+                .map_err(|_| CmdError::Internal)?
+                .map_err(|_| CmdError::SecretStore)
+                .map(|t| t.is_some())
+        }
+    };
+    let token_present = has(GITHUB_TOKEN_ACCOUNT).await?;
+    let clickup_token_present = has(CLICKUP_TOKEN_ACCOUNT).await?;
     let source_count = ddb::list_docs_sources(pool)
         .await
         .map_err(|_| CmdError::Internal)?
         .len() as i64;
     Ok(DocsStatus {
         token_present,
+        clickup_token_present,
         source_count,
     })
 }
 
+/// Which provider modules are on, for source availability.
+#[derive(Clone, Copy, Debug)]
+pub struct ActiveProviders {
+    pub github: bool,
+    pub clickup: bool,
+}
+
+impl ActiveProviders {
+    #[cfg(test)]
+    pub const ALL: Self = Self {
+        github: true,
+        clickup: true,
+    };
+}
+
 /// Whether a source's provider is on. Local folders need no provider.
-pub fn source_available(kind: DocsSourceKind, github_active: bool) -> bool {
+pub fn source_available(kind: DocsSourceKind, active: ActiveProviders) -> bool {
     match kind {
-        DocsSourceKind::Github => github_active,
+        DocsSourceKind::Github => active.github,
+        DocsSourceKind::Clickup => active.clickup,
         DocsSourceKind::Local => true,
     }
 }
 
 pub async fn list_docs_sources_logic(
     pool: &SqlitePool,
-    github_active: bool,
+    active: ActiveProviders,
 ) -> Result<Vec<ddb::DocsSource>, CmdError> {
     let mut sources = ddb::list_docs_sources(pool)
         .await
         .map_err(|_| CmdError::Internal)?;
     for s in &mut sources {
-        s.available = source_available(s.kind, github_active);
+        s.available = source_available(s.kind, active);
     }
     Ok(sources)
+}
+
+/// Validate a ClickUp Doc link, confirm the Doc is reachable with the stored
+/// token (its name becomes the default label), and append it as a source.
+pub async fn add_clickup_docs_source_logic<F, Fut>(
+    credentials: Arc<dyn ClickUpCredentialProvider>,
+    pool: &SqlitePool,
+    url: String,
+    name: Option<String>,
+    now: String,
+    fetch: F,
+) -> Result<ddb::DocsSource, CmdError>
+where
+    F: FnOnce(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, ClickUpError>>,
+{
+    let doc = cdocs::parse_doc_link(&url).ok_or(CmdError::InvalidClickUpLink)?;
+    let location = cdocs::location(&doc);
+    let id = ddb::clickup_source_id(&location);
+    // Answer a duplicate locally, before spending a request on it.
+    if ddb::load_docs_source(pool, &id)
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .is_some()
+    {
+        return Err(CmdError::DuplicateDocsSource);
+    }
+    let auth = clickup_auth(credentials).await?;
+    let doc_name = cdocs::parse_doc_name(&fetch(auth, cdocs::doc_path(&doc)).await?)?;
+    let label = name
+        .map(|n| n.trim().to_string())
+        .filter(|n| !n.is_empty())
+        .unwrap_or(doc_name);
+    let inserted = ddb::insert_clickup_docs_source(pool, &label, &location, &now)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    if !inserted {
+        return Err(CmdError::DuplicateDocsSource);
+    }
+    load_source(pool, &id).await
+}
+
+/// Fetch one ClickUp Doc's pages (any depth, as Markdown) into its slice of the
+/// cache. Aborts without writing if the token changed mid-fetch.
+pub async fn sync_clickup_logic<F, Fut>(
+    credentials: Arc<dyn ClickUpCredentialProvider>,
+    pool: &SqlitePool,
+    generation: &AtomicU64,
+    source: &ddb::DocsSource,
+    now: String,
+    fetch: F,
+) -> Result<DocsSyncResult, CmdError>
+where
+    F: FnOnce(String, String) -> Fut,
+    Fut: std::future::Future<Output = Result<serde_json::Value, ClickUpError>>,
+{
+    let doc = source
+        .location
+        .as_deref()
+        .and_then(cdocs::from_location)
+        .ok_or(CmdError::Internal)?;
+    let auth = clickup_auth(credentials).await?;
+    let gen0 = generation.load(Ordering::SeqCst);
+    let files = cdocs::pages_to_files(&fetch(auth, cdocs::pages_path(&doc)).await?)?;
+    if generation.load(Ordering::SeqCst) != gen0 {
+        return Err(CmdError::WorkspaceChanged);
+    }
+    ddb::replace_docs(pool, &source.id, &files, &now, None, false)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    Ok(DocsSyncResult {
+        file_count: files.len() as i64,
+        truncated: false,
+    })
 }
 
 async fn load_source(pool: &SqlitePool, id: &str) -> Result<ddb::DocsSource, CmdError> {
@@ -233,7 +334,9 @@ pub async fn list_source_tree_logic(
     source: &ddb::DocsSource,
 ) -> Result<Vec<ddb::DocNode>, CmdError> {
     match source.kind {
-        DocsSourceKind::Github => list_docs_logic(pool, source.id.clone()).await,
+        DocsSourceKind::Github | DocsSourceKind::Clickup => {
+            list_docs_logic(pool, source.id.clone()).await
+        }
         DocsSourceKind::Local => Ok(scan(local_root(source)?).await?.nodes),
     }
 }
@@ -260,7 +363,9 @@ pub async fn get_source_content_logic(
     path: String,
 ) -> Result<Option<String>, CmdError> {
     match source.kind {
-        DocsSourceKind::Github => get_doc_content_logic(pool, source.id.clone(), path).await,
+        DocsSourceKind::Github | DocsSourceKind::Clickup => {
+            get_doc_content_logic(pool, source.id.clone(), path).await
+        }
         DocsSourceKind::Local => {
             read_local(source, path, |full, format| match format {
                 local_docs::DocFormat::Pdf => None,
@@ -365,8 +470,23 @@ pub async fn sync_docs(
 ) -> Result<DocsSyncResult, CmdError> {
     state.require(crate::modules::ModuleId::Docs)?;
     let source = load_source(&state.pool, &source_id).await?;
-    if source.kind == DocsSourceKind::Local {
-        return rescan_local_logic(&state.pool, &source, now_iso()).await;
+    match source.kind {
+        DocsSourceKind::Local => return rescan_local_logic(&state.pool, &source, now_iso()).await,
+        DocsSourceKind::Clickup => {
+            state.require(crate::modules::ModuleId::Clickup)?;
+            let _g = state.clickup_lock.lock().await;
+            let client = state.clickup.clone();
+            return sync_clickup_logic(
+                state.clickup_credentials.clone(),
+                &state.pool,
+                &state.clickup_generation,
+                &source,
+                now_iso(),
+                move |auth, path| async move { client.get(&auth, &path).await },
+            )
+            .await;
+        }
+        DocsSourceKind::Github => {}
     }
     state.require(crate::modules::ModuleId::Github)?;
     let _g = state.github_lock.lock().await;
@@ -414,8 +534,34 @@ pub async fn list_docs_sources(
     state: State<'_, AppState>,
 ) -> Result<Vec<ddb::DocsSource>, CmdError> {
     state.require(crate::modules::ModuleId::Docs)?;
-    let github_active = state.module_active(crate::modules::ModuleId::Github);
-    list_docs_sources_logic(&state.pool, github_active).await
+    let active = ActiveProviders {
+        github: state.module_active(crate::modules::ModuleId::Github),
+        clickup: state.module_active(crate::modules::ModuleId::Clickup),
+    };
+    list_docs_sources_logic(&state.pool, active).await
+}
+
+/// Add a ClickUp Doc from its link. Owned by Docs (sources are Docs config) and
+/// also needs the ClickUp module, whose token checks the Doc exists.
+#[tauri::command]
+pub async fn add_clickup_docs_source(
+    state: State<'_, AppState>,
+    url: String,
+    name: Option<String>,
+) -> Result<ddb::DocsSource, CmdError> {
+    state.require(crate::modules::ModuleId::Docs)?;
+    state.require(crate::modules::ModuleId::Clickup)?;
+    let _g = state.clickup_lock.lock().await;
+    let client = state.clickup.clone();
+    add_clickup_docs_source_logic(
+        state.clickup_credentials.clone(),
+        &state.pool,
+        url,
+        name,
+        now_iso(),
+        move |auth, path| async move { client.get(&auth, &path).await },
+    )
+    .await
 }
 
 /// Open the native folder picker and add the chosen folder as a local source.
@@ -448,8 +594,10 @@ pub async fn add_local_docs_source(
 /// Load a source and refuse it while its provider is off.
 async fn usable_source(state: &AppState, source_id: &str) -> Result<ddb::DocsSource, CmdError> {
     let source = load_source(&state.pool, source_id).await?;
-    if source.kind == DocsSourceKind::Github {
-        state.require(crate::modules::ModuleId::Github)?;
+    match source.kind {
+        DocsSourceKind::Github => state.require(crate::modules::ModuleId::Github)?,
+        DocsSourceKind::Clickup => state.require(crate::modules::ModuleId::Clickup)?,
+        DocsSourceKind::Local => {}
     }
     Ok(source)
 }
@@ -745,7 +893,7 @@ mod tests {
             add_docs_source_logic(&pool, "not a url".into(), None, "now".into()).await,
             Err(CmdError::InvalidUrl)
         ));
-        assert!(list_docs_sources_logic(&pool, true)
+        assert!(list_docs_sources_logic(&pool, ActiveProviders::ALL)
             .await
             .unwrap()
             .is_empty());
@@ -761,7 +909,13 @@ mod tests {
             .await,
             Err(CmdError::DuplicateDocsSource)
         ));
-        assert_eq!(list_docs_sources_logic(&pool, true).await.unwrap().len(), 1);
+        assert_eq!(
+            list_docs_sources_logic(&pool, ActiveProviders::ALL)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 
     #[tokio::test]
@@ -875,7 +1029,15 @@ mod tests {
             .await
             .unwrap();
         assert_eq!((result.file_count, result.truncated), (3, false));
-        let listed = &list_docs_sources_logic(&pool, false).await.unwrap()[0];
+        let listed = &list_docs_sources_logic(
+            &pool,
+            ActiveProviders {
+                github: false,
+                clickup: true,
+            },
+        )
+        .await
+        .unwrap()[0];
         assert_eq!(listed.file_count, 3);
         assert_eq!(listed.last_synced_at.as_deref(), Some("t1"));
 
@@ -893,7 +1055,15 @@ mod tests {
         add(&pool, "acme/docs", None).await;
         let (_f, _local) = local_source(&pool).await;
 
-        let off = list_docs_sources_logic(&pool, false).await.unwrap();
+        let off = list_docs_sources_logic(
+            &pool,
+            ActiveProviders {
+                github: false,
+                clickup: true,
+            },
+        )
+        .await
+        .unwrap();
         assert_eq!(
             off.iter()
                 .map(|s| (s.kind, s.available))
@@ -903,11 +1073,216 @@ mod tests {
                 (DocsSourceKind::Local, true)
             ]
         );
-        assert!(list_docs_sources_logic(&pool, true)
+        assert!(list_docs_sources_logic(&pool, ActiveProviders::ALL)
             .await
             .unwrap()
             .iter()
             .all(|s| s.available));
+    }
+
+    const DOC_LINK: &str = "https://app.clickup.com/901/v/dc/abc-1/page-9";
+
+    fn clickup_creds(token: Option<&str>) -> Arc<dyn ClickUpCredentialProvider> {
+        Arc::new(crate::clickup::fake::FakeClickUpCreds(
+            token.map(String::from),
+        ))
+    }
+
+    async fn add_clickup(pool: &SqlitePool, name: Option<&str>) -> ddb::DocsSource {
+        add_clickup_docs_source_logic(
+            clickup_creds(Some("pk_x")),
+            pool,
+            DOC_LINK.into(),
+            name.map(String::from),
+            "now".into(),
+            |auth, path| async move {
+                assert_eq!(auth, "pk_x");
+                assert_eq!(path, "/v3/workspaces/901/docs/abc-1");
+                Ok(serde_json::json!({ "id": "abc-1", "name": "Handbook" }))
+            },
+        )
+        .await
+        .unwrap()
+    }
+
+    #[tokio::test]
+    async fn clickup_doc_is_added_from_its_link_and_named_after_the_doc() {
+        let (_d, pool) = pool().await;
+        let source = add_clickup(&pool, None).await;
+        assert_eq!(source.id, "clickup:901/abc-1");
+        assert_eq!(source.kind, DocsSourceKind::Clickup);
+        assert_eq!(source.name, "Handbook");
+        assert_eq!(
+            source.url.as_deref(),
+            Some("https://app.clickup.com/901/v/dc/abc-1")
+        );
+
+        // The same Doc again is refused before any request is made.
+        let again = add_clickup_docs_source_logic(
+            clickup_creds(Some("pk_x")),
+            &pool,
+            "901/abc-1".into(),
+            None,
+            "now".into(),
+            |_, _| async { panic!("no request for a duplicate") },
+        )
+        .await;
+        assert!(matches!(again, Err(CmdError::DuplicateDocsSource)));
+    }
+
+    #[tokio::test]
+    async fn clickup_add_honours_a_name_and_rejects_bad_links_and_missing_tokens() {
+        let (_d, pool) = pool().await;
+        assert_eq!(
+            add_clickup(&pool, Some("  Team wiki ")).await.name,
+            "Team wiki"
+        );
+
+        let fetch = |_: String, _: String| async { Ok(serde_json::json!({ "id": "x" })) };
+        assert!(matches!(
+            add_clickup_docs_source_logic(
+                clickup_creds(Some("pk")),
+                &pool,
+                "https://github.com/acme/docs".into(),
+                None,
+                "now".into(),
+                fetch
+            )
+            .await,
+            Err(CmdError::InvalidClickUpLink)
+        ));
+        assert!(matches!(
+            add_clickup_docs_source_logic(
+                clickup_creds(None),
+                &pool,
+                "901/other-doc".into(),
+                None,
+                "now".into(),
+                fetch
+            )
+            .await,
+            Err(CmdError::ClickUpNotConfigured)
+        ));
+        // A rejected token surfaces as a sanitized ClickUp error and adds nothing.
+        assert!(matches!(
+            add_clickup_docs_source_logic(
+                clickup_creds(Some("pk")),
+                &pool,
+                "901/other-doc".into(),
+                None,
+                "now".into(),
+                |_, _| async { Err(ClickUpError::Auth) }
+            )
+            .await,
+            Err(CmdError::ClickUpApi)
+        ));
+        assert_eq!(
+            list_docs_sources_logic(&pool, ActiveProviders::ALL)
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
+    }
+
+    fn pages() -> serde_json::Value {
+        serde_json::json!([
+            { "id": "p1", "name": "Overview", "content": "# Overview", "pages": [
+                { "id": "p2", "name": "Setup", "content": "Install." }
+            ]},
+            { "id": "p3", "name": "Old", "content": "x", "archived": true }
+        ])
+    }
+
+    #[tokio::test]
+    async fn clickup_sync_caches_pages_for_offline_reading() {
+        let (_d, pool) = pool().await;
+        let source = add_clickup(&pool, None).await;
+        let result = sync_clickup_logic(
+            clickup_creds(Some("pk_x")),
+            &pool,
+            &AtomicU64::new(0),
+            &source,
+            "t1".into(),
+            |_, path| async move {
+                assert_eq!(
+                    path,
+                    "/v3/workspaces/901/docs/abc-1/pages?max_page_depth=-1&content_format=text%2Fmd"
+                );
+                Ok(pages())
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.file_count, 2);
+
+        let tree = list_source_tree_logic(&pool, &source).await.unwrap();
+        assert_eq!(
+            tree.iter()
+                .map(|n| (n.path.as_str(), n.name.as_str(), n.parent_path.as_str()))
+                .collect::<Vec<_>>(),
+            [("p1", "Overview", ""), ("p1/p2", "Setup", "p1")]
+        );
+        assert_eq!(
+            get_source_content_logic(&pool, &source, "p1/p2".into())
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("Install.")
+        );
+        let listed = load_source(&pool, &source.id).await.unwrap();
+        assert_eq!(listed.file_count, 2);
+        assert_eq!(listed.last_synced_at.as_deref(), Some("t1"));
+    }
+
+    #[tokio::test]
+    async fn clickup_sync_drops_a_result_fetched_under_an_old_token() {
+        let (_d, pool) = pool().await;
+        let source = add_clickup(&pool, None).await;
+        let gen = AtomicU64::new(0);
+        let result = sync_clickup_logic(
+            clickup_creds(Some("pk_x")),
+            &pool,
+            &gen,
+            &source,
+            "t1".into(),
+            |_, _| {
+                gen.fetch_add(1, Ordering::SeqCst); // token swapped mid-fetch
+                async { Ok(pages()) }
+            },
+        )
+        .await;
+        assert!(matches!(result, Err(CmdError::WorkspaceChanged)));
+        assert!(list_source_tree_logic(&pool, &source)
+            .await
+            .unwrap()
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn clickup_docs_are_unavailable_while_clickup_is_off() {
+        let (_d, pool) = pool().await;
+        add_clickup(&pool, None).await;
+        let off = list_docs_sources_logic(
+            &pool,
+            ActiveProviders {
+                github: true,
+                clickup: false,
+            },
+        )
+        .await
+        .unwrap();
+        assert!(!off[0].available);
+    }
+
+    #[tokio::test]
+    async fn status_reports_the_clickup_token_separately() {
+        let (_d, pool) = pool().await;
+        let store: Arc<dyn SecretStore> = Arc::new(FakeSecretStore::default());
+        store.set(CLICKUP_TOKEN_ACCOUNT, "pk").unwrap();
+        let s = get_docs_status_logic(store, &pool).await.unwrap();
+        assert!(s.clickup_token_present);
+        assert!(!s.token_present);
     }
 
     #[tokio::test]
@@ -929,7 +1304,7 @@ mod tests {
         .unwrap();
 
         remove_docs_source_logic(&pool, id.clone()).await.unwrap();
-        assert!(list_docs_sources_logic(&pool, true)
+        assert!(list_docs_sources_logic(&pool, ActiveProviders::ALL)
             .await
             .unwrap()
             .is_empty());
