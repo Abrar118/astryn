@@ -38,6 +38,7 @@ const code = {
 
 beforeEach(() => {
   cmd.getTeamsStatus.mockResolvedValue({ state: "not_configured" });
+  cmd.cancelTeamsSignIn.mockResolvedValue(undefined);
 });
 afterEach(() => {
   cleanup();
@@ -74,6 +75,46 @@ describe("TeamsSection", () => {
     expect(cmd.pollTeamsSignIn).toHaveBeenCalledTimes(2);
     expect(screen.queryByText("ABCD1234")).toBeNull();
     expect((screen.getByLabelText(/application \(client\) id/i) as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps polling through a transient error", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    cmd.startTeamsSignIn.mockResolvedValue(code);
+    cmd.pollTeamsSignIn
+      .mockRejectedValueOnce("Could not reach Microsoft Teams.")
+      .mockRejectedValueOnce("Rate limit reached. Try again shortly.")
+      .mockResolvedValueOnce({ state: "connected", userName: "Ada" });
+    await startSignIn();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Connected as Ada"));
+    expect(cmd.pollTeamsSignIn).toHaveBeenCalledTimes(3);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it("stops on a terminal poll error", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    cmd.startTeamsSignIn.mockResolvedValue(code);
+    cmd.pollTeamsSignIn.mockRejectedValue("Microsoft sign-in didn't complete. Start again.");
+    await startSignIn();
+    await act(async () => { await vi.advanceTimersByTimeAsync(4000); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalled());
+    expect(cmd.pollTeamsSignIn).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("ABCD1234")).toBeNull();
+  });
+
+  it("cancels the pending sign-in when the section unmounts", async () => {
+    cmd.startTeamsSignIn.mockResolvedValue(code);
+    cmd.cancelTeamsSignIn.mockResolvedValue(undefined);
+    cmd.pollTeamsSignIn.mockResolvedValue({ state: "pending", interval: 60 });
+    await startSignIn();
+    cleanup();
+    expect(cmd.cancelTeamsSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not cancel on unmount when nothing is pending", () => {
+    render(<TeamsSection />, { wrapper });
+    cleanup();
+    expect(cmd.cancelTeamsSignIn).not.toHaveBeenCalled();
   });
 
   it("cancel stops the sign-in", async () => {

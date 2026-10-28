@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
@@ -18,6 +18,12 @@ import {
 } from "@/lib/commands";
 import { clearTeamsQueries } from "@/lib/queries";
 import { SectionHeader } from "../SectionHeader";
+
+/** Sanitized poll errors worth retrying: the pending sign-in is still alive in Rust. */
+const TRANSIENT_POLL_ERRORS = new Set([
+  "Could not reach Microsoft Teams.",
+  "Rate limit reached. Try again shortly.",
+]);
 
 /**
  * Microsoft Teams sign-in via the OAuth device-code flow: the user supplies
@@ -56,6 +62,12 @@ export function TeamsSection() {
           }
         } catch (err) {
           if (cancelled) return;
+          // Network blips and rate limits leave the sign-in pending; the code's
+          // expiry turns into a terminal error from Rust.
+          if (TRANSIENT_POLL_ERRORS.has(errorText(err))) {
+            schedule(pending.interval);
+            return;
+          }
           setPending(null);
           gooeyToast.error("Teams sign-in failed", { description: errorText(err) });
         }
@@ -68,6 +80,16 @@ export function TeamsSection() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pending]);
+
+  // Leaving the section mid-sign-in abandons it, so drop the pending code in Rust too.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
+  useEffect(
+    () => () => {
+      if (pendingRef.current) cancelTeamsSignIn().catch(() => {});
+    },
+    [],
+  );
 
   const testMut = useMutation({
     mutationFn: () => testTeamsConnection(),
