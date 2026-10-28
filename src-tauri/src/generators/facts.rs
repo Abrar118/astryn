@@ -76,13 +76,92 @@ const ISSUE_COLS: &str = "identifier, title, state_name, project_name, due_date"
 /// urgent(1) first, none(0) last — same rank the agenda uses.
 const PRIO_ORDER: &str = "CASE priority WHEN 0 THEN 5 ELSE priority END, identifier";
 
+/// A tracker whose cached tasks feed the report (module spec 3). Each active
+/// tracker contributes its own sections; they are concatenated in order.
+#[derive(Debug, Clone, PartialEq)]
+pub enum FactSource {
+    /// Linear's issue cache, scoped to the viewer.
+    Linear { viewer_id: String },
+}
+
+/// The task sections one tracker contributes.
+#[derive(Debug, Default)]
+struct TaskFacts {
+    completed: Vec<FactIssue>,
+    in_progress: Vec<FactIssue>,
+    blocked: Vec<BlockedIssue>,
+    due_today: Vec<FactIssue>,
+    new_this_week: Vec<FactIssue>,
+}
+
+impl TaskFacts {
+    fn extend(&mut self, other: TaskFacts) {
+        self.completed.extend(other.completed);
+        self.in_progress.extend(other.in_progress);
+        self.blocked.extend(other.blocked);
+        self.due_today.extend(other.due_today);
+        self.new_this_week.extend(other.new_this_week);
+    }
+}
+
 pub async fn assemble(
     pool: &SqlitePool,
-    viewer_id: &str,
+    sources: &[FactSource],
     viewer_name: &str,
     window: WindowArgs,
     include_code_host: bool,
 ) -> Result<ReportFacts, sqlx::Error> {
+    let mut tasks = TaskFacts::default();
+    for source in sources {
+        let part = match source {
+            FactSource::Linear { viewer_id } => linear_facts(pool, viewer_id, &window).await?,
+        };
+        tasks.extend(part);
+    }
+
+    const PR_COLS: &str = "repo, number, title, draft, ci_status, review_decision";
+    let merged_prs: Vec<FactPr> = if include_code_host {
+        sqlx::query_as(&format!(
+            "SELECT {PR_COLS} FROM github_prs
+         WHERE bucket = 'merged' AND merged_at >= ?1
+         ORDER BY merged_at"
+        ))
+        .bind(&window.since)
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    let open_prs: Vec<FactPr> = if include_code_host {
+        sqlx::query_as(&format!(
+            "SELECT {PR_COLS} FROM github_prs WHERE bucket = 'mine' ORDER BY updated_at DESC"
+        ))
+        .fetch_all(pool)
+        .await?
+    } else {
+        Vec::new()
+    };
+
+    Ok(ReportFacts {
+        window,
+        viewer_name: viewer_name.to_string(),
+        completed: tasks.completed,
+        in_progress: tasks.in_progress,
+        blocked: tasks.blocked,
+        due_today: tasks.due_today,
+        new_this_week: tasks.new_this_week,
+        merged_prs,
+        open_prs,
+    })
+}
+
+/// Linear's sections, read from the issue cache.
+async fn linear_facts(
+    pool: &SqlitePool,
+    viewer_id: &str,
+    window: &WindowArgs,
+) -> Result<TaskFacts, sqlx::Error> {
     // `completed_at` is NULL for rows cached before migration 0015; fall back
     // to updated_at (a completed issue's last touch is usually its completion).
     let completed: Vec<FactIssue> = sqlx::query_as(&format!(
@@ -138,40 +217,12 @@ pub async fn assemble(
         ReportKind::Daily => Vec::new(),
     };
 
-    const PR_COLS: &str = "repo, number, title, draft, ci_status, review_decision";
-    let merged_prs: Vec<FactPr> = if include_code_host {
-        sqlx::query_as(&format!(
-            "SELECT {PR_COLS} FROM github_prs
-         WHERE bucket = 'merged' AND merged_at >= ?1
-         ORDER BY merged_at"
-        ))
-        .bind(&window.since)
-        .fetch_all(pool)
-        .await?
-    } else {
-        Vec::new()
-    };
-
-    let open_prs: Vec<FactPr> = if include_code_host {
-        sqlx::query_as(&format!(
-            "SELECT {PR_COLS} FROM github_prs WHERE bucket = 'mine' ORDER BY updated_at DESC"
-        ))
-        .fetch_all(pool)
-        .await?
-    } else {
-        Vec::new()
-    };
-
-    Ok(ReportFacts {
-        window,
-        viewer_name: viewer_name.to_string(),
+    Ok(TaskFacts {
         completed,
         in_progress,
         blocked,
         due_today,
         new_this_week,
-        merged_prs,
-        open_prs,
     })
 }
 
@@ -440,6 +491,29 @@ mod tests {
         tx.commit().await.unwrap();
     }
 
+    fn linear(viewer_id: &str) -> Vec<FactSource> {
+        vec![FactSource::Linear {
+            viewer_id: viewer_id.into(),
+        }]
+    }
+
+    #[tokio::test]
+    async fn no_tracker_sources_means_no_task_sections() {
+        let (_d, pool) = pool().await;
+        let mut started = rec("1", "started");
+        started.priority = 1;
+        insert(&pool, &started).await;
+        let f = assemble(&pool, &[], "Abrar", daily_window(), true)
+            .await
+            .unwrap();
+        assert!(f.in_progress.is_empty());
+        assert!(f.completed.is_empty());
+        let with = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
+            .await
+            .unwrap();
+        assert_eq!(with.in_progress.len(), 1);
+    }
+
     fn daily_window() -> WindowArgs {
         WindowArgs {
             kind: ReportKind::Daily,
@@ -476,7 +550,7 @@ mod tests {
         wip.due_date = Some("2026-07-26".into());
         insert(&pool, &wip).await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
+        let f = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
             .await
             .unwrap();
         let ids: Vec<&str> = f.completed.iter().map(|i| i.identifier.as_str()).collect();
@@ -522,7 +596,7 @@ mod tests {
         )
         .await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
+        let f = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
             .await
             .unwrap();
         assert_eq!(f.blocked.len(), 1);
@@ -539,7 +613,9 @@ mod tests {
 
         let mut w = daily_window();
         w.kind = ReportKind::Weekly;
-        let f = assemble(&pool, "me", "Abrar", w, true).await.unwrap();
+        let f = assemble(&pool, &linear("me"), "Abrar", w, true)
+            .await
+            .unwrap();
         assert_eq!(f.new_this_week[0].identifier, "AST-1");
         assert!(f.due_today.is_empty());
     }
@@ -565,7 +641,7 @@ mod tests {
             .await
             .unwrap();
         }
-        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
+        let f = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
             .await
             .unwrap();
         assert_eq!(f.merged_prs.len(), 1);
@@ -594,12 +670,12 @@ mod tests {
             .await
             .unwrap();
         }
-        let off = assemble(&pool, "me", "Abrar", daily_window(), false)
+        let off = assemble(&pool, &linear("me"), "Abrar", daily_window(), false)
             .await
             .unwrap();
         assert!(off.merged_prs.is_empty());
         assert!(off.open_prs.is_empty());
-        let on = assemble(&pool, "me", "Abrar", daily_window(), true)
+        let on = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
             .await
             .unwrap();
         assert_eq!(on.merged_prs.len(), 1);
@@ -614,7 +690,7 @@ mod tests {
         done.project_name = Some("Astryn".into());
         insert(&pool, &done).await;
 
-        let f = assemble(&pool, "me", "Abrar", daily_window(), true)
+        let f = assemble(&pool, &linear("me"), "Abrar", daily_window(), true)
             .await
             .unwrap();
         let sheet = render_fact_sheet(&f);

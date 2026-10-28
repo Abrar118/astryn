@@ -205,20 +205,26 @@ pub async fn generate_report(
     gen_id: u64,
 ) -> Result<ReportResult, CmdError> {
     state.require(crate::modules::ModuleId::Reports)?;
-    let (viewer_id, viewer_name) = db::load_me(&state.pool)
-        .await
-        .map_err(|_| CmdError::Internal)?
-        .ok_or(CmdError::NotConfigured)?;
+    // One fact source per active tracker; Linear needs its cached viewer.
+    let mut sources = Vec::new();
+    let mut viewer_name = None;
+    if state.module_active(crate::modules::ModuleId::Linear) {
+        if let Some((viewer_id, name)) = db::load_me(&state.pool)
+            .await
+            .map_err(|_| CmdError::Internal)?
+        {
+            sources.push(facts::FactSource::Linear { viewer_id });
+            viewer_name = Some(name);
+        }
+    }
+    if sources.is_empty() {
+        return Err(CmdError::NotConfigured);
+    }
+    let viewer_name = viewer_name.unwrap_or_default();
     let include_code_host = state.capability(crate::modules::Capability::CodeHost);
-    let f = facts::assemble(
-        &state.pool,
-        &viewer_id,
-        &viewer_name,
-        args,
-        include_code_host,
-    )
-    .await
-    .map_err(|_| CmdError::Internal)?;
+    let f = facts::assemble(&state.pool, &sources, &viewer_name, args, include_code_host)
+        .await
+        .map_err(|_| CmdError::Internal)?;
     let fact_sheet = facts::render_fact_sheet(&f);
 
     // Claim the generation slot: any newer generate_report supersedes us.
