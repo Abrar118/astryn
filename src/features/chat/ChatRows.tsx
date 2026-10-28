@@ -1,20 +1,11 @@
 import { useState } from "react";
-import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronRight, Hash, MessageCircle, MessagesSquare } from "lucide-react";
 import { useWorkspace } from "@/lib/tabs";
-import { slackDeepLink, type SlackConversation, type SlackMessage, type SlackThread } from "@/lib/commands";
-import { SlackReader } from "./SlackReader";
+import type { ChatConversation, ChatMessage, ChatThread } from "@/lib/commands";
+import type { ChatProvider } from "./provider";
+import { ChatReader } from "./ChatReader";
 
-async function openInSlack(conversationId: string, ts?: string | null) {
-  try {
-    const link = await slackDeepLink(conversationId, ts ?? null);
-    await openUrl(link.app);
-  } catch {
-    /* sanitized: a missing identity just no-ops the open */
-  }
-}
-
-function LinearChip({ msg }: { msg: SlackMessage }) {
+function LinearChip({ msg }: { msg: ChatMessage }) {
   const { openIssueTab } = useWorkspace();
   if (!msg.linearIssueId || !msg.linearIdentifier) return null;
   return (
@@ -29,20 +20,20 @@ function LinearChip({ msg }: { msg: SlackMessage }) {
   );
 }
 
-function OpenInSlack({ conversationId, ts }: { conversationId: string; ts?: string | null }) {
+function OpenButton({ provider, conversationId, ts }: { provider: ChatProvider; conversationId: string; ts?: string | null }) {
   return (
     <button
       type="button"
-      aria-label="Open in Slack"
-      onClick={() => openInSlack(conversationId, ts)}
+      aria-label={provider.openLabel}
+      onClick={() => void provider.open(conversationId, ts)}
       className="shrink-0 rounded-md border border-border/70 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-foreground/[0.06]"
     >
-      Open in Slack
+      {provider.openLabel}
     </button>
   );
 }
 
-export function SlackRow({ conv }: { conv: SlackConversation }) {
+export function ChatConversationRow({ conv, provider }: { conv: ChatConversation; provider: ChatProvider }) {
   const [open, setOpen] = useState(false);
   const Icon = conv.kind === "channel" ? Hash : MessageCircle;
   return (
@@ -58,14 +49,14 @@ export function SlackRow({ conv }: { conv: SlackConversation }) {
           </span>
           {conv.hasMention && <span className="shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">@</span>}
         </button>
-        <OpenInSlack conversationId={conv.id} ts={conv.latestTs} />
+        <OpenButton provider={provider} conversationId={conv.id} ts={conv.latestTs} />
       </div>
-      {open && <SlackReader conversationId={conv.id} />}
+      {open && <ChatReader conversationId={conv.id} load={provider.loadMessages} />}
     </div>
   );
 }
 
-export function SlackMentionRow({ msg, convName }: { msg: SlackMessage; convName: string }) {
+export function ChatMentionRow({ msg, convName, provider }: { msg: ChatMessage; convName: string; provider: ChatProvider }) {
   return (
     <div className="group flex items-start gap-3 border-b border-border/50 px-5 py-3 transition-colors last:border-b-0 hover:bg-foreground/[0.03]">
       <span className="mt-0.5 shrink-0 text-xs font-medium text-muted-foreground">{convName}</span>
@@ -77,13 +68,13 @@ export function SlackMentionRow({ msg, convName }: { msg: SlackMessage; convName
       </div>
       <span className="flex shrink-0 items-center gap-2">
         <LinearChip msg={msg} />
-        <OpenInSlack conversationId={msg.conversationId} ts={msg.ts} />
+        <OpenButton provider={provider} conversationId={msg.conversationId} ts={msg.ts} />
       </span>
     </div>
   );
 }
 
-export function SlackThreadRow({ thread }: { thread: SlackThread }) {
+export function ChatThreadRow({ thread, provider }: { thread: ChatThread; provider: ChatProvider }) {
   const [open, setOpen] = useState(false);
   return (
     <div className="border-b border-border/50 last:border-b-0">
@@ -95,9 +86,9 @@ export function SlackThreadRow({ thread }: { thread: SlackThread }) {
           <span className="min-w-0 truncate text-xs text-muted-foreground">{thread.unreadReplies} new repl{thread.unreadReplies === 1 ? "y" : "ies"}</span>
           {thread.hasMention && <span className="ml-auto shrink-0 rounded-md bg-primary/15 px-1.5 py-0.5 text-[11px] font-medium text-primary">@</span>}
         </button>
-        <OpenInSlack conversationId={thread.conversationId} ts={thread.threadTs} />
+        <OpenButton provider={provider} conversationId={thread.conversationId} ts={thread.threadTs} />
       </div>
-      {open && <SlackReader conversationId={thread.conversationId} />}
+      {open && <ChatReader conversationId={thread.conversationId} load={provider.loadMessages} />}
     </div>
   );
 }

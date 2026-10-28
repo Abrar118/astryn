@@ -197,6 +197,13 @@ pub async fn test_llm_connection(state: State<'_, AppState>) -> Result<Vec<Strin
 /// Assemble facts from the cache, then (when an endpoint is configured) stream
 /// the LLM's prose to the UI as `report:token` events. The facts always come
 /// back even if the LLM pass fails — the report degrades, never errors away.
+/// The fact sheet's PR facts come from `github_prs`, so they need the GitHub
+/// module itself active — not just any `code-host` provider (Bitbucket PRs are
+/// not part of reports yet, and a disabled GitHub keeps its cache).
+fn include_github_prs(enabled: &std::collections::BTreeSet<crate::modules::ModuleId>) -> bool {
+    crate::modules::is_active(crate::modules::ModuleId::Github, enabled)
+}
+
 #[tauri::command]
 pub async fn generate_report(
     app: AppHandle,
@@ -221,7 +228,7 @@ pub async fn generate_report(
         return Err(CmdError::NotConfigured);
     }
     let viewer_name = viewer_name.unwrap_or_default();
-    let include_code_host = state.capability(crate::modules::Capability::CodeHost);
+    let include_code_host = include_github_prs(&state.modules_read().enabled);
     let f = facts::assemble(&state.pool, &sources, &viewer_name, args, include_code_host)
         .await
         .map_err(|_| CmdError::Internal)?;
@@ -383,5 +390,22 @@ mod tests {
             None
         );
         assert!(store.get(LLM_API_KEY_ACCOUNT).unwrap().is_none());
+    }
+
+    #[test]
+    fn report_pr_facts_need_an_active_github_module() {
+        use crate::modules::ModuleId;
+        let set = |ids: &[ModuleId]| ids.iter().copied().collect();
+        // Bitbucket provides `code-host` too, but reports read only github_prs.
+        assert!(!include_github_prs(&set(&[
+            ModuleId::Reports,
+            ModuleId::Linear,
+            ModuleId::Bitbucket
+        ])));
+        assert!(include_github_prs(&set(&[
+            ModuleId::Reports,
+            ModuleId::Linear,
+            ModuleId::Github
+        ])));
     }
 }

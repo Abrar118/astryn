@@ -19,12 +19,15 @@ import {
   getConnectionStatus,
   getDocsStatus,
   getDocContent,
+  getDocPdf,
   getGithubContributions,
   getGithubPrDiff,
   getGithubPrDetail,
   getGithubStatus,
   getSlackCatchup,
   getSlackStatus,
+  getTeamsCatchup,
+  getTeamsStatus,
   getIssueDetail,
   getMe,
   listCycles,
@@ -45,6 +48,7 @@ import {
   syncGithubPrs,
   syncIssues,
   syncSlackCatchup,
+  syncTeamsCatchup,
   updateAttachment,
   updateComment,
   type CalendarIssue,
@@ -65,7 +69,7 @@ import {
   replaceComment,
   replaceReaction,
 } from "@/features/drawer/comments/commentCache";
-import { useModules } from "./modules";
+import { useModules, viewActive } from "./modules";
 import type { ModuleId } from "./commands";
 
 /** The sanitized rejection every provider command returns while its module is off. */
@@ -74,6 +78,22 @@ export const MODULE_OFF_MESSAGE = "That module is turned off.";
 /** True for the rejection above: the module was switched off mid-flight, so there is nothing to tell the user. */
 export function isModuleOff(err: unknown): boolean {
   return errorText(err) === MODULE_OFF_MESSAGE;
+}
+
+/** The sanitized rejection `sync_issues` returns when no Linear key is stored. */
+const LINEAR_KEY_MISSING_MESSAGE = "No Linear key is configured.";
+
+/**
+ * Report a Linear sync failure. A missing key is a setup step, not a failure:
+ * background syncs stay silent and a manual sync points to Settings.
+ */
+export function reportSyncError(err: unknown, manual: boolean) {
+  if (isModuleOff(err)) return;
+  if (errorText(err) === LINEAR_KEY_MISSING_MESSAGE) {
+    if (manual) gooeyToast.info("Connect Linear to sync", { description: "Add your API key in Settings → Linear." });
+    return;
+  }
+  gooeyToast.error("Sync failed", { description: errorText(err) });
 }
 
 /** Whether `id` is on; every query that reaches a guarded command must AND this into `enabled`. */
@@ -91,7 +111,7 @@ const WORKSPACE_KEYS = [
   ["users", "linear"], ["filter-options", "linear"], ["workflow-states", "linear"],
   ["issue"], ["labels"], ["cycles"], ["me"], ["notifications"],
   // Cross-module joins read the Linear cache too (PR to issue links, Slack issue refs).
-  ["github-prs"], ["slack-catchup"],
+  ["github-prs"], ["slack-catchup"], ["bitbucket-prs"], ["teams-catchup"],
 ];
 
 /**
@@ -139,9 +159,10 @@ export function useUsers() {
   return useQuery({ queryKey: ["users", "linear"], queryFn: listUsers, staleTime: 5 * 60_000, enabled: on });
 }
 
-/** Inbox notifications (live fetch, refreshed alongside the sync loop). */
+/** Inbox notifications (live fetch, refreshed alongside the sync loop). Off with the Inbox screen. */
 export function useNotifications({ enabled = true }: { enabled?: boolean } = {}) {
-  const on = useOwnerActive("linear");
+  const { isActive, disabledScreens } = useModules();
+  const on = viewActive("inbox", isActive, disabledScreens);
   return useQuery({
     queryKey: ["notifications"],
     queryFn: listNotifications,
@@ -399,7 +420,7 @@ export function useRemoveReaction() {
 export function useSyncLoop(enabled: boolean) {
   const qc = useQueryClient();
   const mut = useMutation({
-    mutationFn: () => syncIssues(false),
+    mutationFn: (_manual: boolean) => syncIssues(false),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["calendar", "linear"] });
       qc.invalidateQueries({ queryKey: ["unscheduled", "linear"] });
@@ -408,22 +429,20 @@ export function useSyncLoop(enabled: boolean) {
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-    onError: (err) => {
-      if (!isModuleOff(err)) gooeyToast.error("Sync failed", { description: errorText(err) });
-    },
+    onError: (err, manual) => reportSyncError(err, manual),
   });
   // Stable refs: trigger once when enabled, then on an interval.
   useEffect(() => {
     if (!enabled) return;
-    mut.mutate();
-    const t = setInterval(() => mut.mutate(), 5 * 60_000);
+    mut.mutate(false);
+    const t = setInterval(() => mut.mutate(false), 5 * 60_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
   return {
     isSyncing: mut.isPending,
     refresh: () => {
-      if (enabled) mut.mutate();
+      if (enabled) mut.mutate(true);
     },
   };
 }
@@ -570,6 +589,14 @@ export function clearGithubQueries(qc: QueryClient) {
   }
 }
 
+/** A ClickUp token change wipes ClickUp's cached Doc pages, so drop docs reads too. */
+export function clearClickupQueries(qc: QueryClient) {
+  for (const key of [["clickup-status"], ["docs-status"], ["docs-sources"], ["docs-tree"], ["doc-content"], ["docs-sync"]]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
+}
+
 export function useDocsStatus() {
   const on = useOwnerActive("docs");
   return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus, enabled: on });
@@ -580,19 +607,53 @@ export function useDocsSources() {
   return useQuery({ queryKey: ["docs-sources"], queryFn: listDocsSources, enabled: on });
 }
 
+// Trees and documents only change on an explicit refresh (`useDocsSync`
+// invalidates them), so they never go stale on their own. For a local folder
+// this is what keeps a rescan on-demand rather than on every focus.
 export function useDocsTree(sourceId: string | null) {
   return useQuery({
     queryKey: ["docs-tree", sourceId],
     queryFn: () => listDocsTree(sourceId as string),
     enabled: !!sourceId,
+    staleTime: Infinity,
   });
 }
 
-export function useDocContent(sourceId: string | null, path: string | null) {
+export function useDocContent(sourceId: string | null, path: string | null, enabled = true) {
   return useQuery({
     queryKey: ["doc-content", sourceId, path],
     queryFn: () => getDocContent(sourceId as string, path as string),
-    enabled: !!sourceId && !!path,
+    enabled: enabled && !!sourceId && !!path,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * Rescan a local folder on request: re-run its tree query (one scan, which also
+ * records the scan time and count in Rust) and re-read its open documents.
+ * Local folders never auto-sync, so this is the only thing that rescans.
+ */
+export function useDocsRescan() {
+  const qc = useQueryClient();
+  return (sourceId: string) =>
+    Promise.all([
+      qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] }),
+      qc.invalidateQueries({ queryKey: ["doc-content", sourceId] }),
+    ]).then(() =>
+      Promise.all([
+        qc.invalidateQueries({ queryKey: ["docs-sources"] }),
+        qc.invalidateQueries({ queryKey: ["docs-status"] }),
+      ]),
+    );
+}
+
+/** A local PDF's bytes; shares the `doc-content` prefix so a refresh re-reads it. */
+export function useDocPdf(sourceId: string | null, path: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ["doc-content", sourceId, path, "pdf"],
+    queryFn: () => getDocPdf(sourceId as string, path as string),
+    enabled: enabled && !!sourceId && !!path,
+    staleTime: Infinity,
   });
 }
 
@@ -602,7 +663,9 @@ export function useDocContent(sourceId: string | null, path: string | null) {
  * configured repo up front would multiply that), then on a manual refetch.
  * Keying the query by source means switching back to an already-synced source is
  * a cache read, not another round trip.
- * Disabled (no network) when no token is configured or no source is selected.
+ * For a local folder a "sync" is a rescan of the folder (no network).
+ * Disabled when the caller says the source can't sync (GitHub source without a
+ * token, unavailable provider) or no source is selected.
  */
 export function useDocsSync(sourceId: string | null, enabled: boolean) {
   const qc = useQueryClient();
@@ -665,6 +728,48 @@ export function useSlackSync(enabled: boolean) {
 
 export function clearSlackQueries(qc: QueryClient) {
   for (const key of [["slack-status"], ["slack-catchup"], ["slack-sync"]]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
+}
+
+/** Offline status (keychain + cached identity); exempt from the module guard. */
+export function useTeamsStatus() {
+  return useQuery({ queryKey: ["teams-status"], queryFn: getTeamsStatus });
+}
+
+export function useTeamsCatchup() {
+  const on = useOwnerActive("teams");
+  return useQuery({ queryKey: ["teams-catchup"], queryFn: getTeamsCatchup, enabled: on });
+}
+
+/**
+ * Background Teams sync: on mount + every 5 min while signed in, then refresh
+ * the cached board. Disabled when not configured (no grant -> no network).
+ */
+export function useTeamsSync(enabled: boolean) {
+  const qc = useQueryClient();
+  const on = useOwnerActive("teams");
+  return useQuery({
+    queryKey: ["teams-sync"],
+    enabled: enabled && on,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      try {
+        const summary = await syncTeamsCatchup();
+        await qc.invalidateQueries({ queryKey: ["teams-catchup"] });
+        return summary;
+      } catch (err) {
+        if (!isModuleOff(err)) gooeyToast.error("Couldn't refresh Teams", { description: errorText(err) });
+        throw err;
+      }
+    },
+  });
+}
+
+export function clearTeamsQueries(qc: QueryClient) {
+  for (const key of [["teams-status"], ["teams-catchup"], ["teams-sync"]]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }

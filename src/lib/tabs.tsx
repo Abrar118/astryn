@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { tabActive, useModules } from "./modules";
+import { tabActive, useModules, viewActive } from "./modules";
 import {
   parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
   splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer, moveTab as moveTabAtReducer,
@@ -57,28 +57,36 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     }
   }, [state]);
 
-  // Tabs of a module that is off (or turned off later) close; nothing is dropped while modules load.
-  const { data: modulesData, isActive } = useModules();
+  // Tabs of a module or screen that is off (or turned off later) close; nothing is dropped while modules load.
+  const { data: modulesData, isActive, disabledScreens } = useModules();
+  const shown = (view: ViewKind) => viewActive(view, isActive, disabledScreens);
   useEffect(() => {
     if (!modulesData) return;
-    setState((s) => closeTabsWhere(s, (t) => !tabActive(t, isActive)));
+    setState((s) => closeTabsWhere(s, (t) => !tabActive(t, isActive, disabledScreens)));
     // isActive is rebuilt every render; modulesData is the real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulesData]);
+  // Every opener goes through these, so no shortcut, link or button can open a hidden view.
+  const newTabView = (view: ViewKind): ViewKind => (shown(view) ? view : "dashboard");
+  const ifShown = (view: ViewKind, open: () => void) => {
+    if (shown(view)) open();
+  };
 
   const focusedPane = state.panes.find((p) => p.id === state.focusedPaneId) ?? state.panes[0];
   const active = focusedPane.tabs.find((t) => t.id === focusedPane.activeTabId) ?? focusedPane.tabs[0];
 
   const setActiveView = (view: ViewKind) =>
-    setState((s) => {
-      const fp = s.panes.find((p) => p.id === s.focusedPaneId) ?? s.panes[0];
-      const panes = s.panes.map((p) =>
-        p.id === fp.id
-          ? { ...p, tabs: p.tabs.map((t) => (t.id === fp.activeTabId ? { id: t.id, view } : t)) }
-          : p,
-      );
-      return { ...s, panes };
-    });
+    ifShown(view, () =>
+      setState((s) => {
+        const fp = s.panes.find((p) => p.id === s.focusedPaneId) ?? s.panes[0];
+        const panes = s.panes.map((p) =>
+          p.id === fp.id
+            ? { ...p, tabs: p.tabs.map((t) => (t.id === fp.activeTabId ? { id: t.id, view } : t)) }
+            : p,
+        );
+        return { ...s, panes };
+      }),
+    );
 
   const value: Ctx = {
     panes: state.panes,
@@ -87,14 +95,14 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     tabs: focusedPane.tabs,
     active,
     setActiveView,
-    addTab: (view: ViewKind = "calendar") => setState((s) => addTabInReducer(s, s.focusedPaneId, view)),
-    addTabIn: (paneId, view = "calendar") => setState((s) => addTabInReducer(s, paneId, view)),
+    addTab: (view: ViewKind = "calendar") => setState((s) => addTabInReducer(s, s.focusedPaneId, newTabView(view))),
+    addTabIn: (paneId, view = "calendar") => setState((s) => addTabInReducer(s, paneId, newTabView(view))),
     closeTab: (id) => setState((s) => closeTabIn(s, id)),
     selectTab: (id) => setState((s) => selectTabIn(s, id)),
-    openIssueTab: (issueId) => setState((s) => openIssueTabAcross(s, issueId)),
-    openIssueInRightSplit: (issueId) => setState((s) => openRightReducer(s, issueId)),
-    openDocTab: (sourceId, docPath) => setState((s) => openDocTabAcross(s, sourceId, docPath)),
-    openDocToSide: (sourceId, docPath) => setState((s) => openDocRightReducer(s, sourceId, docPath)),
+    openIssueTab: (issueId) => ifShown("issue", () => setState((s) => openIssueTabAcross(s, issueId))),
+    openIssueInRightSplit: (issueId) => ifShown("issue", () => setState((s) => openRightReducer(s, issueId))),
+    openDocTab: (sourceId, docPath) => ifShown("docs", () => setState((s) => openDocTabAcross(s, sourceId, docPath))),
+    openDocToSide: (sourceId, docPath) => ifShown("docs", () => setState((s) => openDocRightReducer(s, sourceId, docPath))),
     splitTabRight: (tabId) => setState((s) => splitTabRightReducer(s, tabId)),
     moveTabToOtherPane: (tabId) => setState((s) => moveTabReducer(s, tabId)),
     moveTab: (tabId, targetPaneId, targetIndex) => setState((s) => moveTabAtReducer(s, tabId, targetPaneId, targetIndex)),

@@ -1,4 +1,3 @@
-use serde::Serialize;
 use serde_json::Value;
 
 use super::repositories::RepositoryName;
@@ -8,28 +7,7 @@ pub const PR_DIFF_PAGE_SIZE: usize = 100;
 pub const PR_DIFF_MAX_PAGES: usize = 30;
 pub const PR_DIFF_MAX_FILES: usize = PR_DIFF_PAGE_SIZE * PR_DIFF_MAX_PAGES;
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct PrDiffFile {
-    pub path: String,
-    pub previous_path: Option<String>,
-    pub change_type: String,
-    pub additions: i64,
-    pub deletions: i64,
-    pub changes: i64,
-    pub patch: Option<String>,
-    pub blob_url: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct PrDiff {
-    pub repo: String,
-    pub number: i64,
-    pub files: Vec<PrDiffFile>,
-    pub total_files: usize,
-    pub truncated: bool,
-}
+pub use crate::code_host::{PrDiff, PrDiffFile};
 
 fn required_string(value: &Value, key: &str) -> Result<String, GitHubError> {
     value

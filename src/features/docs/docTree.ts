@@ -35,8 +35,12 @@ function cmp(a: DocTreeNode, b: DocTreeNode): number {
   return 0;
 }
 
-/** Build a nested, sorted tree from the flat cached entries. */
-export function buildDocTree(flat: DocNode[]): DocTreeNode[] {
+/**
+ * Build a nested tree from the flat cached entries. Siblings are sorted (README
+ * first, numeric prefix, name) unless `keepOrder` is set, which keeps the order
+ * the source gave — ClickUp pages arrive in the order their author arranged.
+ */
+export function buildDocTree(flat: DocNode[], { keepOrder = false } = {}): DocTreeNode[] {
   const byPath = new Map<string, DocTreeNode>();
   for (const e of flat) {
     byPath.set(e.path, {
@@ -58,7 +62,7 @@ export function buildDocTree(flat: DocNode[]): DocTreeNode[] {
     nodes.sort(cmp);
     for (const n of nodes) sortRec(n.children);
   };
-  sortRec(roots);
+  if (!keepOrder) sortRec(roots);
   return roots;
 }
 
