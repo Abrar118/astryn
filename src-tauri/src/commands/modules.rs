@@ -184,6 +184,20 @@ pub async fn remove_module_data_logic(
     Ok(())
 }
 
+/// Remove a module's data while holding the module write lock, so the module
+/// cannot be re-enabled between the "is it disabled?" check and the wipe.
+/// The std read guard is released before any await; only the async lock spans the work.
+pub async fn remove_module_data_locked(
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
+    modules: &RwLock<ModuleState>,
+    id: ModuleId,
+) -> Result<(), CmdError> {
+    let _w = MODULES_WRITE.lock().await;
+    let snapshot = modules.read().map_err(|_| CmdError::Internal)?.clone();
+    remove_module_data_logic(pool, store, &snapshot, id).await
+}
+
 /// Bump the generation counter of every disabled provider.
 fn bump_generations(
     disabled: &[ModuleId],
@@ -246,12 +260,7 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         ModuleId::Slack => Some(state.slack_lock.lock().await),
         _ => None,
     };
-    let snapshot = state
-        .modules
-        .read()
-        .map_err(|_| CmdError::Internal)?
-        .clone();
-    remove_module_data_logic(&state.pool, state.secret_store.as_ref(), &snapshot, id).await
+    remove_module_data_locked(&state.pool, state.secret_store.as_ref(), &state.modules, id).await
 }
 
 #[cfg(test)]
@@ -333,6 +342,36 @@ mod tests {
             json["disabledScreens"],
             serde_json::json!(["list", "inbox"])
         );
+    }
+
+    #[test]
+    fn missing_linear_key_message_matches_the_frontend() {
+        // src/lib/queries.ts LINEAR_KEY_MISSING_MESSAGE matches this text exactly.
+        assert_eq!(
+            CmdError::NotConfigured.to_string(),
+            "No Linear key is configured."
+        );
+    }
+
+    #[tokio::test]
+    async fn removal_waits_for_module_writes_and_rechecks_state() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        store.set("slack_user_token", "x").unwrap();
+        let lock = RwLock::new(state(&[]));
+        let held = MODULES_WRITE.lock().await;
+        let pending = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack),
+        )
+        .await;
+        assert!(pending.is_err(), "removal ran during a module write");
+        // The write re-enables Slack; the removal must see that and refuse.
+        *lock.write().unwrap() = state(&[ModuleId::Slack]);
+        drop(held);
+        let r = remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack).await;
+        assert!(matches!(r, Err(CmdError::InvalidInput)));
+        assert!(store.get("slack_user_token").unwrap().is_some());
     }
 
     #[tokio::test]
