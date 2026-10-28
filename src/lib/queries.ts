@@ -83,7 +83,7 @@ import {
   matchesFilters,
   reconcileList,
 } from "./optimistic";
-import { useModules } from "./modules";
+import { useModules, viewActive } from "./modules";
 import type { ModuleId } from "./commands";
 
 /** The sanitized rejection every provider command returns while its module is off. */
@@ -92,6 +92,22 @@ export const MODULE_OFF_MESSAGE = "That module is turned off.";
 /** True for the rejection above: the module was switched off mid-flight, so there is nothing to tell the user. */
 export function isModuleOff(err: unknown): boolean {
   return errorText(err) === MODULE_OFF_MESSAGE;
+}
+
+/** The sanitized rejection `sync_issues` returns when no Linear key is stored. */
+const LINEAR_KEY_MISSING_MESSAGE = "No Linear key is configured.";
+
+/**
+ * Report a Linear sync failure. A missing key is a setup step, not a failure:
+ * background syncs stay silent and a manual sync points to Settings.
+ */
+export function reportSyncError(err: unknown, manual: boolean) {
+  if (isModuleOff(err)) return;
+  if (errorText(err) === LINEAR_KEY_MISSING_MESSAGE) {
+    if (manual) gooeyToast.info("Connect Linear to sync", { description: "Add your API key in Settings → Linear." });
+    return;
+  }
+  gooeyToast.error("Sync failed", { description: errorText(err) });
 }
 
 /** Whether `id` is on; every query that reaches a guarded command must AND this into `enabled`. */
@@ -218,9 +234,10 @@ export function useUsers() {
   return useQuery({ queryKey: ["users"], queryFn: listUsers, staleTime: 5 * 60_000, enabled: on });
 }
 
-/** Inbox notifications (live fetch, refreshed alongside the sync loop). */
+/** Inbox notifications (live fetch, refreshed alongside the sync loop). Off with the Inbox screen. */
 export function useNotifications({ enabled = true }: { enabled?: boolean } = {}) {
-  const on = useOwnerActive("linear");
+  const { isActive, disabledScreens } = useModules();
+  const on = viewActive("inbox", isActive, disabledScreens);
   return useQuery({
     queryKey: ["notifications"],
     queryFn: listNotifications,
@@ -657,7 +674,7 @@ export function useRemoveReaction() {
 export function useSyncLoop(enabled: boolean) {
   const qc = useQueryClient();
   const mut = useMutation({
-    mutationFn: () => syncIssues(false),
+    mutationFn: (_manual: boolean) => syncIssues(false),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["calendar"] });
       qc.invalidateQueries({ queryKey: ["unscheduled"] });
@@ -666,22 +683,20 @@ export function useSyncLoop(enabled: boolean) {
       qc.invalidateQueries({ queryKey: ["me"] });
       qc.invalidateQueries({ queryKey: ["notifications"] });
     },
-    onError: (err) => {
-      if (!isModuleOff(err)) gooeyToast.error("Sync failed", { description: errorText(err) });
-    },
+    onError: (err, manual) => reportSyncError(err, manual),
   });
   // Stable refs: trigger once when enabled, then on an interval.
   useEffect(() => {
     if (!enabled) return;
-    mut.mutate();
-    const t = setInterval(() => mut.mutate(), 5 * 60_000);
+    mut.mutate(false);
+    const t = setInterval(() => mut.mutate(false), 5 * 60_000);
     return () => clearInterval(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled]);
   return {
     isSyncing: mut.isPending,
     refresh: () => {
-      if (enabled) mut.mutate();
+      if (enabled) mut.mutate(true);
     },
   };
 }
