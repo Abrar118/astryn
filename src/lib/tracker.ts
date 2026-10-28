@@ -18,8 +18,10 @@ import {
   updateIssue,
   type CalendarIssue,
   type FilterOptions,
+  type IssueDetailResult,
   type IssueFilters,
   type IssueListItem,
+  type LiveDetail,
   type Me,
   type ModuleId,
   type Relation,
@@ -29,8 +31,12 @@ import {
   type WorkflowState,
 } from "./commands";
 
-/** Every tracker the app can merge. Ids of non-Linear trackers carry a prefix (see `trackerOf`). */
-export type TrackerId = "linear";
+/**
+ * Every tracker the app can merge: the modules that provide the `tracker`
+ * capability (`TRACKER_MODULES` in modules.ts, checked against the adapters by
+ * a test). Ids of non-Linear trackers carry a prefix (see `trackerOf`).
+ */
+export type TrackerId = Extract<ModuleId, "linear">;
 
 /** A task row. Field meanings are tracker-neutral (team = workflow scope, cycle = iteration, …). */
 export type Task = IssueListItem;
@@ -47,20 +53,9 @@ export type StatusCategory = "triage" | "backlog" | "unstarted" | "started" | "c
 /** Filter sentinel: assigned to the viewer of each tracker. */
 export const ME = "@me";
 
-export const TRACKERS: Record<TrackerId, { module: ModuleId; label: string }> = {
-  linear: { module: "linear", label: "Linear" },
-};
-
-export const TRACKER_IDS = Object.keys(TRACKERS) as TrackerId[];
-
 /** The tracker that owns a task id. Linear ids are bare; other trackers prefix theirs. */
 export function trackerOf(_id: string): TrackerId {
   return "linear";
-}
-
-/** True while at least one tracker module is active (the `tracker` capability). */
-export function trackerModulesActive(isActive: (id: ModuleId) => boolean): boolean {
-  return TRACKER_IDS.some((t) => isActive(TRACKERS[t].module));
 }
 
 /**
@@ -77,6 +72,26 @@ export function resolveFilters(
   return viewer ? { ...filters, assigneeId: viewer } : null;
 }
 
+/**
+ * Concrete filters for every tracker. When `ME` is asked for but no tracker
+ * knows its viewer (e.g. Linear's identity isn't cached yet), the assignee
+ * filter is dropped rather than showing an empty screen.
+ */
+export function resolveAllFilters(
+  trackers: TrackerId[],
+  filters: TaskFilters,
+  viewerIds: Partial<Record<TrackerId, string>>,
+): [TrackerId, TaskFilters][] {
+  if (filters.assigneeId === ME && !trackers.some((t) => viewerIds[t])) {
+    const { assigneeId: _ignored, ...rest } = filters;
+    return trackers.map((t) => [t, rest]);
+  }
+  return trackers.flatMap((t) => {
+    const f = resolveFilters(t, filters, viewerIds);
+    return f ? [[t, f] as [TrackerId, TaskFilters]] : [];
+  });
+}
+
 export type TrackerAdapter = {
   listTasks: (filters: TaskFilters) => Promise<Task[]>;
   listCalendar: (args: { start: string; end: string } & TaskFilters) => Promise<TaskSummary[]>;
@@ -91,7 +106,30 @@ export type TrackerAdapter = {
   update: (id: string, patch: TaskPatch) => Promise<unknown>;
   remove: (id: string) => Promise<void>;
   createRelation: (taskId: string, relatedId: string, type: RelationType) => Promise<void>;
+  /** Where the task drawer caches this tracker's detail. */
+  detailKey: (id: string) => readonly unknown[];
+  /** Apply a patch to that cached detail, for optimistic edits. Pure. */
+  patchDetail: (cached: unknown, patch: TaskPatch) => unknown;
 };
+
+/** Merge a patch's changed fields into a cached Linear detail result (any branch). */
+export function patchLinearDetail(cached: unknown, patch: TaskPatch): IssueDetailResult {
+  const result = cached as IssueDetailResult;
+  const d = { ...(result.detail as Record<string, unknown>) };
+  if (patch.title !== undefined) d.title = patch.title;
+  if (patch.priority !== undefined) d.priority = patch.priority;
+  if (patch.dueDate !== undefined) d.dueDate = patch.dueDate;
+  if (patch.assigneeId !== undefined) d.assigneeId = patch.assigneeId;
+  if (patch.description !== undefined) d.description = patch.description;
+  if (patch.stateId !== undefined) {
+    d.stateId = patch.stateId;
+    if (result.source === "live") {
+      const st = (result.detail as LiveDetail).teamStates.find((s) => s.id === patch.stateId);
+      if (st) { d.stateName = st.name; d.stateType = st.type; d.stateColor = st.color; }
+    }
+  }
+  return { ...result, detail: d } as IssueDetailResult;
+}
 
 // Bindings are wrapped so the commands are only touched when called (tests mock them partially).
 export const TRACKER_ADAPTERS: Record<TrackerId, TrackerAdapter> = {
@@ -108,5 +146,7 @@ export const TRACKER_ADAPTERS: Record<TrackerId, TrackerAdapter> = {
     update: (id, patch) => updateIssue(id, patch),
     remove: (id) => deleteIssue(id),
     createRelation: (taskId, relatedId, type) => createIssueRelation(taskId, relatedId, type),
+    detailKey: (id) => ["issue", id],
+    patchDetail: patchLinearDetail,
   },
 };

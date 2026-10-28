@@ -82,13 +82,11 @@ function useOwnerActive(id: ModuleId): boolean {
 }
 
 /**
- * Drop every workspace-scoped query so the renderer cannot keep showing the old
- * workspace's data after the Rust cache is wiped (key set/clear). Call this on
- * BOTH success and failure of set/clear — the Rust wipe happens before the
- * keyring write, so a failed write still leaves an empty cache.
+ * Queries that read the Linear workspace cache. Tracker data is keyed
+ * `[root, tracker, …]` (taskQueries.ts), so only the `"linear"` entries are
+ * listed; other trackers' cached tasks are untouched by a Linear wipe.
  */
 const WORKSPACE_KEYS = [
-  // Tracker data is keyed [root, tracker, …] (taskQueries.ts); only Linear's entries go.
   ["calendar", "linear"], ["unscheduled", "linear"], ["issues", "linear"], ["relations", "linear"],
   ["users", "linear"], ["filter-options", "linear"], ["workflow-states", "linear"],
   ["issue"], ["labels"], ["cycles"], ["me"], ["notifications"],
@@ -96,6 +94,12 @@ const WORKSPACE_KEYS = [
   ["github-prs"], ["slack-catchup"],
 ];
 
+/**
+ * Drop every Linear-workspace query so the renderer cannot keep showing the old
+ * workspace's data after the Rust cache is wiped (key set/clear). Call this on
+ * BOTH success and failure of set/clear — the Rust wipe happens before the
+ * keyring write, so a failed write still leaves an empty cache.
+ */
 export function clearWorkspaceQueries(qc: QueryClient) {
   for (const key of WORKSPACE_KEYS) {
     qc.cancelQueries({ queryKey: key });

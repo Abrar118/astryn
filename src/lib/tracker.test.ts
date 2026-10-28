@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ME, resolveFilters, trackerOf, trackerModulesActive } from "./tracker";
+import { ME, TRACKER_ADAPTERS, resolveAllFilters, resolveFilters, trackerOf } from "./tracker";
+import { TRACKER_MODULES, trackerModulesActive } from "./modules";
 
 describe("trackerOf", () => {
   it("treats bare ids as Linear", () => {
@@ -24,8 +25,22 @@ describe("resolveFilters", () => {
   });
 });
 
-describe("trackerModulesActive", () => {
-  it("is true while any tracker module is active", () => {
+describe("resolveAllFilters", () => {
+  it("resolves ME per tracker when a viewer is known", () => {
+    expect(resolveAllFilters(["linear"], { assigneeId: ME }, { linear: "v1" })).toEqual([["linear", { assigneeId: "v1" }]]);
+  });
+
+  it("drops the assignee filter when no tracker knows its viewer, instead of showing nothing", () => {
+    expect(resolveAllFilters(["linear"], { assigneeId: ME, teamId: "t" }, {})).toEqual([["linear", { teamId: "t" }]]);
+  });
+});
+
+describe("tracker registry", () => {
+  it("has an adapter for exactly the modules that provide the tracker capability", () => {
+    expect([...TRACKER_MODULES].sort()).toEqual(Object.keys(TRACKER_ADAPTERS).sort());
+  });
+
+  it("is active while any tracker module is active", () => {
     expect(trackerModulesActive((id) => id === "linear")).toBe(true);
     expect(trackerModulesActive(() => false)).toBe(false);
   });
