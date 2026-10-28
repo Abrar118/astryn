@@ -353,10 +353,8 @@ mod tests {
         set_enabled_modules_logic(&pool, &lock, vec![ModuleId::Slack])
             .await
             .unwrap();
-        assert_eq!(
-            *lock.read().unwrap(),
-            modules::load_state(&pool).await.unwrap()
-        );
+        let loaded = modules::load_state(&pool).await.unwrap();
+        assert_eq!(*lock.read().unwrap(), loaded);
     }
 
     #[test]
