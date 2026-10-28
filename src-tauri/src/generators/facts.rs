@@ -82,6 +82,8 @@ const PRIO_ORDER: &str = "CASE priority WHEN 0 THEN 5 ELSE priority END, identif
 pub enum FactSource {
     /// Linear's issue cache, scoped to the viewer.
     Linear { viewer_id: String },
+    /// Local tasks assigned to me (the source of truth, not a cache).
+    LocalTasks,
 }
 
 /// The task sections one tracker contributes.
@@ -115,6 +117,7 @@ pub async fn assemble(
     for source in sources {
         let part = match source {
             FactSource::Linear { viewer_id } => linear_facts(pool, viewer_id, &window).await?,
+            FactSource::LocalTasks => local_facts(pool, &window).await?,
         };
         tasks.extend(part);
     }
@@ -217,6 +220,108 @@ async fn linear_facts(
         ReportKind::Daily => Vec::new(),
     };
 
+    Ok(TaskFacts {
+        completed,
+        in_progress,
+        blocked,
+        due_today,
+        new_this_week,
+    })
+}
+
+/// Local tasks assigned to me, as fact rows (identifier = list key + number).
+const LOCAL_SELECT: &str =
+    "SELECT l.key || '-' || t.number AS identifier, t.title, s.name AS state_name,
+        l.name AS project_name, t.due_date
+    FROM lt_tasks t JOIN lt_lists l ON l.id = t.list_id
+    LEFT JOIN lt_statuses s ON s.id = t.status_id
+    WHERE t.assigned_to_me = 1";
+const LOCAL_PRIO: &str = "CASE t.priority WHEN 0 THEN 5 ELSE t.priority END, identifier";
+
+/// Local tasks' sections, read from the local-tasks tables.
+async fn local_facts(pool: &SqlitePool, window: &WindowArgs) -> Result<TaskFacts, sqlx::Error> {
+    let completed = sqlx::query_as(&format!(
+        "{LOCAL_SELECT} AND s.category = 'completed' AND COALESCE(t.completed_at, t.updated_at) >= ?1
+         ORDER BY COALESCE(t.completed_at, t.updated_at)"
+    ))
+    .bind(&window.since)
+    .fetch_all(pool)
+    .await?;
+    let in_progress = sqlx::query_as(&format!(
+        "{LOCAL_SELECT} AND s.category = 'started' ORDER BY {LOCAL_PRIO}"
+    ))
+    .fetch_all(pool)
+    .await?;
+    let due_today = match window.kind {
+        ReportKind::Daily => {
+            sqlx::query_as(&format!(
+                "{LOCAL_SELECT} AND t.due_date = ?1
+                   AND COALESCE(s.category, '') NOT IN ('completed','canceled')
+                 ORDER BY {LOCAL_PRIO}"
+            ))
+            .bind(&window.today)
+            .fetch_all(pool)
+            .await?
+        }
+        ReportKind::Weekly => Vec::new(),
+    };
+    let new_this_week = match window.kind {
+        ReportKind::Weekly => {
+            sqlx::query_as(&format!(
+                "{LOCAL_SELECT} AND t.created_at >= ?1 ORDER BY t.created_at"
+            ))
+            .bind(&window.since)
+            .fetch_all(pool)
+            .await?
+        }
+        ReportKind::Daily => Vec::new(),
+    };
+
+    #[derive(sqlx::FromRow)]
+    struct BlockedRow {
+        identifier: String,
+        title: String,
+        state_name: Option<String>,
+        project_name: Option<String>,
+        due_date: Option<String>,
+        blocker: String,
+    }
+    let rows: Vec<BlockedRow> = sqlx::query_as(
+        "SELECT l.key || '-' || t.number AS identifier, t.title, s.name AS state_name, l.name AS project_name,
+                t.due_date, bl.key || '-' || b.number || ' (' || b.title || ')' AS blocker
+         FROM lt_relations r
+         JOIN lt_tasks t ON t.id = r.related_id
+         JOIN lt_lists l ON l.id = t.list_id
+         LEFT JOIN lt_statuses s ON s.id = t.status_id
+         JOIN lt_tasks b ON b.id = r.task_id
+         JOIN lt_lists bl ON bl.id = b.list_id
+         LEFT JOIN lt_statuses bs ON bs.id = b.status_id
+         WHERE r.type = 'blocks' AND t.assigned_to_me = 1
+           AND COALESCE(s.category, '') NOT IN ('completed','canceled')
+           AND COALESCE(bs.category, '') NOT IN ('completed','canceled')
+         ORDER BY identifier, blocker",
+    )
+    .fetch_all(pool)
+    .await?;
+    let mut blocked: Vec<BlockedIssue> = Vec::new();
+    for r in rows {
+        match blocked
+            .last_mut()
+            .filter(|b| b.issue.identifier == r.identifier)
+        {
+            Some(b) => b.blockers.push(r.blocker),
+            None => blocked.push(BlockedIssue {
+                issue: FactIssue {
+                    identifier: r.identifier,
+                    title: r.title,
+                    state_name: r.state_name,
+                    project_name: r.project_name,
+                    due_date: r.due_date,
+                },
+                blockers: vec![r.blocker],
+            }),
+        }
+    }
     Ok(TaskFacts {
         completed,
         in_progress,
@@ -495,6 +600,60 @@ mod tests {
         vec![FactSource::Linear {
             viewer_id: viewer_id.into(),
         }]
+    }
+
+    #[tokio::test]
+    async fn local_tasks_feed_their_own_sections() {
+        use crate::local_tasks::db as lt;
+        let (_d, pool) = pool().await;
+        lt::ensure_seeded(&pool).await.unwrap();
+        let tree = lt::load_tree(&pool).await.unwrap();
+        let list = tree.lists[0].id.clone();
+        let status = |cat: &str| {
+            tree.statuses
+                .iter()
+                .find(|s| s.category == cat)
+                .unwrap()
+                .id
+                .clone()
+        };
+        let mk = |title: &str, state: String, due: Option<&str>| lt::CreateTaskInput {
+            list_id: list.clone(),
+            title: title.into(),
+            status_id: Some(state),
+            assigned_to_me: Some(true),
+            due_date: due.map(Into::into),
+            ..Default::default()
+        };
+        let doing = lt::create_task(&pool, &mk("Doing", status("started"), None))
+            .await
+            .unwrap();
+        let blocker = lt::create_task(
+            &pool,
+            &mk("Blocker", status("unstarted"), Some("2026-07-26")),
+        )
+        .await
+        .unwrap();
+        lt::create_relation(&pool, &blocker.id, &doing.id, "blocks")
+            .await
+            .unwrap();
+        let mut theirs = mk("Not mine", status("started"), None);
+        theirs.assigned_to_me = Some(false);
+        lt::create_task(&pool, &theirs).await.unwrap();
+
+        let f = assemble(
+            &pool,
+            &[FactSource::LocalTasks],
+            "Me",
+            daily_window(),
+            false,
+        )
+        .await
+        .unwrap();
+        assert_eq!(f.in_progress.len(), 1);
+        assert_eq!(f.in_progress[0].identifier, "TASK-1");
+        assert_eq!(f.due_today[0].title, "Blocker");
+        assert_eq!(f.blocked[0].blockers, vec!["TASK-2 (Blocker)".to_string()]);
     }
 
     #[tokio::test]
