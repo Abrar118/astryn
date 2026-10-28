@@ -12,6 +12,7 @@ const setParams = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
 vi.mock("@/lib/queries", () => ({
   invalidateWorkspaceQueries: vi.fn(),
+  reportSyncError: vi.fn(),
   useIssues: () => ({ data: [{ id: "iss-1", identifier: "AB-1", title: "First", url: "u", stateColor: "#fff", labels: [] }] }),
 }));
 vi.mock("@tanstack/react-query", () => ({ useQueryClient: () => ({}) }));
@@ -19,9 +20,10 @@ vi.mock("react-router-dom", () => ({ useNavigate: () => vi.fn(), useSearchParams
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 const modulesActive = vi.hoisted(() => ({ current: (_id: string): boolean => true }));
 const capsActive = vi.hoisted(() => ({ current: (_cap: string): boolean => true }));
+const screensOff = vi.hoisted(() => ({ current: [] as string[] }));
 vi.mock("@/lib/modules", async (orig) => ({
   ...(await orig<typeof import("@/lib/modules")>()),
-  useModules: () => ({ isActive: (id: string) => modulesActive.current(id), hasCapability: (c: string) => capsActive.current(c), ready: true }),
+  useModules: () => ({ isActive: (id: string) => modulesActive.current(id), hasCapability: (c: string) => capsActive.current(c), disabledScreens: screensOff.current, ready: true }),
 }));
 vi.mock("./CreateIssueModal", () => ({ CreateIssueModal: () => null }));
 
@@ -36,6 +38,7 @@ afterEach(() => {
   cleanup();
   modulesActive.current = () => true;
   capsActive.current = () => true;
+  screensOff.current = [];
   ws.openIssueInRightSplit.mockReset();
   ws.setActiveView.mockReset();
   ws.addTab.mockReset();
@@ -144,6 +147,15 @@ describe("CommandPalette module gating", () => {
     }
     fireEvent.click(screen.getByText("Open new tab"));
     expect(ws.addTab).toHaveBeenCalledWith("dashboard");
+  });
+
+  it("omits switched-off screens from Go to", () => {
+    screensOff.current = ["inbox", "graph"];
+    openPalette();
+    expect(screen.queryByText("Go to Inbox")).toBeNull();
+    expect(screen.queryByText("Go to Dependencies")).toBeNull();
+    expect(screen.getByText("Go to Issues")).toBeTruthy();
+    expect(screen.getByText("Go to Calendar")).toBeTruthy();
   });
 
   it("offers Slack, Docs and Reports when their modules are active", () => {

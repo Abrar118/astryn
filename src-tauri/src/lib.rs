@@ -1,4 +1,5 @@
 mod bitbucket;
+mod clickup;
 mod code_host;
 mod commands;
 mod db;
@@ -7,6 +8,7 @@ mod github;
 mod issue_ref;
 mod linear;
 mod link_preview;
+mod local_docs;
 mod modules;
 mod secrets;
 mod slack;
@@ -102,6 +104,9 @@ pub fn run() {
                 .expect("failed to recover pending issue deletions");
             let module_state = tauri::async_runtime::block_on(modules::load_state(&pool))
                 .expect("failed to load module state");
+            let disabled_screens =
+                tauri::async_runtime::block_on(modules::screens::load_disabled(&pool))
+                    .expect("failed to load screen state");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -125,10 +130,18 @@ pub fn run() {
                 )),
                 bitbucket::BitbucketClient::new().expect("failed to build Bitbucket HTTP client"),
             );
+            let clickup_credentials: Arc<dyn clickup::ClickUpCredentialProvider> =
+                Arc::new(clickup::PersonalTokenProvider::new(
+                    store.clone(),
+                    commands::clickup::CLICKUP_TOKEN_ACCOUNT,
+                ));
+            let clickup =
+                clickup::ClickUpClient::new().expect("failed to build ClickUp HTTP client");
 
             app.manage(AppState {
                 pool,
                 modules: std::sync::RwLock::new(module_state),
+                screens: std::sync::RwLock::new(disabled_screens),
                 secret_store: store,
                 credentials,
                 linear,
@@ -150,6 +163,10 @@ pub fn run() {
                 slack,
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
+                clickup_credentials,
+                clickup,
+                clickup_lock: tokio::sync::Mutex::new(()),
+                clickup_generation: std::sync::atomic::AtomicU64::new(0),
                 llm_generation: std::sync::atomic::AtomicU64::new(0),
                 bitbucket,
             });
@@ -216,6 +233,13 @@ pub fn run() {
             commands::docs::add_docs_source,
             commands::docs::rename_docs_source,
             commands::docs::remove_docs_source,
+            commands::docs::add_local_docs_source,
+            commands::docs::get_doc_pdf,
+            commands::docs::add_clickup_docs_source,
+            commands::clickup::set_clickup_token,
+            commands::clickup::clear_clickup_token,
+            commands::clickup::get_clickup_status,
+            commands::clickup::test_clickup_connection,
             commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,
@@ -227,6 +251,7 @@ pub fn run() {
             commands::slack::slack_deep_link,
             commands::modules::list_modules,
             commands::modules::set_enabled_modules,
+            commands::modules::set_disabled_screens,
             commands::modules::remove_module_data,
             commands::reports::get_llm_config,
             commands::reports::set_llm_config,

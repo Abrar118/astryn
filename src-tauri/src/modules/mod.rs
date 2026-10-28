@@ -1,6 +1,8 @@
 //! Module manifest: which integrations exist, what capabilities they provide,
 //! and the rules deciding whether an enabled module is actually active.
 
+pub mod screens;
+
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
@@ -19,10 +21,11 @@ pub enum ModuleId {
     Reports,
     LinkPreviews,
     Bitbucket,
+    Clickup,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 8] = [
+    pub const ALL: [ModuleId; 9] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -31,6 +34,7 @@ impl ModuleId {
         ModuleId::Reports,
         ModuleId::LinkPreviews,
         ModuleId::Bitbucket,
+        ModuleId::Clickup,
     ];
 
     /// Modules that existed before the module system; an upgraded install that
@@ -82,7 +86,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 8] = [
+static MANIFEST: [ModuleSpec; 9] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -115,8 +119,9 @@ static MANIFEST: [ModuleSpec; 8] = [
         id: ModuleId::Docs,
         kind: K::Feature,
         provides: &[],
-        requires: &[C::DocsSource],
-        optional: &[],
+        // Local folders need no provider; GitHub adds repository sources.
+        requires: &[],
+        optional: &[C::DocsSource],
     },
     ModuleSpec {
         id: ModuleId::Reports,
@@ -136,6 +141,13 @@ static MANIFEST: [ModuleSpec; 8] = [
         id: ModuleId::Bitbucket,
         kind: K::Provider,
         provides: &[C::CodeHost],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::Clickup,
+        kind: K::Provider,
+        provides: &[C::DocsSource],
         requires: &[],
         optional: &[],
     },
@@ -257,6 +269,7 @@ pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sq
 pub const CORE_COMMANDS: &[&str] = &[
     "list_modules",
     "set_enabled_modules",
+    "set_disabled_screens",
     "remove_module_data",
     "get_connection_status",
     "get_github_status",
@@ -264,6 +277,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "get_llm_config",
     "get_docs_status",
     "get_bitbucket_status",
+    "get_clickup_status",
 ];
 
 /// The module that owns a registered Tauri command, if it is not core.
@@ -321,8 +335,19 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "get_slack_catchup"
         | "get_slack_conversation_messages"
         | "slack_deep_link" => Some(ModuleId::Slack),
-        "sync_docs" | "list_docs_sources" | "add_docs_source" | "rename_docs_source"
-        | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
+        "sync_docs"
+        | "list_docs_sources"
+        | "add_docs_source"
+        | "rename_docs_source"
+        | "remove_docs_source"
+        | "list_docs_tree"
+        | "get_doc_content"
+        | "add_local_docs_source"
+        | "get_doc_pdf"
+        | "add_clickup_docs_source" => Some(ModuleId::Docs),
+        "set_clickup_token" | "clear_clickup_token" | "test_clickup_connection" => {
+            Some(ModuleId::Clickup)
+        }
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
         "set_bitbucket_credentials"
@@ -378,6 +403,7 @@ mod tests {
             ("github.rs", include_str!("../commands/github.rs")),
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
+            ("clickup.rs", include_str!("../commands/clickup.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
             ("bitbucket.rs", include_str!("../commands/bitbucket.rs")),
         ] {
@@ -413,16 +439,15 @@ mod tests {
     #[test]
     fn enabling_another_module_does_not_enable_docs() {
         let off = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs]),
+            enabled: BTreeSet::from([ModuleId::Github]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&off, ModuleId::Docs).is_err());
         let on = ModuleState {
-            enabled: BTreeSet::from([ModuleId::Docs, ModuleId::Github]),
+            enabled: BTreeSet::from([ModuleId::Docs]),
             onboarded: true,
         };
         assert!(crate::commands::require_in(&on, ModuleId::Docs).is_ok());
-        assert!(on.enabled.contains(&ModuleId::Docs));
     }
 
     #[tokio::test]
@@ -471,11 +496,6 @@ mod tests {
         assert!(has_capability(Capability::CodeHost, &on));
         assert!(!has_capability(Capability::DocsSource, &on));
         assert!(is_active(ModuleId::Bitbucket, &on));
-        // Bitbucket alone does not make Docs available.
-        assert!(!is_active(
-            ModuleId::Docs,
-            &set(&[ModuleId::Docs, ModuleId::Bitbucket])
-        ));
     }
 
     #[tokio::test]
@@ -537,17 +557,25 @@ mod tests {
     }
 
     #[test]
-    fn docs_needs_a_docs_source() {
+    fn docs_works_without_a_provider_for_local_folders() {
+        // Local folders need no provider, so Docs is active on its own; GitHub
+        // (or another docs-source provider) only adds remote sources.
         let on = set(&[ModuleId::Docs]);
-        assert_eq!(
-            missing_capabilities(ModuleId::Docs, &on),
-            vec![Capability::DocsSource]
-        );
-        assert!(!is_active(ModuleId::Docs, &on));
-        assert!(is_active(
-            ModuleId::Docs,
-            &set(&[ModuleId::Docs, ModuleId::Github])
+        assert!(missing_capabilities(ModuleId::Docs, &on).is_empty());
+        assert!(is_active(ModuleId::Docs, &on));
+        assert_eq!(spec(ModuleId::Docs).optional, &[Capability::DocsSource]);
+    }
+
+    #[test]
+    fn clickup_is_a_docs_source_provider() {
+        assert!(has_capability(
+            Capability::DocsSource,
+            &set(&[ModuleId::Clickup])
         ));
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Clickup).unwrap(),
+            "\"clickup\""
+        );
     }
 
     #[test]

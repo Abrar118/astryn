@@ -4,7 +4,7 @@ Features noted for upcoming work. Each entry: what the owner asked for, how it f
 
 ## 1. Local folder as a documentation source
 
-*Noted 2026-10-27.*
+*Noted 2026-10-27. Built 2026-10-28 — see `docs/superpowers/specs/2026-10-28-local-folder-docs-design.md`.*
 
 **Ask:** documentation can be added from a local folder containing Markdown, plain-text, or PDF files.
 
@@ -31,7 +31,7 @@ Features noted for upcoming work. Each entry: what the owner asked for, how it f
 
 ## 2. Turn individual screens on and off (e.g. Inbox)
 
-*Noted 2026-10-27.*
+*Noted 2026-10-27.* *Built 2026-10-28; see `docs/superpowers/specs/2026-10-28-screen-toggles-design.md`.*
 
 **Ask:** be able to switch features off one by one, e.g. turn the Inbox off. The owner did not find an "off" control for it.
 
@@ -69,7 +69,7 @@ Features noted for upcoming work. Each entry: what the owner asked for, how it f
 
 **Decisions (owner, 2026-10-28):**
 
-1. **Multiple sources at once.** Linear and local tasks can be on together (one combined Calendar / This Week / Dashboard). Documentation can come from several sources at once: **ClickUp Docs links**, a local folder of Markdown, and GitHub repositories with Markdown, text or PDF files (item 1). *ClickUp Docs means a new `clickup` provider module (API token in the keychain, Rust client) that provides the `docs-source` capability; treat it as its own small spec.*
+1. **Multiple sources at once.** Linear and local tasks can be on together (one combined Calendar / This Week / Dashboard). Documentation can come from several sources at once: **ClickUp Docs links**, a local folder of Markdown, and GitHub repositories with Markdown, text or PDF files (item 1). *ClickUp Docs means a new `clickup` provider module (API token in the keychain, Rust client) that provides the `docs-source` capability; treat it as its own small spec.* Built 2026-10-28 — see `docs/superpowers/specs/2026-10-28-clickup-docs-design.md`.
 2. **Non-Linear (local) tasks follow ClickUp's flow and structure.** Linear tasks keep Linear-familiar UX.
 3. **Statuses are custom workflows** (user-defined per list/space).
 4. **Organisation: spaces → lists first; projects later**, with tasks added to projects. **Sprints supported.**

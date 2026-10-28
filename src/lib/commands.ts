@@ -618,21 +618,33 @@ export type DocNode = {
 
 export type DocsStatus = {
   tokenPresent: boolean;
+  /** Whether a ClickUp token is stored (ClickUp Doc sources need it to sync). */
+  clickupTokenPresent: boolean;
   sourceCount: number;
 };
 
-/** One configured documentation repository, joined with its cache freshness. */
+export type DocsSourceKind = "github" | "local" | "clickup";
+
+/** One configured documentation source, joined with its cache freshness. */
 export type DocsSource = {
-  /** Origin-derived (`owner/repo@branch`) — stable across renames. */
+  /** Origin-derived (`owner/repo@branch`, `local:<path>`) — stable across renames. */
   id: string;
+  kind: DocsSourceKind;
   name: string;
-  owner: string;
-  repo: string;
-  branch: string;
-  url: string;
+  /** GitHub only. */
+  owner: string | null;
+  repo: string | null;
+  branch: string | null;
+  /** Local only: the folder's absolute path. */
+  location: string | null;
+  /** GitHub only: browsable repository URL. */
+  url: string | null;
+  /** Last sync (GitHub) or folder scan (local). */
   lastSyncedAt: string | null;
   fileCount: number;
   truncated: boolean;
+  /** False while the source's provider module is off (e.g. GitHub disabled). */
+  available: boolean;
 };
 
 export type DocsSyncResult = { fileCount: number; truncated: boolean };
@@ -645,9 +657,43 @@ export const syncDocs = (sourceId: string): Promise<DocsSyncResult> =>
 export const listDocsTree = (sourceId: string): Promise<DocNode[]> =>
   invoke("list_docs_tree", { sourceId });
 
-/** Cached markdown for one file (`null` if unknown / not yet synced). */
+/**
+ * One document's text: cached Markdown for a repository, or read from disk for a
+ * local folder (Markdown or plain text). `null` if unknown / not readable.
+ */
 export const getDocContent = (sourceId: string, path: string): Promise<string | null> =>
   invoke("get_doc_content", { sourceId, path });
+
+/** A local folder PDF's raw bytes (returned by Rust as a binary IPC payload). */
+export const getDocPdf = (sourceId: string, path: string): Promise<ArrayBuffer> =>
+  invoke("get_doc_pdf", { sourceId, path });
+
+/**
+ * Open the native folder picker (in Rust) and add the chosen folder as a local
+ * docs source. Resolves `null` when the picker is cancelled.
+ */
+export const addLocalDocsSource = (): Promise<DocsSource | null> =>
+  invoke("add_local_docs_source");
+
+/**
+ * Add a ClickUp Doc from its link (`app.clickup.com/{workspace}/v/dc/{doc}`).
+ * Rust checks the Doc with the stored ClickUp token; the name defaults to the Doc's.
+ */
+export const addClickupDocsSource = (url: string, name?: string): Promise<DocsSource> =>
+  invoke("add_clickup_docs_source", { url, name: name ?? null });
+
+// ── ClickUp connection ───────────────────────────────────────────────────────
+
+export type ClickUpStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; username: string };
+
+/** Store a ClickUp personal token in the OS keychain (never read back). */
+export const setClickupToken = (token: string): Promise<void> => invoke("set_clickup_token", { token });
+export const clearClickupToken = (): Promise<void> => invoke("clear_clickup_token");
+export const getClickupStatus = (): Promise<ClickUpStatus> => invoke("get_clickup_status");
+export const testClickupConnection = (): Promise<ClickUpStatus> => invoke("test_clickup_connection");
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
 
@@ -781,7 +827,8 @@ export type ModuleId =
   | "docs"
   | "reports"
   | "link-previews"
-  | "bitbucket";
+  | "bitbucket"
+  | "clickup";
 
 export type Capability =
   | "tracker"
@@ -799,12 +846,18 @@ export type ModuleInfo = {
   missing: Capability[];
 };
 
-export type ModulesView = { onboarded: boolean; modules: ModuleInfo[] };
+/** Screens that can be switched off on top of their module; ids are view ids. */
+export type ScreenId = "list" | "this-week" | "graph" | "inbox";
+
+export type ModulesView = { onboarded: boolean; modules: ModuleInfo[]; disabledScreens: ScreenId[] };
 
 export const listModules = (): Promise<ModulesView> => invoke("list_modules");
 
 export const setEnabledModules = (ids: ModuleId[]): Promise<ModulesView> =>
   invoke("set_enabled_modules", { ids });
+
+export const setDisabledScreens = (screens: ScreenId[]): Promise<ModulesView> =>
+  invoke("set_disabled_screens", { screens });
 
 export const removeModuleData = (id: ModuleId): Promise<void> =>
   invoke("remove_module_data", { id });

@@ -22,10 +22,10 @@ import {
   Search,
   SquareSplitHorizontal,
 } from "lucide-react";
-import { invalidateWorkspaceQueries, useIssues } from "@/lib/queries";
+import { invalidateWorkspaceQueries, reportSyncError, useIssues } from "@/lib/queries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
-import { errorText, syncIssues, type IssueListItem } from "@/lib/commands";
+import { syncIssues, type IssueListItem } from "@/lib/commands";
 import { CreateIssueModal } from "./CreateIssueModal";
 import { shouldOpenCreateShortcut } from "./shortcuts";
 
@@ -93,7 +93,7 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
       gooeyToast.info(full ? "Full resync started…" : "Syncing…");
       syncIssues(full)
         .then(() => gooeyToast.success(full ? "Full resync complete" : "Synced"))
-        .catch((e) => gooeyToast.error("Sync failed", { description: errorText(e) }))
+        .catch((e) => reportSyncError(e, true))
         .finally(() => invalidateWorkspaceQueries(qc));
     },
     [qc],
@@ -195,9 +195,10 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
   const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
-  const { isActive, hasCapability } = useModules();
+  const { isActive, hasCapability, disabledScreens } = useModules();
   const tracker = hasCapability("tracker");
-  const modulesKey = `${visibleViews(isActive).join()}|${tracker}`;
+  const views = visibleViews(isActive, disabledScreens);
+  const modulesKey = `${views.join()}|${tracker}`;
   const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -217,7 +218,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
     onClose();
   };
 
-  const goCommands: Command[] = visibleViews(isActive).map((view) => {
+  const goCommands: Command[] = views.map((view) => {
     const { label, icon: Icon } = VIEW_META[view];
     return { key: `go-${view}`, section: "Go to", icon: <Icon className="size-4" />, label: `Go to ${label}`, onSelect: () => goTo(view) };
   });

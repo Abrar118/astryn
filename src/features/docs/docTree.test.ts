@@ -51,6 +51,22 @@ describe("buildDocTree", () => {
   });
 });
 
+describe("buildDocTree keeping the source order", () => {
+  it("keeps the given sibling order instead of sorting (ClickUp page order)", () => {
+    const flat: DocNode[] = [
+      { path: "z", name: "Zeta", kind: "blob", parentPath: "" },
+      { path: "z/b", name: "B child", kind: "blob", parentPath: "z" },
+      { path: "z/a", name: "A child", kind: "blob", parentPath: "z" },
+      { path: "a", name: "Alpha", kind: "blob", parentPath: "" },
+    ];
+    const tree = buildDocTree(flat, { keepOrder: true });
+    expect(tree.map((n) => n.label)).toEqual(["Zeta", "Alpha"]);
+    expect(tree[0].children.map((n) => n.label)).toEqual(["B child", "A child"]);
+    // The default still sorts.
+    expect(buildDocTree(flat).map((n) => n.label)).toEqual(["Alpha", "Zeta"]);
+  });
+});
+
 describe("defaultDocPath", () => {
   it("prefers the root README, else the first file", () => {
     expect(
