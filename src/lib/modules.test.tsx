@@ -37,6 +37,7 @@ describe("MODULE_MANIFEST", () => {
       docs: { kind: "feature", provides: [], requires: [], optional: ["docs-source"] },
       reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
       "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+      clickup: { kind: "provider", provides: ["docs-source"], requires: [], optional: [] },
     });
   });
 });

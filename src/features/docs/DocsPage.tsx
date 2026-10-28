@@ -32,7 +32,7 @@ import { requestSettingsSection, type SettingsSection } from "@/features/setting
 import type { DocsSource } from "@/lib/commands";
 import { buildDocTree, defaultDocPath } from "./docTree";
 import { resolveActiveSource, saveActiveSourceId, useStoredSourceId } from "./activeSource";
-import { docFormat, sourceDetail, unavailableReason } from "./docSource";
+import { docFormat, sourceDetail, sourceProvider, unavailableReason } from "./docSource";
 import { SourceKindIcon } from "./SourceKindIcon";
 import { DocsTree } from "./DocsTree";
 import { DocViewer } from "./DocViewer";
@@ -166,9 +166,13 @@ export function DocsPage({
   const activeId = active?.id ?? null;
   const available = !!active?.available;
   const isLocal = active?.kind === "local";
-  // Only a repository needs the GitHub token; a local folder never does.
-  const needsToken = active?.kind === "github" && !!status && !tokenPresent;
-  const canSync = available && (isLocal || tokenPresent);
+  // A repository syncs with the GitHub token, a ClickUp Doc with the ClickUp
+  // token; a local folder needs neither.
+  const provider = active ? sourceProvider(active.kind) : null;
+  const providerToken =
+    active?.kind === "clickup" ? (status?.clickupTokenPresent ?? false) : tokenPresent;
+  const needsToken = !!provider && !!status && !providerToken;
+  const canSync = available && (isLocal || providerToken);
 
   const [selected, setSelected] = useState<string | null>(docPath ?? null);
   // An unavailable source (provider off) is never queried — its commands refuse.
@@ -265,11 +269,11 @@ export function DocsPage({
           action: "Open Modules",
           onAction: () => openSettingsAt("modules"),
         }
-      : needsToken && (flat?.length ?? 0) === 0
+      : needsToken && provider && (flat?.length ?? 0) === 0
         ? {
-            message: "Connect your GitHub account to sync this repository.",
-            action: "Connect GitHub",
-            onAction: () => openSettingsAt("github"),
+            message: `Connect your ${provider.name} account to sync this ${active.kind === "clickup" ? "Doc" : "repository"}.`,
+            action: `Connect ${provider.name}`,
+            onAction: () => openSettingsAt(provider.section),
           }
         : isLocal && treeError
           ? {
@@ -345,8 +349,10 @@ export function DocsPage({
           {sync.isError && !isLocal && (
             <span className="shrink-0 text-xs text-warning">Sync failed — showing cached.</span>
           )}
-          {needsToken && !notice && (
-            <span className="shrink-0 text-xs text-warning">GitHub not connected — showing cached.</span>
+          {needsToken && provider && !notice && (
+            <span className="shrink-0 text-xs text-warning">
+              {provider.name} not connected — showing cached.
+            </span>
           )}
         </div>
         <Button

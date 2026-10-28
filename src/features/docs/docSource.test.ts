@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocsSource } from "@/lib/commands";
-import { docFormat, sourceDetail } from "./docSource";
+import { docFormat, sourceDetail, sourceProvider, unavailableReason } from "./docSource";
 
 const base: DocsSource = {
   id: "acme/docs@main",
@@ -33,6 +33,13 @@ describe("docFormat", () => {
 describe("sourceDetail", () => {
   it("describes a repository by owner/repo and branch", () => {
     expect(sourceDetail(base)).toBe("acme/docs · main");
+  });
+
+  it("describes a ClickUp Doc and names its provider", () => {
+    expect(sourceDetail({ ...base, kind: "clickup", owner: null, repo: null, branch: null })).toBe("ClickUp Doc");
+    expect(sourceProvider("clickup")).toEqual({ name: "ClickUp", section: "clickup" });
+    expect(sourceProvider("local")).toBeNull();
+    expect(unavailableReason("clickup")).toBe("ClickUp is turned off");
   });
 
   it("describes a local folder by its path", () => {

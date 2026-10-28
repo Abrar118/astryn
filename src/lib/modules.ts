@@ -3,6 +3,7 @@ import {
   BookText,
   Calendar,
   CalendarRange,
+  FileStack,
   GitBranch,
   GitPullRequest,
   Inbox,
@@ -65,6 +66,7 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   docs: { kind: "feature", provides: [], requires: [], optional: ["docs-source"] },
   reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+  clickup: { kind: "provider", provides: ["docs-source"], requires: [], optional: [] },
 };
 
 /** Capabilities `id` requires that no module in `selected` provides. */
@@ -96,9 +98,10 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
   github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
   slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
   llm: { name: "AI", icon: Sparkles, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
-  docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories and local folders.", removes: ["documentation sources (your local files are kept)", "cached docs"] },
+  docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories, ClickUp Docs and local folders.", removes: ["documentation sources (your local files are kept)", "cached docs"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
+  clickup: { name: "ClickUp", icon: FileStack, description: "ClickUp Docs as a documentation source.", removes: ["ClickUp token", "cached ClickUp Doc pages"] },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */
@@ -106,7 +109,7 @@ export const CAPABILITY_PROVIDERS: Record<Capability, string> = {
   tracker: "an issue tracker — turn on Linear",
   notifications: "a notification source — turn on Linear",
   "code-host": "a code host — turn on GitHub",
-  "docs-source": "a docs source — turn on GitHub",
+  "docs-source": "a docs source — turn on GitHub or ClickUp",
   chat: "a chat provider — turn on Slack",
   llm: "an AI provider — turn on AI",
 };

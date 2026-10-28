@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
+  addClickupDocsSource,
   addDocsSource,
   addLocalDocsSource,
   errorText,
@@ -114,7 +115,9 @@ export function DocsSection() {
   const qc = useQueryClient();
   const { data: sources } = useDocsSources();
   const { data: status } = useDocsStatus();
-  const githubOn = useModules().isActive("github");
+  const { isActive } = useModules();
+  const githubOn = isActive("github");
+  const clickupOn = isActive("clickup");
 
   const [urlInput, setUrlInput] = useState("");
   const [nameInput, setNameInput] = useState("");
@@ -167,8 +170,26 @@ export function DocsSection() {
     onError: (err) => gooeyToast.error("Could not add the folder", { description: errorText(err) }),
   });
 
+  const [clickupUrl, setClickupUrl] = useState("");
+  const [clickupName, setClickupName] = useState("");
+  const addClickupMut = useMutation({
+    mutationFn: ({ url, name }: { url: string; name: string }) =>
+      addClickupDocsSource(url, name.trim() || undefined),
+    onSuccess: (saved) => {
+      setClickupUrl("");
+      setClickupName("");
+      refreshSources(qc);
+      gooeyToast.success(`Added ${saved.name}`);
+    },
+    onError: (err) => gooeyToast.error("Could not add the ClickUp Doc", { description: errorText(err) }),
+  });
+
   const busy =
-    addMut.isPending || addLocalMut.isPending || renameMut.isPending || removeMut.isPending;
+    addMut.isPending ||
+    addLocalMut.isPending ||
+    addClickupMut.isPending ||
+    renameMut.isPending ||
+    removeMut.isPending;
 
   const handleAdd = (e: FormEvent) => {
     e.preventDefault();
@@ -178,11 +199,58 @@ export function DocsSection() {
     addMut.mutate({ url, name: nameInput });
   };
 
+  const handleAddClickup = (e: FormEvent) => {
+    e.preventDefault();
+    if (busy) return;
+    const url = clickupUrl.trim();
+    if (!url) return;
+    addClickupMut.mutate({ url, name: clickupName });
+  };
+
+  const clickupCard = clickupOn && (
+        <Card className="flex flex-col gap-4 p-6">
+          {status && !status.clickupTokenPresent && (
+            <p className="text-sm text-warning">
+              Connect a ClickUp token first — Docs are checked and fetched with it.
+            </p>
+          )}
+          <form className="flex flex-col gap-3" onSubmit={handleAddClickup}>
+            <Label htmlFor="docs-clickup">Add a ClickUp Doc</Label>
+            <Input
+              id="docs-clickup"
+              type="text"
+              autoComplete="off"
+              placeholder="https://app.clickup.com/…/v/dc/…"
+              value={clickupUrl}
+              onChange={(e) => setClickupUrl(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <Label htmlFor="docs-clickup-name">ClickUp Doc name (optional)</Label>
+            <Input
+              id="docs-clickup-name"
+              type="text"
+              autoComplete="off"
+              placeholder="Defaults to the Doc's name"
+              value={clickupName}
+              onChange={(e) => setClickupName(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <p className="text-xs text-muted-foreground">
+              Paste the Doc's link from ClickUp. Its pages and sub-pages are cached for offline
+              reading and refreshed from the Docs page.
+            </p>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy}>Add ClickUp Doc</Button>
+            </div>
+          </form>
+        </Card>
+  );
+
   return (
     <>
       <SectionHeader
         title="Documentation"
-        description="GitHub repositories and folders on this computer that the Docs page reads from. Switch between them in the Docs header."
+        description="GitHub repositories, ClickUp Docs and folders on this computer that the Docs page reads from. Switch between them in the Docs header."
       />
 
       <div className="flex flex-col gap-3">
@@ -261,6 +329,8 @@ export function DocsSection() {
         </form>
       </Card>
       )}
+
+      {clickupCard}
     </>
   );
 }

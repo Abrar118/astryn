@@ -829,6 +829,14 @@ export function clearGithubQueries(qc: QueryClient) {
   }
 }
 
+/** A ClickUp token change wipes ClickUp's cached Doc pages, so drop docs reads too. */
+export function clearClickupQueries(qc: QueryClient) {
+  for (const key of [["clickup-status"], ["docs-status"], ["docs-sources"], ["docs-tree"], ["doc-content"], ["docs-sync"]]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
+}
+
 export function useDocsStatus() {
   const on = useOwnerActive("docs");
   return useQuery({ queryKey: ["docs-status"], queryFn: getDocsStatus, enabled: on });

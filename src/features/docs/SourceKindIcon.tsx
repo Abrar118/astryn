@@ -1,8 +1,10 @@
-import { FolderClosed, GitBranch } from "lucide-react";
+import { FileStack, FolderClosed, GitBranch } from "lucide-react";
 import type { DocsSourceKind } from "@/lib/commands";
 
-/** Small glyph telling a repository from a local folder in lists and pickers. */
+const ICONS = { github: GitBranch, local: FolderClosed, clickup: FileStack } as const;
+
+/** Small glyph telling repositories, local folders and ClickUp Docs apart. */
 export function SourceKindIcon({ kind, className }: { kind: DocsSourceKind; className?: string }) {
-  const Icon = kind === "local" ? FolderClosed : GitBranch;
+  const Icon = ICONS[kind];
   return <Icon className={className} aria-hidden />;
 }
