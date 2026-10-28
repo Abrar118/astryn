@@ -1,3 +1,5 @@
+mod bitbucket;
+mod code_host;
 mod commands;
 mod db;
 mod generators;
@@ -115,6 +117,14 @@ pub fn run() {
                     SLACK_COOKIE_ACCOUNT,
                 ));
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
+            let bitbucket = bitbucket::BitbucketState::new(
+                Arc::new(bitbucket::ApiTokenProvider::new(
+                    store.clone(),
+                    commands::bitbucket::BITBUCKET_EMAIL_ACCOUNT,
+                    commands::bitbucket::BITBUCKET_TOKEN_ACCOUNT,
+                )),
+                bitbucket::BitbucketClient::new().expect("failed to build Bitbucket HTTP client"),
+            );
 
             app.manage(AppState {
                 pool,
@@ -141,6 +151,7 @@ pub fn run() {
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
                 llm_generation: std::sync::atomic::AtomicU64::new(0),
+                bitbucket,
             });
 
             // macOS: replace the default app menu with one that OMITS "Close
@@ -221,7 +232,17 @@ pub fn run() {
             commands::reports::set_llm_config,
             commands::reports::clear_llm_config,
             commands::reports::test_llm_connection,
-            commands::reports::generate_report
+            commands::reports::generate_report,
+            commands::bitbucket::set_bitbucket_credentials,
+            commands::bitbucket::clear_bitbucket_credentials,
+            commands::bitbucket::get_bitbucket_status,
+            commands::bitbucket::test_bitbucket_connection,
+            commands::bitbucket::sync_bitbucket_prs,
+            commands::bitbucket::list_bitbucket_prs,
+            commands::bitbucket::set_bitbucket_repo_favorite,
+            commands::bitbucket::list_bitbucket_repositories,
+            commands::bitbucket::get_bitbucket_pr_detail,
+            commands::bitbucket::get_bitbucket_pr_diff
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

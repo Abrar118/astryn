@@ -18,10 +18,24 @@ pub enum ModuleId {
     Docs,
     Reports,
     LinkPreviews,
+    Bitbucket,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 7] = [
+    pub const ALL: [ModuleId; 8] = [
+        ModuleId::Linear,
+        ModuleId::Github,
+        ModuleId::Slack,
+        ModuleId::Llm,
+        ModuleId::Docs,
+        ModuleId::Reports,
+        ModuleId::LinkPreviews,
+        ModuleId::Bitbucket,
+    ];
+
+    /// Modules that existed before the module system; an upgraded install that
+    /// predates it gets exactly these turned on (never a later, unconfigured one).
+    const LEGACY: [ModuleId; 7] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -68,7 +82,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 7] = [
+static MANIFEST: [ModuleSpec; 8] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -118,6 +132,13 @@ static MANIFEST: [ModuleSpec; 7] = [
         requires: &[],
         optional: &[],
     },
+    ModuleSpec {
+        id: ModuleId::Bitbucket,
+        kind: K::Provider,
+        provides: &[C::CodeHost],
+        requires: &[],
+        optional: &[],
+    },
 ];
 
 pub fn spec(id: ModuleId) -> &'static ModuleSpec {
@@ -154,7 +175,7 @@ const ENABLED_KEY: &str = "modules_enabled";
 const ONBOARDED_KEY: &str = "modules_onboarded";
 
 fn all_enabled() -> BTreeSet<ModuleId> {
-    ModuleId::ALL.into_iter().collect()
+    ModuleId::LEGACY.into_iter().collect()
 }
 
 /// Load persisted module state. A missing `modules_enabled` key means either a
@@ -242,6 +263,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "get_slack_status",
     "get_llm_config",
     "get_docs_status",
+    "get_bitbucket_status",
 ];
 
 /// The module that owns a registered Tauri command, if it is not core.
@@ -303,6 +325,15 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
+        "set_bitbucket_credentials"
+        | "clear_bitbucket_credentials"
+        | "test_bitbucket_connection"
+        | "sync_bitbucket_prs"
+        | "list_bitbucket_prs"
+        | "set_bitbucket_repo_favorite"
+        | "list_bitbucket_repositories"
+        | "get_bitbucket_pr_detail"
+        | "get_bitbucket_pr_diff" => Some(ModuleId::Bitbucket),
         _ => None,
     }
 }
@@ -348,6 +379,7 @@ mod tests {
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
+            ("bitbucket.rs", include_str!("../commands/bitbucket.rs")),
         ] {
             let src = src.replace("\r\n", "\n");
             for chunk in src.split("#[tauri::command]").skip(1) {
@@ -408,7 +440,7 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(s.onboarded);
         assert_eq!(
             db::load_setting(&pool, "modules_onboarded")
@@ -420,13 +452,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_upgrade_does_not_turn_on_bitbucket() {
+        let (_d, pool) = pool().await;
+        db::save_setting(&pool, "linear_viewer_id", "u1")
+            .await
+            .unwrap();
+        let s = load_state(&pool).await.unwrap();
+        assert!(!s.enabled.contains(&ModuleId::Bitbucket));
+    }
+
+    #[test]
+    fn bitbucket_is_a_code_host_provider() {
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Bitbucket).unwrap(),
+            "\"bitbucket\""
+        );
+        let on = set(&[ModuleId::Bitbucket, ModuleId::Reports, ModuleId::Linear]);
+        assert!(has_capability(Capability::CodeHost, &on));
+        assert!(!has_capability(Capability::DocsSource, &on));
+        assert!(is_active(ModuleId::Bitbucket, &on));
+        // Bitbucket alone does not make Docs available.
+        assert!(!is_active(
+            ModuleId::Docs,
+            &set(&[ModuleId::Docs, ModuleId::Bitbucket])
+        ));
+    }
+
+    #[tokio::test]
     async fn github_login_alone_marks_an_existing_install() {
         let (_d, pool) = pool().await;
         db::save_setting(&pool, "github_login", "octocat")
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(s.onboarded);
     }
 
@@ -447,7 +506,7 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled.len(), ModuleId::LEGACY.len());
         assert!(s.onboarded);
     }
 

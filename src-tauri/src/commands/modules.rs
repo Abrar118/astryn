@@ -8,6 +8,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use tauri::State;
 
+use super::bitbucket::{BITBUCKET_EMAIL_ACCOUNT, BITBUCKET_TOKEN_ACCOUNT};
 use super::reports::{LLM_BASE_URL_KEY, LLM_MODEL_KEY};
 use super::{AppState, CmdError, GITHUB_TOKEN_ACCOUNT, LINEAR_KEY_ACCOUNT, LLM_API_KEY_ACCOUNT};
 use crate::db;
@@ -125,6 +126,14 @@ pub async fn remove_module_data_logic(
             }
             tx.commit().await.map_err(db_err)?;
         }
+        ModuleId::Bitbucket => {
+            db::bitbucket::wipe_bitbucket_cache(pool)
+                .await
+                .map_err(db_err)?;
+            for account in [BITBUCKET_TOKEN_ACCOUNT, BITBUCKET_EMAIL_ACCOUNT] {
+                store.delete(account).map_err(secret_err)?;
+            }
+        }
         // Nothing persisted: in-memory state only.
         ModuleId::Reports | ModuleId::LinkPreviews => {}
     }
@@ -173,6 +182,9 @@ pub async fn set_enabled_modules(
         &state.slack_generation,
         &state.llm_generation,
     );
+    if disabled.contains(&ModuleId::Bitbucket) {
+        state.bitbucket.generation.fetch_add(1, Ordering::SeqCst);
+    }
     let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
     Ok(list_modules_logic(&guard))
 }
@@ -184,6 +196,7 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         ModuleId::Linear => Some(state.workspace_lock.lock().await),
         ModuleId::Github | ModuleId::Docs => Some(state.github_lock.lock().await),
         ModuleId::Slack => Some(state.slack_lock.lock().await),
+        ModuleId::Bitbucket => Some(state.bitbucket.lock.lock().await),
         _ => None,
     };
     let snapshot = state
@@ -290,6 +303,23 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(n.0, 0);
+    }
+
+    #[tokio::test]
+    async fn remove_bitbucket_wipes_cache_and_both_accounts() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        for a in ["bitbucket_token", "bitbucket_email", "github_token"] {
+            store.set(a, "x").unwrap();
+        }
+        db::bitbucket::save_login(&pool, "me").await.unwrap();
+        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Bitbucket)
+            .await
+            .unwrap();
+        assert_eq!(store.get("bitbucket_token").unwrap(), None);
+        assert_eq!(store.get("bitbucket_email").unwrap(), None);
+        assert!(store.get("github_token").unwrap().is_some());
+        assert_eq!(db::bitbucket::load_login(&pool).await.unwrap(), None);
     }
 
     #[tokio::test]
