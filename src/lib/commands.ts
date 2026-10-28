@@ -799,12 +799,18 @@ export type ModuleInfo = {
   missing: Capability[];
 };
 
-export type ModulesView = { onboarded: boolean; modules: ModuleInfo[] };
+/** Screens that can be switched off on top of their module; ids are view ids. */
+export type ScreenId = "list" | "this-week" | "graph" | "inbox";
+
+export type ModulesView = { onboarded: boolean; modules: ModuleInfo[]; disabledScreens: ScreenId[] };
 
 export const listModules = (): Promise<ModulesView> => invoke("list_modules");
 
 export const setEnabledModules = (ids: ModuleId[]): Promise<ModulesView> =>
   invoke("set_enabled_modules", { ids });
+
+export const setDisabledScreens = (screens: ScreenId[]): Promise<ModulesView> =>
+  invoke("set_disabled_screens", { screens });
 
 export const removeModuleData = (id: ModuleId): Promise<void> =>
   invoke("remove_module_data", { id });

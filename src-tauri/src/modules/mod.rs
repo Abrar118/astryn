@@ -1,6 +1,8 @@
 //! Module manifest: which integrations exist, what capabilities they provide,
 //! and the rules deciding whether an enabled module is actually active.
 
+pub mod screens;
+
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
@@ -237,6 +239,7 @@ pub async fn save_state(pool: &SqlitePool, state: &ModuleState) -> Result<(), sq
 pub const CORE_COMMANDS: &[&str] = &[
     "list_modules",
     "set_enabled_modules",
+    "set_disabled_screens",
     "remove_module_data",
     "get_connection_status",
     "get_github_status",

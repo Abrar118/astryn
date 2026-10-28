@@ -9,10 +9,8 @@ import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
 function Shell() {
-  const { hasCapability, ready, data } = useModules();
+  const { hasCapability } = useModules();
   const { isSyncing, refresh } = useSyncLoop(hasCapability("tracker"));
-
-  if (ready && data?.onboarded === false) return <ModulePicker />;
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">
@@ -24,6 +22,10 @@ function Shell() {
 }
 
 export function AppShell() {
+  const { ready, data } = useModules();
+  // The picker renders outside the providers so their global shortcuts are not registered behind it.
+  if (ready && data?.onboarded === false) return <ModulePicker />;
+
   return (
     <WorkspaceProvider>
       {/* Palette outside the issue menu: the menu's "Create" actions open the

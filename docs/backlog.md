@@ -31,7 +31,7 @@ Features noted for upcoming work. Each entry: what the owner asked for, how it f
 
 ## 2. Turn individual screens on and off (e.g. Inbox)
 
-*Noted 2026-10-27.*
+*Noted 2026-10-27.* *Built 2026-10-28; see `docs/superpowers/specs/2026-10-28-screen-toggles-design.md`.*
 
 **Ask:** be able to switch features off one by one, e.g. turn the Inbox off. The owner did not find an "off" control for it.
 
