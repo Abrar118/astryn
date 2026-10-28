@@ -172,17 +172,22 @@ pub async fn insert_local_docs_source(
 }
 
 /// Record a local folder scan (time, file count, truncated) without storing the
-/// listing itself — local files are read in place.
+/// listing itself — local files are read in place. `false` (nothing written) if
+/// the source was removed meanwhile.
 pub async fn write_scan_meta(
     pool: &SqlitePool,
     source_id: &str,
     scanned_at: &str,
     file_count: i64,
     truncated: bool,
-) -> Result<(), sqlx::Error> {
-    sqlx::query(
+) -> Result<bool, sqlx::Error> {
+    // Written only while the source still exists, so a scan that finishes after
+    // the source was removed can't leave an orphan row behind. (The WHERE also
+    // lets SQLite parse ON CONFLICT after an INSERT … SELECT.)
+    let result = sqlx::query(
         "INSERT INTO docs_sync_meta (source_id, last_synced_at, file_count, tree_sha, truncated)
-         VALUES (?1, ?2, ?3, NULL, ?4)
+         SELECT ?1, ?2, ?3, NULL, ?4
+         WHERE EXISTS (SELECT 1 FROM docs_sources WHERE id = ?1)
          ON CONFLICT(source_id) DO UPDATE SET
            last_synced_at = excluded.last_synced_at,
            file_count     = excluded.file_count,
@@ -194,7 +199,7 @@ pub async fn write_scan_meta(
     .bind(truncated)
     .execute(pool)
     .await?;
-    Ok(())
+    Ok(result.rows_affected() > 0)
 }
 
 /// Append a source at the end of the list. Returns `false` if that origin is
@@ -264,6 +269,12 @@ pub async fn remove_docs_source(pool: &SqlitePool, id: &str) -> Result<bool, sql
 /// Replace one source's cached tree (delete its rows, insert the fetched set) and
 /// upsert its metadata row, in one transaction so a partial write never leaves a
 /// half-empty tree. Other sources' caches are untouched.
+///
+/// Returns `false` and writes nothing if the source no longer exists: a sync
+/// that finishes after its source was removed (or after Docs data was removed)
+/// must not leave orphan rows that no later wipe can reach. The check runs after
+/// the first write, once this transaction holds SQLite's write lock, so a
+/// concurrent removal is either fully before it or fully after it.
 pub async fn replace_docs(
     pool: &SqlitePool,
     source_id: &str,
@@ -271,12 +282,21 @@ pub async fn replace_docs(
     synced_at: &str,
     tree_sha: Option<&str>,
     truncated: bool,
-) -> Result<(), sqlx::Error> {
+) -> Result<bool, sqlx::Error> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM docs_files WHERE source_id = ?1")
         .bind(source_id)
         .execute(&mut *tx)
         .await?;
+    let exists: bool =
+        sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM docs_sources WHERE id = ?1)")
+            .bind(source_id)
+            .fetch_one(&mut *tx)
+            .await?;
+    if !exists {
+        tx.commit().await?; // only removed rows that were already orphans
+        return Ok(false);
+    }
     for f in files {
         sqlx::query(
             "INSERT INTO docs_files (source_id, path, name, kind, parent_path, sha, content, synced_at)
@@ -311,7 +331,7 @@ pub async fn replace_docs(
     .execute(&mut *tx)
     .await?;
     tx.commit().await?;
-    Ok(())
+    Ok(true)
 }
 
 /// One source's cached entries (folders + files), lightweight (no content). The
@@ -582,6 +602,33 @@ mod tests {
         assert_eq!(local.last_synced_at.as_deref(), Some("t1"));
         // No listing or content was cached.
         assert!(list_docs(&pool, &id).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_sync_that_lands_after_its_source_was_removed_writes_nothing() {
+        let (_d, pool) = pool().await;
+        let a = add(&pool, "Core", "acme", "core", "main").await;
+        assert!(insert_local_docs_source(&pool, "Notes", "/notes", "now")
+            .await
+            .unwrap());
+        let local = local_source_id("/notes");
+        assert!(remove_docs_source(&pool, &a).await.unwrap());
+        assert!(remove_docs_source(&pool, &local).await.unwrap());
+
+        // The late writes are refused rather than leaving orphan rows behind.
+        assert!(
+            !replace_docs(&pool, &a, &[file("a.md", "", "a")], "t", None, false)
+                .await
+                .unwrap()
+        );
+        assert!(!write_scan_meta(&pool, &local, "t", 3, false).await.unwrap());
+        for table in ["docs_files", "docs_sync_meta"] {
+            let n: i64 = sqlx::query_scalar(&format!("SELECT COUNT(*) FROM {table}"))
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+            assert_eq!(n, 0, "{table} has orphans");
+        }
     }
 
     #[tokio::test]
