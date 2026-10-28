@@ -31,6 +31,7 @@
 - **Dashboard** — the default destination: an action-first command center (ranked attention queue plus compact workload charts) over cached Linear, GitHub, Slack, Inbox, and Docs data; it never starts provider syncs of its own. See `docs/superpowers/specs/2026-07-26-app-dashboard-design.md`.
 - **Documentation browser** — read-only, offline-cached markdown from one or more GitHub repositories (`docs_sources`), synced lazily per source with the GitHub token. Repository-wide, **not** the per-issue links of F9. See `docs/superpowers/specs/2026-06-24-docs-viewer-design.md`.
 - **Module system (spec 1).** Every integration (Linear, GitHub, Slack, AI/LLM) and feature (Docs, Reports, link previews) can be turned on or off in Settings → Modules. Enforcement is in Rust (`modules/`, a `require` guard on every command), and a first-run module picker sets the initial choice. Disabling keeps tokens and cache; "Remove module data" deletes them.
+- **Microsoft Teams chat provider (module spec 2, chat part).** A `teams` module (provides `chat`) with its own catch-up board for unread Teams chats and @mentions, rendered by the provider-neutral `features/chat/` board that Slack now also uses. Microsoft Graph via a device-code sign-in (§4 Microsoft Teams). Live verification against a real tenant is pending. See `docs/superpowers/specs/2026-10-28-teams-chat-provider-design.md`.
 - **Reports** — Daily Scrum and Weekly Review generators. Rust (`generators/facts.rs`) builds a deterministic fact sheet from the local cache (Linear issues + GitHub PRs); an optional OpenAI-compatible endpoint (`generators/llm.rs`, streamed) turns it into prose, with the fact sheet as the offline/no-endpoint fallback.
 
 **Not yet built:** F9 (per-issue doc links) — see §9 and §11. **Planned:** module system specs 2–3 (second code-host/chat provider; swappable tracker, §3 Module architecture) and multiple color themes (§3 UI direction).
@@ -181,6 +182,13 @@ If the user has an installable Slack app and an `xoxp-…` user token with the r
 - The app degrades gracefully if no credentials are set (the Slack dock entry shows a "Connect Slack" prompt).
 
 `[EXT]` Windows/Linux auto-extraction (those platforms use a different key-derivation path); huddles (live socket). The manual `xoxp` fallback covers Windows/Linux users today.
+
+### Microsoft Teams `[CHOICE: OAuth device-code flow, user-supplied app registration]`
+
+- The user registers a public-client app in Microsoft Entra ID ("Allow public client flows" on) and enters its Application (client) ID, plus an optional tenant (default `organizations`), in Settings → Teams. Client ID and tenant are config in `settings` (`teams_client_id`, `teams_tenant`), validated before use.
+- Sign-in is the OAuth 2.0 device authorization grant against `login.microsoftonline.com` (v2): Rust requests a code, the user enters it at `https://microsoft.com/devicelogin`, Rust polls the token endpoint. The `device_code` never leaves Rust. Delegated scopes: `offline_access User.Read Chat.Read` (no admin consent).
+- Only the refresh token is stored, in the OS keychain, split into ≤1,000-char chunks under `teams_refresh_token.0` … `.7` (Windows Credential Manager caps a secret at 1,280 UTF-16 chars). Access tokens live in memory for one request batch and are never persisted. `TeamsCredentialProvider` is the auth seam.
+- v1 reads **chats only** (1:1, group, meeting): Graph has no per-user read marker for channel messages, and `ChannelMessage.Read.All` needs admin consent. Read-only; no reply or mark-as-read.
 
 ### GitHub `[CHOICE: classic PAT]`
 
@@ -570,6 +578,7 @@ src-tauri/
     linear/          # GraphQL client, queries, types, sync
     github/          # REST/GraphQL client, PR buckets, detail/diff, repositories, contributions, docs source
     slack/           # Slack Web API client, catch-up sync (replace_catchup), parsers, credential provider; extract.rs (macOS auto-extraction: LevelDB xoxc scan + Chromium cookie decrypt)
+    teams/           # Microsoft Graph client, device-code OAuth (oauth.rs), chat read model (catchup.rs), chunked keychain credential provider
     db/              # sqlx repositories (issues, github, slack, docs)
     secrets/         # keychain wrapper (trait-backed for future providers)
     generators/      # report fact sheets (facts.rs) + OpenAI-compatible streaming client (llm.rs)
@@ -601,6 +610,7 @@ src/                 # React frontend
 - **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackPage` with stacked sections (Mentions / DMs / Threads / Channels) rendered via a `Section` component and a `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.
 - **Module system (spec 1). ✅ Done.** Module registry plus enable/disable in Settings → Modules, with Rust-enforced guards on every command. See `docs/superpowers/specs/2026-10-27-module-system-design.md` and `docs/superpowers/plans/2026-10-27-module-system.md`.
 - **Slack session-token auth (local-app auto-extraction, macOS). ✅ Done.** `SlackAuth { authorization, cookie }` credential struct + `PersonalTokenProvider` with two keychain accounts (`slack_user_token` / `slack_cookie_d`); `slack/extract.rs` (LevelDB `xoxc` scan + Chromium AES-128-CBC `xoxd` cookie decryption using "Slack Safe Storage" keychain key); `detect_slack_credentials` Tauri command with self-healing rotation; Settings "Detect from Slack app" button; dual-header transport (`Authorization: Bearer <xoxc>` + `Cookie: d=<xoxd>`). macOS real-app smoke (live cookie decryption + xoxc transport) deferred to user.
+- **Microsoft Teams chat provider + provider-neutral chat board (module spec 2, chat part). ✅ Built; live tenant verification pending.** `teams` module, `teams/` Rust module, migration 0035 (`teams_chats`, `teams_messages`), `features/chat/` board shared with Slack, Settings → Teams device-code sign-in. See `docs/superpowers/specs/2026-10-28-teams-chat-provider-design.md`.
 
 Each milestone must be independently runnable and demoable. Don't start a milestone until the previous one builds and runs.
 
