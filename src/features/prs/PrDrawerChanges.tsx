@@ -18,6 +18,7 @@ import type {
   GithubPrDiff,
   GithubPrDiffFile,
 } from "@/lib/commands";
+import { useCodeHost } from "./codeHost";
 import { parseUnifiedPatch, type PrDiffRow } from "./prDiffDisplay";
 
 function fileIcon(changeType: string): {
@@ -92,6 +93,7 @@ function DiffRow({ row }: { row: PrDiffRow }) {
 }
 
 function FilePanel({ file }: { file: GithubPrDiffFile }) {
+  const host = useCodeHost();
   const { Icon, className } = fileIcon(file.changeType);
   const rows = file.patch ? parseUnifiedPatch(file.patch) : [];
 
@@ -117,8 +119,8 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
           <Button
             variant="ghost"
             size="icon-xs"
-            aria-label={`Open ${file.path} on GitHub`}
-            title="Open file on GitHub"
+            aria-label={`Open ${file.path} on ${host.name}`}
+            title={`Open file on ${host.name}`}
             onClick={() =>
               openExternal(file.blobUrl!, "Couldn't open the changed file")
             }
@@ -130,7 +132,7 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
 
       {rows.length === 0 ? (
         <p className="px-4 py-10 text-center text-xs text-muted-foreground">
-          GitHub did not provide a text patch for this file.
+          {host.name} did not provide a text patch for this file.
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -177,10 +179,9 @@ export function PrDrawerChanges({
   const additions = detail?.additions ?? seed.additions ?? 0;
   const deletions = detail?.deletions ?? seed.deletions ?? 0;
   const commitCount = detail?.commitCount ?? detail?.commits.length ?? 0;
+  const host = useCodeHost();
   const pullRequestUrl = detail?.url ?? seed.url;
-  const diffUrl = pullRequestUrl
-    ? `${pullRequestUrl.replace(/\/files\/?$/, "").replace(/\/$/, "")}/files`
-    : null;
+  const diffUrl = pullRequestUrl ? host.diffUrl(pullRequestUrl) : null;
 
   return (
     <div className="px-4 py-3">
@@ -206,7 +207,7 @@ export function PrDrawerChanges({
           }}
         >
           <ExternalLink className="size-3" />
-          Open full diff on GitHub
+          Open full diff on {host.name}
         </Button>
       </div>
 
@@ -248,8 +249,8 @@ export function PrDrawerChanges({
 
       {diff?.truncated && (
         <p className="mt-3 text-xs text-muted-foreground">
-          Showing the first {diff.files.length} changed files. Open GitHub for
-          the complete diff.
+          Showing the first {diff.files.length} changed files. Open {host.name}{" "}
+          for the complete diff.
         </p>
       )}
     </div>

@@ -21,6 +21,7 @@ use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
+pub mod bitbucket;
 pub mod clickup;
 pub mod docs;
 pub mod github;
@@ -147,6 +148,10 @@ pub enum CmdError {
     UploadFailed,
     #[error("That module is turned off.")]
     ModuleDisabled,
+    #[error("No Bitbucket token is configured.")]
+    BitbucketNotConfigured,
+    #[error("Bitbucket rejected the request.")]
+    BitbucketApi,
 }
 
 impl serde::Serialize for CmdError {
@@ -246,6 +251,7 @@ pub struct AppState {
     /// The id of the LATEST generate_report call; an in-flight LLM stream
     /// stops as soon as a newer generation claims this slot.
     pub llm_generation: AtomicU64,
+    pub bitbucket: crate::bitbucket::BitbucketState,
 }
 
 impl AppState {

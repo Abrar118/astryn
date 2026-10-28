@@ -1,6 +1,7 @@
 import {
   BookText,
   Blocks,
+  FolderGit2,
   Calendar,
   FileStack,
   GitBranch,
@@ -16,6 +17,7 @@ export type SettingsSection =
   | "modules"
   | "linear"
   | "github"
+  | "bitbucket"
   | "slack"
   | "clickup"
   | "documentation"
@@ -44,6 +46,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       { id: "linear", label: "Linear", icon: SquareKanban, module: "linear" },
       { id: "github", label: "GitHub", icon: GitBranch, module: "github" },
+      { id: "bitbucket", label: "Bitbucket", icon: FolderGit2, module: "bitbucket" },
       { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
       { id: "clickup", label: "ClickUp", icon: FileStack, module: "clickup" },
     ],

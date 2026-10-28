@@ -54,6 +54,20 @@ describe("ModulesSection", () => {
     await waitFor(() => expect(commands.setEnabledModules).toHaveBeenCalledWith(["linear", "github"]));
   });
 
+  it("a toggle refreshes every cache that joins the tracker", async () => {
+    view = mk(["linear", "github", "slack"]);
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const invalidate = vi.spyOn(qc, "invalidateQueries");
+    render(
+      <QueryClientProvider client={qc}>
+        <ModulesSection />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole("switch", { name: /slack/i }));
+    await waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: ["bitbucket-prs"] }));
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["github-prs"] });
+  });
+
   it("shows the missing-capability hint", async () => {
     view = mk(["linear", "docs"], { docs: ["docs-source"] });
     renderIt();

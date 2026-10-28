@@ -3,9 +3,11 @@ import {
   BookText,
   Calendar,
   CalendarRange,
+  FolderGit2,
   FileStack,
   GitBranch,
   GitPullRequest,
+  GitPullRequestArrow,
   Inbox,
   LayoutDashboard,
   Link2,
@@ -32,6 +34,7 @@ export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; modul
   graph: { label: "Dependencies", icon: Network, module: "linear" },
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
   prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
+  "bitbucket-prs": { label: "Bitbucket PRs", icon: GitPullRequestArrow, module: "bitbucket" },
   slack: { label: "Slack", icon: MessageSquare, module: "slack" },
   docs: { label: "Docs", icon: BookText, module: "docs" },
   reports: { label: "Reports", icon: NotebookPen, module: "reports" },
@@ -65,6 +68,7 @@ type ManifestEntry = { kind: "provider" | "feature"; provides: Capability[]; req
 export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   linear: { kind: "provider", provides: ["tracker", "notifications"], requires: [], optional: [] },
   github: { kind: "provider", provides: ["code-host", "docs-source"], requires: [], optional: [] },
+  bitbucket: { kind: "provider", provides: ["code-host"], requires: [], optional: [] },
   slack: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
   llm: { kind: "provider", provides: ["llm"], requires: [], optional: [] },
   docs: { kind: "feature", provides: [], requires: [], optional: ["docs-source"] },
@@ -113,6 +117,7 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
   docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories, ClickUp Docs and local folders.", removes: ["documentation sources (your local files are kept)", "cached docs"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
+  bitbucket: { name: "Bitbucket", icon: FolderGit2, description: "Pull requests from Bitbucket Cloud.", removes: ["Bitbucket email and API token", "favorite repositories", "cached pull requests"] },
   clickup: { name: "ClickUp", icon: FileStack, description: "ClickUp Docs as a documentation source.", removes: ["ClickUp token", "cached ClickUp Doc pages"] },
 };
 
@@ -120,7 +125,7 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
 export const CAPABILITY_PROVIDERS: Record<Capability, string> = {
   tracker: "an issue tracker — turn on Linear",
   notifications: "a notification source — turn on Linear",
-  "code-host": "a code host — turn on GitHub",
+  "code-host": "a code host — turn on GitHub or Bitbucket",
   "docs-source": "a docs source — turn on GitHub or ClickUp",
   chat: "a chat provider — turn on Slack",
   llm: "an AI provider — turn on AI",

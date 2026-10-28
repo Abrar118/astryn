@@ -193,7 +193,7 @@ const WORKSPACE_KEYS = [
   ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["relations"], ["users"], ["labels"], ["cycles"],
   ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
   // Cross-module joins read the Linear cache too (PR to issue links, Slack issue refs).
-  ["github-prs"], ["slack-catchup"],
+  ["github-prs"], ["slack-catchup"], ["bitbucket-prs"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {

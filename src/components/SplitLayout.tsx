@@ -27,6 +27,7 @@ import { IssuePage } from "@/features/drawer/IssuePage";
 import { AgendaView } from "@/features/agenda/AgendaView";
 import { DependencyGraphPage } from "@/features/agenda/DependencyGraphPage";
 import { PrsPage } from "@/features/prs/PrsPage";
+import { BITBUCKET_HOST } from "@/features/prs/bitbucketHost";
 import { SlackPage } from "@/features/slack/SlackPage";
 import { DocsPage } from "@/features/docs/DocsPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
@@ -52,6 +53,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <InboxView />;
     case "prs":
       return <PrsPage />;
+    case "bitbucket-prs":
+      return <PrsPage host={BITBUCKET_HOST} />;
     case "slack":
       return <SlackPage />;
     case "docs":

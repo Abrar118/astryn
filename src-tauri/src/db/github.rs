@@ -1,125 +1,24 @@
 use sqlx::SqlitePool;
 
-use crate::github::prs::{ParsedPr, Reviewer};
-use crate::github::repositories::{parse_repository, RepositoryName};
+use crate::github::repositories::RepositoryName;
+
+use super::code_host::{self as ch, GITHUB};
+pub use super::code_host::{PrRow, SyncMeta};
 
 pub const GITHUB_LOGIN_KEY: &str = "github_login";
 pub const GITHUB_CONTRIBUTIONS_KEY: &str = "github_contributions";
 pub const GITHUB_FAVORITE_REPOS_KEY: &str = "github_favorite_repos";
 
-#[derive(Debug, serde::Serialize, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
-pub struct PrRow {
-    pub id: String,
-    pub bucket: String,
-    pub repo: String,
-    pub number: i64,
-    pub title: Option<String>,
-    pub draft: bool,
-    pub mergeable: Option<String>,
-    pub ci_status: Option<String>,
-    pub review_decision: Option<String>,
-    pub author_login: Option<String>,
-    pub author_avatar: Option<String>,
-    pub comment_count: Option<i64>,
-    pub branch: Option<String>,
-    pub base_branch: Option<String>,
-    pub url: Option<String>,
-    pub linear_identifier: Option<String>,
-    pub linear_issue_id: Option<String>,
-    pub updated_at: Option<String>,
-    pub merged_at: Option<String>,
-    pub additions: Option<i64>,
-    pub deletions: Option<i64>,
-    pub changed_files: Option<i64>,
-    // Linear issue state, resolved via the read-time join (nullable).
-    pub linear_state_name: Option<String>,
-    pub linear_state_type: Option<String>,
-    pub linear_state_color: Option<String>,
-    pub linear_priority: Option<i64>,
-    // Raw reviewers JSON from the column; parsed into `reviewers` after the query.
-    #[serde(skip)]
-    #[sqlx(rename = "reviewers")]
-    pub reviewers_raw: Option<String>,
-    #[sqlx(skip)]
-    pub reviewers: Vec<Reviewer>,
-}
-
-#[derive(Debug, serde::Serialize, sqlx::FromRow)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncMeta {
-    pub bucket: String,
-    pub fetched_count: i64,
-    pub truncated: bool,
-    pub last_synced_at: Option<String>,
-}
-
-/// Atomically replace one bucket's cached rows and its sync metadata: delete the
-/// bucket, insert the fetched set, upsert the meta — all in one transaction so a
-/// partial write never empties the bucket.
+/// Atomically replace one bucket's cached rows and its sync metadata (one
+/// transaction, so a partial write never empties the bucket).
 pub async fn replace_bucket(
     pool: &SqlitePool,
     bucket: &str,
-    prs: &[ParsedPr],
+    prs: &[crate::github::prs::ParsedPr],
     synced_at: &str,
     truncated: bool,
 ) -> Result<(), sqlx::Error> {
-    let mut tx = pool.begin().await?;
-    sqlx::query("DELETE FROM github_prs WHERE bucket = ?1")
-        .bind(bucket)
-        .execute(&mut *tx)
-        .await?;
-    for p in prs {
-        sqlx::query(
-            "INSERT INTO github_prs
-               (id, bucket, repo, number, title, draft, mergeable, ci_status, review_decision,
-                author_login, author_avatar, comment_count, branch, base_branch, url,
-                linear_identifier, updated_at, synced_at, merged_at, additions, deletions,
-                changed_files, reviewers)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
-        )
-        .bind(&p.id)
-        .bind(bucket)
-        .bind(&p.repo)
-        .bind(p.number)
-        .bind(&p.title)
-        .bind(p.draft)
-        .bind(&p.mergeable)
-        .bind(&p.ci_status)
-        .bind(&p.review_decision)
-        .bind(&p.author_login)
-        .bind(&p.author_avatar)
-        .bind(p.comment_count)
-        .bind(&p.branch)
-        .bind(&p.base_branch)
-        .bind(&p.url)
-        .bind(&p.linear_identifier)
-        .bind(&p.updated_at)
-        .bind(synced_at)
-        .bind(&p.merged_at)
-        .bind(p.additions)
-        .bind(p.deletions)
-        .bind(p.changed_files)
-        .bind(serde_json::to_string(&p.reviewers).ok())
-        .execute(&mut *tx)
-        .await?;
-    }
-    sqlx::query(
-        "INSERT INTO github_sync_meta (bucket, fetched_count, truncated, last_synced_at)
-         VALUES (?1, ?2, ?3, ?4)
-         ON CONFLICT(bucket) DO UPDATE SET
-           fetched_count = excluded.fetched_count,
-           truncated = excluded.truncated,
-           last_synced_at = excluded.last_synced_at",
-    )
-    .bind(bucket)
-    .bind(prs.len() as i64)
-    .bind(truncated)
-    .bind(synced_at)
-    .execute(&mut *tx)
-    .await?;
-    tx.commit().await?;
-    Ok(())
+    ch::replace_scope(pool, GITHUB, bucket, prs, synced_at, truncated).await
 }
 
 /// Drop all GitHub cache state (rows + meta + cached login). Leaves Linear alone.
@@ -172,24 +71,7 @@ pub async fn load_contributions_json(pool: &SqlitePool) -> Result<Option<String>
 }
 
 pub async fn load_favorite_repos(pool: &SqlitePool) -> Result<Vec<String>, sqlx::Error> {
-    let Some(json) = crate::db::load_setting(pool, GITHUB_FAVORITE_REPOS_KEY).await? else {
-        return Ok(Vec::new());
-    };
-    let values: Vec<String> = serde_json::from_str(&json).unwrap_or_default();
-    let mut favorites = Vec::new();
-    for value in values {
-        let Ok(repo) = parse_repository(&value) else {
-            continue;
-        };
-        if !favorites
-            .iter()
-            .any(|known: &String| known.eq_ignore_ascii_case(&repo.canonical))
-        {
-            favorites.push(repo.canonical);
-        }
-    }
-    favorites.sort_by_key(|repo| repo.to_ascii_lowercase());
-    Ok(favorites)
+    ch::load_favorites(pool, GITHUB).await
 }
 
 pub async fn set_favorite_repo(
@@ -197,91 +79,22 @@ pub async fn set_favorite_repo(
     repo: &RepositoryName,
     favorite: bool,
 ) -> Result<Vec<String>, sqlx::Error> {
-    let mut favorites = load_favorite_repos(pool).await?;
-    if favorite {
-        if !favorites
-            .iter()
-            .any(|known| known.eq_ignore_ascii_case(&repo.canonical))
-        {
-            favorites.push(repo.canonical.clone());
-        }
-    } else {
-        favorites.retain(|known| !known.eq_ignore_ascii_case(&repo.canonical));
-    }
-    favorites.sort_by_key(|known| known.to_ascii_lowercase());
-    let json = serde_json::to_string(&favorites).unwrap_or_else(|_| "[]".to_string());
-
-    let mut tx = pool.begin().await?;
-    sqlx::query(
-        "INSERT INTO settings (key, value) VALUES (?1, ?2)
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    )
-    .bind(GITHUB_FAVORITE_REPOS_KEY)
-    .bind(json)
-    .execute(&mut *tx)
-    .await?;
-    if !favorite {
-        sqlx::query("DELETE FROM github_prs WHERE bucket = ?1")
-            .bind(&repo.scope)
-            .execute(&mut *tx)
-            .await?;
-        sqlx::query("DELETE FROM github_sync_meta WHERE bucket = ?1")
-            .bind(&repo.scope)
-            .execute(&mut *tx)
-            .await?;
-    }
-    tx.commit().await?;
-    Ok(favorites)
+    ch::set_favorite(pool, GITHUB, repo, favorite).await
 }
 
 pub async fn list_prs(pool: &SqlitePool, include_tracker: bool) -> Result<Vec<PrRow>, sqlx::Error> {
-    // Without the tracker module the issues cache is not joined at all.
-    let (linear_cols, linear_join) = if include_tracker {
-        (
-            "i.id AS linear_issue_id, i.state_name AS linear_state_name,
-                i.state_type AS linear_state_type, i.state_color AS linear_state_color,
-                i.priority AS linear_priority",
-            "LEFT JOIN issues i ON i.identifier = p.linear_identifier",
-        )
-    } else {
-        (
-            "NULL AS linear_issue_id, NULL AS linear_state_name,
-                NULL AS linear_state_type, NULL AS linear_state_color,
-                NULL AS linear_priority",
-            "",
-        )
-    };
-    let sql = format!(
-        "SELECT p.id, p.bucket, p.repo, p.number, p.title, p.draft, p.mergeable, p.ci_status,
-                p.review_decision, p.author_login, p.author_avatar, p.comment_count, p.branch,
-                p.base_branch, p.url, p.linear_identifier, p.updated_at,
-                p.merged_at, p.additions, p.deletions, p.changed_files,
-                {linear_cols},
-                p.reviewers
-         FROM github_prs p
-         {linear_join}
-         ORDER BY p.bucket, p.updated_at DESC"
-    );
-    let mut rows = sqlx::query_as::<_, PrRow>(&sql).fetch_all(pool).await?;
-    for r in &mut rows {
-        if let Some(json) = &r.reviewers_raw {
-            r.reviewers = serde_json::from_str(json).unwrap_or_default();
-        }
-    }
-    Ok(rows)
+    ch::list_rows(pool, GITHUB, include_tracker).await
 }
 
 pub async fn load_sync_meta(pool: &SqlitePool) -> Result<Vec<SyncMeta>, sqlx::Error> {
-    sqlx::query_as::<_, SyncMeta>(
-        "SELECT bucket, fetched_count, truncated, last_synced_at FROM github_sync_meta",
-    )
-    .fetch_all(pool)
-    .await
+    ch::load_meta(pool, GITHUB).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::github::prs::{ParsedPr, Reviewer};
+    use crate::github::repositories::parse_repository;
 
     async fn pool() -> (tempfile::TempDir, SqlitePool) {
         let dir = tempfile::tempdir().unwrap();
