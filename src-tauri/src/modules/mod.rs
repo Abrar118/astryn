@@ -18,10 +18,11 @@ pub enum ModuleId {
     Docs,
     Reports,
     LinkPreviews,
+    Teams,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 7] = [
+    pub const ALL: [ModuleId; 8] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -29,6 +30,7 @@ impl ModuleId {
         ModuleId::Docs,
         ModuleId::Reports,
         ModuleId::LinkPreviews,
+        ModuleId::Teams,
     ];
 }
 
@@ -68,7 +70,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 7] = [
+static MANIFEST: [ModuleSpec; 8] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -118,6 +120,13 @@ static MANIFEST: [ModuleSpec; 7] = [
         requires: &[],
         optional: &[],
     },
+    ModuleSpec {
+        id: ModuleId::Teams,
+        kind: K::Provider,
+        provides: &[C::Chat],
+        requires: &[],
+        optional: &[],
+    },
 ];
 
 pub fn spec(id: ModuleId) -> &'static ModuleSpec {
@@ -153,8 +162,15 @@ pub fn is_active(id: ModuleId, enabled: &BTreeSet<ModuleId>) -> bool {
 const ENABLED_KEY: &str = "modules_enabled";
 const ONBOARDED_KEY: &str = "modules_onboarded";
 
+/// Modules added after the module system shipped. An install that predates
+/// modules upgrades with everything it already had, not these new providers.
+const POST_MODULE_ADDITIONS: [ModuleId; 1] = [ModuleId::Teams];
+
 fn all_enabled() -> BTreeSet<ModuleId> {
-    ModuleId::ALL.into_iter().collect()
+    ModuleId::ALL
+        .into_iter()
+        .filter(|id| !POST_MODULE_ADDITIONS.contains(id))
+        .collect()
 }
 
 /// Load persisted module state. A missing `modules_enabled` key means either a
@@ -240,6 +256,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "get_connection_status",
     "get_github_status",
     "get_slack_status",
+    "get_teams_status",
     "get_llm_config",
     "get_docs_status",
 ];
@@ -299,6 +316,15 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "get_slack_catchup"
         | "get_slack_conversation_messages"
         | "slack_deep_link" => Some(ModuleId::Slack),
+        "start_teams_sign_in"
+        | "poll_teams_sign_in"
+        | "cancel_teams_sign_in"
+        | "clear_teams_account"
+        | "test_teams_connection"
+        | "sync_teams_catchup"
+        | "get_teams_catchup"
+        | "get_teams_chat_messages"
+        | "teams_open_link" => Some(ModuleId::Teams),
         "sync_docs" | "list_docs_sources" | "add_docs_source" | "rename_docs_source"
         | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
@@ -346,6 +372,7 @@ mod tests {
             ("mod.rs", include_str!("../commands/mod.rs")),
             ("github.rs", include_str!("../commands/github.rs")),
             ("slack.rs", include_str!("../commands/slack.rs")),
+            ("teams.rs", include_str!("../commands/teams.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
         ] {
@@ -408,7 +435,8 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled, all_enabled());
+        assert!(!s.enabled.contains(&ModuleId::Teams));
         assert!(s.onboarded);
         assert_eq!(
             db::load_setting(&pool, "modules_onboarded")
@@ -426,28 +454,32 @@ mod tests {
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled, all_enabled());
         assert!(s.onboarded);
     }
 
     #[tokio::test]
     async fn unknown_ids_are_dropped_and_bad_json_falls_back() {
         let (_d, pool) = pool().await;
-        db::save_setting(&pool, "modules_enabled", r#"["slack","teams"]"#)
-            .await
-            .unwrap();
+        db::save_setting(
+            &pool,
+            "modules_enabled",
+            r#"["slack","teams","nonexistent"]"#,
+        )
+        .await
+        .unwrap();
         db::save_setting(&pool, "modules_onboarded", "true")
             .await
             .unwrap();
         assert_eq!(
             load_state(&pool).await.unwrap().enabled,
-            set(&[ModuleId::Slack])
+            set(&[ModuleId::Slack, ModuleId::Teams])
         );
         db::save_setting(&pool, "modules_enabled", "{nope")
             .await
             .unwrap();
         let s = load_state(&pool).await.unwrap();
-        assert_eq!(s.enabled.len(), ModuleId::ALL.len());
+        assert_eq!(s.enabled, all_enabled());
         assert!(s.onboarded);
     }
 
@@ -501,6 +533,17 @@ mod tests {
             ModuleId::Reports,
             &set(&[ModuleId::Reports, ModuleId::Github, ModuleId::Llm])
         ));
+    }
+
+    #[test]
+    fn teams_is_a_chat_provider() {
+        assert_eq!(spec(ModuleId::Teams).kind, ModuleKind::Provider);
+        assert!(has_capability(Capability::Chat, &set(&[ModuleId::Teams])));
+        assert!(is_active(ModuleId::Teams, &set(&[ModuleId::Teams])));
+        assert_eq!(
+            serde_json::to_string(&ModuleId::Teams).unwrap(),
+            "\"teams\""
+        );
     }
 
     #[test]
