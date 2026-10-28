@@ -134,7 +134,7 @@ function input(overrides: Partial<DashboardInput> = {}): DashboardInput {
     prs: [],
     notifications: [],
     slack: catchup(),
-    viewerId: "viewer",
+    viewerIds: ["viewer"],
     today: "2026-07-26",
     ...overrides,
   };
@@ -168,10 +168,21 @@ describe("dashboardMetrics", () => {
     expect(metrics).toEqual({ overdue: 1, reviews: 1, inbox: 1, mentions: 1 });
   });
 
+  it("counts overdue tasks of every tracker's viewer", () => {
+    const metrics = dashboardMetrics(input({
+      issues: [
+        issue({ id: "a", assigneeId: "viewer", dueDate: "2026-07-20" }),
+        issue({ id: "lt_b", assigneeId: "local-viewer", dueDate: "2026-07-21" }),
+      ],
+      viewerIds: ["viewer", "local-viewer"],
+    }));
+    expect(metrics.overdue).toBe(2);
+  });
+
   it("returns zero Linear metrics until the cached viewer is known", () => {
     const metrics = dashboardMetrics(input({
       issues: [issue({ dueDate: "2026-07-20" })],
-      viewerId: null,
+      viewerIds: [],
     }));
     expect(metrics.overdue).toBe(0);
   });
@@ -257,7 +268,7 @@ describe("workloadBuckets", () => {
       issue({ id: "todo", assigneeId: "viewer", stateType: "unstarted" }),
       issue({ id: "other", assigneeId: "other", stateType: "backlog" }),
       issue({ id: "done", assigneeId: "viewer", stateType: "completed" }),
-    ], "viewer");
+    ], ["viewer"]);
 
     expect(buckets.map(({ key, count }) => ({ key, count }))).toEqual([
       { key: "started", count: 1 },
@@ -279,7 +290,7 @@ describe("dueLoad", () => {
         stateType: "completed",
       }),
       issue({ id: "other", assigneeId: "other", dueDate: "2026-07-27" }),
-    ], "viewer", "2026-07-26");
+    ], ["viewer"], "2026-07-26");
 
     expect(days.map(({ date, count }) => ({ date, count }))).toEqual([
       { date: "2026-07-26", count: 1 },
@@ -323,7 +334,7 @@ describe("weekPreview", () => {
         assigneeId: "viewer",
         dueDate: "2026-08-02",
       }),
-    ], "viewer", "2026-07-26");
+    ], ["viewer"], "2026-07-26");
 
     expect(preview.map((item) => item.id)).toEqual([
       "overdue",
@@ -340,18 +351,18 @@ describe("module gating", () => {
     prs: [pr({ bucket: "needs_review" })],
     slack: catchup({ mentions: [message()] }),
   });
-  it("omits linear and inbox attention when linear is off", () => {
-    const sources = attentionItems({ ...data(), active: { linear: false, github: true, slack: true } }).map((i) => i.source);
-    expect(sources).not.toContain("linear");
+  it("omits task and inbox attention when no tracker is on", () => {
+    const sources = attentionItems({ ...data(), active: { tracker: false, inbox: false, github: true, slack: true } }).map((i) => i.source);
+    expect(sources).not.toContain("task");
     expect(sources).not.toContain("inbox");
     expect(sources).toEqual(expect.arrayContaining(["github", "slack"]));
   });
   it("zeroes the metrics of inactive modules", () => {
-    const m = dashboardMetrics({ ...data(), active: { linear: false, github: false, slack: false } });
+    const m = dashboardMetrics({ ...data(), active: { tracker: false, inbox: false, github: false, slack: false } });
     expect(m).toEqual({ overdue: 0, reviews: 0, inbox: 0, mentions: 0 });
   });
   it("reports the empty state only when nothing is active", () => {
-    expect(noModulesActive({ linear: false, github: false, slack: false })).toBe(true);
-    expect(noModulesActive({ linear: false, github: true, slack: false })).toBe(false);
+    expect(noModulesActive({ tracker: false, inbox: false, github: false, slack: false })).toBe(true);
+    expect(noModulesActive({ tracker: false, inbox: false, github: true, slack: false })).toBe(false);
   });
 });

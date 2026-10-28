@@ -35,7 +35,7 @@
 - **Microsoft Teams chat provider (module spec 2, chat part).** A `teams` module (provides `chat`) with its own catch-up board for unread Teams chats and @mentions, rendered by the provider-neutral `features/chat/` board that Slack now also uses. Microsoft Graph via a device-code sign-in (§4 Microsoft Teams). Live verification against a real tenant is pending. See `docs/superpowers/specs/2026-10-28-teams-chat-provider-design.md`.
 - **Reports** — Daily Scrum and Weekly Review generators. Rust (`generators/facts.rs`) builds a deterministic fact sheet from the local cache (Linear issues + GitHub PRs); an optional OpenAI-compatible endpoint (`generators/llm.rs`, streamed) turns it into prose, with the fact sheet as the offline/no-endpoint fallback.
 
-**Not yet built:** F9 (per-issue doc links) — see §9 and §11. **Planned:** module system specs 2–3 (second code-host/chat provider; swappable tracker, §3 Module architecture) and multiple color themes (§3 UI direction).
+**Not yet built:** F9 (per-issue doc links) — see §9 and §11. **Planned:** multiple color themes (§3 UI direction).
 
 ---
 
@@ -121,7 +121,7 @@ All Linear, GitHub, Slack, documentation-source, LLM, image-proxy, and link-prev
 
 Use the `impeccable` skill to execute this direction; this section is the *intent*, the skill is the *how*. When in doubt about a Linear-data component, match how Linear does it; otherwise follow `DESIGN.md`.
 
-### Module architecture `[REQ]` — spec 1 shipped (registry + enable/disable); spec 2a shipped (Bitbucket code host); chat provider and spec 3 planned
+### Module architecture `[REQ]` — specs 1 (registry + enable/disable), 2a (Bitbucket code host), the spec 2 chat provider (Teams) and 3 (swappable tracker) shipped
 
 *Added 2026-10-27.* Astryn becomes a **module-based** app. Every integration is a module the owner can enable, disable, or add as their tool stack changes — including the **issue tracker** itself (Linear today; Jira or another tracker could replace it). Examples: turn Slack off, add Microsoft Teams, add Bitbucket alongside or instead of GitHub.
 
@@ -615,6 +615,7 @@ src/                 # React frontend
 - **Slack catch-up board (Phase 2 iter 1). ✅ Done.** Read-only unread board: mentions, DMs, threads, and channels for one workspace. Rust `slack/` module (client, parsers, `replace_catchup` sync, credential provider, `SlackCredentialProvider` seam); four SQLite tables (`slack_conversations`, `slack_messages`, `slack_users`, `slack_sync_meta`); React `SlackPage` with stacked sections (Mentions / DMs / Threads / Channels) rendered via a `Section` component and a `SlackReader` message pane, Linear chip, "Open in Slack" deep links, and Settings token entry + connection test; on-open + 5-min poll; offline-first cache reads; credential isolation.
 - **Bitbucket code host (module spec 2a). ✅ Done (live verification pending).** `bitbucket` module, migration 0030 (`bitbucket_prs`, `bitbucket_sync_meta`), provider-neutral PR workspace. See `docs/superpowers/specs/2026-10-28-bitbucket-code-host-design.md`.
 - **Module system (spec 1). ✅ Done.** Module registry plus enable/disable in Settings → Modules, with Rust-enforced guards on every command. See `docs/superpowers/specs/2026-10-27-module-system-design.md` and `docs/superpowers/plans/2026-10-27-module-system.md`.
+- **Module system (spec 3) — swappable tracker. ✅ Done.** Calendar, This Week, Dependencies, the task drawer/tab, Reports and the Dashboard read a tracker-neutral task model (`src/lib/tracker.ts`, merged hooks in `src/lib/taskQueries.ts`, per-tracker report fact sources) that merges every active tracker; Linear is the first `tracker` provider. See `docs/superpowers/specs/2026-10-28-swappable-tracker-design.md`.
 - **Slack session-token auth (local-app auto-extraction, macOS). ✅ Done.** `SlackAuth { authorization, cookie }` credential struct + `PersonalTokenProvider` with two keychain accounts (`slack_user_token` / `slack_cookie_d`); `slack/extract.rs` (LevelDB `xoxc` scan + Chromium AES-128-CBC `xoxd` cookie decryption using "Slack Safe Storage" keychain key); `detect_slack_credentials` Tauri command with self-healing rotation; Settings "Detect from Slack app" button; dual-header transport (`Authorization: Bearer <xoxc>` + `Cookie: d=<xoxd>`). macOS real-app smoke (live cookie decryption + xoxc transport) deferred to user.
 - **Microsoft Teams chat provider + provider-neutral chat board (module spec 2, chat part). ✅ Built; live tenant verification pending.** `teams` module, `teams/` Rust module, migration 0035 (`teams_chats`, `teams_messages`), `features/chat/` board shared with Slack, Settings → Teams device-code sign-in. See `docs/superpowers/specs/2026-10-28-teams-chat-provider-design.md`.
 

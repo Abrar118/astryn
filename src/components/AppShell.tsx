@@ -4,19 +4,20 @@ import { WorkspaceProvider } from "@/lib/tabs";
 import { SplitLayout } from "@/components/SplitLayout";
 import { ModulePicker } from "@/features/onboarding/ModulePicker";
 import { Dock } from "@/components/Dock";
-import { IssueDrawer } from "@/features/drawer/IssueDrawer";
+import { TaskDrawer } from "@/features/drawer/TaskDrawer";
 import { IssueMenuProvider } from "@/features/issues/IssueContextMenu";
 import { CommandPaletteProvider } from "@/features/command/CommandPalette";
 
 function Shell() {
-  const { hasCapability } = useModules();
-  const { isSyncing, refresh } = useSyncLoop(hasCapability("tracker"));
+  const { isActive } = useModules();
+  // The background sync is Linear's; other trackers (local tasks) have nothing to pull.
+  const { isSyncing, refresh } = useSyncLoop(isActive("linear"));
 
   return (
     <div className="relative flex h-screen flex-col bg-background text-foreground">
       <SplitLayout />
       <Dock isSyncing={isSyncing} refresh={refresh} />
-      <IssueDrawer />
+      <TaskDrawer />
     </div>
   );
 }

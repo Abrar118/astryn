@@ -8,7 +8,7 @@ import type { ModuleId } from "@/lib/commands";
 const listModules = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/commands", () => ({ listModules }));
 
-import { MODULE_MANIFEST, SWITCHABLE_SCREENS, VIEW_META, useModules, viewActive, visibleViews } from "./modules";
+import { MODULE_MANIFEST, SWITCHABLE_SCREENS, VIEW_META, tabActive, useModules, viewActive, visibleViews } from "./modules";
 
 const wrap = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -20,13 +20,21 @@ describe("view registry", () => {
     const active = (id: ModuleId) => id === "github";
     expect(visibleViews(active)).toEqual(["dashboard", "prs", "settings"]);
   });
+  it("shows tracker views while any tracker module is on", () => {
+    expect(visibleViews((id) => id === "linear")).toEqual(expect.arrayContaining(["calendar", "this-week", "graph", "list", "inbox"]));
+    expect(viewActive("calendar", () => false)).toBe(false);
+  });
   it("shows the Teams view only while Teams is active", () => {
     expect(visibleViews((id) => id === "teams")).toEqual(["dashboard", "teams", "settings"]);
     expect(viewActive("teams", (id) => id === "slack")).toBe(false);
   });
-  it("issue tabs follow the tracker", () => {
+  it("issue tabs follow their own tracker", () => {
     expect(viewActive("issue", () => false)).toBe(false);
     expect(viewActive("issue", (id) => id === "linear")).toBe(true);
+    const tab = { id: "t1", view: "issue" as const, issueId: "0b6c7c4e-uuid" };
+    expect(tabActive(tab, (id) => id === "linear")).toBe(true);
+    expect(tabActive(tab, () => false)).toBe(false);
+    expect(tabActive({ id: "t2", view: "calendar" }, (id) => id === "linear")).toBe(true);
   });
   it("hides switched-off screens but never Calendar, Dashboard or Settings", () => {
     const linear = (id: ModuleId) => id === "linear";

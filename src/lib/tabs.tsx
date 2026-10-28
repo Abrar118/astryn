@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useModules, viewActive } from "./modules";
+import { tabActive, useModules, viewActive } from "./modules";
 import {
   parsePersisted, addTabIn as addTabInReducer, closeTabIn, selectTabIn,
   splitTabRight as splitTabRightReducer, moveTabToOtherPane as moveTabReducer, moveTab as moveTabAtReducer,
@@ -62,8 +62,8 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const shown = (view: ViewKind) => viewActive(view, isActive, disabledScreens);
   useEffect(() => {
     if (!modulesData) return;
-    setState((s) => closeTabsWhere(s, (t) => !shown(t.view)));
-    // shown is rebuilt every render; modulesData is the real dependency.
+    setState((s) => closeTabsWhere(s, (t) => !tabActive(t, isActive, disabledScreens)));
+    // isActive is rebuilt every render; modulesData is the real dependency.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modulesData]);
   // Every opener goes through these, so no shortcut, link or button can open a hidden view.

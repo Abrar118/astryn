@@ -11,7 +11,9 @@ import {
   MODULE_MANIFEST,
   SWITCHABLE_SCREENS,
   VIEW_META,
+  ownerActive,
   previewMissing,
+  screenListedUnder,
 } from "@/lib/modules";
 import { Button } from "@/components/ui/button";
 
@@ -50,7 +52,7 @@ export function ModulePicker() {
       // Screens first: saving the modules marks the app onboarded and closes the picker.
       // Only screens of chosen modules: a choice made under a module that was then unticked is dropped.
       await setDisabledScreens(
-        SWITCHABLE_SCREENS.filter((s) => screensOff.has(s) && selected.has(VIEW_META[s].module as ModuleId)),
+        SWITCHABLE_SCREENS.filter((s) => screensOff.has(s) && ownerActive(VIEW_META[s].module, (m) => selected.has(m))),
       );
       const view = await setEnabledModules(IDS.filter((i) => selected.has(i)));
       qc.setQueryData(MODULES_KEY, view);
@@ -118,7 +120,7 @@ export function ModulePicker() {
           </fieldset>
         ))}
         {IDS.filter((id) => selected.has(id)).map((id) => {
-          const screens = SWITCHABLE_SCREENS.filter((s) => VIEW_META[s].module === id);
+          const screens = SWITCHABLE_SCREENS.filter((s) => screenListedUnder(s, id));
           if (screens.length === 0) return null;
           return (
             <fieldset key={id}>

@@ -22,7 +22,8 @@ import {
   Search,
   SquareSplitHorizontal,
 } from "lucide-react";
-import { invalidateWorkspaceQueries, reportSyncError, useIssues } from "@/lib/queries";
+import { invalidateWorkspaceQueries, reportSyncError } from "@/lib/queries";
+import { useTasks } from "@/lib/taskQueries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 import { syncIssues, type IssueListItem } from "@/lib/commands";
@@ -85,8 +86,10 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
   const { addTab, closeTab, active } = useWorkspace();
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { hasCapability } = useModules();
+  const { hasCapability, isActive } = useModules();
   const tracker = hasCapability("tracker");
+  // Create and resync are Linear actions (its create modal and sync), not every tracker's.
+  const linear = isActive("linear");
 
   const resync = useCallback(
     (full: boolean) => {
@@ -101,8 +104,8 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
 
   // A single stable keydown listener reads the latest handlers via this ref, so
   // the global shortcuts never re-subscribe on every render.
-  const handlers = useRef({ mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker });
-  handlers.current = { mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker };
+  const handlers = useRef({ mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker, linear });
+  handlers.current = { mode, addTab, navigate, resync, closeTab, activeId: active.id, tracker, linear };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -135,11 +138,11 @@ export function CommandPaletteProvider({ children }: { children: ReactNode }) {
       // Cmd/Ctrl+R resyncs the workspace; add Shift for a full resync. No tracker, nothing to sync.
       if (mod && (e.key === "r" || e.key === "R")) {
         e.preventDefault();
-        if (handlers.current.tracker) handlers.current.resync(e.shiftKey);
+        if (handlers.current.linear) handlers.current.resync(e.shiftKey);
         return;
       }
       // Bare "c" opens the create modal, unless typing or an overlay is open (or no tracker is on).
-      if (handlers.current.tracker && shouldOpenCreateShortcut({
+      if (handlers.current.linear && shouldOpenCreateShortcut({
         key: e.key,
         editable: isEditableTarget(e.target),
         overlayOpen: !!handlers.current.mode || !!document.querySelector("[data-command-shortcut-blocker], [data-popover-open]"),
@@ -191,14 +194,15 @@ type Command = {
 };
 
 function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate: () => void; resync: (full: boolean) => void }) {
-  const { data: issues } = useIssues({});
+  const { data: issues } = useTasks({});
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
   const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
   const { isActive, hasCapability, disabledScreens } = useModules();
   const tracker = hasCapability("tracker");
+  const linear = isActive("linear");
   const views = visibleViews(isActive, disabledScreens);
-  const modulesKey = `${views.join()}|${tracker}`;
+  const modulesKey = `${views.join()}|${tracker}|${linear}`;
   const [target, setTarget] = useState<"drawer" | "rightSplit">("drawer");
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -225,13 +229,15 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
 
   const commands: Command[] = useMemo(
     () => [
-      ...(tracker ? [{ key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate }] : []),
+      ...(linear ? [{ key: "create", section: "Create", icon: <Plus className="size-4" />, label: "Create new issue", hint: "C", onSelect: onCreate }] : []),
       ...goCommands,
       { key: "new-tab", section: "Navigation", icon: <Plus className="size-4" />, label: "Open new tab", hint: HINT.newTab, onSelect: () => { addTab(tracker ? "calendar" : "dashboard"); onClose(); } },
       { key: "back", section: "Navigation", icon: <ArrowLeft className="size-4" />, label: "Go back", hint: HINT.back, onSelect: () => { navigate(-1); onClose(); } },
       ...(tracker
+        ? [{ key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } }]
+        : []),
+      ...(linear
         ? [
-            { key: "split-right", section: "Navigation", icon: <SquareSplitHorizontal className="size-4" />, label: "Open issue in right split", onSelect: () => { setTarget("rightSplit"); setQ(""); } },
             { key: "sync", section: "Workspace", icon: <RefreshCw className="size-4" />, label: "Resync workspace", hint: HINT.sync, onSelect: () => { onClose(); resync(false); } },
             { key: "full-sync", section: "Workspace", icon: <RotateCcw className="size-4" />, label: "Full resync", hint: HINT.fullSync, onSelect: () => { onClose(); resync(true); } },
           ]

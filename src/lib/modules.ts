@@ -22,17 +22,21 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { listModules, type Capability, type ModuleId, type ModulesView, type ScreenId } from "@/lib/commands";
-import type { ViewKind } from "@/lib/paneModel";
+import type { Tab, ViewKind } from "@/lib/paneModel";
+import { trackerOf, type TrackerId } from "@/lib/tracker";
 
 type NavView = Exclude<ViewKind, "issue">;
 
-/** The one view registry: label, icon and owning module for every navigable view. */
-export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; module: ModuleId | "core" }> = {
+/** A view's owner: a module, the app core, or "tracker" (shown while any tracker module is on). */
+export type ViewOwner = ModuleId | "core" | "tracker";
+
+/** The one view registry: label, icon and owner for every navigable view. */
+export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; module: ViewOwner }> = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard, module: "core" },
-  calendar: { label: "Calendar", icon: Calendar, module: "linear" },
+  calendar: { label: "Calendar", icon: Calendar, module: "tracker" },
   list: { label: "Issues", icon: List, module: "linear" },
-  "this-week": { label: "This Week", icon: CalendarRange, module: "linear" },
-  graph: { label: "Dependencies", icon: Network, module: "linear" },
+  "this-week": { label: "This Week", icon: CalendarRange, module: "tracker" },
+  graph: { label: "Dependencies", icon: Network, module: "tracker" },
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
   prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
   "bitbucket-prs": { label: "Bitbucket PRs", icon: GitPullRequestArrow, module: "bitbucket" },
@@ -50,18 +54,29 @@ export const SWITCHABLE_SCREENS: ScreenId[] = ["list", "this-week", "graph", "in
 
 export type IsActive = (id: ModuleId) => boolean;
 
-export function ownerActive(owner: ModuleId | "core", isActive: IsActive): boolean {
-  return owner === "core" || isActive(owner);
+export function ownerActive(owner: ViewOwner, isActive: IsActive): boolean {
+  if (owner === "core") return true;
+  if (owner === "tracker") return trackerModulesActive(isActive);
+  return isActive(owner);
 }
 
 export function visibleViews(isActive: IsActive, disabledScreens: readonly ScreenId[] = []): NavView[] {
   return NAV_VIEWS.filter((v) => viewActive(v, isActive, disabledScreens));
 }
 
-/** A view is shown when its module is active and its screen is not switched off. Issue tabs belong to the tracker module. */
+/**
+ * A view is shown when its owner is active and its screen is not switched off.
+ * Issue views need a tracker; use `tabActive` when the tab (and so its task) is known.
+ */
 export function viewActive(view: ViewKind, isActive: IsActive, disabledScreens: readonly ScreenId[] = []): boolean {
-  if (view === "issue") return isActive("linear");
+  if (view === "issue") return ownerActive("tracker", isActive);
   return ownerActive(VIEW_META[view].module, isActive) && !(disabledScreens as readonly string[]).includes(view);
+}
+
+/** A task tab stays open only while the tracker that owns its task is on. */
+export function tabActive(tab: Tab, isActive: IsActive, disabledScreens: readonly ScreenId[] = []): boolean {
+  if (tab.view === "issue" && tab.issueId) return isActive(trackerOf(tab.issueId));
+  return viewActive(tab.view, isActive, disabledScreens);
 }
 
 type ManifestEntry = { kind: "provider" | "feature"; provides: Capability[]; requires: Capability[]; optional: Capability[] };
@@ -79,6 +94,22 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   teams: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
   clickup: { kind: "provider", provides: ["docs-source"], requires: [], optional: [] },
 };
+
+/** The modules that provide the `tracker` capability — the one list of trackers. */
+export const TRACKER_MODULES = (Object.keys(MODULE_MANIFEST) as ModuleId[]).filter((id) =>
+  MODULE_MANIFEST[id].provides.includes("tracker"),
+) as TrackerId[];
+
+/** Whether a switchable screen is offered under module `id` (tracker screens sit under every tracker). */
+export function screenListedUnder(screen: ScreenId, id: ModuleId): boolean {
+  const owner = VIEW_META[screen].module;
+  return owner === id || (owner === "tracker" && (TRACKER_MODULES as ModuleId[]).includes(id));
+}
+
+/** True while at least one tracker module is active (the `tracker` capability). */
+export function trackerModulesActive(isActive: IsActive): boolean {
+  return TRACKER_MODULES.some((t) => isActive(t));
+}
 
 /** Capabilities `id` requires that no module in `selected` provides. */
 export function previewMissing(id: ModuleId, selected: Set<ModuleId>): Capability[] {

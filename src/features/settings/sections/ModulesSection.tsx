@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/Popover";
 import { removeModuleData, setDisabledScreens, setEnabledModules, type ModuleId, type ScreenId } from "@/lib/commands";
-import { CAPABILITY_PROVIDERS, MODULES_KEY, MODULE_COPY, SWITCHABLE_SCREENS, VIEW_META, useModules } from "@/lib/modules";
+import { CAPABILITY_PROVIDERS, MODULES_KEY, MODULE_COPY, SWITCHABLE_SCREENS, VIEW_META, screenListedUnder, useModules } from "@/lib/modules";
 import { SectionHeader } from "../SectionHeader";
 
 const SWITCH_CLASS = "size-4 cursor-pointer accent-primary disabled:cursor-not-allowed";
@@ -74,7 +74,7 @@ export function ModulesSection() {
         <Card className="flex flex-col divide-y divide-border/60 p-0">
           {modules.map((m) => {
             const copy = MODULE_COPY[m.id];
-            const screens = m.enabled ? SWITCHABLE_SCREENS.filter((s) => VIEW_META[s].module === m.id) : [];
+            const screens = m.enabled ? SWITCHABLE_SCREENS.filter((s) => screenListedUnder(s, m.id)) : [];
             return (
               <div key={m.id} className="flex flex-col gap-3 px-6 py-4">
                 <div className="flex items-center gap-4">

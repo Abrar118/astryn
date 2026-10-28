@@ -12,15 +12,14 @@ import {
 } from "lucide-react";
 import {
   useCreateIssue,
-  useCreateIssueRelation,
   useCycles,
   useFilterOptions,
   useIssues,
   useLabels,
   useMe,
-  useUpdateIssue,
   useUsers,
 } from "@/lib/queries";
+import { useCreateTaskRelation, useUpdateTask } from "@/lib/taskQueries";
 import type { CreateIssueInput } from "@/lib/commands";
 import type { CreateSeed } from "./CommandPalette";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
@@ -141,8 +140,8 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
   const { data: cycles } = useCycles();
   const { data: me } = useMe();
   const create = useCreateIssue();
-  const update = useUpdateIssue();
-  const createRel = useCreateIssueRelation();
+  const update = useUpdateTask();
+  const createRel = useCreateTaskRelation();
   const [, setParams] = useSearchParams();
 
   const teams = teamsOpts?.teams ?? [];

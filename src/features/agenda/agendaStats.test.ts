@@ -44,19 +44,19 @@ const NOW = new Date("2026-06-24T06:00:00Z");
 
 describe("buildHeatmap", () => {
   it("produces (weeksBack + 1 + weeksForward) weeks in oldest→newest order", () => {
-    const weeks = buildHeatmap([], "me", { now: NOW, weeksBack: 2, weeksForward: 1 });
+    const weeks = buildHeatmap([], ["me"], { now: NOW, weeksBack: 2, weeksForward: 1 });
     // -2, -1, 0, +1 = 4 weeks
     expect(weeks).toHaveLength(4);
     expect(weeks.map((w) => w.offset)).toEqual([-2, -1, 0, 1]);
   });
 
   it("each week has exactly 7 cells", () => {
-    const weeks = buildHeatmap([], "me", { now: NOW, weeksBack: 0, weeksForward: 0 });
+    const weeks = buildHeatmap([], ["me"], { now: NOW, weeksBack: 0, weeksForward: 0 });
     expect(weeks[0].cells).toHaveLength(7);
   });
 
   it("cells of the current week start on 2026-06-21 (Sun)", () => {
-    const weeks = buildHeatmap([], "me", { now: NOW, weeksBack: 0, weeksForward: 0 });
+    const weeks = buildHeatmap([], ["me"], { now: NOW, weeksBack: 0, weeksForward: 0 });
     expect(weeks[0].cells[0].date).toBe("2026-06-21");
     expect(weeks[0].cells[6].date).toBe("2026-06-27");
   });
@@ -67,7 +67,7 @@ describe("buildHeatmap", () => {
       iss({ id: "2", dueDate: "2026-06-24" }), // same day, second issue
       iss({ id: "3", dueDate: "2026-06-22" }), // Mon of current week
     ];
-    const weeks = buildHeatmap(issues, "me", { now: NOW, weeksBack: 0, weeksForward: 0 });
+    const weeks = buildHeatmap(issues, ["me"], { now: NOW, weeksBack: 0, weeksForward: 0 });
     const cells = weeks[0].cells;
     // Wed = day index 3 (Sun=0 … Sat=6)
     expect(cells[3]).toMatchObject({ date: "2026-06-24", count: 2 });
@@ -81,20 +81,20 @@ describe("buildHeatmap", () => {
     const issues = [
       iss({ id: "1", dueDate: "2026-06-24", assigneeId: "someone-else" }),
     ];
-    const weeks = buildHeatmap(issues, "me", { now: NOW, weeksBack: 0, weeksForward: 0 });
+    const weeks = buildHeatmap(issues, ["me"], { now: NOW, weeksBack: 0, weeksForward: 0 });
     expect(weeks[0].cells.every((c) => c.count === 0)).toBe(true);
   });
 
   it("excludes issues with no dueDate", () => {
     const issues = [iss({ id: "1", dueDate: null })];
-    const weeks = buildHeatmap(issues, "me", { now: NOW, weeksBack: 0, weeksForward: 0 });
+    const weeks = buildHeatmap(issues, ["me"], { now: NOW, weeksBack: 0, weeksForward: 0 });
     expect(weeks[0].cells.every((c) => c.count === 0)).toBe(true);
   });
 
   it("places a past-week issue in the correct offset=-1 week", () => {
     // Previous week's Sunday = 2026-06-14
     const issues = [iss({ id: "1", dueDate: "2026-06-16" })]; // Tue of prev week
-    const weeks = buildHeatmap(issues, "me", { now: NOW, weeksBack: 1, weeksForward: 0 });
+    const weeks = buildHeatmap(issues, ["me"], { now: NOW, weeksBack: 1, weeksForward: 0 });
     const prevWeek = weeks.find((w) => w.offset === -1)!;
     // Tue = day index 2
     expect(prevWeek.cells[2]).toMatchObject({ date: "2026-06-16", count: 1 });

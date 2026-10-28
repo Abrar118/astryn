@@ -23,7 +23,7 @@ export type HeatWeek = {
  */
 export function buildHeatmap(
   issues: IssueListItem[],
-  viewerId: string,
+  viewerIds: readonly string[],
   opts: { now: Date; weeksBack: number; weeksForward: number },
 ): HeatWeek[] {
   const { now, weeksBack, weeksForward } = opts;
@@ -31,7 +31,7 @@ export function buildHeatmap(
   // Pre-build a map: date → count of viewer's issues due on that date.
   const countByDate = new Map<string, number>();
   for (const issue of issues) {
-    if (issue.assigneeId !== viewerId || !issue.dueDate) continue;
+    if (!issue.assigneeId || !viewerIds.includes(issue.assigneeId) || !issue.dueDate) continue;
     countByDate.set(issue.dueDate, (countByDate.get(issue.dueDate) ?? 0) + 1);
   }
 

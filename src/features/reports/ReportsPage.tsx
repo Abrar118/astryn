@@ -83,7 +83,7 @@ export function ReportsPage() {
         <header className="flex flex-col gap-1">
           <h1 className="text-lg font-semibold">Reports</h1>
           <p className="text-sm text-muted-foreground">
-            Standup-ready updates from your Linear issues and GitHub PRs.
+            Standup-ready updates from your tasks and GitHub PRs.
           </p>
         </header>
 

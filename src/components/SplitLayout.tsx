@@ -16,7 +16,7 @@ import {
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useWorkspace, type Tab } from "@/lib/tabs";
-import { useIssues } from "@/lib/queries";
+import { useTasks } from "@/lib/taskQueries";
 import { clampRatio, MIN_PANE_PX } from "@/lib/paneModel";
 import { PaneTabStrip, tabIcon, tabLabel } from "./PaneTabStrip";
 import { CalendarPage } from "@/features/calendar/CalendarPage";
@@ -86,7 +86,7 @@ function SplitRightZone() {
 
 export function SplitLayout() {
   const { panes, focusedPaneId, ratio, splitTabRight, swapPanes, setRatio, focusPane, moveTab } = useWorkspace();
-  const { data: issues } = useIssues({});
+  const { data: issues } = useTasks({});
   const containerRef = useRef<HTMLDivElement>(null);
   const resizeCleanup = useRef<(() => void) | null>(null);
   const isSplit = panes.length === 2;

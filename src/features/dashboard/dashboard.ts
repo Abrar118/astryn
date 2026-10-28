@@ -11,23 +11,24 @@ export type DashboardInput = {
   prs: GithubPr[];
   notifications: Notification[];
   slack: SlackCatchup | undefined;
-  viewerId: string | null;
+  /** The viewer's id in each active tracker; tasks assigned to any of them are "mine". */
+  viewerIds: readonly string[];
   today: string;
-  /** Which source modules are on; an absent key counts as on. */
-  active?: { linear?: boolean; github?: boolean; slack?: boolean };
+  /** Which sources are on (`tracker`: any task tracker, `inbox`: Linear notifications); absent counts as on. */
+  active?: { tracker?: boolean; inbox?: boolean; github?: boolean; slack?: boolean };
 };
 
 export function noModulesActive(active: NonNullable<DashboardInput["active"]>): boolean {
-  return !active.linear && !active.github && !active.slack;
+  return !active.tracker && !active.inbox && !active.github && !active.slack;
 }
 
-/** Drop the data of every source module that is off. */
+/** Drop the data of every source that is off. */
 function gated(input: DashboardInput): DashboardInput {
-  const { linear = true, github = true, slack = true } = input.active ?? {};
+  const { tracker = true, inbox = true, github = true, slack = true } = input.active ?? {};
   return {
     ...input,
-    issues: linear ? input.issues : [],
-    notifications: linear ? input.notifications : [],
+    issues: tracker ? input.issues : [],
+    notifications: inbox ? input.notifications : [],
     prs: github ? input.prs : [],
     slack: slack ? input.slack : undefined,
   };
@@ -42,7 +43,7 @@ export type DashboardMetrics = {
 
 export type AttentionItem = {
   key: string;
-  source: "linear" | "github" | "slack" | "inbox";
+  source: "task" | "github" | "slack" | "inbox";
   target: "issue" | "prs" | "slack" | "inbox";
   entityId: string | null;
   context: string;
@@ -78,12 +79,12 @@ function isActive(stateType: string): boolean {
   return stateType !== "completed" && stateType !== "canceled";
 }
 
-function viewerIssue(issue: IssueListItem, viewerId: string | null): boolean {
-  return viewerId !== null && issue.assigneeId === viewerId;
+function viewerIssue(issue: IssueListItem, viewerIds: readonly string[]): boolean {
+  return issue.assigneeId !== null && viewerIds.includes(issue.assigneeId);
 }
 
-function isOverdue(issue: IssueListItem, viewerId: string | null, today: string): boolean {
-  return viewerIssue(issue, viewerId)
+function isOverdue(issue: IssueListItem, viewerIds: readonly string[], today: string): boolean {
+  return viewerIssue(issue, viewerIds)
     && isActive(issue.stateType)
     && issue.dueDate !== null
     && issue.dueDate < today;
@@ -96,7 +97,7 @@ function distinctPrCount(prs: GithubPr[], predicate: (pr: GithubPr) => boolean):
 export function dashboardMetrics(raw: DashboardInput): DashboardMetrics {
   const input = gated(raw);
   return {
-    overdue: input.issues.filter((issue) => isOverdue(issue, input.viewerId, input.today)).length,
+    overdue: input.issues.filter((issue) => isOverdue(issue, input.viewerIds, input.today)).length,
     reviews: distinctPrCount(input.prs, (pr) => pr.bucket === "needs_review"),
     inbox: input.notifications.filter((notification) => !notification.read).length,
     mentions: input.slack?.mentions.length ?? 0,
@@ -139,10 +140,10 @@ function compareAttention(a: AttentionItem, b: AttentionItem): number {
 export function attentionItems(raw: DashboardInput, limit = 8): AttentionItem[] {
   const input = gated(raw);
   const items: AttentionItem[] = input.issues
-    .filter((issue) => isOverdue(issue, input.viewerId, input.today))
+    .filter((issue) => isOverdue(issue, input.viewerIds, input.today))
     .map((issue) => ({
-      key: `linear:${issue.id}`,
-      source: "linear",
+      key: `task:${issue.id}`,
+      source: "task",
       target: "issue",
       entityId: issue.id,
       context: issue.identifier,
@@ -202,11 +203,11 @@ export function attentionItems(raw: DashboardInput, limit = 8): AttentionItem[] 
 
 export function workloadBuckets(
   issues: IssueListItem[],
-  viewerId: string | null,
+  viewerIds: readonly string[],
 ): WorkloadBucket[] {
   const counts = new Map<WorkloadBucket["key"], number>();
   for (const issue of issues) {
-    if (!viewerIssue(issue, viewerId) || !isActive(issue.stateType)) continue;
+    if (!viewerIssue(issue, viewerIds) || !isActive(issue.stateType)) continue;
     if (issue.stateType === "started" || issue.stateType === "unstarted" || issue.stateType === "backlog") {
       counts.set(issue.stateType, (counts.get(issue.stateType) ?? 0) + 1);
     }
@@ -227,13 +228,13 @@ function dayLabel(date: string, today: string): string {
 
 export function dueLoad(
   issues: IssueListItem[],
-  viewerId: string | null,
+  viewerIds: readonly string[],
   today: string,
   days = 7,
 ): DueLoadDay[] {
   const countByDate = new Map<string, number>();
   for (const issue of issues) {
-    if (!viewerIssue(issue, viewerId) || !isActive(issue.stateType) || !issue.dueDate) continue;
+    if (!viewerIssue(issue, viewerIds) || !isActive(issue.stateType) || !issue.dueDate) continue;
     countByDate.set(issue.dueDate, (countByDate.get(issue.dueDate) ?? 0) + 1);
   }
   return Array.from({ length: Math.max(0, days) }, (_, index) => {
@@ -253,7 +254,7 @@ function priorityRank(priority: number): number {
 
 export function weekPreview(
   issues: IssueListItem[],
-  viewerId: string | null,
+  viewerIds: readonly string[],
   today: string,
   limit = 5,
 ): IssueListItem[] {
@@ -262,7 +263,7 @@ export function weekPreview(
   const weekEnd = addDays(weekStart, 7);
   return issues
     .filter((issue) =>
-      viewerIssue(issue, viewerId)
+      viewerIssue(issue, viewerIds)
       && isActive(issue.stateType)
       && issue.dueDate !== null
       && issue.dueDate < weekEnd)

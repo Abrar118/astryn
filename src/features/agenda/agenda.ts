@@ -51,11 +51,12 @@ export function dueIssues(group: AgendaGroup): IssueListItem[] {
 
 export function buildAgenda(args: {
   issues: IssueListItem[];
-  viewerId: string;
+  /** The viewer's id in each active tracker (tasks assigned to any of them are "mine"). */
+  viewerIds: readonly string[];
   window: WeekWindow;
   includeOverdue?: boolean;
 }): AgendaGroup[] {
-  const { issues, viewerId, window, includeOverdue = true } = args;
+  const { issues, viewerIds, window, includeOverdue = true } = args;
 
   const byId = new Map(issues.map((i) => [i.id, i]));
 
@@ -64,7 +65,7 @@ export function buildAgenda(args: {
   // week) must still appear on its own due date. Nesting happens only WITHIN a
   // bucket: under the parent's row when the parent is due there too, otherwise
   // under a context-only heading for the parent.
-  const mine = issues.filter((i) => i.assigneeId === viewerId && i.dueDate);
+  const mine = issues.filter((i) => i.assigneeId !== null && viewerIds.includes(i.assigneeId) && i.dueDate);
 
   const toItems = (due: IssueListItem[]): AgendaItem[] => {
     const dueById = new Map(due.map((i) => [i.id, i]));
