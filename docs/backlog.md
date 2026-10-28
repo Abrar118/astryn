@@ -4,7 +4,7 @@ Features noted for upcoming work. Each entry: what the owner asked for, how it f
 
 ## 1. Local folder as a documentation source
 
-*Noted 2026-10-27.*
+*Noted 2026-10-27. Built 2026-10-28 — see `docs/superpowers/specs/2026-10-28-local-folder-docs-design.md`.*
 
 **Ask:** documentation can be added from a local folder containing Markdown, plain-text, or PDF files.
 

@@ -33,7 +33,8 @@ describe("MODULE_MANIFEST", () => {
       github: { kind: "provider", provides: ["code-host", "docs-source"], requires: [], optional: [] },
       slack: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
       llm: { kind: "provider", provides: ["llm"], requires: [], optional: [] },
-      docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
+      // Local folders need no provider, so a docs source is optional.
+      docs: { kind: "feature", provides: [], requires: [], optional: ["docs-source"] },
       reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
       "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
     });

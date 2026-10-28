@@ -14,14 +14,17 @@ function source(id: string, name = id): DocsSource {
   const [repo, branch] = rest.split("@");
   return {
     id,
+    kind: "github",
     name,
     owner,
     repo,
     branch,
+    location: null,
     url: `https://github.com/${owner}/${repo}/tree/${branch}`,
     lastSyncedAt: null,
     fileCount: 0,
     truncated: false,
+    available: true,
   };
 }
 
@@ -45,6 +48,18 @@ describe("resolveActiveSource", () => {
   it("falls back when the stored source has been removed", () => {
     // Deleting the active source in Settings must not strand the page on nothing.
     expect(resolveActiveSource([core, design], "acme/deleted@main")).toBe(core);
+  });
+
+  it("prefers an available source over an unavailable stored one", () => {
+    // A GitHub repo while GitHub is off can't be read; open something that can.
+    const off = { ...core, available: false };
+    expect(resolveActiveSource([off, design], off.id)).toBe(design);
+    expect(resolveActiveSource([off, design], null)).toBe(design);
+  });
+
+  it("still returns an unavailable source when nothing else exists", () => {
+    const off = { ...core, available: false };
+    expect(resolveActiveSource([off], null)).toBe(off);
   });
 });
 

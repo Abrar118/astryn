@@ -598,18 +598,28 @@ export type DocsStatus = {
   sourceCount: number;
 };
 
-/** One configured documentation repository, joined with its cache freshness. */
+export type DocsSourceKind = "github" | "local";
+
+/** One configured documentation source, joined with its cache freshness. */
 export type DocsSource = {
-  /** Origin-derived (`owner/repo@branch`) — stable across renames. */
+  /** Origin-derived (`owner/repo@branch`, `local:<path>`) — stable across renames. */
   id: string;
+  kind: DocsSourceKind;
   name: string;
-  owner: string;
-  repo: string;
-  branch: string;
-  url: string;
+  /** GitHub only. */
+  owner: string | null;
+  repo: string | null;
+  branch: string | null;
+  /** Local only: the folder's absolute path. */
+  location: string | null;
+  /** GitHub only: browsable repository URL. */
+  url: string | null;
+  /** Last sync (GitHub) or folder scan (local). */
   lastSyncedAt: string | null;
   fileCount: number;
   truncated: boolean;
+  /** False while the source's provider module is off (e.g. GitHub disabled). */
+  available: boolean;
 };
 
 export type DocsSyncResult = { fileCount: number; truncated: boolean };
@@ -622,9 +632,23 @@ export const syncDocs = (sourceId: string): Promise<DocsSyncResult> =>
 export const listDocsTree = (sourceId: string): Promise<DocNode[]> =>
   invoke("list_docs_tree", { sourceId });
 
-/** Cached markdown for one file (`null` if unknown / not yet synced). */
+/**
+ * One document's text: cached Markdown for a repository, or read from disk for a
+ * local folder (Markdown or plain text). `null` if unknown / not readable.
+ */
 export const getDocContent = (sourceId: string, path: string): Promise<string | null> =>
   invoke("get_doc_content", { sourceId, path });
+
+/** A local folder PDF's raw bytes (returned by Rust as a binary IPC payload). */
+export const getDocPdf = (sourceId: string, path: string): Promise<ArrayBuffer> =>
+  invoke("get_doc_pdf", { sourceId, path });
+
+/**
+ * Open the native folder picker (in Rust) and add the chosen folder as a local
+ * docs source. Resolves `null` when the picker is cancelled.
+ */
+export const addLocalDocsSource = (): Promise<DocsSource | null> =>
+  invoke("add_local_docs_source");
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
 

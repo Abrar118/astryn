@@ -137,14 +137,17 @@ const catchup: SlackCatchup = {
 
 const docsSource: DocsSource = {
   id: "gam/docs@main",
+  kind: "github",
   name: "Product docs",
   owner: "gam",
   repo: "docs",
   branch: "main",
+  location: null,
   url: "https://github.com/gam/docs",
   lastSyncedAt: "2026-07-25T09:00:00Z",
   fileCount: 42,
   truncated: false,
+  available: true,
 };
 
 const queryState = vi.hoisted(() => ({
