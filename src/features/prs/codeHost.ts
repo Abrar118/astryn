@@ -18,8 +18,9 @@ import { GITHUB_HOST } from "./githubHost";
  * One code-host provider as the PR workspace sees it: display copy plus the
  * provider's query hooks. The PR components are provider-neutral and read the
  * active host from `CodeHostContext`; payload shapes are shared, so only the
- * hooks and copy differ. Hosts are module constants, so each hook below is
- * called unconditionally for the lifetime of a mounted page.
+ * hooks and copy differ. Hosts call different sets of hooks (only GitHub has
+ * `contributions`), so `PrsPage` remounts its workspace whenever the host
+ * changes (`key={host.id}`); within one mount the host never changes.
  */
 export type CodeHostApi = {
   id: "github" | "bitbucket";

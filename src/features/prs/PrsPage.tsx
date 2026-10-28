@@ -145,11 +145,15 @@ function scopePresentation(
   };
 }
 
-/** The PR workspace for one code host (GitHub unless told otherwise). */
+/**
+ * The PR workspace for one code host (GitHub unless told otherwise). Keyed by
+ * host: a tab switched between providers keeps its position in the tree, and
+ * the hosts call different hooks and must not share state.
+ */
 export function PrsPage({ host = GITHUB_HOST }: { host?: CodeHostApi }) {
   return (
     <CodeHostContext.Provider value={host}>
-      <PrWorkspace host={host} />
+      <PrWorkspace key={host.id} host={host} />
     </CodeHostContext.Provider>
   );
 }

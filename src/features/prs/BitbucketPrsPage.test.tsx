@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import type { GithubPr } from "@/lib/commands";
 
 const hooks = vi.hoisted(() => ({
@@ -12,8 +13,20 @@ const hooks = vi.hoisted(() => ({
   useBitbucketPrDiff: vi.fn(),
   useSetBitbucketRepoFavorite: vi.fn(),
 }));
+const githubHooks = vi.hoisted(() => ({
+  useGithubStatus: vi.fn(() => ({ data: { state: "connected", login: "octocat" } })),
+  useGithubPrs: vi.fn(() => ({ data: { prs: [], meta: [], favoriteRepos: [] } })),
+  useGithubSync: vi.fn(() => ({ data: undefined, isError: false, refetch: vi.fn() })),
+  useGithubContributions: vi.fn(() => ({ data: null })),
+  useGithubContributionsSync: vi.fn(() => ({ data: undefined })),
+  useGithubRepositories: vi.fn(() => ({ data: undefined, isLoading: false, isError: false })),
+  useGithubPrDetail: vi.fn(),
+  useGithubPrDiff: vi.fn(),
+  useSetGithubRepoFavorite: vi.fn(() => ({ mutateAsync: vi.fn() })),
+}));
 const setActiveView = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/bitbucketQueries", () => hooks);
+vi.mock("@/lib/queries", () => githubHooks);
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView, openIssueTab: vi.fn() }) }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 
@@ -74,6 +87,22 @@ describe("PrsPage with the Bitbucket host", () => {
     render(<PrsPage host={BITBUCKET_HOST} />);
     fireEvent.click(screen.getByRole("button", { name: /needs my review/i }));
     expect(screen.getByText(/favorite a repository to include it/i)).toBeInTheDocument();
+  });
+
+  it("switching one tab between GitHub and Bitbucket remounts the workspace", () => {
+    setup({ state: "connected", login: "me" });
+    // Real hooks, as in the app: GitHub calls more hooks than Bitbucket does.
+    githubHooks.useGithubContributions.mockImplementation(() => {
+      useState(0);
+      return { data: null };
+    });
+    const { rerender } = render(<PrsPage />);
+    expect(screen.getByText(/contributions · last year/i)).toBeInTheDocument();
+    expect(() => rerender(<PrsPage host={BITBUCKET_HOST} />)).not.toThrow();
+    expect(screen.getByRole("heading", { name: "Bitbucket Pull Requests" })).toBeInTheDocument();
+    expect(screen.queryByText(/contributions · last year/i)).toBeNull();
+    expect(() => rerender(<PrsPage />)).not.toThrow();
+    expect(screen.getByRole("button", { name: /assigned to me/i })).toBeInTheDocument();
   });
 
   it("opens the drawer with Bitbucket's detail hook and copy", () => {
