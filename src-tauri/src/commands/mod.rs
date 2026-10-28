@@ -21,6 +21,7 @@ use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
+pub mod clickup;
 pub mod docs;
 pub mod github;
 pub mod modules;
@@ -118,6 +119,12 @@ pub enum CmdError {
     DocsSourceNotFound,
     #[error("That's already a documentation source.")]
     DuplicateDocsSource,
+    #[error("No ClickUp token is configured.")]
+    ClickUpNotConfigured,
+    #[error("ClickUp rejected the request.")]
+    ClickUpApi,
+    #[error("That doesn't look like a ClickUp Doc link.")]
+    InvalidClickUpLink,
     #[error("That folder can't be read.")]
     DocsFolderUnavailable,
     #[error("GitHub rejected the request.")]
@@ -230,6 +237,12 @@ pub struct AppState {
     pub slack_lock: tokio::sync::Mutex<()>,
     /// Bumped by every Slack cache wipe; guards a late sync write.
     pub slack_generation: AtomicU64,
+    pub clickup_credentials: Arc<dyn crate::clickup::ClickUpCredentialProvider>,
+    pub clickup: crate::clickup::ClickUpClient,
+    /// Serializes ClickUp credential mutations, link checks and Doc syncs.
+    pub clickup_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every ClickUp cache wipe; guards a late Doc sync write.
+    pub clickup_generation: AtomicU64,
     /// The id of the LATEST generate_report call; an in-flight LLM stream
     /// stops as soon as a newer generation claims this slot.
     pub llm_generation: AtomicU64,

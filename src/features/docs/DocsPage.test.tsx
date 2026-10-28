@@ -38,6 +38,7 @@ const NOTES: DocsSource = {
 const state = vi.hoisted(() => ({
   sources: [] as unknown[],
   tokenPresent: true,
+  clickupToken: false,
   /** Per-source trees, so we can prove the page reads the source it says it does. */
   trees: {} as Record<string, unknown[]>,
   content: {} as Record<string, string>,
@@ -49,7 +50,9 @@ const setActiveView = vi.hoisted(() => vi.fn());
 const rescan = vi.hoisted(() => vi.fn());
 
 vi.mock("@/lib/queries", () => ({
-  useDocsStatus: () => ({ data: { tokenPresent: state.tokenPresent, sourceCount: state.sources.length } }),
+  useDocsStatus: () => ({
+    data: { tokenPresent: state.tokenPresent, clickupTokenPresent: state.clickupToken, sourceCount: state.sources.length },
+  }),
   useDocsSources: () => ({ data: state.sources }),
   useDocsTree: (sourceId: string | null) => {
     state.treeCalls.push(sourceId);
@@ -94,6 +97,7 @@ beforeEach(() => {
   rescan.mockClear();
   state.sources = [CORE, DESIGN];
   state.tokenPresent = true;
+  state.clickupToken = false;
   state.treeCalls = [];
   state.syncEnabled = [];
   state.trees = {
@@ -176,6 +180,39 @@ describe("DocsPage empty states", () => {
     fireEvent.click(screen.getByRole("button", { name: /open modules/i }));
     expect(takeRequestedSection()).toBe("modules");
     expect(state.syncEnabled.every((e) => !e)).toBe(true);
+  });
+});
+
+describe("DocsPage ClickUp Docs", () => {
+  const HANDBOOK: DocsSource = {
+    ...source("x/handbook@main", "Handbook"),
+    id: "clickup:901/abc-1",
+    kind: "clickup",
+    owner: null,
+    repo: null,
+    branch: null,
+    location: "901/abc-1",
+    url: "https://app.clickup.com/901/v/dc/abc-1",
+  };
+
+  it("asks for a ClickUp token, not a GitHub one, before the first sync", () => {
+    state.sources = [HANDBOOK];
+    state.trees = { [HANDBOOK.id]: [] };
+    render(<DocsPage />);
+    fireEvent.click(screen.getByRole("button", { name: /connect clickup/i }));
+    expect(takeRequestedSection()).toBe("clickup");
+    expect(state.syncEnabled.every((e) => !e)).toBe(true);
+  });
+
+  it("syncs and reads pages once a ClickUp token is stored", () => {
+    state.sources = [HANDBOOK];
+    state.clickupToken = true;
+    state.tokenPresent = false;
+    state.trees = { [HANDBOOK.id]: [{ path: "p1", name: "Overview", kind: "blob", parentPath: "" }] };
+    state.content = { [`${HANDBOOK.id}:p1`]: "# Overview" };
+    render(<DocsPage />);
+    expect(state.syncEnabled.some(Boolean)).toBe(true);
+    expect(screen.getByTestId("doc").textContent).toBe("# Overview");
   });
 });
 

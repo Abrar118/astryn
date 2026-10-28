@@ -24,7 +24,7 @@ Astryn is a modular hub, not a client for one service. Every integration, includ
 
 - Open all day beside the tools it aggregates; used in short check-ins and longer planning sessions.
 - Work-week logic runs on Asia/Dhaka time with a Sunday week start; the owner also tracks Germany (Europe/Berlin) time for collaborators.
-- Current integrations: Linear (tracker), GitHub (PRs, contribution heatmap, docs source), local folders (docs source: Markdown, text, PDF), Slack (read-only catch-up), any OpenAI-compatible LLM endpoint (report prose).
+- Current integrations: Linear (tracker), GitHub (PRs, contribution heatmap, docs source), local folders (docs source: Markdown, text, PDF), ClickUp (Docs as a docs source), Slack (read-only catch-up), any OpenAI-compatible LLM endpoint (report prose).
 
 ## Capabilities and Constraints
 

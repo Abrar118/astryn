@@ -595,10 +595,12 @@ export type DocNode = {
 
 export type DocsStatus = {
   tokenPresent: boolean;
+  /** Whether a ClickUp token is stored (ClickUp Doc sources need it to sync). */
+  clickupTokenPresent: boolean;
   sourceCount: number;
 };
 
-export type DocsSourceKind = "github" | "local";
+export type DocsSourceKind = "github" | "local" | "clickup";
 
 /** One configured documentation source, joined with its cache freshness. */
 export type DocsSource = {
@@ -649,6 +651,26 @@ export const getDocPdf = (sourceId: string, path: string): Promise<ArrayBuffer> 
  */
 export const addLocalDocsSource = (): Promise<DocsSource | null> =>
   invoke("add_local_docs_source");
+
+/**
+ * Add a ClickUp Doc from its link (`app.clickup.com/{workspace}/v/dc/{doc}`).
+ * Rust checks the Doc with the stored ClickUp token; the name defaults to the Doc's.
+ */
+export const addClickupDocsSource = (url: string, name?: string): Promise<DocsSource> =>
+  invoke("add_clickup_docs_source", { url, name: name ?? null });
+
+// ── ClickUp connection ───────────────────────────────────────────────────────
+
+export type ClickUpStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; username: string };
+
+/** Store a ClickUp personal token in the OS keychain (never read back). */
+export const setClickupToken = (token: string): Promise<void> => invoke("set_clickup_token", { token });
+export const clearClickupToken = (): Promise<void> => invoke("clear_clickup_token");
+export const getClickupStatus = (): Promise<ClickUpStatus> => invoke("get_clickup_status");
+export const testClickupConnection = (): Promise<ClickUpStatus> => invoke("test_clickup_connection");
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
 
@@ -781,7 +803,8 @@ export type ModuleId =
   | "llm"
   | "docs"
   | "reports"
-  | "link-previews";
+  | "link-previews"
+  | "clickup";
 
 export type Capability =
   | "tracker"

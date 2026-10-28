@@ -24,6 +24,14 @@ const cmd = vi.hoisted(() => ({
   renameDocsSource: vi.fn(),
   removeDocsSource: vi.fn().mockResolvedValue(undefined),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
+  getClickupStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
+  setClickupToken: vi.fn().mockResolvedValue(undefined),
+  clearClickupToken: vi.fn(),
+  testClickupConnection: vi.fn(),
+  addClickupDocsSource: vi.fn().mockResolvedValue({
+    id: "clickup:901/abc-1", kind: "clickup", name: "Handbook", owner: null, repo: null, branch: null,
+    location: "901/abc-1", url: null, lastSyncedAt: null, fileCount: 0, truncated: false, available: true,
+  }),
   clearGithubToken: vi.fn(),
   testGithubConnection: vi.fn(),
   setLinearKey: vi.fn(), clearLinearKey: vi.fn(), testLinearConnection: vi.fn(),
@@ -41,11 +49,11 @@ vi.mock("@/lib/commands", () => cmd);
 
 const queries = vi.hoisted(() => ({
   docsSources: [] as unknown[],
-  docsStatus: { tokenPresent: true, sourceCount: 0 },
+  docsStatus: { tokenPresent: true, clickupTokenPresent: true, sourceCount: 0 },
 }));
 vi.mock("@/lib/queries", () => ({
   clearWorkspaceQueries: vi.fn(), invalidateWorkspaceQueries: vi.fn(), clearGithubQueries: vi.fn(),
-  clearSlackQueries: vi.fn(),
+  clearSlackQueries: vi.fn(), clearClickupQueries: vi.fn(),
   useDocsSources: () => ({ data: queries.docsSources }),
   useDocsStatus: () => ({ data: queries.docsStatus }),
 }));
@@ -188,6 +196,31 @@ describe("Settings documentation section", () => {
     await waitFor(() =>
       expect(cmd.renameDocsSource).toHaveBeenCalledWith("acme/docs@main", "Platform docs")
     );
+  });
+});
+
+describe("Settings ClickUp", () => {
+  it("saves the ClickUp token and clears the input before the call resolves", async () => {
+    renderAt("ClickUp");
+    const input = screen.getByLabelText(/clickup personal api token/i) as HTMLInputElement;
+    expect(input.type).toBe("password");
+    fireEvent.change(input, { target: { value: "pk_123_SECRET" } });
+    fireEvent.click(screen.getByRole("button", { name: /save clickup token/i }));
+    expect(input.value).toBe("");
+    await waitFor(() => expect(cmd.setClickupToken).toHaveBeenCalledWith("pk_123_SECRET"));
+  });
+
+  it("adds a ClickUp Doc from its link in the Documentation section", async () => {
+    queries.docsSources = [];
+    renderAt("Documentation");
+    fireEvent.change(screen.getByLabelText(/add a clickup doc/i), {
+      target: { value: "https://app.clickup.com/901/v/dc/abc-1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /add clickup doc/i }));
+    await waitFor(() =>
+      expect(cmd.addClickupDocsSource).toHaveBeenCalledWith("https://app.clickup.com/901/v/dc/abc-1", undefined),
+    );
+    expect((screen.getByLabelText(/add a clickup doc/i) as HTMLInputElement).value).toBe("");
   });
 });
 

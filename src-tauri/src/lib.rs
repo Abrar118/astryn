@@ -1,3 +1,4 @@
+mod clickup;
 mod commands;
 mod db;
 mod generators;
@@ -119,6 +120,13 @@ pub fn run() {
                     SLACK_COOKIE_ACCOUNT,
                 ));
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
+            let clickup_credentials: Arc<dyn clickup::ClickUpCredentialProvider> =
+                Arc::new(clickup::PersonalTokenProvider::new(
+                    store.clone(),
+                    commands::clickup::CLICKUP_TOKEN_ACCOUNT,
+                ));
+            let clickup =
+                clickup::ClickUpClient::new().expect("failed to build ClickUp HTTP client");
 
             app.manage(AppState {
                 pool,
@@ -145,6 +153,10 @@ pub fn run() {
                 slack,
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
+                clickup_credentials,
+                clickup,
+                clickup_lock: tokio::sync::Mutex::new(()),
+                clickup_generation: std::sync::atomic::AtomicU64::new(0),
                 llm_generation: std::sync::atomic::AtomicU64::new(0),
             });
 
@@ -212,6 +224,11 @@ pub fn run() {
             commands::docs::remove_docs_source,
             commands::docs::add_local_docs_source,
             commands::docs::get_doc_pdf,
+            commands::docs::add_clickup_docs_source,
+            commands::clickup::set_clickup_token,
+            commands::clickup::clear_clickup_token,
+            commands::clickup::get_clickup_status,
+            commands::clickup::test_clickup_connection,
             commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,
