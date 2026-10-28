@@ -38,7 +38,7 @@ function DockButton({
 
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();
-  const { isActive } = useModules();
+  const { isActive, disabledScreens } = useModules();
   const [menu, setMenu] = useState<{ view: Exclude<ViewKind, "issue">; x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -58,7 +58,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
         <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-border bg-sidebar p-1.5 shadow-2xl">
-          {visibleViews(isActive).map((view) => {
+          {visibleViews(isActive, disabledScreens).map((view) => {
             const { label, icon: Icon } = VIEW_META[view];
             return (
               <DockButton

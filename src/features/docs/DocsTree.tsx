@@ -55,13 +55,13 @@ function TreeRow({
   }
 
   const active = node.path === selectedPath;
-  return (
+  const fileButton = (
     <button
       type="button"
       onClick={() => onSelect(node.path)}
       onContextMenu={(e) => onContextMenu(e, node.path)}
-      style={pad}
-      className={`relative flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs transition-colors ${
+      style={node.children.length > 0 ? undefined : pad}
+      className={`relative flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs transition-colors ${
         active
           ? "bg-primary/10 font-medium text-foreground"
           : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
@@ -73,6 +73,40 @@ function TreeRow({
       <FileText className={`size-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground/70"}`} />
       <span className="truncate">{node.label}</span>
     </button>
+  );
+
+  if (node.children.length === 0) return fileButton;
+
+  // A document that is also a parent (a ClickUp page with sub-pages): the row
+  // opens the page, the chevron beside it shows or hides the sub-pages.
+  return (
+    <div>
+      <div style={pad} className="flex items-center gap-0.5">
+        <button
+          type="button"
+          aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`}
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="-ml-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent/40 hover:text-foreground"
+        >
+          <ChevronRight
+            className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+          />
+        </button>
+        {fileButton}
+      </div>
+      {open &&
+        node.children.map((child) => (
+          <TreeRow
+            key={child.path}
+            node={child}
+            depth={depth + 1}
+            selectedPath={selectedPath}
+            onSelect={onSelect}
+            onContextMenu={onContextMenu}
+          />
+        ))}
+    </div>
   );
 }
 

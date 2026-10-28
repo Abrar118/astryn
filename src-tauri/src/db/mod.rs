@@ -2,10 +2,13 @@ use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use sqlx::SqlitePool;
 use std::path::Path;
 
+pub mod bitbucket;
+pub mod code_host;
 pub mod docs;
 pub mod github;
 pub mod issues;
 pub mod slack;
+pub mod teams;
 
 pub async fn init_pool(db_path: &Path) -> Result<SqlitePool, sqlx::Error> {
     // Fail loudly if the data directory cannot be created (no silent .ok()).
@@ -265,12 +268,13 @@ mod tests {
         .unwrap();
 
         apply_migration(&pool, "0016").await;
+        apply_migration(&pool, "0017").await;
 
         let sources = docs::list_docs_sources(&pool).await.unwrap();
         assert_eq!(sources.len(), 1);
         assert_eq!(sources[0].id, "acme/core-docs@release");
         assert_eq!(sources[0].name, "core-docs"); // defaults to the repo name
-        assert_eq!(sources[0].branch, "release");
+        assert_eq!(sources[0].branch.as_deref(), Some("release"));
         // The cache came along rather than being dropped.
         assert_eq!(sources[0].file_count, 1);
         assert_eq!(sources[0].last_synced_at.as_deref(), Some("yesterday"));
@@ -297,7 +301,59 @@ mod tests {
 
         migrate_through(&pool, "0015").await;
         apply_migration(&pool, "0016").await;
+        apply_migration(&pool, "0017").await;
 
         assert!(docs::list_docs_sources(&pool).await.unwrap().is_empty());
+    }
+
+    /// 0017 adds source kinds: existing repositories become `github` sources with
+    /// their cache intact, and a local folder row needs no owner/repo/branch.
+    #[tokio::test]
+    async fn source_kinds_migration_keeps_github_sources_and_allows_local_ones() {
+        let dir = tempfile::tempdir().unwrap();
+        let opts = SqliteConnectOptions::new()
+            .filename(dir.path().join("kinds.db"))
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new().connect_with(opts).await.unwrap();
+
+        migrate_through(&pool, "0016").await;
+        sqlx::query(
+            "INSERT INTO docs_sources (id, name, owner, repo, branch, position, created_at)
+             VALUES ('acme/docs@main', 'Docs', 'acme', 'docs', 'main', 0, 'then')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO docs_files (source_id, path, name, kind, parent_path, sha, content, synced_at)
+             VALUES ('acme/docs@main', 'README.md', 'README.md', 'blob', '', 's', '# Hi', 'then')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+
+        apply_migration(&pool, "0017").await;
+
+        let sources = docs::list_docs_sources(&pool).await.unwrap();
+        assert_eq!(sources.len(), 1);
+        assert_eq!(sources[0].kind, docs::DocsSourceKind::Github);
+        assert_eq!(sources[0].owner.as_deref(), Some("acme"));
+        assert_eq!(sources[0].location, None);
+        assert_eq!(
+            docs::load_doc_content(&pool, "acme/docs@main", "README.md")
+                .await
+                .unwrap()
+                .as_deref(),
+            Some("# Hi")
+        );
+
+        sqlx::query(
+            "INSERT INTO docs_sources (id, kind, name, location, position, created_at)
+             VALUES ('local:/notes', 'local', 'Notes', '/notes', 1, 'now')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        assert_eq!(docs::list_docs_sources(&pool).await.unwrap().len(), 2);
     }
 }

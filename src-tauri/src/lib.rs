@@ -1,3 +1,6 @@
+mod bitbucket;
+mod clickup;
+mod code_host;
 mod commands;
 mod db;
 mod generators;
@@ -5,10 +8,12 @@ mod github;
 mod issue_ref;
 mod linear;
 mod link_preview;
+mod local_docs;
 mod local_tasks;
 mod modules;
 mod secrets;
 mod slack;
+mod teams;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -18,6 +23,7 @@ use github::{GitHubClient, GitHubCredentialProvider, PatProvider};
 use linear::{LinearClient, LinearCredentialProvider, PersonalKeyProvider};
 use secrets::{KeyringSecretStore, SecretStore};
 use slack::{PersonalTokenProvider, SlackClient, SlackCredentialProvider};
+use teams::{GraphClient, KeychainTokenProvider, TeamsCredentialProvider};
 
 const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
@@ -101,6 +107,9 @@ pub fn run() {
                 .expect("failed to recover pending issue deletions");
             let module_state = tauri::async_runtime::block_on(modules::load_state(&pool))
                 .expect("failed to load module state");
+            let disabled_screens =
+                tauri::async_runtime::block_on(modules::screens::load_disabled(&pool))
+                    .expect("failed to load screen state");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -116,10 +125,29 @@ pub fn run() {
                     SLACK_COOKIE_ACCOUNT,
                 ));
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
+            let teams_credentials: Arc<dyn TeamsCredentialProvider> =
+                Arc::new(KeychainTokenProvider::new(store.clone()));
+            let teams = GraphClient::new().expect("failed to build Microsoft Graph HTTP client");
+            let bitbucket = bitbucket::BitbucketState::new(
+                Arc::new(bitbucket::ApiTokenProvider::new(
+                    store.clone(),
+                    commands::bitbucket::BITBUCKET_EMAIL_ACCOUNT,
+                    commands::bitbucket::BITBUCKET_TOKEN_ACCOUNT,
+                )),
+                bitbucket::BitbucketClient::new().expect("failed to build Bitbucket HTTP client"),
+            );
+            let clickup_credentials: Arc<dyn clickup::ClickUpCredentialProvider> =
+                Arc::new(clickup::PersonalTokenProvider::new(
+                    store.clone(),
+                    commands::clickup::CLICKUP_TOKEN_ACCOUNT,
+                ));
+            let clickup =
+                clickup::ClickUpClient::new().expect("failed to build ClickUp HTTP client");
 
             app.manage(AppState {
                 pool,
                 modules: std::sync::RwLock::new(module_state),
+                screens: std::sync::RwLock::new(disabled_screens),
                 secret_store: store,
                 credentials,
                 linear,
@@ -141,7 +169,17 @@ pub fn run() {
                 slack,
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
+                teams_credentials,
+                teams,
+                teams_lock: tokio::sync::Mutex::new(()),
+                teams_generation: std::sync::atomic::AtomicU64::new(0),
+                teams_pending: tokio::sync::Mutex::new(None),
+                clickup_credentials,
+                clickup,
+                clickup_lock: tokio::sync::Mutex::new(()),
+                clickup_generation: std::sync::atomic::AtomicU64::new(0),
                 llm_generation: std::sync::atomic::AtomicU64::new(0),
+                bitbucket,
             });
 
             // macOS: replace the default app menu with one that OMITS "Close
@@ -206,6 +244,13 @@ pub fn run() {
             commands::docs::add_docs_source,
             commands::docs::rename_docs_source,
             commands::docs::remove_docs_source,
+            commands::docs::add_local_docs_source,
+            commands::docs::get_doc_pdf,
+            commands::docs::add_clickup_docs_source,
+            commands::clickup::set_clickup_token,
+            commands::clickup::clear_clickup_token,
+            commands::clickup::get_clickup_status,
+            commands::clickup::test_clickup_connection,
             commands::slack::set_slack_credentials,
             commands::slack::clear_slack_token,
             commands::slack::get_slack_status,
@@ -215,8 +260,19 @@ pub fn run() {
             commands::slack::get_slack_catchup,
             commands::slack::get_slack_conversation_messages,
             commands::slack::slack_deep_link,
+            commands::teams::start_teams_sign_in,
+            commands::teams::poll_teams_sign_in,
+            commands::teams::cancel_teams_sign_in,
+            commands::teams::clear_teams_account,
+            commands::teams::get_teams_status,
+            commands::teams::test_teams_connection,
+            commands::teams::sync_teams_catchup,
+            commands::teams::get_teams_catchup,
+            commands::teams::get_teams_chat_messages,
+            commands::teams::teams_open_link,
             commands::modules::list_modules,
             commands::modules::set_enabled_modules,
+            commands::modules::set_disabled_screens,
             commands::modules::remove_module_data,
             commands::reports::get_llm_config,
             commands::reports::set_llm_config,
@@ -259,7 +315,17 @@ pub fn run() {
             commands::local_tasks::ensure_local_tasks_backup,
             commands::local_tasks::export_local_tasks_backup,
             commands::local_tasks::restore_local_tasks_backup,
-            commands::local_tasks::import_linear_to_local
+            commands::local_tasks::import_linear_to_local,
+            commands::bitbucket::set_bitbucket_credentials,
+            commands::bitbucket::clear_bitbucket_credentials,
+            commands::bitbucket::get_bitbucket_status,
+            commands::bitbucket::test_bitbucket_connection,
+            commands::bitbucket::sync_bitbucket_prs,
+            commands::bitbucket::list_bitbucket_prs,
+            commands::bitbucket::set_bitbucket_repo_favorite,
+            commands::bitbucket::list_bitbucket_repositories,
+            commands::bitbucket::get_bitbucket_pr_detail,
+            commands::bitbucket::get_bitbucket_pr_diff
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

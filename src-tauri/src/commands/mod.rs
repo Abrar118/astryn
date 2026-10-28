@@ -21,12 +21,15 @@ use crate::secrets::SecretStore;
 
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
+pub mod bitbucket;
+pub mod clickup;
 pub mod docs;
 pub mod github;
 pub mod local_tasks;
 pub mod modules;
 pub mod reports;
 pub mod slack;
+pub mod teams;
 
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 const LLM_API_KEY_ACCOUNT: &str = "llm_api_key";
@@ -117,8 +120,16 @@ pub enum CmdError {
     GitHubNotConfigured,
     #[error("That documentation source no longer exists.")]
     DocsSourceNotFound,
-    #[error("That repository is already a documentation source.")]
+    #[error("That's already a documentation source.")]
     DuplicateDocsSource,
+    #[error("No ClickUp token is configured.")]
+    ClickUpNotConfigured,
+    #[error("ClickUp rejected the request.")]
+    ClickUpApi,
+    #[error("That doesn't look like a ClickUp Doc link.")]
+    InvalidClickUpLink,
+    #[error("That folder can't be read.")]
+    DocsFolderUnavailable,
     #[error("GitHub rejected the request.")]
     GitHubApi,
     #[error("No Slack token is configured.")]
@@ -149,6 +160,24 @@ pub enum CmdError {
     InvalidBackup,
     #[error("Couldn't save the file there. Check the folder and try again.")]
     FileWrite,
+    #[error("Microsoft Teams isn't connected.")]
+    TeamsNotConfigured,
+    #[error("Microsoft Teams sign-in expired. Sign in again.")]
+    TeamsAuth,
+    #[error("Microsoft Teams rejected the request.")]
+    TeamsApi,
+    #[error("Microsoft Teams denied access. Check the app registration's Chat.Read permission and consent.")]
+    TeamsForbidden,
+    #[error("Could not reach Microsoft Teams.")]
+    TeamsUnreachable,
+    #[error("That client ID or tenant isn't valid.")]
+    TeamsInvalidConfig,
+    #[error("Microsoft sign-in didn't complete. Start again.")]
+    TeamsSignInFailed,
+    #[error("No Bitbucket token is configured.")]
+    BitbucketNotConfigured,
+    #[error("Bitbucket rejected the request.")]
+    BitbucketApi,
 }
 
 impl serde::Serialize for CmdError {
@@ -207,6 +236,8 @@ pub struct AppState {
     pub pool: SqlitePool,
     /// Which modules are enabled; guard commands with `require`.
     pub modules: std::sync::RwLock<crate::modules::ModuleState>,
+    /// Screens switched off on top of their module; guard with `require_screen`.
+    pub screens: std::sync::RwLock<std::collections::BTreeSet<crate::modules::screens::ScreenId>>,
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
@@ -237,9 +268,24 @@ pub struct AppState {
     pub slack_lock: tokio::sync::Mutex<()>,
     /// Bumped by every Slack cache wipe; guards a late sync write.
     pub slack_generation: AtomicU64,
+    pub teams_credentials: Arc<dyn crate::teams::TeamsCredentialProvider>,
+    pub teams: crate::teams::GraphClient,
+    /// Serializes Teams credential mutations, sign-in completion, and sync.
+    pub teams_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every Teams cache wipe; guards a late sync write.
+    pub teams_generation: AtomicU64,
+    /// The in-progress device-code sign-in (memory only, never persisted).
+    pub teams_pending: tokio::sync::Mutex<Option<teams::PendingSignIn>>,
+    pub clickup_credentials: Arc<dyn crate::clickup::ClickUpCredentialProvider>,
+    pub clickup: crate::clickup::ClickUpClient,
+    /// Serializes ClickUp credential mutations, link checks and Doc syncs.
+    pub clickup_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every ClickUp cache wipe; guards a late Doc sync write.
+    pub clickup_generation: AtomicU64,
     /// The id of the LATEST generate_report call; an in-flight LLM stream
     /// stops as soon as a newer generation claims this slot.
     pub llm_generation: AtomicU64,
+    pub bitbucket: crate::bitbucket::BitbucketState,
 }
 
 impl AppState {
@@ -944,6 +990,7 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
 #[tauri::command]
 pub async fn list_notifications(state: State<'_, AppState>) -> Result<NotificationsPage, CmdError> {
     state.require(crate::modules::ModuleId::Linear)?;
+    state.require_screen(crate::modules::screens::ScreenId::Inbox)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await
@@ -1510,12 +1557,18 @@ mod logic_tests {
             require_in(&st(&[]), ModuleId::Slack),
             Err(CmdError::ModuleDisabled)
         ));
-        // Docs enabled but no DocsSource provider.
+        // Reports enabled but no Tracker provider.
         assert!(matches!(
-            require_in(&st(&[ModuleId::Docs]), ModuleId::Docs),
+            require_in(&st(&[ModuleId::Reports]), ModuleId::Reports),
             Err(CmdError::ModuleDisabled)
         ));
-        assert!(require_in(&st(&[ModuleId::Docs, ModuleId::Github]), ModuleId::Docs).is_ok());
+        assert!(require_in(
+            &st(&[ModuleId::Reports, ModuleId::Linear]),
+            ModuleId::Reports
+        )
+        .is_ok());
+        // Docs needs no provider (local folders).
+        assert!(require_in(&st(&[ModuleId::Docs]), ModuleId::Docs).is_ok());
     }
 
     async fn temp_pool() -> (tempfile::TempDir, SqlitePool) {

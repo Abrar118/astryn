@@ -584,6 +584,29 @@ export const getGithubContributions = (): Promise<Contributions | null> =>
 export const syncGithubContributions = (): Promise<Contributions> =>
   invoke("sync_github_contributions");
 
+// ── Bitbucket Cloud code host (module spec 2a) ──────────────────────────────
+// Same payload shapes as the GitHub PR workspace; credentials never come back.
+
+export type BitbucketStatus = GitHubStatus;
+
+/** Store the Atlassian account email (or username) + API token in the keychain. */
+export const setBitbucketCredentials = (email: string, token: string): Promise<void> =>
+  invoke("set_bitbucket_credentials", { email, token });
+export const clearBitbucketCredentials = (): Promise<void> => invoke("clear_bitbucket_credentials");
+export const getBitbucketStatus = (): Promise<BitbucketStatus> => invoke("get_bitbucket_status");
+export const testBitbucketConnection = (): Promise<BitbucketStatus> =>
+  invoke("test_bitbucket_connection");
+export const syncBitbucketPrs = (): Promise<BucketSyncResult[]> => invoke("sync_bitbucket_prs");
+export const listBitbucketPrs = (): Promise<PrDashboard> => invoke("list_bitbucket_prs");
+export const listBitbucketRepositories = (): Promise<GithubRepositoryCatalog> =>
+  invoke("list_bitbucket_repositories");
+export const setBitbucketRepoFavorite = (repo: string, favorite: boolean): Promise<string[]> =>
+  invoke("set_bitbucket_repo_favorite", { repo, favorite });
+export const getBitbucketPrDetail = (repo: string, number: number): Promise<GithubPrDetail> =>
+  invoke("get_bitbucket_pr_detail", { repo, number });
+export const getBitbucketPrDiff = (repo: string, number: number): Promise<GithubPrDiff> =>
+  invoke("get_bitbucket_pr_diff", { repo, number });
+
 // ── Docs viewer (F-Docs) ─────────────────────────────────────────────────────
 
 export type DocNode = {
@@ -595,21 +618,33 @@ export type DocNode = {
 
 export type DocsStatus = {
   tokenPresent: boolean;
+  /** Whether a ClickUp token is stored (ClickUp Doc sources need it to sync). */
+  clickupTokenPresent: boolean;
   sourceCount: number;
 };
 
-/** One configured documentation repository, joined with its cache freshness. */
+export type DocsSourceKind = "github" | "local" | "clickup";
+
+/** One configured documentation source, joined with its cache freshness. */
 export type DocsSource = {
-  /** Origin-derived (`owner/repo@branch`) — stable across renames. */
+  /** Origin-derived (`owner/repo@branch`, `local:<path>`) — stable across renames. */
   id: string;
+  kind: DocsSourceKind;
   name: string;
-  owner: string;
-  repo: string;
-  branch: string;
-  url: string;
+  /** GitHub only. */
+  owner: string | null;
+  repo: string | null;
+  branch: string | null;
+  /** Local only: the folder's absolute path. */
+  location: string | null;
+  /** GitHub only: browsable repository URL. */
+  url: string | null;
+  /** Last sync (GitHub) or folder scan (local). */
   lastSyncedAt: string | null;
   fileCount: number;
   truncated: boolean;
+  /** False while the source's provider module is off (e.g. GitHub disabled). */
+  available: boolean;
 };
 
 export type DocsSyncResult = { fileCount: number; truncated: boolean };
@@ -622,9 +657,43 @@ export const syncDocs = (sourceId: string): Promise<DocsSyncResult> =>
 export const listDocsTree = (sourceId: string): Promise<DocNode[]> =>
   invoke("list_docs_tree", { sourceId });
 
-/** Cached markdown for one file (`null` if unknown / not yet synced). */
+/**
+ * One document's text: cached Markdown for a repository, or read from disk for a
+ * local folder (Markdown or plain text). `null` if unknown / not readable.
+ */
 export const getDocContent = (sourceId: string, path: string): Promise<string | null> =>
   invoke("get_doc_content", { sourceId, path });
+
+/** A local folder PDF's raw bytes (returned by Rust as a binary IPC payload). */
+export const getDocPdf = (sourceId: string, path: string): Promise<ArrayBuffer> =>
+  invoke("get_doc_pdf", { sourceId, path });
+
+/**
+ * Open the native folder picker (in Rust) and add the chosen folder as a local
+ * docs source. Resolves `null` when the picker is cancelled.
+ */
+export const addLocalDocsSource = (): Promise<DocsSource | null> =>
+  invoke("add_local_docs_source");
+
+/**
+ * Add a ClickUp Doc from its link (`app.clickup.com/{workspace}/v/dc/{doc}`).
+ * Rust checks the Doc with the stored ClickUp token; the name defaults to the Doc's.
+ */
+export const addClickupDocsSource = (url: string, name?: string): Promise<DocsSource> =>
+  invoke("add_clickup_docs_source", { url, name: name ?? null });
+
+// ── ClickUp connection ───────────────────────────────────────────────────────
+
+export type ClickUpStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; username: string };
+
+/** Store a ClickUp personal token in the OS keychain (never read back). */
+export const setClickupToken = (token: string): Promise<void> => invoke("set_clickup_token", { token });
+export const clearClickupToken = (): Promise<void> => invoke("clear_clickup_token");
+export const getClickupStatus = (): Promise<ClickUpStatus> => invoke("get_clickup_status");
+export const testClickupConnection = (): Promise<ClickUpStatus> => invoke("test_clickup_connection");
 
 export const getDocsStatus = (): Promise<DocsStatus> => invoke("get_docs_status");
 
@@ -642,14 +711,10 @@ export const renameDocsSource = (sourceId: string, name: string): Promise<DocsSo
 export const removeDocsSource = (sourceId: string): Promise<void> =>
   invoke("remove_docs_source", { sourceId });
 
-// ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
+// ── Chat catch-up board (provider-neutral: Slack, Teams) ─────────────────────
 
-export type SlackStatus =
-  | { state: "not_configured" }
-  | { state: "unverified" }
-  | { state: "connected"; workspaceName: string | null; userName: string };
-
-export type SlackConversation = {
+/** One unread conversation. `latestTs` is the provider's id for its newest unread message. */
+export type ChatConversation = {
   id: string;
   kind: "channel" | "dm" | "group_dm";
   name: string | null;
@@ -661,7 +726,8 @@ export type SlackConversation = {
   latestSnippet: string | null;
 };
 
-export type SlackMessage = {
+/** One cached unread message. `ts` is the provider's message id (Slack ts, Graph message id). */
+export type ChatMessage = {
   conversationId: string;
   ts: string;
   threadTs: string | null;
@@ -675,7 +741,7 @@ export type SlackMessage = {
   createdAt: string;
 };
 
-export type SlackThread = {
+export type ChatThread = {
   conversationId: string;
   conversationName: string | null;
   threadTs: string;
@@ -684,14 +750,27 @@ export type SlackThread = {
   latestTs: string;
 };
 
-export type SlackCatchup = {
-  conversations: SlackConversation[];
-  mentions: SlackMessage[];
-  threads: SlackThread[];
+export type ChatCatchup = {
+  conversations: ChatConversation[];
+  mentions: ChatMessage[];
+  threads: ChatThread[];
   lastSyncedAt: string | null;
 };
 
-export type SlackSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
+export type ChatSyncSummary = { synced: boolean; conversationCount: number; unreadTotal: number };
+
+// ── Slack catch-up board (Phase 2, iter 1) ───────────────────────────────────
+
+export type SlackStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; workspaceName: string | null; userName: string };
+
+export type SlackConversation = ChatConversation;
+export type SlackMessage = ChatMessage;
+export type SlackThread = ChatThread;
+export type SlackCatchup = ChatCatchup;
+export type SlackSyncSummary = ChatSyncSummary;
 export type SlackDeepLink = { app: string; web: string };
 
 export const setSlackCredentials = (token: string, cookie?: string | null): Promise<void> =>
@@ -706,6 +785,41 @@ export const getSlackConversationMessages = (conversationId: string): Promise<Sl
   invoke("get_slack_conversation_messages", { conversationId });
 export const slackDeepLink = (conversationId: string, ts?: string | null): Promise<SlackDeepLink> =>
   invoke("slack_deep_link", { conversationId, ts: ts ?? null });
+
+// ── Microsoft Teams (chat provider; read-only chats) ─────────────────────────
+
+export type TeamsStatus =
+  | { state: "not_configured" }
+  | { state: "unverified" }
+  | { state: "connected"; userName: string };
+
+/** Shown to the user during the device-code sign-in; the device code itself stays in Rust. */
+export type TeamsDeviceCode = {
+  userCode: string;
+  verificationUri: string;
+  expiresIn: number;
+  interval: number;
+  message: string | null;
+};
+
+export type TeamsSignInPoll =
+  | { state: "pending"; interval: number }
+  | { state: "connected"; userName: string };
+
+export const startTeamsSignIn = (clientId: string, tenant?: string | null): Promise<TeamsDeviceCode> =>
+  invoke("start_teams_sign_in", { clientId, tenant: tenant ?? null });
+export const pollTeamsSignIn = (): Promise<TeamsSignInPoll> => invoke("poll_teams_sign_in");
+export const cancelTeamsSignIn = (): Promise<void> => invoke("cancel_teams_sign_in");
+export const clearTeamsAccount = (): Promise<void> => invoke("clear_teams_account");
+export const getTeamsStatus = (): Promise<TeamsStatus> => invoke("get_teams_status");
+export const testTeamsConnection = (): Promise<TeamsStatus> => invoke("test_teams_connection");
+export const syncTeamsCatchup = (): Promise<ChatSyncSummary> => invoke("sync_teams_catchup");
+export const getTeamsCatchup = (): Promise<ChatCatchup> => invoke("get_teams_catchup");
+export const getTeamsChatMessages = (conversationId: string): Promise<ChatMessage[]> =>
+  invoke("get_teams_chat_messages", { conversationId });
+/** An https://teams.microsoft.com/ link to a chat, or to one message in it. */
+export const teamsOpenLink = (conversationId: string, messageId?: string | null): Promise<string> =>
+  invoke("teams_open_link", { conversationId, messageId: messageId ?? null });
 
 // ---- Report generators (daily scrum / weekly review) ----
 
@@ -758,7 +872,10 @@ export type ModuleId =
   | "docs"
   | "reports"
   | "link-previews"
-  | "local-tasks";
+  | "local-tasks"
+  | "bitbucket"
+  | "clickup"
+  | "teams";
 
 export type Capability =
   | "tracker"
@@ -776,12 +893,18 @@ export type ModuleInfo = {
   missing: Capability[];
 };
 
-export type ModulesView = { onboarded: boolean; modules: ModuleInfo[] };
+/** Screens that can be switched off on top of their module; ids are view ids. */
+export type ScreenId = "list" | "this-week" | "graph" | "inbox";
+
+export type ModulesView = { onboarded: boolean; modules: ModuleInfo[]; disabledScreens: ScreenId[] };
 
 export const listModules = (): Promise<ModulesView> => invoke("list_modules");
 
 export const setEnabledModules = (ids: ModuleId[]): Promise<ModulesView> =>
   invoke("set_enabled_modules", { ids });
+
+export const setDisabledScreens = (screens: ScreenId[]): Promise<ModulesView> =>
+  invoke("set_disabled_screens", { screens });
 
 export const removeModuleData = (id: ModuleId): Promise<void> =>
   invoke("remove_module_data", { id });

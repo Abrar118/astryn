@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { GithubPr } from "@/lib/commands";
-import { useGithubPrDetail, useGithubPrDiff } from "@/lib/queries";
+import { useCodeHost } from "./codeHost";
 import { PrDrawerChanges } from "./PrDrawerChanges";
 import { PrDrawerOverview } from "./PrDrawerOverview";
 import {
@@ -55,10 +55,11 @@ export function PrDrawer({
   onClose: () => void;
   returnFocus?: HTMLElement | null;
 }) {
-  const detailQuery = useGithubPrDetail(pr.repo, pr.number);
+  const host = useCodeHost();
+  const detailQuery = host.usePrDetail(pr.repo, pr.number);
   const detail = detailQuery.data;
   const [tab, setTab] = useState<DrawerTab>("overview");
-  const diffQuery = useGithubPrDiff(pr.repo, pr.number, tab === "diff");
+  const diffQuery = host.usePrDiff(pr.repo, pr.number, tab === "diff");
   const [width, setWidth] = useState(loadDrawerWidth);
   const widthRef = useRef(width);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -273,8 +274,8 @@ export function PrDrawer({
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Open pull request on GitHub"
-              title="Open on GitHub"
+              aria-label={`Open pull request on ${host.name}`}
+              title={`Open on ${host.name}`}
               disabled={!url}
               onClick={() => {
                 if (!url) return;
