@@ -25,7 +25,7 @@ vi.mock("@/features/issues/IssueContextMenu", () => ({
   IssueMenuProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock("@/features/command/CommandPalette", () => ({
-  CommandPaletteProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
+  CommandPaletteProvider: ({ children }: { children: ReactNode }) => <div data-testid="shortcuts">{children}</div>,
 }));
 
 import { AppShell } from "./AppShell";
@@ -34,6 +34,7 @@ function mk(onboarded: boolean): ModulesView {
   return {
     onboarded,
     modules: IDS.map((id) => ({ id, kind: "feature", enabled: false, available: true, missing: [] })),
+    disabledScreens: [],
   };
 }
 
@@ -56,12 +57,15 @@ describe("AppShell", () => {
     expect(await screen.findByRole("heading", { name: /choose your tools/i })).toBeTruthy();
     expect(screen.queryByTestId("split")).toBeNull();
     expect(screen.queryByRole("button", { name: "Dashboard" })).toBeNull();
+    // Global shortcuts (palette, new tab, close tab, resync, create) are not registered behind the picker.
+    expect(screen.queryByTestId("shortcuts")).toBeNull();
   });
 
   it("with nothing enabled offers only Dashboard and Settings", async () => {
     view = mk(true);
     renderIt();
     expect(await screen.findByTestId("split")).toBeTruthy();
+    expect(screen.getByTestId("shortcuts")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /choose your tools/i })).toBeNull();
     const labels = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
     expect(labels).toEqual(["Dashboard", "Settings", "Refresh"]);

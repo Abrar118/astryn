@@ -205,6 +205,8 @@ pub struct AppState {
     pub pool: SqlitePool,
     /// Which modules are enabled; guard commands with `require`.
     pub modules: std::sync::RwLock<crate::modules::ModuleState>,
+    /// Screens switched off on top of their module; guard with `require_screen`.
+    pub screens: std::sync::RwLock<std::collections::BTreeSet<crate::modules::screens::ScreenId>>,
     pub secret_store: Arc<dyn SecretStore>,
     pub credentials: Arc<dyn LinearCredentialProvider>,
     pub linear: LinearClient,
@@ -948,6 +950,7 @@ pub async fn list_users(state: State<'_, AppState>) -> Result<Vec<ParsedUser>, C
 #[tauri::command]
 pub async fn list_notifications(state: State<'_, AppState>) -> Result<NotificationsPage, CmdError> {
     state.require(crate::modules::ModuleId::Linear)?;
+    state.require_screen(crate::modules::screens::ScreenId::Inbox)?;
     let c = state.credentials.clone();
     let auth = tokio::task::spawn_blocking(move || c.authorization())
         .await

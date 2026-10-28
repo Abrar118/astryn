@@ -11,10 +11,16 @@ use tauri::State;
 use super::reports::{LLM_BASE_URL_KEY, LLM_MODEL_KEY};
 use super::{AppState, CmdError, GITHUB_TOKEN_ACCOUNT, LINEAR_KEY_ACCOUNT, LLM_API_KEY_ACCOUNT};
 use crate::db;
+use crate::modules::screens::{self, ScreenId};
 use crate::modules::{self, Capability, ModuleId, ModuleKind, ModuleState};
 use crate::secrets::SecretStore;
 
 const SLACK_ACCOUNTS: [&str; 2] = ["slack_user_token", "slack_cookie_d"];
+
+/// Serializes module and screen writes so the persisted state and the in-memory
+/// state are swapped together; overlapping writes could otherwise disagree.
+/// One per process, like `AppState`.
+static MODULES_WRITE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -31,6 +37,8 @@ pub struct ModuleInfo {
 pub struct ModulesView {
     pub onboarded: bool,
     pub modules: Vec<ModuleInfo>,
+    /// Filled from `AppState::screens` by `modules_view`.
+    pub disabled_screens: Vec<ScreenId>,
 }
 
 pub fn list_modules_logic(state: &ModuleState) -> ModulesView {
@@ -50,7 +58,51 @@ pub fn list_modules_logic(state: &ModuleState) -> ModulesView {
     ModulesView {
         onboarded: state.onboarded,
         modules,
+        disabled_screens: Vec::new(),
     }
+}
+
+fn modules_view(state: &AppState) -> Result<ModulesView, CmdError> {
+    let mut view = list_modules_logic(&*state.modules.read().map_err(|_| CmdError::Internal)?);
+    view.disabled_screens = state
+        .screens
+        .read()
+        .map_err(|_| CmdError::Internal)?
+        .iter()
+        .copied()
+        .collect();
+    Ok(view)
+}
+
+/// Ok unless `id` is switched off. Reuses the module error: the frontend
+/// already treats it as a silent cancellation.
+pub fn require_screen_in(disabled: &BTreeSet<ScreenId>, id: ScreenId) -> Result<(), CmdError> {
+    if disabled.contains(&id) {
+        Err(CmdError::ModuleDisabled)
+    } else {
+        Ok(())
+    }
+}
+
+impl AppState {
+    pub fn require_screen(&self, id: ScreenId) -> Result<(), CmdError> {
+        require_screen_in(&self.screens.read().unwrap_or_else(|e| e.into_inner()), id)
+    }
+}
+
+/// Persist the new disabled-screen set, then swap it in.
+pub async fn set_disabled_screens_logic(
+    pool: &SqlitePool,
+    current: &RwLock<BTreeSet<ScreenId>>,
+    ids: Vec<ScreenId>,
+) -> Result<(), CmdError> {
+    let _w = MODULES_WRITE.lock().await;
+    let next = ids.into_iter().collect::<BTreeSet<_>>();
+    screens::save_disabled(pool, &next)
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    *current.write().map_err(|_| CmdError::Internal)? = next;
+    Ok(())
 }
 
 /// Persist the new enabled set (marking the app onboarded) and return the
@@ -60,6 +112,7 @@ pub async fn set_enabled_modules_logic(
     modules: &RwLock<ModuleState>,
     ids: Vec<ModuleId>,
 ) -> Result<Vec<ModuleId>, CmdError> {
+    let _w = MODULES_WRITE.lock().await;
     let next = ModuleState {
         enabled: ids.into_iter().collect::<BTreeSet<_>>(),
         onboarded: true,
@@ -137,6 +190,20 @@ pub async fn remove_module_data_logic(
     Ok(())
 }
 
+/// Remove a module's data while holding the module write lock, so the module
+/// cannot be re-enabled between the "is it disabled?" check and the wipe.
+/// The std read guard is released before any await; only the async lock spans the work.
+pub async fn remove_module_data_locked(
+    pool: &SqlitePool,
+    store: &dyn SecretStore,
+    modules: &RwLock<ModuleState>,
+    id: ModuleId,
+) -> Result<(), CmdError> {
+    let _w = MODULES_WRITE.lock().await;
+    let snapshot = modules.read().map_err(|_| CmdError::Internal)?.clone();
+    remove_module_data_logic(pool, store, &snapshot, id).await
+}
+
 /// Bump the generation counter of every disabled provider.
 fn bump_generations(
     disabled: &[ModuleId],
@@ -167,8 +234,16 @@ fn bump_clickup_generation(disabled: &[ModuleId], clickup: &AtomicU64) {
 
 #[tauri::command]
 pub async fn list_modules(state: State<'_, AppState>) -> Result<ModulesView, CmdError> {
-    let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
-    Ok(list_modules_logic(&guard))
+    modules_view(&state)
+}
+
+#[tauri::command]
+pub async fn set_disabled_screens(
+    state: State<'_, AppState>,
+    screens: Vec<ScreenId>,
+) -> Result<ModulesView, CmdError> {
+    set_disabled_screens_logic(&state.pool, &state.screens, screens).await?;
+    modules_view(&state)
 }
 
 #[tauri::command]
@@ -188,8 +263,7 @@ pub async fn set_enabled_modules(
         &state.llm_generation,
     );
     bump_clickup_generation(&disabled, &state.clickup_generation);
-    let guard = state.modules.read().map_err(|_| CmdError::Internal)?;
-    Ok(list_modules_logic(&guard))
+    modules_view(&state)
 }
 
 #[tauri::command]
@@ -202,12 +276,7 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         ModuleId::Clickup => Some(state.clickup_lock.lock().await),
         _ => None,
     };
-    let snapshot = state
-        .modules
-        .read()
-        .map_err(|_| CmdError::Internal)?
-        .clone();
-    remove_module_data_logic(&state.pool, state.secret_store.as_ref(), &snapshot, id).await
+    remove_module_data_locked(&state.pool, state.secret_store.as_ref(), &state.modules, id).await
 }
 
 #[cfg(test)]
@@ -255,6 +324,91 @@ mod tests {
         assert_eq!(disabled, vec![ModuleId::Github]);
         let loaded = modules::load_state(&pool).await.unwrap();
         assert_eq!(loaded, state(&[ModuleId::Linear]));
+        assert_eq!(*lock.read().unwrap(), loaded);
+    }
+
+    #[tokio::test]
+    async fn set_disabled_screens_persists_and_swaps() {
+        let (_d, pool) = pool().await;
+        let lock = RwLock::new(BTreeSet::new());
+        set_disabled_screens_logic(&pool, &lock, vec![ScreenId::Inbox, ScreenId::Inbox])
+            .await
+            .unwrap();
+        let expected = BTreeSet::from([ScreenId::Inbox]);
+        assert_eq!(*lock.read().unwrap(), expected);
+        assert_eq!(screens::load_disabled(&pool).await.unwrap(), expected);
+    }
+
+    #[test]
+    fn require_screen_rejects_only_disabled_screens() {
+        let off = BTreeSet::from([ScreenId::Inbox]);
+        assert!(matches!(
+            require_screen_in(&off, ScreenId::Inbox),
+            Err(CmdError::ModuleDisabled)
+        ));
+        assert!(require_screen_in(&off, ScreenId::Issues).is_ok());
+    }
+
+    #[test]
+    fn view_serializes_disabled_screens_as_view_ids() {
+        let mut view = list_modules_logic(&state(&[]));
+        view.disabled_screens = vec![ScreenId::Issues, ScreenId::Inbox];
+        let json = serde_json::to_value(&view).unwrap();
+        assert_eq!(
+            json["disabledScreens"],
+            serde_json::json!(["list", "inbox"])
+        );
+    }
+
+    #[test]
+    fn missing_linear_key_message_matches_the_frontend() {
+        // src/lib/queries.ts LINEAR_KEY_MISSING_MESSAGE matches this text exactly.
+        assert_eq!(
+            CmdError::NotConfigured.to_string(),
+            "No Linear key is configured."
+        );
+    }
+
+    #[tokio::test]
+    async fn removal_waits_for_module_writes_and_rechecks_state() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        store.set("slack_user_token", "x").unwrap();
+        let lock = RwLock::new(state(&[]));
+        let held = MODULES_WRITE.lock().await;
+        let pending = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack),
+        )
+        .await;
+        assert!(pending.is_err(), "removal ran during a module write");
+        // The write re-enables Slack; the removal must see that and refuse.
+        *lock.write().unwrap() = state(&[ModuleId::Slack]);
+        drop(held);
+        let r = remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack).await;
+        assert!(matches!(r, Err(CmdError::InvalidInput)));
+        assert!(store.get("slack_user_token").unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn module_writes_wait_for_the_previous_write() {
+        let (_d, pool) = pool().await;
+        let lock = RwLock::new(state(&[]));
+        let held = MODULES_WRITE.lock().await;
+        let pending = tokio::time::timeout(
+            std::time::Duration::from_millis(50),
+            set_enabled_modules_logic(&pool, &lock, vec![ModuleId::Slack]),
+        )
+        .await;
+        assert!(
+            pending.is_err(),
+            "write ran while another write held the lock"
+        );
+        drop(held);
+        set_enabled_modules_logic(&pool, &lock, vec![ModuleId::Slack])
+            .await
+            .unwrap();
+        let loaded = modules::load_state(&pool).await.unwrap();
         assert_eq!(*lock.read().unwrap(), loaded);
     }
 

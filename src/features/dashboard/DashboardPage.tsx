@@ -1,4 +1,4 @@
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -35,7 +35,7 @@ import {
 } from "@/lib/queries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
-import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
+import { VIEW_META, viewActive, visibleViews, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { dhakaToday } from "@/lib/dates";
 import {
@@ -521,7 +521,8 @@ function CommunicationCard({
   loading,
   onOpen,
 }: {
-  inbox: number | null;
+  /** `undefined` drops the Inbox line (screen off); `null` shows it as not cached. */
+  inbox: number | null | undefined;
   mentions: number | null;
   directMessages: number | null;
   threads: number | null;
@@ -547,7 +548,7 @@ function CommunicationCard({
         )}
       />
       <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricLine Icon={Inbox} label="Inbox" value={inbox} />
+        {inbox !== undefined && <MetricLine Icon={Inbox} label="Inbox" value={inbox} />}
         <MetricLine Icon={AtSign} label="Mentions" value={mentions} />
         <MetricLine Icon={MessageSquare} label="Unread DMs" value={directMessages} />
         <MetricLine Icon={MessagesSquare} label="Threads" value={threads} />
@@ -596,8 +597,8 @@ function SourceRow({ Icon, name, status, detail, tone, onOpen }: SourceRowProps)
 const QUICK_VIEWS: ViewKind[] = ["calendar", "list", "this-week", "prs", "slack", "docs", "reports"];
 
 function QuickActions({ onOpen }: { onOpen: (view: ViewKind) => void }) {
-  const { isActive } = useModules();
-  const actions = visibleViews(isActive)
+  const { isActive, disabledScreens } = useModules();
+  const actions = visibleViews(isActive, disabledScreens)
     .filter((v) => QUICK_VIEWS.includes(v))
     .map((view) => ({ view, label: VIEW_META[view].label, Icon: VIEW_META[view].icon }));
   return (
@@ -637,9 +638,14 @@ export function DashboardPage() {
   const now = useDashboardNow();
   const today = dhakaToday(now);
   const sourcesHeadingId = useId();
-  const { isActive } = useModules();
+  const { isActive, disabledScreens } = useModules();
   const active = { linear: isActive("linear"), github: isActive("github"), slack: isActive("slack") };
   const docsOn = isActive("docs");
+  const shown = (view: ViewKind) => viewActive(view, isActive, disabledScreens);
+  const inboxOn = shown("inbox");
+  // Links to switchable screens open the first one still shown; Calendar stays on with Linear.
+  const weekView = (["this-week", "list"] as const).find(shown) ?? "calendar";
+  const issuesView = shown("list") ? "list" : "calendar";
 
   const issuesQuery = useIssues({});
   const meQuery = useMe();
@@ -654,7 +660,7 @@ export function DashboardPage() {
 
   const issues = issuesQuery.data ?? [];
   const viewerId = meQuery.data?.viewerId ?? null;
-  const notifications = notificationsQuery.data?.notifications ?? [];
+  const notifications = inboxOn ? notificationsQuery.data?.notifications ?? [] : [];
   const prs = githubQuery.data?.prs ?? [];
   const slack = slackQuery.data;
   const metrics = dashboardMetrics({
@@ -689,7 +695,7 @@ export function DashboardPage() {
   const attentionPartial = (
     (issuesQuery.isError && issuesQuery.data === undefined)
     || (meQuery.isError && meQuery.data === undefined)
-    || (notificationsQuery.isError && notificationsQuery.data === undefined)
+    || (inboxOn && notificationsQuery.isError && notificationsQuery.data === undefined)
     || (githubQuery.isError && githubQuery.data === undefined)
     || (slackQuery.isError && slackQuery.data === undefined)
   );
@@ -793,6 +799,10 @@ export function DashboardPage() {
     );
   }
 
+  // The KPI row has as many columns as visible tiles, so a hidden tile leaves no blank slot.
+  const kpiShown = { overdue: active.linear, reviews: active.github, inbox: inboxOn, mentions: active.slack };
+  const kpiCols = Object.values(kpiShown).filter(Boolean).length;
+
   const openProviderSettings = (section: "github" | "slack") => {
     requestSettingsSection(section);
     setActiveView("settings");
@@ -816,8 +826,8 @@ export function DashboardPage() {
           </div>
         </header>
 
-        <div className="dashboard-kpi-grid grid min-w-0 gap-3">
-          {active.linear && <KpiCard
+        <div className="dashboard-kpi-grid grid min-w-0 gap-3" style={{ "--kpi-cols": kpiCols } as CSSProperties}>
+          {kpiShown.overdue && <KpiCard
             label="Overdue"
             value={linearDataAvailable ? metrics.overdue : null}
             description={
@@ -831,9 +841,9 @@ export function DashboardPage() {
             tone="danger"
             loading={issuesQuery.isLoading || meQuery.isLoading}
             actionLabel="Open overdue issues"
-            onOpen={() => setActiveView("this-week")}
+            onOpen={() => setActiveView(weekView)}
           />}
-          {active.github && <KpiCard
+          {kpiShown.reviews && <KpiCard
             label="Reviews"
             value={githubDataAvailable ? metrics.reviews : null}
             description={
@@ -847,7 +857,7 @@ export function DashboardPage() {
             actionLabel="Open pull requests"
             onOpen={() => setActiveView("prs")}
           />}
-          {active.linear && <KpiCard
+          {kpiShown.inbox && <KpiCard
             label="Inbox"
             value={notificationsQuery.data ? metrics.inbox : null}
             description={
@@ -861,7 +871,7 @@ export function DashboardPage() {
             actionLabel="Open inbox"
             onOpen={() => setActiveView("inbox")}
           />}
-          {active.slack && <KpiCard
+          {kpiShown.mentions && <KpiCard
             label="Mentions"
             value={slackDataAvailable ? metrics.mentions : null}
             description={
@@ -906,7 +916,7 @@ export function DashboardPage() {
               issues={preview}
               today={today}
               onOpenIssue={(id) => setParams({ issue: id })}
-              onOpenWeek={() => setActiveView("this-week")}
+              onOpenWeek={() => setActiveView(weekView)}
               available={linearDataAvailable}
             />
           )}
@@ -917,9 +927,9 @@ export function DashboardPage() {
               available={githubDataAvailable}
             />
           )}
-          {(active.linear || active.slack) && (
+          {(inboxOn || active.slack) && (
             <CommunicationCard
-              inbox={active.linear && notificationsQuery.data ? metrics.inbox : null}
+              inbox={!inboxOn ? undefined : notificationsQuery.data ? metrics.inbox : null}
               mentions={slackDataAvailable ? metrics.mentions : null}
               directMessages={slackDataAvailable ? dms : null}
               threads={slackDataAvailable ? unreadThreads : null}
@@ -943,7 +953,7 @@ export function DashboardPage() {
                 onOpen={() => setActiveView(
                   connectionStatusQuery.data?.state === "not_configured"
                     ? "settings"
-                    : "list",
+                    : issuesView,
                 )}
               />}
               {active.github && <SourceRow

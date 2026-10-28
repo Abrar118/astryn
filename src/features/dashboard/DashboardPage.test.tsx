@@ -13,6 +13,7 @@ const setActiveView = vi.hoisted(() => vi.fn());
 const setParams = vi.hoisted(() => vi.fn());
 const useNotificationsCall = vi.hoisted(() => vi.fn());
 const moduleOn = vi.hoisted(() => ({ current: (_id: string): boolean => true }));
+const screensOff = vi.hoisted(() => ({ current: [] as string[] }));
 
 function issue(overrides: Partial<IssueListItem> = {}): IssueListItem {
   return {
@@ -234,7 +235,7 @@ vi.mock("@/lib/queries", () => ({
 
 vi.mock("@/lib/modules", async (orig) => ({
   ...(await orig<typeof import("@/lib/modules")>()),
-  useModules: () => ({ isActive: (id: string) => moduleOn.current(id), hasCapability: () => true, ready: true }),
+  useModules: () => ({ isActive: (id: string) => moduleOn.current(id), hasCapability: () => true, disabledScreens: screensOff.current, ready: true }),
 }));
 vi.mock("@/lib/tabs", () => ({
   useWorkspace: () => ({ setActiveView }),
@@ -273,6 +274,7 @@ beforeEach(() => {
   setParams.mockReset();
   useNotificationsCall.mockReset();
   moduleOn.current = () => true;
+  screensOff.current = [];
 });
 
 afterEach(() => {
@@ -288,6 +290,48 @@ describe("DashboardPage module gating", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(setActiveView).toHaveBeenCalledWith("settings");
     expect(screen.queryByText("Overdue")).toBeNull();
+  });
+
+  it("drops the Inbox tile, items and count while the Inbox screen is off", () => {
+    screensOff.current = ["inbox"];
+    render(<DashboardPage />);
+    expect(screen.queryByRole("button", { name: "Open inbox" })).toBeNull();
+    expect(screen.queryByText("Inbox")).toBeNull();
+    expect(screen.getByText("Communication")).toBeTruthy();
+    expect(useNotificationsCall).toHaveBeenCalledWith({ enabled: false });
+  });
+
+  it("hides the Communication card when neither Inbox nor Slack is shown", () => {
+    screensOff.current = ["inbox"];
+    moduleOn.current = (id) => id !== "slack";
+    render(<DashboardPage />);
+    expect(screen.queryByText("Communication")).toBeNull();
+  });
+
+  it("sizes the KPI row to the visible tiles so none leaves a blank slot", () => {
+    const cols = () => (document.querySelector(".dashboard-kpi-grid") as HTMLElement).style.getPropertyValue("--kpi-cols");
+    const { unmount } = render(<DashboardPage />);
+    expect(cols()).toBe("4");
+    unmount();
+    screensOff.current = ["inbox"];
+    const second = render(<DashboardPage />);
+    expect(cols()).toBe("3");
+    second.unmount();
+    moduleOn.current = (id) => id === "github";
+    render(<DashboardPage />);
+    expect(cols()).toBe("1");
+  });
+
+  it("links Overdue to the first shown of This Week, Issues, Calendar", () => {
+    screensOff.current = ["this-week"];
+    const { unmount } = render(<DashboardPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Open overdue issues" }));
+    expect(setActiveView).toHaveBeenLastCalledWith("list");
+    unmount();
+    screensOff.current = ["this-week", "list"];
+    render(<DashboardPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Open overdue issues" }));
+    expect(setActiveView).toHaveBeenLastCalledWith("calendar");
   });
 
   it("drops the cards of modules that are off", () => {

@@ -18,7 +18,7 @@ import {
   SquareKanban,
   type LucideIcon,
 } from "lucide-react";
-import { listModules, type Capability, type ModuleId, type ModulesView } from "@/lib/commands";
+import { listModules, type Capability, type ModuleId, type ModulesView, type ScreenId } from "@/lib/commands";
 import type { ViewKind } from "@/lib/paneModel";
 
 type NavView = Exclude<ViewKind, "issue">;
@@ -40,19 +40,23 @@ export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; modul
 
 export const NAV_VIEWS = Object.keys(VIEW_META) as NavView[];
 
+/** Screens the owner can switch off on top of their module. Calendar, Dashboard and Settings always stay on. */
+export const SWITCHABLE_SCREENS: ScreenId[] = ["list", "this-week", "graph", "inbox"];
+
 export type IsActive = (id: ModuleId) => boolean;
 
 export function ownerActive(owner: ModuleId | "core", isActive: IsActive): boolean {
   return owner === "core" || isActive(owner);
 }
 
-export function visibleViews(isActive: IsActive): NavView[] {
-  return NAV_VIEWS.filter((v) => ownerActive(VIEW_META[v].module, isActive));
+export function visibleViews(isActive: IsActive, disabledScreens: readonly ScreenId[] = []): NavView[] {
+  return NAV_VIEWS.filter((v) => viewActive(v, isActive, disabledScreens));
 }
 
-/** Issue tabs belong to the tracker module. */
-export function viewActive(view: ViewKind, isActive: IsActive): boolean {
-  return view === "issue" ? isActive("linear") : ownerActive(VIEW_META[view].module, isActive);
+/** A view is shown when its module is active and its screen is not switched off. Issue tabs belong to the tracker module. */
+export function viewActive(view: ViewKind, isActive: IsActive, disabledScreens: readonly ScreenId[] = []): boolean {
+  if (view === "issue") return isActive("linear");
+  return ownerActive(VIEW_META[view].module, isActive) && !(disabledScreens as readonly string[]).includes(view);
 }
 
 type ManifestEntry = { kind: "provider" | "feature"; provides: Capability[]; requires: Capability[]; optional: Capability[] };
@@ -78,18 +82,26 @@ export function previewMissing(id: ModuleId, selected: Set<ModuleId>): Capabilit
 
 export const MODULES_KEY = ["modules"] as const;
 
+const NO_SCREENS_OFF: ScreenId[] = [];
+
 export function useModules(): {
   data?: ModulesView;
   isActive: IsActive;
   hasCapability: (cap: Capability) => boolean;
+  disabledScreens: ScreenId[];
+  isViewActive: (view: ViewKind) => boolean;
   ready: boolean;
+  isError: boolean;
+  refetch: () => Promise<unknown>;
 } {
-  const { data } = useQuery({ queryKey: MODULES_KEY, queryFn: listModules });
+  const { data, isError, refetch } = useQuery({ queryKey: MODULES_KEY, queryFn: listModules });
   // Until the first load resolves nothing is active, so only core entries render.
   const isActive: IsActive = (id) => !!data?.modules.find((m) => m.id === id && m.enabled && m.available);
   const hasCapability = (cap: Capability) =>
     !!data?.modules.some((m) => m.enabled && m.available && MODULE_MANIFEST[m.id].provides.includes(cap));
-  return { data, isActive, hasCapability, ready: !!data };
+  const disabledScreens = data?.disabledScreens ?? NO_SCREENS_OFF;
+  const isViewActive = (view: ViewKind) => viewActive(view, isActive, disabledScreens);
+  return { data, isActive, hasCapability, disabledScreens, isViewActive, ready: !!data, isError, refetch };
 }
 
 /** User-facing name, icon and one-line purpose for each module. Icons match Settings nav. */

@@ -147,14 +147,24 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  /* An odd last KPI tile spans the row instead of leaving a blank slot. */
+  .dashboard-kpi-grid > :last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
   .dashboard-attention-status {
     display: table-cell;
   }
 }
 
 @container dashboard-pane (min-width: 900px) {
+  /* One column per visible tile (set inline as --kpi-cols, at most 4). */
   .dashboard-kpi-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr));
+  }
+
+  .dashboard-kpi-grid > :last-child:nth-child(odd) {
+    grid-column: auto;
   }
 
   .dashboard-main-grid {
