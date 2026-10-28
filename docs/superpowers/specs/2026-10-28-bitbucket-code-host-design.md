@@ -151,4 +151,7 @@ else null. Lists carry no build or merge status, so `ci_status = "none"`,
   `bitbucket::account_avatar`): they come from several Atlassian/Gravatar hosts the CSP
   does not allow, and widening CSP or proxying them is left until live verification.
   No CSP or capability change in this work.
+- Reports stay GitHub-only: their PR facts read `github_prs`, so they are gated on the
+  GitHub module being active (not on any `code-host` provider). Otherwise a disabled
+  GitHub's kept cache would leak into reports once Bitbucket supplies `code-host`.
 - Live verification against a Bitbucket account is pending (no credentials available).
