@@ -12,6 +12,7 @@ mod local_docs;
 mod modules;
 mod secrets;
 mod slack;
+mod teams;
 
 use std::sync::Arc;
 use tauri::Manager;
@@ -21,6 +22,7 @@ use github::{GitHubClient, GitHubCredentialProvider, PatProvider};
 use linear::{LinearClient, LinearCredentialProvider, PersonalKeyProvider};
 use secrets::{KeyringSecretStore, SecretStore};
 use slack::{PersonalTokenProvider, SlackClient, SlackCredentialProvider};
+use teams::{GraphClient, KeychainTokenProvider, TeamsCredentialProvider};
 
 const KEYCHAIN_SERVICE: &str = "com.orion.astryn";
 const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
@@ -122,6 +124,9 @@ pub fn run() {
                     SLACK_COOKIE_ACCOUNT,
                 ));
             let slack = SlackClient::new().expect("failed to build Slack HTTP client");
+            let teams_credentials: Arc<dyn TeamsCredentialProvider> =
+                Arc::new(KeychainTokenProvider::new(store.clone()));
+            let teams = GraphClient::new().expect("failed to build Microsoft Graph HTTP client");
             let bitbucket = bitbucket::BitbucketState::new(
                 Arc::new(bitbucket::ApiTokenProvider::new(
                     store.clone(),
@@ -163,6 +168,11 @@ pub fn run() {
                 slack,
                 slack_lock: tokio::sync::Mutex::new(()),
                 slack_generation: std::sync::atomic::AtomicU64::new(0),
+                teams_credentials,
+                teams,
+                teams_lock: tokio::sync::Mutex::new(()),
+                teams_generation: std::sync::atomic::AtomicU64::new(0),
+                teams_pending: tokio::sync::Mutex::new(None),
                 clickup_credentials,
                 clickup,
                 clickup_lock: tokio::sync::Mutex::new(()),
@@ -249,6 +259,16 @@ pub fn run() {
             commands::slack::get_slack_catchup,
             commands::slack::get_slack_conversation_messages,
             commands::slack::slack_deep_link,
+            commands::teams::start_teams_sign_in,
+            commands::teams::poll_teams_sign_in,
+            commands::teams::cancel_teams_sign_in,
+            commands::teams::clear_teams_account,
+            commands::teams::get_teams_status,
+            commands::teams::test_teams_connection,
+            commands::teams::sync_teams_catchup,
+            commands::teams::get_teams_catchup,
+            commands::teams::get_teams_chat_messages,
+            commands::teams::teams_open_link,
             commands::modules::list_modules,
             commands::modules::set_enabled_modules,
             commands::modules::set_disabled_screens,

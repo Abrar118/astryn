@@ -6,6 +6,7 @@ import {
   FileStack,
   GitBranch,
   MessageSquare,
+  MessagesSquare,
   Palette,
   Sparkles,
   SquareKanban,
@@ -19,6 +20,7 @@ export type SettingsSection =
   | "github"
   | "bitbucket"
   | "slack"
+  | "teams"
   | "clickup"
   | "documentation"
   | "ai"
@@ -48,6 +50,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { id: "github", label: "GitHub", icon: GitBranch, module: "github" },
       { id: "bitbucket", label: "Bitbucket", icon: FolderGit2, module: "bitbucket" },
       { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
+      { id: "teams", label: "Teams", icon: MessagesSquare, module: "teams" },
       { id: "clickup", label: "ClickUp", icon: FileStack, module: "clickup" },
     ],
   },

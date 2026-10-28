@@ -1,16 +1,22 @@
 import { useEffect, useState } from "react";
-import { getSlackConversationMessages, type SlackMessage } from "@/lib/commands";
+import type { ChatMessage } from "@/lib/commands";
 
 /** Read-only list of a conversation's cached unread messages. */
-export function SlackReader({ conversationId }: { conversationId: string }) {
-  const [messages, setMessages] = useState<SlackMessage[] | null>(null);
+export function ChatReader({
+  conversationId,
+  load,
+}: {
+  conversationId: string;
+  load: (conversationId: string) => Promise<ChatMessage[]>;
+}) {
+  const [messages, setMessages] = useState<ChatMessage[] | null>(null);
   useEffect(() => {
     let live = true;
-    getSlackConversationMessages(conversationId)
+    load(conversationId)
       .then((m) => { if (live) setMessages(m); })
       .catch(() => { if (live) setMessages([]); });
     return () => { live = false; };
-  }, [conversationId]);
+  }, [conversationId, load]);
 
   if (messages === null) return <div className="px-5 py-3 text-xs text-muted-foreground">Loading…</div>;
   if (messages.length === 0) return <div className="px-5 py-3 text-xs text-muted-foreground">No cached messages.</div>;

@@ -12,6 +12,7 @@ import { GithubSection } from "./sections/GithubSection";
 import { LinearSection } from "./sections/LinearSection";
 import { ModulesSection } from "./sections/ModulesSection";
 import { SlackSection } from "./sections/SlackSection";
+import { TeamsSection } from "./sections/TeamsSection";
 
 function SectionBody({ section }: { section: SettingsSection }) {
   switch (section) {
@@ -25,6 +26,8 @@ function SectionBody({ section }: { section: SettingsSection }) {
       return <BitbucketSection />;
     case "slack":
       return <SlackSection />;
+    case "teams":
+      return <TeamsSection />;
     case "clickup":
       return <ClickupSection />;
     case "documentation":

@@ -29,6 +29,7 @@ import { DependencyGraphPage } from "@/features/agenda/DependencyGraphPage";
 import { PrsPage } from "@/features/prs/PrsPage";
 import { BITBUCKET_HOST } from "@/features/prs/bitbucketHost";
 import { SlackPage } from "@/features/slack/SlackPage";
+import { TeamsPage } from "@/features/teams/TeamsPage";
 import { DocsPage } from "@/features/docs/DocsPage";
 import { ReportsPage } from "@/features/reports/ReportsPage";
 import { DashboardPage } from "@/features/dashboard/DashboardPage";
@@ -57,6 +58,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <PrsPage host={BITBUCKET_HOST} />;
     case "slack":
       return <SlackPage />;
+    case "teams":
+      return <TeamsPage />;
     case "docs":
       return <DocsPage docPath={tab.docPath} docSourceId={tab.docSourceId} />;
     case "reports":

@@ -169,6 +169,12 @@ pub async fn remove_module_data_logic(
                 .map_err(db_err)?;
             store.delete(LLM_API_KEY_ACCOUNT).map_err(secret_err)?;
         }
+        ModuleId::Teams => {
+            db::teams::remove_all_teams_data(pool)
+                .await
+                .map_err(db_err)?;
+            crate::teams::clear_refresh_token(store).map_err(secret_err)?;
+        }
         ModuleId::Docs => {
             let mut tx = pool.begin().await.map_err(db_err)?;
             for t in ["docs_files", "docs_sync_meta", "docs_sources"] {
@@ -213,20 +219,24 @@ pub async fn remove_module_data_locked(
     remove_module_data_logic(pool, store, &snapshot, id).await
 }
 
+/// Generation counters of the providers whose in-flight work a disable cancels.
+struct Generations<'a> {
+    linear: &'a AtomicU64,
+    github: &'a AtomicU64,
+    slack: &'a AtomicU64,
+    llm: &'a AtomicU64,
+    teams: &'a AtomicU64,
+}
+
 /// Bump the generation counter of every disabled provider.
-fn bump_generations(
-    disabled: &[ModuleId],
-    linear: &AtomicU64,
-    github: &AtomicU64,
-    slack: &AtomicU64,
-    llm: &AtomicU64,
-) {
+fn bump_generations(disabled: &[ModuleId], g: &Generations) {
     for id in disabled {
         let counter = match id {
-            ModuleId::Linear => linear,
-            ModuleId::Github => github,
-            ModuleId::Slack => slack,
-            ModuleId::Llm => llm,
+            ModuleId::Linear => g.linear,
+            ModuleId::Github => g.github,
+            ModuleId::Slack => g.slack,
+            ModuleId::Llm => g.llm,
+            ModuleId::Teams => g.teams,
             _ => continue,
         };
         counter.fetch_add(1, Ordering::SeqCst);
@@ -266,10 +276,13 @@ pub async fn set_enabled_modules(
     // block the toggle without stopping the write; remove_module_data takes the lock.
     bump_generations(
         &disabled,
-        &state.workspace_generation,
-        &state.github_generation,
-        &state.slack_generation,
-        &state.llm_generation,
+        &Generations {
+            linear: &state.workspace_generation,
+            github: &state.github_generation,
+            slack: &state.slack_generation,
+            llm: &state.llm_generation,
+            teams: &state.teams_generation,
+        },
     );
     if disabled.contains(&ModuleId::Bitbucket) {
         state.bitbucket.generation.fetch_add(1, Ordering::SeqCst);
@@ -285,6 +298,7 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         ModuleId::Linear => Some(state.workspace_lock.lock().await),
         ModuleId::Github | ModuleId::Docs => Some(state.github_lock.lock().await),
         ModuleId::Slack => Some(state.slack_lock.lock().await),
+        ModuleId::Teams => Some(state.teams_lock.lock().await),
         ModuleId::Bitbucket => Some(state.bitbucket.lock.lock().await),
         ModuleId::Clickup => Some(state.clickup_lock.lock().await),
         _ => None,
@@ -427,15 +441,47 @@ mod tests {
 
     #[test]
     fn disabling_github_bumps_only_its_generation() {
-        let (l, g, s, m) = (
+        let (l, g, s, m, t) = (
+            AtomicU64::new(0),
             AtomicU64::new(0),
             AtomicU64::new(0),
             AtomicU64::new(0),
             AtomicU64::new(0),
         );
-        bump_generations(&[ModuleId::Github, ModuleId::Docs], &l, &g, &s, &m);
+        let gens = Generations {
+            linear: &l,
+            github: &g,
+            slack: &s,
+            llm: &m,
+            teams: &t,
+        };
+        bump_generations(&[ModuleId::Github, ModuleId::Docs], &gens);
         assert_eq!(g.load(Ordering::SeqCst), 1);
-        assert_eq!([&l, &s, &m].map(|c| c.load(Ordering::SeqCst)), [0, 0, 0]);
+        assert_eq!(
+            [&l, &s, &m, &t].map(|c| c.load(Ordering::SeqCst)),
+            [0, 0, 0, 0]
+        );
+        bump_generations(&[ModuleId::Teams], &gens);
+        assert_eq!(t.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test]
+    async fn remove_teams_wipes_cache_config_and_token() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        crate::teams::save_refresh_token(&store, &"r".repeat(1500)).unwrap();
+        store.set("slack_user_token", "x").unwrap();
+        db::teams::save_config(&pool, "cid", "organizations")
+            .await
+            .unwrap();
+        db::teams::save_identity(&pool, "me", None).await.unwrap();
+        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Teams)
+            .await
+            .unwrap();
+        assert_eq!(crate::teams::load_refresh_token(&store).unwrap(), None);
+        assert!(store.get("slack_user_token").unwrap().is_some());
+        assert_eq!(db::teams::load_config(&pool).await.unwrap(), None);
+        assert_eq!(db::teams::load_identity(&pool).await.unwrap(), None);
     }
 
     #[tokio::test]

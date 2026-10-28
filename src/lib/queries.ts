@@ -28,6 +28,8 @@ import {
   getGithubStatus,
   getSlackCatchup,
   getSlackStatus,
+  getTeamsCatchup,
+  getTeamsStatus,
   getIssueDetail,
   getMe,
   listCalendarIssues,
@@ -51,6 +53,7 @@ import {
   syncGithubPrs,
   syncIssues,
   syncSlackCatchup,
+  syncTeamsCatchup,
   updateAttachment,
   updateComment,
   updateIssue,
@@ -193,7 +196,7 @@ const WORKSPACE_KEYS = [
   ["calendar"], ["unscheduled"], ["issues"], ["issue"], ["relations"], ["users"], ["labels"], ["cycles"],
   ["filter-options"], ["workflow-states"], ["me"], ["notifications"],
   // Cross-module joins read the Linear cache too (PR to issue links, Slack issue refs).
-  ["github-prs"], ["slack-catchup"], ["bitbucket-prs"],
+  ["github-prs"], ["slack-catchup"], ["bitbucket-prs"], ["teams-catchup"],
 ];
 
 export function clearWorkspaceQueries(qc: QueryClient) {
@@ -983,6 +986,48 @@ export function useSlackSync(enabled: boolean) {
 
 export function clearSlackQueries(qc: QueryClient) {
   for (const key of [["slack-status"], ["slack-catchup"], ["slack-sync"]]) {
+    qc.cancelQueries({ queryKey: key });
+    qc.removeQueries({ queryKey: key });
+  }
+}
+
+/** Offline status (keychain + cached identity); exempt from the module guard. */
+export function useTeamsStatus() {
+  return useQuery({ queryKey: ["teams-status"], queryFn: getTeamsStatus });
+}
+
+export function useTeamsCatchup() {
+  const on = useOwnerActive("teams");
+  return useQuery({ queryKey: ["teams-catchup"], queryFn: getTeamsCatchup, enabled: on });
+}
+
+/**
+ * Background Teams sync: on mount + every 5 min while signed in, then refresh
+ * the cached board. Disabled when not configured (no grant -> no network).
+ */
+export function useTeamsSync(enabled: boolean) {
+  const qc = useQueryClient();
+  const on = useOwnerActive("teams");
+  return useQuery({
+    queryKey: ["teams-sync"],
+    enabled: enabled && on,
+    refetchInterval: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      try {
+        const summary = await syncTeamsCatchup();
+        await qc.invalidateQueries({ queryKey: ["teams-catchup"] });
+        return summary;
+      } catch (err) {
+        if (!isModuleOff(err)) gooeyToast.error("Couldn't refresh Teams", { description: errorText(err) });
+        throw err;
+      }
+    },
+  });
+}
+
+export function clearTeamsQueries(qc: QueryClient) {
+  for (const key of [["teams-status"], ["teams-catchup"], ["teams-sync"]]) {
     qc.cancelQueries({ queryKey: key });
     qc.removeQueries({ queryKey: key });
   }

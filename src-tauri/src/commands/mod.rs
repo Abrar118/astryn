@@ -28,6 +28,7 @@ pub mod github;
 pub mod modules;
 pub mod reports;
 pub mod slack;
+pub mod teams;
 
 const GITHUB_TOKEN_ACCOUNT: &str = "github_token";
 const LLM_API_KEY_ACCOUNT: &str = "llm_api_key";
@@ -148,6 +149,20 @@ pub enum CmdError {
     UploadFailed,
     #[error("That module is turned off.")]
     ModuleDisabled,
+    #[error("Microsoft Teams isn't connected.")]
+    TeamsNotConfigured,
+    #[error("Microsoft Teams sign-in expired. Sign in again.")]
+    TeamsAuth,
+    #[error("Microsoft Teams rejected the request.")]
+    TeamsApi,
+    #[error("Microsoft Teams denied access. Check the app registration's Chat.Read permission and consent.")]
+    TeamsForbidden,
+    #[error("Could not reach Microsoft Teams.")]
+    TeamsUnreachable,
+    #[error("That client ID or tenant isn't valid.")]
+    TeamsInvalidConfig,
+    #[error("Microsoft sign-in didn't complete. Start again.")]
+    TeamsSignInFailed,
     #[error("No Bitbucket token is configured.")]
     BitbucketNotConfigured,
     #[error("Bitbucket rejected the request.")]
@@ -242,6 +257,14 @@ pub struct AppState {
     pub slack_lock: tokio::sync::Mutex<()>,
     /// Bumped by every Slack cache wipe; guards a late sync write.
     pub slack_generation: AtomicU64,
+    pub teams_credentials: Arc<dyn crate::teams::TeamsCredentialProvider>,
+    pub teams: crate::teams::GraphClient,
+    /// Serializes Teams credential mutations, sign-in completion, and sync.
+    pub teams_lock: tokio::sync::Mutex<()>,
+    /// Bumped by every Teams cache wipe; guards a late sync write.
+    pub teams_generation: AtomicU64,
+    /// The in-progress device-code sign-in (memory only, never persisted).
+    pub teams_pending: tokio::sync::Mutex<Option<teams::PendingSignIn>>,
     pub clickup_credentials: Arc<dyn crate::clickup::ClickUpCredentialProvider>,
     pub clickup: crate::clickup::ClickUpClient,
     /// Serializes ClickUp credential mutations, link checks and Doc syncs.

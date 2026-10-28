@@ -10,6 +10,8 @@ const cmd = vi.hoisted(() => ({
   listNotifications: vi.fn(),
   listGithubPrs: vi.fn(),
   getSlackCatchup: vi.fn(),
+  getTeamsCatchup: vi.fn(),
+  syncTeamsCatchup: vi.fn(),
   syncGithubPrs: vi.fn(),
   syncIssues: vi.fn(),
   listDocsSources: vi.fn(),
@@ -43,6 +45,8 @@ import {
   useNotifications,
   useSlackCatchup,
   useSyncLoop,
+  useTeamsCatchup,
+  useTeamsSync,
 } from "./queries";
 
 function wrapper({ children }: { children: ReactNode }) {
@@ -114,6 +118,21 @@ describe("owner gating", () => {
     expect(cmd.listGithubPrs).not.toHaveBeenCalled();
     expect(cmd.getSlackCatchup).not.toHaveBeenCalled();
     expect(cmd.syncGithubPrs).not.toHaveBeenCalled();
+  });
+
+  it("gates the Teams board and sync on the teams module", async () => {
+    active.ids = new Set(["slack"]);
+    renderHook(() => { useTeamsCatchup(); useTeamsSync(true); }, { wrapper });
+    await act(async () => {});
+    expect(cmd.getTeamsCatchup).not.toHaveBeenCalled();
+    expect(cmd.syncTeamsCatchup).not.toHaveBeenCalled();
+
+    active.ids = new Set(["teams"]);
+    cmd.getTeamsCatchup.mockResolvedValue({ conversations: [], mentions: [], threads: [], lastSyncedAt: null });
+    cmd.syncTeamsCatchup.mockResolvedValue({ synced: true, conversationCount: 0, unreadTotal: 0 });
+    renderHook(() => { useTeamsCatchup(); useTeamsSync(true); }, { wrapper });
+    await waitFor(() => expect(cmd.syncTeamsCatchup).toHaveBeenCalled());
+    expect(cmd.getTeamsCatchup).toHaveBeenCalled();
   });
 
   it("does not call the docs commands while docs is off", async () => {

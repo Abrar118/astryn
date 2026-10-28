@@ -23,6 +23,7 @@ export function ModulesSection() {
       qc.setQueryData(MODULES_KEY, await setEnabledModules(ids));
       void qc.invalidateQueries({ queryKey: ["github-prs"] });
       void qc.invalidateQueries({ queryKey: ["slack-catchup"] });
+      void qc.invalidateQueries({ queryKey: ["teams-catchup"] });
       void qc.invalidateQueries({ queryKey: ["bitbucket-prs"] });
     } catch {
       gooeyToast.error("Couldn't update modules");
