@@ -24,6 +24,9 @@ pub const API_ROOT: &str = "https://api.bitbucket.org/2.0";
 pub const PR_PAGE_LEN: usize = 50;
 /// Cap for raw diff bodies; larger diffs are truncated.
 pub const DIFF_MAX_BYTES: usize = 8 * 1024 * 1024;
+/// JSON calls are small; a diff body near the byte cap needs longer.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const DIFF_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, thiserror::Error)]
 pub enum BitbucketError {
@@ -134,8 +137,8 @@ pub struct BitbucketClient {
 
 impl BitbucketClient {
     pub fn new() -> Result<Self, BitbucketError> {
+        // Total timeouts are set per request (`send`), not on the client.
         let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(20))
             .connect_timeout(Duration::from_secs(10))
             // The PR diff/diffstat endpoints answer with a same-host redirect.
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
@@ -156,11 +159,13 @@ impl BitbucketClient {
         &self,
         authorization: &str,
         target: &str,
+        timeout: Duration,
     ) -> Result<reqwest::Response, BitbucketError> {
         let url = resolve_url(target)?;
         let resp = self
             .http
             .get(url)
+            .timeout(timeout)
             .header("Authorization", authorization)
             .header("Accept", "application/json")
             .send()
@@ -179,7 +184,7 @@ impl BitbucketClient {
         target: &str,
     ) -> Result<Value, BitbucketError> {
         let text = self
-            .send(authorization, target)
+            .send(authorization, target, REQUEST_TIMEOUT)
             .await?
             .text()
             .await
@@ -195,7 +200,7 @@ impl BitbucketClient {
         target: &str,
         max_bytes: usize,
     ) -> Result<(String, bool), BitbucketError> {
-        let mut resp = self.send(authorization, target).await?;
+        let mut resp = self.send(authorization, target, DIFF_TIMEOUT).await?;
         let mut body: Vec<u8> = Vec::new();
         let mut truncated = false;
         while let Some(chunk) = resp.chunk().await.map_err(|_| BitbucketError::Network)? {

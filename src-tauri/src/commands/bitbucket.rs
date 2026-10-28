@@ -17,7 +17,7 @@ use crate::bitbucket::pr_detail::{detail_paths, parse_pr_detail, DetailPages};
 use crate::bitbucket::pr_diff::{diff_path, parse_unified_diff};
 use crate::bitbucket::prs::{
     authored_prs_path, parse_pr_page, parse_viewer, parse_workspaces_page, repo_prs_path, Viewer,
-    PER_SCOPE_CAP, WORKSPACES_PATH, WORKSPACE_MAX_PAGES,
+    PER_SCOPE_CAP, PR_MAX_PAGES, WORKSPACES_PATH, WORKSPACE_MAX_PAGES,
 };
 use crate::bitbucket::repositories::{catalog_path, parse_catalog_page, CATALOG_MAX_PAGES};
 use crate::bitbucket::{next_link, BitbucketCredentialProvider, BitbucketError, DIFF_MAX_BYTES};
@@ -97,6 +97,9 @@ where
     let mut target = first;
     let mut visited = HashSet::new();
     loop {
+        if visited.len() == PR_MAX_PAGES {
+            return Ok((acc, true));
+        }
         if !visited.insert(target.clone()) {
             // A repeated `next` would loop forever.
             return Err(BitbucketError::Malformed);
@@ -130,9 +133,8 @@ where
     F: Fn(String, String) -> Fut,
     Fut: Future<Output = Result<Value, BitbucketError>>,
 {
-    let workspaces = fetch_workspaces(auth, fetch).await?;
+    let (workspaces, mut truncated) = fetch_workspaces(auth, fetch).await?;
     let mut all = Vec::new();
-    let mut truncated = false;
     for ws in workspaces {
         let (rows, cut) = fetch_prs(
             auth,
@@ -153,7 +155,11 @@ where
     Ok((all, truncated))
 }
 
-async fn fetch_workspaces<F, Fut>(auth: &str, fetch: &F) -> Result<Vec<String>, BitbucketError>
+/// The viewer's workspace slugs, and whether the page cap cut the list short.
+async fn fetch_workspaces<F, Fut>(
+    auth: &str,
+    fetch: &F,
+) -> Result<(Vec<String>, bool), BitbucketError>
 where
     F: Fn(String, String) -> Fut,
     Fut: Future<Output = Result<Value, BitbucketError>>,
@@ -170,7 +176,7 @@ where
         }
         target = next_link(&page)?;
     }
-    Ok(slugs)
+    Ok((slugs, target.is_some()))
 }
 
 pub async fn sync_bitbucket_prs_logic<F, Fut>(
@@ -323,12 +329,11 @@ where
 {
     let gen0 = generation.load(Ordering::SeqCst);
     let auth = authorization(credentials).await?;
-    let workspaces = fetch_workspaces(&auth, &fetch).await?;
+    let (workspaces, mut truncated) = fetch_workspaces(&auth, &fetch).await?;
     changed(generation, gen0)?;
     let mut repositories = Vec::new();
     let mut seen = HashSet::new();
     let mut budget = CATALOG_MAX_PAGES;
-    let mut truncated = false;
     'workspaces: for ws in workspaces {
         let mut target = Some(catalog_path(&ws)?);
         while let Some(t) = target {
@@ -859,6 +864,66 @@ mod tests {
         })
         .await;
         assert!(matches!(foreign, Err(BitbucketError::Malformed)));
+    }
+
+    /// Every page is empty but links to a brand-new next page.
+    fn endless(t: String) -> Result<Value, BitbucketError> {
+        let n: usize = t
+            .rsplit('=')
+            .next()
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(0);
+        Ok(json!({
+            "values": [],
+            "next": format!("https://api.bitbucket.org/2.0/endless?page={}", n + 1)
+        }))
+    }
+
+    #[tokio::test]
+    async fn pr_pagination_stops_at_the_page_cap() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let seen = calls.clone();
+        let (rows, truncated) = fetch_prs(
+            "auth",
+            "/endless?page=0".into(),
+            ME,
+            PER_SCOPE_CAP,
+            &move |_a, t| {
+                seen.fetch_add(1, Ordering::SeqCst);
+                async move { endless(t) }
+            },
+        )
+        .await
+        .unwrap();
+        assert!(rows.is_empty());
+        assert!(truncated);
+        assert_eq!(calls.load(Ordering::SeqCst), PR_MAX_PAGES as u64);
+    }
+
+    #[tokio::test]
+    async fn workspace_listing_reports_truncation_at_its_page_cap() {
+        let (slugs, truncated) = fetch_workspaces("auth", &|_a, t: String| async move {
+            let n: usize = t
+                .rsplit('=')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .unwrap_or(0);
+            Ok(json!({
+                "values": [{ "workspace": { "slug": format!("ws{n}") } }],
+                "next": format!("https://api.bitbucket.org/2.0/user/workspaces?page={}", n + 1)
+            }))
+        })
+        .await
+        .unwrap();
+        assert_eq!(slugs.len(), WORKSPACE_MAX_PAGES);
+        assert!(truncated);
+
+        let (_, truncated) = fetch_workspaces("auth", &|_a, _t| async {
+            Ok(json!({ "values": [{ "workspace": { "slug": "acme" } }] }))
+        })
+        .await
+        .unwrap();
+        assert!(!truncated);
     }
 
     #[tokio::test]

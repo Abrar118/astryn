@@ -180,12 +180,13 @@ pub fn parse_unified_diff(
             files.push(done);
         }
     }
-    let truncated = truncated_body || files.len() > DIFF_MAX_FILES;
+    let total_files = files.len();
+    let truncated = truncated_body || total_files > DIFF_MAX_FILES;
     files.truncate(DIFF_MAX_FILES);
     PrDiff {
         repo: repo.canonical.clone(),
         number: id,
-        total_files: files.len(),
+        total_files,
         truncated,
         files,
     }
@@ -283,6 +284,27 @@ Binary files a/logo.png and b/logo.png differ
         let text = "diff --git \"a/caf\\303\\251.md\" \"b/caf\\303\\251.md\"\n--- \"a/caf\\303\\251.md\"\n+++ \"b/caf\\303\\251.md\"\n@@ -1 +1 @@\n-a\n+b\n";
         let diff = parse_unified_diff(text, &repo(), 1, false);
         assert_eq!(diff.files[0].path, "café.md");
+    }
+
+    #[test]
+    fn total_files_counts_beyond_the_render_cap() {
+        let text: String = (0..DIFF_MAX_FILES + 2)
+            .map(|i| {
+                format!(
+                    "diff --git a/f{i} b/f{i}
+--- a/f{i}
++++ b/f{i}
+@@ -1 +1 @@
+-a
++b
+"
+                )
+            })
+            .collect();
+        let diff = parse_unified_diff(&text, &repo(), 1, false);
+        assert_eq!(diff.files.len(), DIFF_MAX_FILES);
+        assert_eq!(diff.total_files, DIFF_MAX_FILES + 2);
+        assert!(diff.truncated);
     }
 
     #[test]

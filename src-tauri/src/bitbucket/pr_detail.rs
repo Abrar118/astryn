@@ -29,7 +29,8 @@ pub fn detail_paths(repo: &RepositoryName, id: i64) -> Result<DetailPaths, Bitbu
     );
     Ok(DetailPaths {
         pr: base.clone(),
-        comments: format!("{base}/comments?pagelen=100"),
+        // Newest first, so a truncated page keeps the latest discussion.
+        comments: format!("{base}/comments?pagelen=100&sort=-created_on"),
         commits: format!("{base}/commits?pagelen=50"),
         diffstat: format!("{base}/diffstat?pagelen=100"),
         statuses: format!("{base}/statuses?pagelen=100"),
@@ -321,7 +322,7 @@ mod tests {
         assert_eq!(p.pr, "/repositories/acme/api/pullrequests/7");
         assert_eq!(
             p.comments,
-            "/repositories/acme/api/pullrequests/7/comments?pagelen=100"
+            "/repositories/acme/api/pullrequests/7/comments?pagelen=100&sort=-created_on"
         );
         assert!(p.diffstat.ends_with("/diffstat?pagelen=100"));
         assert!(detail_paths(&repo, 0).is_err());

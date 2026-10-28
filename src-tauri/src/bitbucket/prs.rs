@@ -10,6 +10,10 @@ use crate::issue_ref::extract_linear_identifier;
 pub const PER_SCOPE_CAP: usize = 300;
 /// Bound on workspace pages read from `/user/workspaces` (100 per page).
 pub const WORKSPACE_MAX_PAGES: usize = 10;
+/// Bound on pages read per PR scope: enough to fill the cap at 50 per page with
+/// room for duplicates, while a server that keeps minting new `next` links can
+/// never hold the sync lock forever.
+pub const PR_MAX_PAGES: usize = 2 * PER_SCOPE_CAP / PR_PAGE_LEN;
 
 /// List items omit participants/reviewers unless asked for (partial response).
 const PR_LIST_QUERY: &str =
