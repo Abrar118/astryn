@@ -84,6 +84,7 @@ pub fn map_teams_err(e: TeamsError) -> CmdError {
     match e {
         TeamsError::Network | TeamsError::Server => CmdError::TeamsUnreachable,
         TeamsError::Auth => CmdError::TeamsAuth,
+        TeamsError::Forbidden => CmdError::TeamsForbidden,
         TeamsError::RateLimited(_) => CmdError::RateLimited,
         TeamsError::Malformed | TeamsError::Api(_) => CmdError::TeamsApi,
     }
@@ -169,6 +170,41 @@ pub fn poll_step(pending: &PendingSignIn, now: Instant, outcome: TokenPoll) -> P
         TokenPoll::SlowDown => PollStep::Wait(pending.interval + 5),
         TokenPoll::Granted(t) => PollStep::Granted(t),
         TokenPoll::Declined | TokenPoll::Expired | TokenPoll::Failed => PollStep::Fail,
+    }
+}
+
+/// A poll step that still owns the pending sign-in.
+#[derive(Debug, PartialEq)]
+pub enum Committed {
+    Wait(i64),
+    Granted(TokenSet),
+}
+
+/// Apply a poll result to the pending slot only if the slot still holds the
+/// device code that was polled. A poll that raced a cancel (slot empty) or a
+/// newer sign-in (different code) changes nothing and reports failure.
+pub fn commit_poll(
+    slot: &mut Option<PendingSignIn>,
+    device_code: &str,
+    step: PollStep,
+) -> Result<Committed, CmdError> {
+    let current = match slot.as_mut() {
+        Some(p) if p.device_code == device_code => p,
+        _ => return Err(CmdError::TeamsSignInFailed),
+    };
+    match step {
+        PollStep::Wait(interval) => {
+            current.interval = interval;
+            Ok(Committed::Wait(interval))
+        }
+        PollStep::Fail => {
+            *slot = None;
+            Err(CmdError::TeamsSignInFailed)
+        }
+        PollStep::Granted(tokens) => {
+            *slot = None;
+            Ok(Committed::Granted(tokens))
+        }
     }
 }
 
@@ -315,9 +351,14 @@ where
         .iter()
         .filter(|c| catchup::chat_has_unread(c, &viewer_id))
     {
-        let messages = fetch_messages(access.clone(), chat.id.clone())
-            .await
-            .map_err(map_teams_err)?;
+        let messages = match fetch_messages(access.clone(), chat.id.clone()).await {
+            Ok(m) => m,
+            // A chat the viewer can't read (403/404, odd payload) is skipped so
+            // the rest still sync. Network, auth, rate-limit and 5xx errors hit
+            // every chat alike, so they still fail the sync and keep the prior cache.
+            Err(TeamsError::Forbidden | TeamsError::Api(_) | TeamsError::Malformed) => continue,
+            Err(e) => return Err(map_teams_err(e)),
+        };
         let unread = catchup::unread_messages(&messages, chat.last_read.as_deref(), &viewer_id);
         if unread.is_empty() {
             continue;
@@ -506,19 +547,17 @@ pub async fn poll_teams_sign_in(state: State<'_, AppState>) -> Result<TeamsSignI
             .await
             .map_err(map_teams_err)?
     };
-    match poll_step(&pending, Instant::now(), outcome) {
-        PollStep::Wait(interval) => {
-            if let Some(p) = state.teams_pending.lock().await.as_mut() {
-                p.interval = interval;
-            }
-            Ok(TeamsSignInPoll::Pending { interval })
-        }
-        PollStep::Fail => {
-            *state.teams_pending.lock().await = None;
-            Err(CmdError::TeamsSignInFailed)
-        }
-        PollStep::Granted(tokens) => {
-            *state.teams_pending.lock().await = None;
+    let step = poll_step(&pending, Instant::now(), outcome);
+    // Cancel and a newer start may have changed the slot while the request was
+    // in flight; only commit if this poll still owns it.
+    let committed = commit_poll(
+        &mut *state.teams_pending.lock().await,
+        &pending.device_code,
+        step,
+    )?;
+    match committed {
+        Committed::Wait(interval) => Ok(TeamsSignInPoll::Pending { interval }),
+        Committed::Granted(tokens) => {
             let client = state.teams.clone();
             let user_name = finish_sign_in_logic(
                 state.teams_credentials.clone(),
@@ -875,6 +914,7 @@ mod tests {
                 display_name: Some("Nick".into()),
             }],
             web_url: Some("https://teams.microsoft.com/l/chat/x/0".into()),
+            hidden: false,
             preview: Some(Preview {
                 created_at: Some(preview_at.into()),
                 from_user_id: Some(from.into()),
@@ -986,6 +1026,110 @@ mod tests {
         let board = get_catchup_logic(&pool, true).await.unwrap();
         assert_eq!(board.conversations.len(), 1);
         assert_eq!(board.last_synced_at.as_deref(), Some("t1"));
+    }
+
+    #[tokio::test]
+    async fn one_unreadable_chat_does_not_fail_the_sync() {
+        let (_d, pool) = pool().await;
+        let creds = configured(&pool).await;
+        let gen = AtomicU64::new(0);
+        for err in [
+            TeamsError::Forbidden,
+            TeamsError::Api("404".into()),
+            TeamsError::Malformed,
+        ] {
+            let err = std::sync::Mutex::new(Some(err));
+            let summary = sync_logic(
+                creds.clone(),
+                &pool,
+                &gen,
+                "now".into(),
+                |_, _| async { Ok(tokens(None)) },
+                |_| async {
+                    Ok(vec![
+                        chat("bad", "2026-10-01T11:00:00Z", "u-2"),
+                        chat("good", "2026-10-01T11:00:00Z", "u-2"),
+                    ])
+                },
+                |_, id| {
+                    let e = (id == "bad").then(|| err.lock().unwrap().take()).flatten();
+                    async move {
+                        match e {
+                            Some(e) => Err(e),
+                            None => Ok(vec![message(
+                                "1",
+                                "2026-10-01T11:00:00Z",
+                                "u-2",
+                                "hi",
+                                false,
+                            )]),
+                        }
+                    }
+                },
+            )
+            .await
+            .unwrap();
+            assert_eq!(summary.conversation_count, 1);
+            let board = get_catchup_logic(&pool, true).await.unwrap();
+            assert_eq!(board.conversations[0].id, "good");
+        }
+    }
+
+    #[test]
+    fn forbidden_reads_as_a_permission_problem() {
+        assert!(matches!(
+            map_teams_err(TeamsError::Forbidden),
+            CmdError::TeamsForbidden
+        ));
+        assert!(matches!(
+            map_teams_err(TeamsError::Auth),
+            CmdError::TeamsAuth
+        ));
+    }
+
+    fn pending(code: &str) -> PendingSignIn {
+        PendingSignIn {
+            client_id: CID.into(),
+            tenant: "organizations".into(),
+            device_code: code.into(),
+            interval: 5,
+            expires_at: Instant::now() + Duration::from_secs(60),
+        }
+    }
+
+    #[test]
+    fn a_poll_that_lost_the_race_changes_nothing() {
+        // Cancelled while the token request was in flight: the grant is dropped.
+        let mut slot: Option<PendingSignIn> = None;
+        let r = commit_poll(&mut slot, "old", PollStep::Granted(tokens(Some("rt"))));
+        assert!(matches!(r, Err(CmdError::TeamsSignInFailed)));
+        assert!(slot.is_none());
+
+        // A newer sign-in started meanwhile: the old poll neither finishes nor clobbers it.
+        let mut slot = Some(pending("new"));
+        let r = commit_poll(&mut slot, "old", PollStep::Granted(tokens(Some("rt"))));
+        assert!(matches!(r, Err(CmdError::TeamsSignInFailed)));
+        let r = commit_poll(&mut slot, "old", PollStep::Fail);
+        assert!(matches!(r, Err(CmdError::TeamsSignInFailed)));
+        assert_eq!(slot.as_ref().unwrap().device_code, "new");
+    }
+
+    #[test]
+    fn a_current_poll_commits() {
+        let mut slot = Some(pending("d"));
+        assert_eq!(
+            commit_poll(&mut slot, "d", PollStep::Wait(10)).unwrap(),
+            Committed::Wait(10)
+        );
+        assert_eq!(slot.as_ref().unwrap().interval, 10);
+        assert_eq!(
+            commit_poll(&mut slot, "d", PollStep::Granted(tokens(Some("rt")))).unwrap(),
+            Committed::Granted(tokens(Some("rt")))
+        );
+        assert!(slot.is_none());
+        let mut slot = Some(pending("d"));
+        assert!(commit_poll(&mut slot, "d", PollStep::Fail).is_err());
+        assert!(slot.is_none());
     }
 
     #[tokio::test]

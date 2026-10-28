@@ -145,6 +145,8 @@ pub enum CmdError {
     TeamsAuth,
     #[error("Microsoft Teams rejected the request.")]
     TeamsApi,
+    #[error("Microsoft Teams denied access. Check the app registration's Chat.Read permission and consent.")]
+    TeamsForbidden,
     #[error("Could not reach Microsoft Teams.")]
     TeamsUnreachable,
     #[error("That client ID or tenant isn't valid.")]

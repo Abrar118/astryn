@@ -37,6 +37,8 @@ pub struct ParsedChat {
     pub last_read: Option<String>,
     pub members: Vec<ParsedMember>,
     pub web_url: Option<String>,
+    /// `viewpoint.isHidden`: the viewer hid this chat.
+    pub hidden: bool,
     pub preview: Option<Preview>,
 }
 
@@ -118,6 +120,7 @@ pub fn parse_chats(v: &Value) -> Result<(Vec<ParsedChat>, Option<String>), Teams
                     .map(str::to_string),
                 members,
                 web_url: str_field(c, "webUrl"),
+                hidden: path(c, &["viewpoint", "isHidden"]).and_then(|x| x.as_bool()) == Some(true),
                 preview,
             })
         })
@@ -280,9 +283,13 @@ fn after_marker(created: &str, last_read: Option<&str>) -> bool {
     }
 }
 
-/// Worth fetching messages for: the newest message is after the viewer's read
-/// marker and was not sent by the viewer (sending marks a chat read).
+/// Worth fetching messages for: not hidden by the viewer, and the newest
+/// message is after the viewer's read marker and was not sent by the viewer
+/// (sending marks a chat read).
 pub fn chat_has_unread(chat: &ParsedChat, viewer_id: &str) -> bool {
+    if chat.hidden {
+        return false;
+    }
     match &chat.preview {
         Some(Preview {
             created_at: Some(created),
@@ -433,6 +440,17 @@ mod tests {
         let mut never = chats[0].clone();
         never.last_read = Some("0001-01-01T00:00:00Z".into());
         assert!(chat_has_unread(&never, VIEWER));
+    }
+
+    #[test]
+    fn hidden_chats_are_skipped() {
+        let mut page = chats_fixture();
+        page["value"][0]["viewpoint"]["isHidden"] = serde_json::json!(true);
+        let (chats, _) = parse_chats(&page).unwrap();
+        assert!(chats[0].hidden);
+        assert!(!chats[1].hidden);
+        // Unread by the read marker, but the viewer hid it.
+        assert!(!chat_has_unread(&chats[0], VIEWER));
     }
 
     #[test]

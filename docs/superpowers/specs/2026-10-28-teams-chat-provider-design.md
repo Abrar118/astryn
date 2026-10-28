@@ -72,7 +72,9 @@ Two things ship together:
   UTF-16 (1,280 chars; `keyring` 3.6 enforces this) and Entra refresh tokens can
   exceed that, so the token is split into ≤1,000-char chunks under accounts
   `teams_refresh_token.0` … `teams_refresh_token.7` (service `com.orion.astryn`).
-  Stale higher chunks are deleted on every write. Access tokens are **never
+  Stale higher chunks are deleted on every write; if any chunk write fails, all
+  chunks are cleared so old and new chunks can never join into a corrupt token
+  (the user signs in again). Access tokens are **never
   persisted**: each sync/test redeems the refresh token for a fresh access token
   (one extra request per 5-minute poll) and stores the rotated refresh token.
 - **R5 — Client ID and tenant are configuration, not secrets:** stored in the
@@ -80,8 +82,12 @@ Two things ship together:
   (client ID must be a GUID; tenant must be `organizations`, `common`, a GUID, or
   a domain-like name of `[A-Za-z0-9.-]`) so nothing user-typed is spliced
   unchecked into the login URL path.
-- **R6 — Read model.** A chat is a candidate when its `lastMessagePreview` is
-  newer than `viewpoint.lastMessageReadDateTime` and was not sent by the viewer.
+- **R6 — Read model.** A chat is a candidate when it is not hidden
+  (`viewpoint.isHidden`), and its `lastMessagePreview` is newer than
+  `viewpoint.lastMessageReadDateTime` and was not sent by the viewer. A chat whose
+  messages can't be read (403, other 4xx, odd payload) is skipped so the rest
+  still sync; network, auth, rate-limit and 5xx errors still fail the whole sync
+  and keep the prior cache.
   For candidates, the newest 50 messages (`$top=50&$orderby=createdDateTime
   desc`, the documented maximum) are fetched and filtered client-side to
   user messages (`messageType = message`, not deleted) newer than the read
@@ -125,9 +131,10 @@ exempt so Settings can describe a disabled module).
 
 ### 4.2 `teams/` module
 
-- `mod.rs` — `TeamsError` (`Network | Auth | RateLimited(Option<i64>) |
-  Malformed | Server | Api(String)`), Graph status interpretation (401/403 →
-  `Auth`, 429 → `RateLimited(Retry-After)`, 5xx → `Server`), the
+- `mod.rs` — `TeamsError` (`Network | Auth | Forbidden | RateLimited(Option<i64>) |
+  Malformed | Server | Api(String)`), Graph status interpretation (401 → `Auth`
+  "sign-in expired", 403 → `Forbidden` "check Chat.Read permission and consent",
+  429 → `RateLimited(Retry-After)`, 5xx → `Server`), the
   `TeamsCredentialProvider` seam (`refresh_token()` / `save_refresh_token()` /
   `clear()`) with the keychain-backed `KeychainTokenProvider` (chunked, R4), and
   `GraphClient` (HTTP for the Graph API and the identity platform, 20 s timeout).
@@ -180,7 +187,7 @@ linearIdentifier, linearIssueId, createdAt`), with `linearIssueId` from a
 |---|---|
 | `start_teams_sign_in(clientId, tenant?)` | Validates, requests a device code, keeps `device_code` in memory only, returns `{ userCode, verificationUri, expiresIn, interval, message }`. |
 | `poll_teams_sign_in()` | One token request. `pending` → `{ state: "pending", interval }`. Granted → account switch: wipe Teams cache + bump generation, save config, store refresh token, call `/me`, save identity → `{ state: "connected", userName }`. Declined/expired → sanitized error. |
-| `cancel_teams_sign_in()` | Drops the pending device code. |
+| `cancel_teams_sign_in()` | Drops the pending device code. A poll in flight commits only if the pending slot still holds the device code it polled, so it can't finish a cancelled sign-in or clobber a newer one. The Settings section also cancels on unmount, and keeps polling through transient (network, rate-limit) errors. |
 | `clear_teams_account()` | Wipe cache + bump generation, then delete keychain chunks. |
 | `get_teams_status()` *(core)* | Offline: `not_configured | unverified | connected { userName }`. |
 | `test_teams_connection()` | Refresh + `/me`, caches identity. |

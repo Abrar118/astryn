@@ -25,14 +25,18 @@ pub enum TeamsError {
     Server,
     #[error("api error: {0}")]
     Api(String),
+    #[error("forbidden")]
+    Forbidden,
 }
 
-/// Map a Graph HTTP status to an error. 401/403 mean the token or consent is
-/// missing; 429 carries the `Retry-After` delta in seconds.
+/// Map a Graph HTTP status to an error. 401 means the token is invalid or
+/// expired; 403 means a missing permission or consent; 429 carries the
+/// `Retry-After` delta in seconds.
 pub fn interpret_graph_status(status: u16, retry_after: Option<i64>) -> Option<TeamsError> {
     match status {
         200..=299 => None,
-        401 | 403 => Some(TeamsError::Auth),
+        401 => Some(TeamsError::Auth),
+        403 => Some(TeamsError::Forbidden),
         429 => Some(TeamsError::RateLimited(retry_after)),
         500..=599 => Some(TeamsError::Server),
         other => Some(TeamsError::Api(other.to_string())),
@@ -59,13 +63,20 @@ pub fn save_refresh_token(store: &dyn SecretStore, token: &str) -> Result<(), Se
     if chunks.is_empty() || chunks.len() > MAX_CHUNKS {
         return Err(SecretError::Backend);
     }
-    for (i, c) in chunks.iter().enumerate() {
-        store.set(&chunk_account(i), c)?;
-    }
-    for i in chunks.len()..MAX_CHUNKS {
-        store.delete(&chunk_account(i))?;
-    }
-    Ok(())
+    let write = || -> Result<(), SecretError> {
+        for (i, c) in chunks.iter().enumerate() {
+            store.set(&chunk_account(i), c)?;
+        }
+        for i in chunks.len()..MAX_CHUNKS {
+            store.delete(&chunk_account(i))?;
+        }
+        Ok(())
+    };
+    // A partial write would leave old and new chunks that join into a corrupt
+    // token, so any failure drops the token entirely (the user signs in again).
+    write().inspect_err(|_| {
+        let _ = clear_refresh_token(store);
+    })
 }
 
 pub fn load_refresh_token(store: &dyn SecretStore) -> Result<Option<String>, SecretError> {
@@ -320,9 +331,10 @@ mod tests {
             interpret_graph_status(401, None),
             Some(TeamsError::Auth)
         ));
+        // 403 is a permission/consent problem, not an expired sign-in.
         assert!(matches!(
             interpret_graph_status(403, None),
-            Some(TeamsError::Auth)
+            Some(TeamsError::Forbidden)
         ));
         assert!(matches!(
             interpret_graph_status(429, Some(7)),
@@ -353,6 +365,43 @@ mod tests {
             load_refresh_token(&store).unwrap().as_deref(),
             Some(long.as_str())
         );
+    }
+
+    /// A store whose Nth `set` (1-based) fails.
+    struct FailingStore {
+        inner: FakeSecretStore,
+        fail_on: usize,
+        sets: std::sync::Mutex<usize>,
+    }
+
+    impl SecretStore for FailingStore {
+        fn get(&self, account: &str) -> Result<Option<String>, SecretError> {
+            self.inner.get(account)
+        }
+        fn set(&self, account: &str, secret: &str) -> Result<(), SecretError> {
+            let mut n = self.sets.lock().unwrap();
+            *n += 1;
+            if *n == self.fail_on {
+                return Err(SecretError::Backend);
+            }
+            self.inner.set(account, secret)
+        }
+        fn delete(&self, account: &str) -> Result<(), SecretError> {
+            self.inner.delete(account)
+        }
+    }
+
+    #[test]
+    fn failed_chunk_write_never_leaves_a_mixed_token() {
+        let store = FailingStore {
+            inner: FakeSecretStore::default(),
+            fail_on: 5, // 3 chunks for the old token, then the 2nd chunk of the new one
+            sets: std::sync::Mutex::new(0),
+        };
+        save_refresh_token(&store, &"o".repeat(2500)).unwrap();
+        assert!(save_refresh_token(&store, &"n".repeat(2500)).is_err());
+        // Mixed old/new chunks would join into a corrupt token; nothing is left instead.
+        assert_eq!(load_refresh_token(&store).unwrap(), None);
     }
 
     #[test]
