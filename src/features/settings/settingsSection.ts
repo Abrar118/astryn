@@ -3,6 +3,7 @@ import {
   Blocks,
   Calendar,
   GitBranch,
+  ListTodo,
   MessageSquare,
   Palette,
   Sparkles,
@@ -17,6 +18,7 @@ export type SettingsSection =
   | "github"
   | "slack"
   | "documentation"
+  | "local-tasks"
   | "ai"
   | "appearance"
   | "calendar";
@@ -48,6 +50,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     label: "Workspace",
     items: [
+      { id: "local-tasks", label: "Local tasks", icon: ListTodo, module: "local-tasks" },
       { id: "documentation", label: "Documentation", icon: BookText, module: "docs" },
       { id: "ai", label: "AI", icon: Sparkles, module: "llm" },
     ],

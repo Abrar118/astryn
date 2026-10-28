@@ -72,6 +72,7 @@ export function ModulesSection() {
                             <li key={r}>{r}</li>
                           ))}
                         </ul>
+                        {copy.warning && <p className="mt-2 font-medium text-destructive">{copy.warning}</p>}
                       </div>
                       <div className="flex justify-end gap-2">
                         <button

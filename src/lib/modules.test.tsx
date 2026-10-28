@@ -44,6 +44,7 @@ describe("MODULE_MANIFEST", () => {
       docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
       reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
       "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+      "local-tasks": { kind: "provider", provides: ["tracker"], requires: [], optional: [] },
     });
   });
 });

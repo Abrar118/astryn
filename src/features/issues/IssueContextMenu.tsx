@@ -53,6 +53,9 @@ import {
   useUsers,
 } from "@/lib/queries";
 import { useCreateTaskRelation, useDeleteTask, useUpdateTask } from "@/lib/taskQueries";
+import { useLocalTasks } from "@/lib/localTaskQueries";
+import { trackerOf } from "@/lib/tracker";
+import { LocalTaskMenu } from "@/features/local-tasks/LocalTaskMenu";
 import { useQueryClient } from "@tanstack/react-query";
 import { dhakaToday } from "@/lib/dates";
 import { PRIORITIES, STATE_RANK, DUE_PRESETS } from "@/features/issues/issueFields";
@@ -97,6 +100,7 @@ type MenuState = { id: string; x: number; y: number; extra: MenuExtraAction | nu
 
 export function IssueMenuProvider({ children }: { children: ReactNode }) {
   const { data: issues } = useIssues({});
+  const { data: localTasks } = useLocalTasks({});
   const { data: users } = useUsers();
   const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -106,11 +110,15 @@ export function IssueMenuProvider({ children }: { children: ReactNode }) {
     setMenu({ id, x: e.clientX, y: e.clientY, extra });
   };
 
-  const issue = menu ? (issues ?? []).find((i) => i.id === menu.id) ?? null : null;
+  // Each tracker brings its own menu; local tasks get the ClickUp-style one.
+  const local = menu && trackerOf(menu.id) === "local-tasks";
+  const issue = menu && !local ? (issues ?? []).find((i) => i.id === menu.id) ?? null : null;
+  const localTask = menu && local ? (localTasks ?? []).find((t) => t.id === menu.id) ?? null : null;
 
   return (
     <MenuCtx.Provider value={{ openMenu }}>
       {children}
+      {menu && localTask && <LocalTaskMenu task={localTask} x={menu.x} y={menu.y} onClose={() => setMenu(null)} />}
       {menu && issue && (
         <Menu
           issue={issue}

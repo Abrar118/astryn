@@ -757,7 +757,8 @@ export type ModuleId =
   | "llm"
   | "docs"
   | "reports"
-  | "link-previews";
+  | "link-previews"
+  | "local-tasks";
 
 export type Capability =
   | "tracker"
@@ -784,3 +785,151 @@ export const setEnabledModules = (ids: ModuleId[]): Promise<ModulesView> =>
 
 export const removeModuleData = (id: ModuleId): Promise<void> =>
   invoke("remove_module_data", { id });
+
+// ── Local tasks (a tracker kept in SQLite) ───────────────────────────────────
+
+export type LocalSpace = { id: string; name: string; position: number };
+export type LocalList = { id: string; spaceId: string; name: string; key: string; position: number };
+export type LocalStatusCategory = "backlog" | "unstarted" | "started" | "completed" | "canceled";
+/** A workflow status; `scopeId` is the space (or list override) that owns it. */
+export type LocalStatus = {
+  id: string;
+  scopeId: string;
+  name: string;
+  category: LocalStatusCategory;
+  color: string;
+  position: number;
+};
+export type LocalSprint = {
+  id: string;
+  spaceId: string;
+  number: number;
+  name: string;
+  startDate: string | null;
+  endDate: string | null;
+};
+export type LocalLabel = { id: string; name: string; color: string };
+export type LocalTree = {
+  spaces: LocalSpace[];
+  lists: LocalList[];
+  statuses: LocalStatus[];
+  sprints: LocalSprint[];
+  labels: LocalLabel[];
+};
+
+/** A local task in the neutral row shape (team = list, project = space, cycle = sprint) plus local fields. */
+export type LocalTask = IssueListItem & {
+  startDate: string | null;
+  spaceId: string;
+  sprintId: string | null;
+  position: number;
+  listName: string;
+  checklistDone: number;
+  checklistTotal: number;
+};
+export type LocalChecklistItem = { id: string; taskId: string; body: string; done: boolean; position: number };
+export type LocalComment = { id: string; taskId: string; body: string; createdAt: string; updatedAt: string };
+export type LocalAttachment = { id: string; taskId: string; title: string; url: string; createdAt: string };
+export type LocalTaskDetail = LocalTask & {
+  statuses: LocalStatus[];
+  subtasks: LocalTask[];
+  checklist: LocalChecklistItem[];
+  relations: Relation[];
+  comments: LocalComment[];
+  attachments: LocalAttachment[];
+  parent: { id: string; identifier: string; title: string } | null;
+};
+export type LocalStatusInput = { id?: string | null; name: string; category: LocalStatusCategory; color: string };
+export type CreateLocalTaskInput = {
+  listId: string;
+  title: string;
+  description?: string | null;
+  statusId?: string | null;
+  priority?: number;
+  assignedToMe?: boolean;
+  startDate?: string | null;
+  dueDate?: string | null;
+  estimate?: number | null;
+  parentId?: string | null;
+  sprintId?: string | null;
+  labelIds?: string[];
+};
+/** The neutral patch plus local-only fields. */
+export type LocalTaskPatch = UpdateIssuePatch & { startDate?: string | null; position?: number };
+export type LocalBackupStatus = { folder: string; latest: string | null; count: number };
+export type LocalImportResult = { imported: number; skipped: number };
+
+export const listLocalTree = (): Promise<LocalTree> => invoke("list_local_tree");
+export const createLocalSpace = (name: string): Promise<LocalSpace> => invoke("create_local_space", { name });
+export const renameLocalSpace = (id: string, name: string): Promise<void> => invoke("rename_local_space", { id, name });
+export const deleteLocalSpace = (id: string): Promise<void> => invoke("delete_local_space", { id });
+export const createLocalList = (spaceId: string, name: string, key: string): Promise<LocalList> =>
+  invoke("create_local_list", { spaceId, name, key });
+export const updateLocalList = (id: string, name?: string | null, key?: string | null): Promise<LocalList> =>
+  invoke("update_local_list", { id, name: name ?? null, key: key ?? null });
+export const deleteLocalList = (id: string): Promise<void> => invoke("delete_local_list", { id });
+/** Replace a space's workflow or a list's override; an empty list clears a list override. */
+export const setLocalStatuses = (scopeId: string, statuses: LocalStatusInput[]): Promise<LocalStatus[]> =>
+  invoke("set_local_statuses", { scopeId, statuses });
+export const createLocalSprint = (
+  spaceId: string,
+  name: string,
+  startDate: string | null,
+  endDate: string | null,
+): Promise<LocalSprint> => invoke("create_local_sprint", { spaceId, name, startDate, endDate });
+export const updateLocalSprint = (
+  id: string,
+  name: string,
+  startDate: string | null,
+  endDate: string | null,
+): Promise<void> => invoke("update_local_sprint", { id, name, startDate, endDate });
+export const deleteLocalSprint = (id: string): Promise<void> => invoke("delete_local_sprint", { id });
+export const createLocalLabel = (name: string, color: string): Promise<LocalLabel> =>
+  invoke("create_local_label", { name, color });
+export const deleteLocalLabel = (id: string): Promise<void> => invoke("delete_local_label", { id });
+export const listLocalTasks = (args: IssueFilters): Promise<LocalTask[]> => invoke("list_local_tasks", { args });
+export const listLocalCalendar = (args: { start: string; end: string } & IssueFilters): Promise<LocalTask[]> =>
+  invoke("list_local_calendar", { args });
+export const listLocalUnscheduled = (args: IssueFilters): Promise<LocalTask[]> =>
+  invoke("list_local_unscheduled", { args });
+export const listLocalRelations = (): Promise<Relation[]> => invoke("list_local_relations");
+export const listLocalFilterOptions = (): Promise<FilterOptions> => invoke("list_local_filter_options");
+export const listLocalStatuses = (): Promise<WorkflowState[]> => invoke("list_local_statuses");
+export const getLocalTaskDetail = (id: string): Promise<LocalTaskDetail> => invoke("get_local_task_detail", { id });
+export const createLocalTask = (input: CreateLocalTaskInput): Promise<LocalTask> =>
+  invoke("create_local_task", { input });
+export const updateLocalTask = (id: string, patch: LocalTaskPatch): Promise<LocalTask> =>
+  invoke("update_local_task", { id, patch });
+export const deleteLocalTask = (id: string): Promise<void> => invoke("delete_local_task", { id });
+export const addLocalChecklistItem = (taskId: string, body: string): Promise<LocalChecklistItem> =>
+  invoke("add_local_checklist_item", { taskId, body });
+export const updateLocalChecklistItem = (
+  id: string,
+  change: { body?: string; done?: boolean },
+): Promise<LocalChecklistItem> =>
+  invoke("update_local_checklist_item", { id, body: change.body ?? null, done: change.done ?? null });
+export const deleteLocalChecklistItem = (id: string): Promise<void> => invoke("delete_local_checklist_item", { id });
+export const addLocalComment = (taskId: string, body: string): Promise<LocalComment> =>
+  invoke("add_local_comment", { taskId, body });
+export const updateLocalComment = (id: string, body: string): Promise<LocalComment> =>
+  invoke("update_local_comment", { id, body });
+export const deleteLocalComment = (id: string): Promise<void> => invoke("delete_local_comment", { id });
+export const addLocalAttachment = (taskId: string, url: string, title?: string | null): Promise<LocalAttachment> =>
+  invoke("add_local_attachment", { taskId, url, title: title ?? null });
+export const deleteLocalAttachment = (id: string): Promise<void> => invoke("delete_local_attachment", { id });
+/** `kind`: "blocks" | "related" to create; delete also accepts "blocked_by" (as seen from `taskId`). */
+export const createLocalRelation = (taskId: string, relatedId: string, kind: "blocks" | "related"): Promise<void> =>
+  invoke("create_local_relation", { taskId, relatedId, kind });
+export const deleteLocalRelation = (taskId: string, relatedId: string, kind: string): Promise<void> =>
+  invoke("delete_local_relation", { taskId, relatedId, kind });
+/** Write today's automatic backup if missing (`today` = Dhaka date) and report the backups folder. */
+export const ensureLocalTasksBackup = (today: string): Promise<LocalBackupStatus> =>
+  invoke("ensure_local_tasks_backup", { today });
+/** Save a backup via the native save dialog; false when cancelled. */
+export const exportLocalTasksBackup = (today: string): Promise<boolean> =>
+  invoke("export_local_tasks_backup", { today });
+/** Replace all local tasks from a backup picked in the native open dialog; false when cancelled. */
+export const restoreLocalTasksBackup = (): Promise<boolean> => invoke("restore_local_tasks_backup");
+/** One-way copy of a Linear team's cached issues into a local list. */
+export const importLinearToLocal = (teamId: string, listId: string): Promise<LocalImportResult> =>
+  invoke("import_linear_to_local", { teamId, listId });

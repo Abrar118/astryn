@@ -249,6 +249,8 @@ interface DescriptionEditorProps {
    * down, so this is the only signal left to surface the failure.
    */
   onSaveError?: () => void;
+  /** Show the attach button (uploads go to Linear storage, so only Linear tasks attach). Default true. */
+  allowAttach?: boolean;
 }
 
 export function DescriptionEditor({
@@ -260,6 +262,7 @@ export function DescriptionEditor({
   users,
   onSaveStateChange,
   onSaveError,
+  allowAttach = true,
 }: DescriptionEditorProps) {
   const [editing, setEditing] = useState(false);
   const autosaveRef = useRef<DescriptionAutosave | null>(null);
@@ -432,7 +435,7 @@ export function DescriptionEditor({
             insertRef={insertRef}
           />
         </MilkdownProvider>
-        {editing && (
+        {editing && allowAttach && (
           <button
             type="button"
             aria-label="Attach images, files, or videos"

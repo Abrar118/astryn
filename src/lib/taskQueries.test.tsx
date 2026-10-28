@@ -18,6 +18,8 @@ const cmd = vi.hoisted(() => ({
   updateIssue: vi.fn(),
   deleteIssue: vi.fn(),
   createIssueRelation: vi.fn(),
+  listLocalTasks: vi.fn(),
+  updateLocalTask: vi.fn(),
 }));
 
 vi.mock("./commands", () => ({ ...cmd, errorText: (e: unknown) => String(e) }));
@@ -87,6 +89,44 @@ describe("useTasks", () => {
     await waitFor(() => expect(result.current.data).toHaveLength(1));
     expect(cmd.listIssues).toHaveBeenCalledWith({ assigneeId: "v1" });
     expect(qc.getQueryData(["issues", "linear", { assigneeId: "v1" }])).toHaveLength(1);
+  });
+});
+
+describe("two trackers", () => {
+  it("merges Linear and local tasks, resolving ME per tracker", async () => {
+    active.ids = new Set(["linear", "local-tasks"]);
+    cmd.getMe.mockResolvedValue({ viewerId: "v1", viewerName: "Ada" });
+    cmd.listIssues.mockResolvedValue([issue("1")]);
+    cmd.listLocalTasks.mockResolvedValue([issue("lt_2", { assigneeId: "lt_me" })]);
+    const { wrapper } = setup();
+    const { result } = renderHook(() => ({ tasks: useTasks({ assigneeId: ME }), viewer: useViewer() }), { wrapper });
+    await waitFor(() => expect(result.current.tasks.data?.map((t) => t.id)).toEqual(["1", "lt_2"]));
+    expect(cmd.listLocalTasks).toHaveBeenCalledWith({ assigneeId: "lt_me" });
+    expect(result.current.viewer.viewerIds).toEqual(["v1", "lt_me"]);
+    expect(result.current.viewer.name).toBe("Ada");
+  });
+
+  it("keeps local tasks visible when Linear's cache read fails", async () => {
+    active.ids = new Set(["linear", "local-tasks"]);
+    cmd.listIssues.mockRejectedValue("Internal error.");
+    cmd.listLocalTasks.mockResolvedValue([issue("lt_2")]);
+    const { wrapper } = setup();
+    const { result } = renderHook(() => useTasks({}), { wrapper });
+    await waitFor(() => expect(result.current.data?.map((t) => t.id)).toEqual(["lt_2"]));
+    expect(result.current.isError).toBe(true);
+  });
+
+  it("routes a local task update to the local tracker", async () => {
+    active.ids = new Set(["linear", "local-tasks"]);
+    cmd.updateLocalTask.mockResolvedValue(issue("lt_2"));
+    const { qc, wrapper } = setup();
+    qc.setQueryData(["issues", "local-tasks", {}], [issue("lt_2")]);
+    const { result } = renderHook(() => useUpdateTask(), { wrapper });
+    await act(async () => {
+      result.current.mutate({ id: "lt_2", patch: { priority: 1 } });
+    });
+    await waitFor(() => expect(cmd.updateLocalTask).toHaveBeenCalledWith("lt_2", { priority: 1 }));
+    expect(cmd.updateIssue).not.toHaveBeenCalled();
   });
 });
 

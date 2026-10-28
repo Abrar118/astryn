@@ -1,4 +1,5 @@
 import { useSyncLoop } from "@/lib/queries";
+import { useLocalBackup } from "@/lib/localTaskQueries";
 import { useModules } from "@/lib/modules";
 import { WorkspaceProvider } from "@/lib/tabs";
 import { SplitLayout } from "@/components/SplitLayout";
@@ -12,6 +13,8 @@ function Shell() {
   const { isActive, ready, data } = useModules();
   // The background sync is Linear's; other trackers (local tasks) have nothing to pull.
   const { isSyncing, refresh } = useSyncLoop(isActive("linear"));
+  // Local tasks exist only here: write the daily backup as soon as the app opens.
+  useLocalBackup({ notify: true });
 
   if (ready && data?.onboarded === false) return <ModulePicker />;
 

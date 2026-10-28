@@ -9,6 +9,7 @@ import {
   LayoutDashboard,
   Link2,
   List,
+  ListTodo,
   MessageSquare,
   Network,
   NotebookPen,
@@ -34,6 +35,7 @@ export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; modul
   "this-week": { label: "This Week", icon: CalendarRange, module: "tracker" },
   graph: { label: "Dependencies", icon: Network, module: "tracker" },
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
+  tasks: { label: "Tasks", icon: ListTodo, module: "local-tasks" },
   prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
   slack: { label: "Slack", icon: MessageSquare, module: "slack" },
   docs: { label: "Docs", icon: BookText, module: "docs" },
@@ -77,6 +79,7 @@ export const MODULE_MANIFEST: Record<ModuleId, ManifestEntry> = {
   docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },
   reports: { kind: "feature", provides: [], requires: ["tracker"], optional: ["code-host", "llm"] },
   "link-previews": { kind: "feature", provides: [], requires: [], optional: [] },
+  "local-tasks": { kind: "provider", provides: ["tracker"], requires: [], optional: [] },
 };
 
 /** Capabilities `id` requires that no module in `selected` provides. */
@@ -102,8 +105,14 @@ export function useModules(): {
   return { data, isActive, hasCapability, ready: !!data };
 }
 
-/** User-facing name, icon and one-line purpose for each module. Icons match Settings nav. */
-export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; description: string; removes: string[] }> = {
+/**
+ * User-facing name, icon and one-line purpose for each module. Icons match Settings nav.
+ * `warning` is shown in the remove-data confirmation when the data exists nowhere else.
+ */
+export const MODULE_COPY: Record<
+  ModuleId,
+  { name: string; icon: LucideIcon; description: string; removes: string[]; warning?: string }
+> = {
   linear: { name: "Linear", icon: SquareKanban, description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
   github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
   slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
@@ -111,11 +120,18 @@ export const MODULE_COPY: Record<ModuleId, { name: string; icon: LucideIcon; des
   docs: { name: "Docs", icon: BookText, description: "Markdown docs from your GitHub repositories.", removes: ["documentation sources", "cached docs"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
+  "local-tasks": {
+    name: "Local tasks",
+    icon: ListTodo,
+    description: "Spaces, lists and sprints kept on this computer — no account needed.",
+    removes: ["all local spaces, lists and tasks", "their workflows, sprints and labels"],
+    warning: "These tasks exist only on this computer. A final backup is saved to the backups folder first.",
+  },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */
 export const CAPABILITY_PROVIDERS: Record<Capability, string> = {
-  tracker: "an issue tracker — turn on Linear",
+  tracker: "a task tracker — turn on Linear or Local tasks",
   notifications: "a notification source — turn on Linear",
   "code-host": "a code host — turn on GitHub",
   "docs-source": "a docs source — turn on GitHub",

@@ -5,7 +5,7 @@
  */
 import { useMutation, useQueries, useQueryClient, type QueryKey, type UseQueryResult } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
-import { errorText, type FilterOptions, type IssueDetailResult, type LiveDetail, type Me, type RelationType, type User } from "./commands";
+import { errorText, type FilterOptions, type Me, type RelationType, type User } from "./commands";
 import { useModules } from "./modules";
 import { applyPatchToCalendarIssue, calendarIssueFromList, inRange, matchesFilters, reconcileList } from "./optimistic";
 import {
@@ -64,7 +64,7 @@ function combineViewer(results: UseQueryResult<TaggedViewer>[]): Viewer {
   for (const r of results) {
     if (!r.data) continue;
     ids[r.data.tracker] = r.data.viewerId;
-    name ??= r.data.viewerName;
+    if (!name && r.data.viewerName) name = r.data.viewerName;
   }
   return {
     ids,
@@ -170,24 +170,6 @@ export function useTaskFilterOptions(): { data: FilterOptions | undefined } {
 
 // ── Routed mutations ─────────────────────────────────────────────────────────
 
-/** Merge a patch's changed fields into a cached Linear detail result (any branch). */
-function patchDetail(result: IssueDetailResult, patch: TaskPatch): IssueDetailResult {
-  const d = { ...(result.detail as Record<string, unknown>) };
-  if (patch.title !== undefined) d.title = patch.title;
-  if (patch.priority !== undefined) d.priority = patch.priority;
-  if (patch.dueDate !== undefined) d.dueDate = patch.dueDate;
-  if (patch.assigneeId !== undefined) d.assigneeId = patch.assigneeId;
-  if (patch.description !== undefined) d.description = patch.description;
-  if (patch.stateId !== undefined) {
-    d.stateId = patch.stateId;
-    if (result.source === "live") {
-      const st = (result.detail as LiveDetail).teamStates.find((s) => s.id === patch.stateId);
-      if (st) { d.stateName = st.name; d.stateType = st.type; d.stateColor = st.color; }
-    }
-  }
-  return { ...result, detail: d } as IssueDetailResult;
-}
-
 type StateInfo = { stateName: string | null; stateType: string; stateColor: string };
 
 /** Lookups that re-derive the denormalized fields a patch changes (names, colors). */
@@ -235,6 +217,10 @@ function applyPatchToListItem(it: Task, patch: TaskPatch, lk: ListLookups): Task
     // Team key + the now-invalid team-scoped state reconcile on the settle refetch.
     next.teamId = patch.teamId;
   }
+  // Local-only fields ride along for rows that have them (local tasks).
+  const local = next as Task & { startDate?: string | null; position?: number };
+  if (patch.startDate !== undefined && "startDate" in local) local.startDate = patch.startDate;
+  if (patch.position !== undefined && "position" in local) local.position = patch.position;
   return next;
 }
 
@@ -258,7 +244,8 @@ export function useUpdateTask() {
       await qc.cancelQueries({ queryKey: ["calendar"] });
       await qc.cancelQueries({ queryKey: ["unscheduled"] });
       await qc.cancelQueries({ queryKey: ["issues"] });
-      await qc.cancelQueries({ queryKey: ["issue", id] });
+      const detailKey = TRACKER_ADAPTERS[tracker].detailKey(id);
+      await qc.cancelQueries({ queryKey: detailKey });
 
       // Only this tracker's entries: a task never belongs to another tracker's cache.
       const calEntries = entriesOf<TaskSummary[]>(qc, "calendar", tracker);
@@ -268,7 +255,7 @@ export function useUpdateTask() {
         ...calEntries,
         ...unschedEntries,
         ...issuesEntries,
-        [["issue", id], qc.getQueryData(["issue", id])],
+        [detailKey, qc.getQueryData(detailKey)],
       ];
 
       // Optimistically move the task within the list/board caches so a board
@@ -325,9 +312,9 @@ export function useUpdateTask() {
         }
       }
 
-      // Patch the Linear drawer detail cache (any branch) so the open drawer reflects the edit.
-      const detail = qc.getQueryData<IssueDetailResult>(["issue", id]);
-      if (detail) qc.setQueryData(["issue", id], patchDetail(detail, patch));
+      // Patch the open drawer's detail cache so it reflects the edit.
+      const detail = qc.getQueryData(detailKey);
+      if (detail) qc.setQueryData(detailKey, TRACKER_ADAPTERS[tracker].patchDetail(detail, patch));
 
       return { snapshot };
     },
@@ -339,7 +326,7 @@ export function useUpdateTask() {
       qc.invalidateQueries({ queryKey: ["calendar"] });
       qc.invalidateQueries({ queryKey: ["unscheduled"] });
       qc.invalidateQueries({ queryKey: ["issues"] });
-      qc.invalidateQueries({ queryKey: ["issue", id] });
+      qc.invalidateQueries({ queryKey: TRACKER_ADAPTERS[trackerOf(id)].detailKey(id) });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
     },
   });
@@ -355,19 +342,20 @@ export function useDeleteTask() {
         qc.cancelQueries({ queryKey: ["calendar"] }),
         qc.cancelQueries({ queryKey: ["unscheduled"] }),
         qc.cancelQueries({ queryKey: ["issues"] }),
-        qc.cancelQueries({ queryKey: ["issue", id] }),
+        qc.cancelQueries({ queryKey: TRACKER_ADAPTERS[trackerOf(id)].detailKey(id) }),
       ]);
       const entries = ["calendar", "unscheduled", "issues"].flatMap((root) =>
         qc.getQueriesData<{ id: string }[]>({ queryKey: [root] }),
       );
-      const snapshot: Snapshot = [...entries, [["issue", id], qc.getQueryData(["issue", id])]];
+      const detailKey = TRACKER_ADAPTERS[trackerOf(id)].detailKey(id);
+      const snapshot: Snapshot = [...entries, [detailKey, qc.getQueryData(detailKey)]];
       for (const [key, list] of entries) {
         if (list) qc.setQueryData(key, list.filter((task) => task.id !== id));
       }
       return { snapshot };
     },
     onSuccess: (_data, id) => {
-      qc.removeQueries({ queryKey: ["issue", id] });
+      qc.removeQueries({ queryKey: TRACKER_ADAPTERS[trackerOf(id)].detailKey(id) });
       qc.invalidateQueries({ queryKey: ["filter-options"] });
       gooeyToast.success(trackerOf(id) === "linear" ? "Issue deleted" : "Task deleted");
     },
@@ -397,8 +385,8 @@ export function useCreateTaskRelation() {
     onSuccess: (_data, { issueId, relatedIssueId }) => {
       qc.invalidateQueries({ queryKey: ["relations"] });
       // The drawer/full-page detail reads relations live, so refresh both ends.
-      qc.invalidateQueries({ queryKey: ["issue", issueId] });
-      qc.invalidateQueries({ queryKey: ["issue", relatedIssueId] });
+      qc.invalidateQueries({ queryKey: TRACKER_ADAPTERS[trackerOf(issueId)].detailKey(issueId) });
+      qc.invalidateQueries({ queryKey: TRACKER_ADAPTERS[trackerOf(relatedIssueId)].detailKey(relatedIssueId) });
       gooeyToast.success("Relation added");
     },
     onError: (err) => gooeyToast.error("Couldn't add relation", { description: errorText(err) }),

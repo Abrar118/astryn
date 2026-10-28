@@ -8,6 +8,7 @@ import { CalendarSection } from "./sections/CalendarSection";
 import { DocsSection } from "./sections/DocsSection";
 import { GithubSection } from "./sections/GithubSection";
 import { LinearSection } from "./sections/LinearSection";
+import { LocalTasksSection } from "./sections/LocalTasksSection";
 import { ModulesSection } from "./sections/ModulesSection";
 import { SlackSection } from "./sections/SlackSection";
 
@@ -21,6 +22,8 @@ function SectionBody({ section }: { section: SettingsSection }) {
       return <GithubSection />;
     case "slack":
       return <SlackSection />;
+    case "local-tasks":
+      return <LocalTasksSection />;
     case "documentation":
       return <DocsSection />;
     case "ai":
