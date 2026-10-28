@@ -100,6 +100,9 @@ pub fn run() {
                 .expect("failed to recover pending issue deletions");
             let module_state = tauri::async_runtime::block_on(modules::load_state(&pool))
                 .expect("failed to load module state");
+            let disabled_screens =
+                tauri::async_runtime::block_on(modules::screens::load_disabled(&pool))
+                    .expect("failed to load screen state");
 
             let store: Arc<dyn SecretStore> = Arc::new(KeyringSecretStore::new(KEYCHAIN_SERVICE));
             let credentials: Arc<dyn LinearCredentialProvider> =
@@ -119,6 +122,7 @@ pub fn run() {
             app.manage(AppState {
                 pool,
                 modules: std::sync::RwLock::new(module_state),
+                screens: std::sync::RwLock::new(disabled_screens),
                 secret_store: store,
                 credentials,
                 linear,
@@ -216,6 +220,7 @@ pub fn run() {
             commands::slack::slack_deep_link,
             commands::modules::list_modules,
             commands::modules::set_enabled_modules,
+            commands::modules::set_disabled_screens,
             commands::modules::remove_module_data,
             commands::reports::get_llm_config,
             commands::reports::set_llm_config,
