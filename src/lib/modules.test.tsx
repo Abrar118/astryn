@@ -31,6 +31,7 @@ describe("MODULE_MANIFEST", () => {
     expect(MODULE_MANIFEST).toEqual({
       linear: { kind: "provider", provides: ["tracker", "notifications"], requires: [], optional: [] },
       github: { kind: "provider", provides: ["code-host", "docs-source"], requires: [], optional: [] },
+      bitbucket: { kind: "provider", provides: ["code-host"], requires: [], optional: [] },
       slack: { kind: "provider", provides: ["chat"], requires: [], optional: [] },
       llm: { kind: "provider", provides: ["llm"], requires: [], optional: [] },
       docs: { kind: "feature", provides: [], requires: ["docs-source"], optional: [] },

@@ -584,6 +584,29 @@ export const getGithubContributions = (): Promise<Contributions | null> =>
 export const syncGithubContributions = (): Promise<Contributions> =>
   invoke("sync_github_contributions");
 
+// ── Bitbucket Cloud code host (module spec 2a) ──────────────────────────────
+// Same payload shapes as the GitHub PR workspace; credentials never come back.
+
+export type BitbucketStatus = GitHubStatus;
+
+/** Store the Atlassian account email (or username) + API token in the keychain. */
+export const setBitbucketCredentials = (email: string, token: string): Promise<void> =>
+  invoke("set_bitbucket_credentials", { email, token });
+export const clearBitbucketCredentials = (): Promise<void> => invoke("clear_bitbucket_credentials");
+export const getBitbucketStatus = (): Promise<BitbucketStatus> => invoke("get_bitbucket_status");
+export const testBitbucketConnection = (): Promise<BitbucketStatus> =>
+  invoke("test_bitbucket_connection");
+export const syncBitbucketPrs = (): Promise<BucketSyncResult[]> => invoke("sync_bitbucket_prs");
+export const listBitbucketPrs = (): Promise<PrDashboard> => invoke("list_bitbucket_prs");
+export const listBitbucketRepositories = (): Promise<GithubRepositoryCatalog> =>
+  invoke("list_bitbucket_repositories");
+export const setBitbucketRepoFavorite = (repo: string, favorite: boolean): Promise<string[]> =>
+  invoke("set_bitbucket_repo_favorite", { repo, favorite });
+export const getBitbucketPrDetail = (repo: string, number: number): Promise<GithubPrDetail> =>
+  invoke("get_bitbucket_pr_detail", { repo, number });
+export const getBitbucketPrDiff = (repo: string, number: number): Promise<GithubPrDiff> =>
+  invoke("get_bitbucket_pr_diff", { repo, number });
+
 // ── Docs viewer (F-Docs) ─────────────────────────────────────────────────────
 
 export type DocNode = {
@@ -757,7 +780,8 @@ export type ModuleId =
   | "llm"
   | "docs"
   | "reports"
-  | "link-previews";
+  | "link-previews"
+  | "bitbucket";
 
 export type Capability =
   | "tracker"

@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import type { GithubPr, GithubPrDetail } from "@/lib/commands";
 import { timeAgo } from "@/features/drawer/timeAgo";
+import { useCodeHost } from "./codeHost";
 import {
   detailTimeline,
   reviewStateLabel,
@@ -25,7 +26,7 @@ import {
 } from "./prDetailDisplay";
 
 function openExternal(url: string) {
-  openUrl(url).catch(() => gooeyToast.error("Couldn't open the GitHub link"));
+  openUrl(url).catch(() => gooeyToast.error("Couldn't open the link"));
 }
 
 function Markdown({ children }: { children: string }) {
@@ -167,6 +168,7 @@ export function PrDrawerOverview({
   seed: GithubPr;
   detail: GithubPrDetail | undefined;
 }) {
+  const host = useCodeHost();
   const timeline = detail ? detailTimeline(detail) : [];
   const checks = detail?.checks ?? [];
   const passingChecks = checks.filter(
@@ -261,7 +263,7 @@ export function PrDrawerOverview({
               detail.truncated.reviews ||
               detail.truncated.commits) && (
               <p className="mt-4 text-xs text-muted-foreground">
-                Showing the most recent bounded activity from GitHub.
+                Showing the most recent bounded activity from {host.name}.
               </p>
             )}
         </section>
@@ -353,7 +355,7 @@ export function PrDrawerOverview({
             ))}
             {detail?.truncated.checks && (
               <span className="text-xs text-muted-foreground">
-                More checks on GitHub
+                More checks on {host.name}
               </span>
             )}
           </div>

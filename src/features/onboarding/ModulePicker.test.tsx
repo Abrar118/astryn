@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModuleId, ModulesView } from "@/lib/commands";
 
-const IDS: ModuleId[] = ["linear", "github", "slack", "llm", "docs", "reports", "link-previews"];
+const IDS: ModuleId[] = ["linear", "github", "bitbucket", "slack", "llm", "docs", "reports", "link-previews"];
 let view: ModulesView;
 
 vi.mock("@/lib/commands", async (orig) => ({
@@ -60,7 +60,7 @@ describe("ModulePicker", () => {
     expect(screen.getByText("Integrations")).toBeTruthy();
     expect(screen.getByText("Features")).toBeTruthy();
     const boxes = screen.getAllByRole("checkbox");
-    expect(boxes.length).toBe(7);
+    expect(boxes.length).toBe(8);
     expect(document.activeElement).toBe(boxes[0]);
   });
 
