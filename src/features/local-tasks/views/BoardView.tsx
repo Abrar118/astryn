@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -45,6 +45,15 @@ function Card({ task, props, subtasks }: { task: LocalTask; props: ViewProps; su
       }}
       {...drag.attributes}
       {...drag.listeners}
+      // Enter opens the task; Space (the sensor's key) picks it up to move.
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          props.onOpen(task.id);
+          return;
+        }
+        drag.listeners?.onKeyDown?.(e);
+      }}
       onClick={() => props.onOpen(task.id)}
       onContextMenu={(e) => props.onMenu(e, task.id)}
       style={{ touchAction: "none" }}
@@ -83,9 +92,11 @@ export function BoardView(props: ViewProps) {
   const groups = groupByStatus(props.tasks, props.statuses);
   const update = useUpdateTask();
   const [dragging, setDragging] = useState<LocalTask | null>(null);
+  const hintId = useId();
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor),
+    // Space picks up and drops a card; Enter stays free to open it.
+    useSensor(KeyboardSensor, { keyboardCodes: { start: ["Space"], cancel: ["Escape"], end: ["Space"] } }),
   );
 
   const onDragEnd = (e: DragEndEvent) => {
@@ -123,7 +134,11 @@ export function BoardView(props: ViewProps) {
       onDragCancel={() => setDragging(null)}
       onDragEnd={onDragEnd}
     >
-      <div className="flex h-full gap-3 overflow-x-auto p-4 pb-24">
+      <p id={hintId} className="px-4 pt-3 text-[11px] text-muted-foreground">
+        Drag a card to change its status. From the keyboard: Enter opens a card; Space picks it up, arrow keys move it,
+        Space drops it, Escape cancels.
+      </p>
+      <div className="flex h-full gap-3 overflow-x-auto p-4 pb-24" aria-describedby={hintId}>
         {groups.map((g, i) => (
           <Column key={g.status.id} status={g.status} count={g.tasks.length}>
             {g.tasks.map((t) => (

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import type { LocalStatus, LocalTask, LocalTree } from "@/lib/commands";
 import {
   barFor,
+  clipBar,
+  MAX_TIMELINE_DAYS,
   groupByStatus,
   positionBefore,
   sortTasks,
@@ -120,6 +122,20 @@ describe("timeline", () => {
     expect(range.start).toBe("2026-10-18");
     expect(range.days % 7).toBe(0);
     expect(range.days).toBeGreaterThanOrEqual(42);
+  });
+
+  it("caps the range around today so a far-off date can't make it span centuries", () => {
+    const rows = [task("far", { dueDate: "2199-12-31" }), task("old", { startDate: "1971-01-01", dueDate: "1971-01-02" })];
+    const range = timelineRange(rows, "2026-10-28");
+    expect(range.days).toBeLessThanOrEqual(MAX_TIMELINE_DAYS);
+    expect(range.start >= "2024-10-01").toBe(true);
+  });
+
+  it("clips bars to the range and drops ones fully outside it", () => {
+    expect(clipBar({ offset: -3, span: 5 }, 42)).toEqual({ offset: 0, span: 2 });
+    expect(clipBar({ offset: 40, span: 10 }, 42)).toEqual({ offset: 40, span: 2 });
+    expect(clipBar({ offset: 50, span: 1 }, 42)).toBeNull();
+    expect(clipBar({ offset: -9, span: 2 }, 42)).toBeNull();
   });
 
   it("draws start-to-due bars and one-day bars for a single date", () => {

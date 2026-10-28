@@ -3,7 +3,7 @@ import { addDays } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { tint } from "@/features/calendar/eventStyle";
-import { barFor, daysBetween, timelineRange } from "../localTaskModel";
+import { barFor, clipBar, daysBetween, timelineRange } from "../localTaskModel";
 import type { ViewProps } from "./ListView";
 
 const DAY = 28;
@@ -76,8 +76,8 @@ export function TimelineView(props: ViewProps) {
             </p>
           )}
           {dated.map((t) => {
-            const bar = barFor(t, start);
-            if (!bar) return null;
+            const raw = barFor(t, start);
+            const bar = raw && clipBar(raw, days);
             const color = t.stateColor || "var(--muted-foreground)";
             return (
               <div key={t.id} className="group relative flex h-9 items-center border-b border-border/30 hover:bg-accent/40">
@@ -92,6 +92,7 @@ export function TimelineView(props: ViewProps) {
                   <span className="font-mono text-[11px] text-muted-foreground">{t.identifier}</span>
                   <span className="truncate text-[13px] text-foreground">{t.title}</span>
                 </button>
+                {bar && (
                 <button
                   type="button"
                   tabIndex={-1}
@@ -109,6 +110,7 @@ export function TimelineView(props: ViewProps) {
                 >
                   <span className="truncate">{bar.span > 2 ? t.title : ""}</span>
                 </button>
+                )}
               </div>
             );
           })}

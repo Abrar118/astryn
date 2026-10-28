@@ -117,13 +117,31 @@ function sundayOnOrBefore(d: string): string {
   return addDays(d, -new Date(utc(d)).getUTCDay());
 }
 
-/** Whole weeks covering every dated task and today, with a week before and two after. */
+/** The timeline never spans more than this (one year either side of today, in whole weeks). */
+export const MAX_TIMELINE_DAYS = 106 * 7;
+const TIMELINE_REACH = 365;
+
+/**
+ * Whole weeks covering every dated task and today, with a week before and two
+ * after — but no further than a year from today, so a far-off date stays cheap.
+ */
 export function timelineRange(tasks: LocalTask[], today: string): { start: string; days: number } {
-  const dates = [today, ...tasks.flatMap((t) => [t.startDate, t.dueDate].filter((d): d is string => !!d))].sort();
+  const earliest = addDays(today, -TIMELINE_REACH);
+  const latest = addDays(today, TIMELINE_REACH);
+  const dates = [today, ...tasks.flatMap((t) => [t.startDate, t.dueDate].filter((d): d is string => !!d))]
+    .map((d) => (d < earliest ? earliest : d > latest ? latest : d))
+    .sort();
   const start = sundayOnOrBefore(addDays(dates[0], -7));
   const end = addDays(dates[dates.length - 1], 14);
-  const days = Math.max(42, Math.ceil((daysBetween(start, end) + 1) / 7) * 7);
+  const days = Math.min(MAX_TIMELINE_DAYS, Math.max(42, Math.ceil((daysBetween(start, end) + 1) / 7) * 7));
   return { start, days };
+}
+
+/** A bar limited to `[0, days)`; null when it lies entirely outside. */
+export function clipBar(bar: { offset: number; span: number }, days: number): { offset: number; span: number } | null {
+  const from = Math.max(0, bar.offset);
+  const to = Math.min(days, bar.offset + bar.span);
+  return to > from ? { offset: from, span: to - from } : null;
 }
 
 /** Bar geometry in days from `rangeStart`; a single date (or a start after the due date) is a one-day bar. */

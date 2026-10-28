@@ -89,6 +89,23 @@ describe("LocalTasksPage", () => {
     );
   });
 
+  it("opens a board card with Enter instead of starting a keyboard drag", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    render(<LocalTasksPage />);
+    fireEvent.click(screen.getByRole("tab", { name: "Board" }));
+    expect(screen.getByText(/Space picks it up/)).toBeTruthy();
+    const card = screen.getByText("Task lt_1").closest("[role='button']") as HTMLElement;
+    fireEvent.keyDown(card, { key: "Enter", code: "Enter" });
+    expect(setParams).toHaveBeenCalledWith({ issue: "lt_1" });
+  });
+
   it("switches views from the view switcher and remembers the choice", () => {
     render(<LocalTasksPage />);
     fireEvent.click(screen.getByRole("tab", { name: "Table" }));
