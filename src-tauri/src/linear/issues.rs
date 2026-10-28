@@ -1066,7 +1066,7 @@ pub fn parse_issue_detail(body: &str) -> Result<IssueDetailNode, LinearError> {
 }
 
 // ---- tri-state patch ----
-fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
+pub(crate) fn double_option<'de, T, D>(de: D) -> Result<Option<Option<T>>, D::Error>
 where
     T: Deserialize<'de>,
     D: Deserializer<'de>,

@@ -23,6 +23,7 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod docs;
 pub mod github;
+pub mod local_tasks;
 pub mod modules;
 pub mod reports;
 pub mod slack;
@@ -138,6 +139,14 @@ pub enum CmdError {
     UploadFailed,
     #[error("That module is turned off.")]
     ModuleDisabled,
+    #[error("That task or list no longer exists.")]
+    LocalTaskNotFound,
+    #[error("Another list already uses that key.")]
+    DuplicateListKey,
+    #[error("Check the values and try again.")]
+    InvalidLocalInput,
+    #[error("That file isn't a usable Astryn local-tasks backup.")]
+    InvalidBackup,
 }
 
 impl serde::Serialize for CmdError {
@@ -1055,7 +1064,7 @@ pub async fn create_issue_relation(
 /// Linear's own link field), then verifies the result is a real http(s) URL with
 /// a host. `None` ⇒ not a valid URL (empty, has whitespace, non-http scheme, or
 /// unparseable — e.g. arbitrary pasted text), so we never send junk to Linear.
-fn normalize_attachment_url(raw: &str) -> Option<String> {
+pub(crate) fn normalize_attachment_url(raw: &str) -> Option<String> {
     let raw = raw.trim();
     // A real URL has no internal whitespace (it would be percent-encoded), so any
     // whitespace means the input is free text, not a URL.

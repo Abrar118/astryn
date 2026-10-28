@@ -125,6 +125,12 @@ pub async fn remove_module_data_logic(
             }
             tx.commit().await.map_err(db_err)?;
         }
+        // The only copy of the user's tasks; the command wrapper snapshots them first.
+        ModuleId::LocalTasks => {
+            crate::local_tasks::db::wipe(pool)
+                .await
+                .map_err(|_| CmdError::Internal)?;
+        }
         // Nothing persisted: in-memory state only.
         ModuleId::Reports | ModuleId::LinkPreviews => {}
     }
@@ -178,7 +184,11 @@ pub async fn set_enabled_modules(
 }
 
 #[tauri::command]
-pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Result<(), CmdError> {
+pub async fn remove_module_data(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    id: ModuleId,
+) -> Result<(), CmdError> {
     // Wait out any running sync of the owning provider so it cannot repopulate the wipe.
     let _g = match id {
         ModuleId::Linear => Some(state.workspace_lock.lock().await),
@@ -191,6 +201,11 @@ pub async fn remove_module_data(state: State<'_, AppState>, id: ModuleId) -> Res
         .read()
         .map_err(|_| CmdError::Internal)?
         .clone();
+    // Local tasks exist nowhere else: keep a final snapshot in the backups folder.
+    if id == ModuleId::LocalTasks && !snapshot.enabled.contains(&id) {
+        let dir = super::local_tasks::backups_dir(&app)?;
+        crate::local_tasks::backup::write_safety(&state.pool, &dir, "before-removal").await?;
+    }
     remove_module_data_logic(&state.pool, state.secret_store.as_ref(), &snapshot, id).await
 }
 
@@ -305,5 +320,25 @@ mod tests {
         assert_eq!(store.get("llm_api_key").unwrap(), None);
         assert_eq!(db::load_setting(&pool, "llm_base_url").await.unwrap(), None);
         assert_eq!(db::load_setting(&pool, "llm_model").await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn remove_local_tasks_only_when_off_and_wipes_everything() {
+        let (_d, pool) = pool().await;
+        let store = FakeSecretStore::default();
+        crate::local_tasks::db::ensure_seeded(&pool).await.unwrap();
+        assert!(remove_module_data_logic(
+            &pool,
+            &store,
+            &state(&[ModuleId::LocalTasks]),
+            ModuleId::LocalTasks
+        )
+        .await
+        .is_err());
+        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::LocalTasks)
+            .await
+            .unwrap();
+        let tree = crate::local_tasks::db::load_tree(&pool).await.unwrap();
+        assert!(tree.spaces.is_empty() && tree.statuses.is_empty());
     }
 }

@@ -18,10 +18,11 @@ pub enum ModuleId {
     Docs,
     Reports,
     LinkPreviews,
+    LocalTasks,
 }
 
 impl ModuleId {
-    pub const ALL: [ModuleId; 7] = [
+    pub const ALL: [ModuleId; 8] = [
         ModuleId::Linear,
         ModuleId::Github,
         ModuleId::Slack,
@@ -29,6 +30,7 @@ impl ModuleId {
         ModuleId::Docs,
         ModuleId::Reports,
         ModuleId::LinkPreviews,
+        ModuleId::LocalTasks,
     ];
 }
 
@@ -68,7 +70,7 @@ pub struct ModuleState {
 use Capability as C;
 use ModuleKind as K;
 
-static MANIFEST: [ModuleSpec; 7] = [
+static MANIFEST: [ModuleSpec; 8] = [
     ModuleSpec {
         id: ModuleId::Linear,
         kind: K::Provider,
@@ -115,6 +117,13 @@ static MANIFEST: [ModuleSpec; 7] = [
         id: ModuleId::LinkPreviews,
         kind: K::Feature,
         provides: &[],
+        requires: &[],
+        optional: &[],
+    },
+    ModuleSpec {
+        id: ModuleId::LocalTasks,
+        kind: K::Provider,
+        provides: &[C::Tracker],
         requires: &[],
         optional: &[],
     },
@@ -303,6 +312,43 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "remove_docs_source" | "list_docs_tree" | "get_doc_content" => Some(ModuleId::Docs),
         "set_llm_config" | "clear_llm_config" | "test_llm_connection" => Some(ModuleId::Llm),
         "generate_report" => Some(ModuleId::Reports),
+        "list_local_tree"
+        | "create_local_space"
+        | "rename_local_space"
+        | "delete_local_space"
+        | "create_local_list"
+        | "update_local_list"
+        | "delete_local_list"
+        | "set_local_statuses"
+        | "create_local_sprint"
+        | "update_local_sprint"
+        | "delete_local_sprint"
+        | "create_local_label"
+        | "delete_local_label"
+        | "list_local_tasks"
+        | "list_local_calendar"
+        | "list_local_unscheduled"
+        | "list_local_relations"
+        | "list_local_filter_options"
+        | "list_local_statuses"
+        | "get_local_task_detail"
+        | "create_local_task"
+        | "update_local_task"
+        | "delete_local_task"
+        | "add_local_checklist_item"
+        | "update_local_checklist_item"
+        | "delete_local_checklist_item"
+        | "add_local_comment"
+        | "update_local_comment"
+        | "delete_local_comment"
+        | "add_local_attachment"
+        | "delete_local_attachment"
+        | "create_local_relation"
+        | "delete_local_relation"
+        | "ensure_local_tasks_backup"
+        | "export_local_tasks_backup"
+        | "restore_local_tasks_backup"
+        | "import_linear_to_local" => Some(ModuleId::LocalTasks),
         _ => None,
     }
 }
@@ -348,6 +394,7 @@ mod tests {
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
+            ("local_tasks.rs", include_str!("../commands/local_tasks.rs")),
         ] {
             let src = src.replace("\r\n", "\n");
             for chunk in src.split("#[tauri::command]").skip(1) {
@@ -501,6 +548,17 @@ mod tests {
             ModuleId::Reports,
             &set(&[ModuleId::Reports, ModuleId::Github, ModuleId::Llm])
         ));
+    }
+
+    #[test]
+    fn local_tasks_provide_the_tracker_without_linear() {
+        let on = set(&[ModuleId::Reports, ModuleId::LocalTasks]);
+        assert!(has_capability(Capability::Tracker, &on));
+        assert!(is_active(ModuleId::Reports, &on));
+        assert_eq!(
+            serde_json::to_string(&ModuleId::LocalTasks).unwrap(),
+            "\"local-tasks\""
+        );
     }
 
     #[test]
