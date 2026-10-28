@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModuleId, ModulesView } from "@/lib/commands";
 
-const IDS: ModuleId[] = ["linear", "github", "slack", "llm", "docs", "reports", "link-previews"];
+const IDS: ModuleId[] = ["linear", "github", "slack", "llm", "docs", "reports", "link-previews", "local-tasks"];
 let view: ModulesView;
 
 vi.mock("@/lib/commands", async (orig) => ({
@@ -129,5 +129,13 @@ describe("ModulesSection", () => {
     expect(commands.removeModuleData).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: /^delete$/i }));
     await waitFor(() => expect(commands.removeModuleData).toHaveBeenCalledWith("slack"));
+  });
+
+  it("warns that local tasks exist only on this computer before removing them", async () => {
+    view = mk(["linear"]);
+    renderIt();
+    fireEvent.click(await screen.findByRole("button", { name: /remove local tasks data/i }));
+    expect(screen.getByText(/exist only on this computer/i)).toBeTruthy();
+    expect(screen.getByText(/final backup/i)).toBeTruthy();
   });
 });

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ModuleId, ModulesView } from "@/lib/commands";
 
-const IDS: ModuleId[] = ["linear", "github", "bitbucket", "slack", "llm", "docs", "reports", "link-previews", "clickup"];
+const IDS: ModuleId[] = ["linear", "github", "bitbucket", "slack", "llm", "docs", "reports", "link-previews", "clickup", "local-tasks"];
 let view: ModulesView;
 
 vi.mock("@/lib/commands", async (orig) => ({

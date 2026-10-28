@@ -62,7 +62,7 @@ function combineViewer(results: UseQueryResult<TaggedViewer>[]): Viewer {
   for (const r of results) {
     if (!r.data) continue;
     ids[r.data.tracker] = r.data.viewerId;
-    name ??= r.data.viewerName;
+    if (!name && r.data.viewerName) name = r.data.viewerName;
   }
   return {
     ids,
@@ -231,6 +231,10 @@ function applyPatchToListItem(it: Task, patch: TaskPatch, lk: ListLookups): Task
     // Team key + the now-invalid team-scoped state reconcile on the settle refetch.
     next.teamId = patch.teamId;
   }
+  // Local-only fields ride along for rows that have them (local tasks).
+  const local = next as Task & { startDate?: string | null; position?: number };
+  if (patch.startDate !== undefined && "startDate" in local) local.startDate = patch.startDate;
+  if (patch.position !== undefined && "position" in local) local.position = patch.position;
   return next;
 }
 

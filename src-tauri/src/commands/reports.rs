@@ -224,10 +224,13 @@ pub async fn generate_report(
             viewer_name = Some(name);
         }
     }
+    if state.module_active(crate::modules::ModuleId::LocalTasks) {
+        sources.push(facts::FactSource::LocalTasks);
+    }
     if sources.is_empty() {
         return Err(CmdError::NotConfigured);
     }
-    let viewer_name = viewer_name.unwrap_or_default();
+    let viewer_name = viewer_name.unwrap_or_else(|| "Me".to_string());
     let include_code_host = include_github_prs(&state.modules_read().enabled);
     let f = facts::assemble(&state.pool, &sources, &viewer_name, args, include_code_host)
         .await

@@ -10,6 +10,7 @@ import { ClickupSection } from "./sections/ClickupSection";
 import { DocsSection } from "./sections/DocsSection";
 import { GithubSection } from "./sections/GithubSection";
 import { LinearSection } from "./sections/LinearSection";
+import { LocalTasksSection } from "./sections/LocalTasksSection";
 import { ModulesSection } from "./sections/ModulesSection";
 import { SlackSection } from "./sections/SlackSection";
 import { TeamsSection } from "./sections/TeamsSection";
@@ -26,6 +27,8 @@ function SectionBody({ section }: { section: SettingsSection }) {
       return <BitbucketSection />;
     case "slack":
       return <SlackSection />;
+    case "local-tasks":
+      return <LocalTasksSection />;
     case "teams":
       return <TeamsSection />;
     case "clickup":

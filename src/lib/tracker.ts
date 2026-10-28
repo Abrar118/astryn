@@ -6,22 +6,32 @@
  */
 import {
   createIssueRelation,
+  createLocalRelation,
   deleteIssue,
+  deleteLocalTask,
   getMe,
   listCalendarIssues,
   listFilterOptions,
   listIssues,
+  listLocalCalendar,
+  listLocalFilterOptions,
+  listLocalRelations,
+  listLocalStatuses,
+  listLocalTasks,
+  listLocalUnscheduled,
   listRelations,
   listUnscheduled,
   listUsers,
   listWorkflowStates,
   updateIssue,
+  updateLocalTask,
   type CalendarIssue,
   type FilterOptions,
   type IssueDetailResult,
   type IssueFilters,
   type IssueListItem,
   type LiveDetail,
+  type LocalTaskDetail,
   type Me,
   type ModuleId,
   type Relation,
@@ -36,7 +46,12 @@ import {
  * capability (`TRACKER_MODULES` in modules.ts, checked against the adapters by
  * a test). Ids of non-Linear trackers carry a prefix (see `trackerOf`).
  */
-export type TrackerId = Extract<ModuleId, "linear">;
+export type TrackerId = Extract<ModuleId, "linear" | "local-tasks">;
+
+/** Local-task ids (tasks, lists, statuses, …) start with this. */
+export const LOCAL_PREFIX = "lt_";
+/** The local tracker's viewer: local tasks "assigned to me" carry this assignee id. */
+export const LOCAL_ME = "lt_me";
 
 /** A task row. Field meanings are tracker-neutral (team = workflow scope, cycle = iteration, …). */
 export type Task = IssueListItem;
@@ -45,7 +60,8 @@ export type TaskSummary = CalendarIssue;
 export type TaskRelation = Relation;
 /** A status; `type` is its category and `teamId` the workflow scope that owns it. */
 export type TaskStatus = WorkflowState;
-export type TaskPatch = UpdateIssuePatch;
+/** The neutral patch; `startDate`/`position` only apply to trackers that have them (local tasks). */
+export type TaskPatch = UpdateIssuePatch & { startDate?: string | null; position?: number };
 /** `assigneeId` may be `ME`, meaning "the viewer, in every tracker". */
 export type TaskFilters = IssueFilters;
 export type StatusCategory = "triage" | "backlog" | "unstarted" | "started" | "completed" | "canceled";
@@ -53,9 +69,9 @@ export type StatusCategory = "triage" | "backlog" | "unstarted" | "started" | "c
 /** Filter sentinel: assigned to the viewer of each tracker. */
 export const ME = "@me";
 
-/** The tracker that owns a task id. Linear ids are bare; other trackers prefix theirs. */
-export function trackerOf(_id: string): TrackerId {
-  return "linear";
+/** The tracker that owns a task (or user/status) id. Linear ids are bare; other trackers prefix theirs. */
+export function trackerOf(id: string): TrackerId {
+  return id.startsWith(LOCAL_PREFIX) ? "local-tasks" : "linear";
 }
 
 /**
@@ -131,6 +147,31 @@ export function patchLinearDetail(cached: unknown, patch: TaskPatch): IssueDetai
   return { ...result, detail: d } as IssueDetailResult;
 }
 
+/** Merge a patch's changed fields into a cached local-task detail. */
+export function patchLocalDetail(cached: unknown, patch: TaskPatch): LocalTaskDetail {
+  const d: LocalTaskDetail = { ...(cached as LocalTaskDetail) };
+  if (patch.title !== undefined) d.title = patch.title;
+  if (patch.priority !== undefined) d.priority = patch.priority;
+  if (patch.dueDate !== undefined) d.dueDate = patch.dueDate;
+  if (patch.startDate !== undefined) d.startDate = patch.startDate;
+  if (patch.description !== undefined) d.description = patch.description;
+  if (patch.estimate !== undefined) d.estimate = patch.estimate;
+  if (patch.assigneeId !== undefined) {
+    d.assigneeId = patch.assigneeId;
+    d.assigneeName = patch.assigneeId ? "Me" : null;
+  }
+  if (patch.stateId !== undefined) {
+    const st = d.statuses.find((s) => s.id === patch.stateId);
+    if (st) {
+      d.stateId = st.id;
+      d.stateName = st.name;
+      d.stateType = st.category;
+      d.stateColor = st.color;
+    }
+  }
+  return d;
+}
+
 // Bindings are wrapped so the commands are only touched when called (tests mock them partially).
 export const TRACKER_ADAPTERS: Record<TrackerId, TrackerAdapter> = {
   linear: {
@@ -148,5 +189,25 @@ export const TRACKER_ADAPTERS: Record<TrackerId, TrackerAdapter> = {
     createRelation: (taskId, relatedId, type) => createIssueRelation(taskId, relatedId, type),
     detailKey: (id) => ["issue", id],
     patchDetail: patchLinearDetail,
+  },
+  "local-tasks": {
+    listTasks: (f) => listLocalTasks(f),
+    listCalendar: (a) => listLocalCalendar(a),
+    listUnscheduled: (f) => listLocalUnscheduled(f),
+    listRelations: () => listLocalRelations(),
+    listFilterOptions: () => listLocalFilterOptions(),
+    listStatuses: () => listLocalStatuses(),
+    listUsers: async () => [{ id: LOCAL_ME, name: "Me" }],
+    viewerKey: ["local-tasks", "viewer"],
+    // No display name: the greeting keeps another tracker's name or stays generic.
+    getViewer: async () => ({ viewerId: LOCAL_ME, viewerName: "" }),
+    update: (id, patch) => updateLocalTask(id, patch),
+    remove: (id) => deleteLocalTask(id),
+    createRelation: (taskId, relatedId, type) =>
+      type === "duplicate"
+        ? Promise.reject("Local tasks can be linked as blocking or related.")
+        : createLocalRelation(taskId, relatedId, type),
+    detailKey: (id) => ["local-task", id],
+    patchDetail: patchLocalDetail,
   },
 };

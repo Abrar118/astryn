@@ -22,6 +22,7 @@ import { PaneTabStrip, tabIcon, tabLabel } from "./PaneTabStrip";
 import { CalendarPage } from "@/features/calendar/CalendarPage";
 import { IssuesView } from "@/features/issues/IssuesView";
 import { InboxView } from "@/features/inbox/InboxView";
+import { LocalTasksPage } from "@/features/local-tasks/LocalTasksPage";
 import { Settings } from "@/features/settings/Settings";
 import { IssuePage } from "@/features/drawer/IssuePage";
 import { AgendaView } from "@/features/agenda/AgendaView";
@@ -50,6 +51,8 @@ function PaneContent({ tab }: { tab: Tab }) {
       return <AgendaView />;
     case "graph":
       return <DependencyGraphPage />;
+    case "tasks":
+      return <LocalTasksPage />;
     case "inbox":
       return <InboxView />;
     case "prs":
