@@ -21,3 +21,8 @@ CREATE TABLE doc_links (
   )
 );
 CREATE INDEX idx_doc_links_task ON doc_links(tracker, task_id);
+-- A task holds each target once.
+CREATE UNIQUE INDEX idx_doc_links_unique_url
+  ON doc_links(tracker, task_id, url) WHERE kind = 'url';
+CREATE UNIQUE INDEX idx_doc_links_unique_doc
+  ON doc_links(tracker, task_id, source_id, doc_path) WHERE kind = 'doc';

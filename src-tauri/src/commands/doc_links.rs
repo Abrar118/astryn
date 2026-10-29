@@ -174,7 +174,15 @@ pub async fn create_doc_link_logic(
     require_source(pool, &fields.target).await?;
     dl::insert(pool, &new_link_id(), tracker, task_id, &fields, now)
         .await
-        .map_err(|_| CmdError::Internal)
+        .map_err(write_err)
+}
+
+/// A unique-index hit means the task already holds that target.
+fn write_err(e: sqlx::Error) -> CmdError {
+    match e {
+        sqlx::Error::Database(d) if d.is_unique_violation() => CmdError::DuplicateDocLink,
+        _ => CmdError::Internal,
+    }
 }
 
 pub async fn update_doc_link_logic(
@@ -197,7 +205,7 @@ pub async fn update_doc_link_logic(
     }
     dl::update(pool, id, &fields, now)
         .await
-        .map_err(|_| CmdError::Internal)?
+        .map_err(write_err)?
         .ok_or(CmdError::DocLinkNotFound)
 }
 
@@ -459,6 +467,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_same_link_cannot_be_added_to_a_task_twice() {
+        let (_d, pool) = pool().await;
+        create_doc_link_logic(&pool, "linear", "i1", web("https://a.com"), "t1")
+            .await
+            .unwrap();
+        // Normalized first, so a bare domain matches its https:// form.
+        assert!(matches!(
+            create_doc_link_logic(&pool, "linear", "i1", web("a.com"), "t2").await,
+            Err(CmdError::DuplicateDocLink)
+        ));
+        let other = create_doc_link_logic(&pool, "linear", "i1", web("https://b.com"), "t2")
+            .await
+            .unwrap();
+        assert!(matches!(
+            update_doc_link_logic(&pool, &other.id, web("https://a.com"), "t3").await,
+            Err(CmdError::DuplicateDocLink)
+        ));
+        assert_eq!(
+            CmdError::DuplicateDocLink.to_string(),
+            "That link is already on this task."
+        );
+    }
+
+    #[tokio::test]
     async fn links_persist_across_a_restart() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("astryn/t.db");
@@ -483,14 +515,15 @@ mod tests {
         create_doc_link_logic(&pool, "linear", "i1", web("https://a.com"), "t1")
             .await
             .unwrap();
-        let store = crate::secrets::fake::FakeSecretStore::default();
+        let store: std::sync::Arc<dyn crate::secrets::SecretStore> =
+            std::sync::Arc::new(crate::secrets::fake::FakeSecretStore::default());
         let off = crate::modules::ModuleState {
             enabled: Default::default(),
             onboarded: true,
         };
         super::super::modules::remove_module_data_logic(
             &pool,
-            &store,
+            store.clone(),
             &off,
             crate::modules::ModuleId::Docs,
         )

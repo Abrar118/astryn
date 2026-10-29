@@ -135,6 +135,8 @@ pub enum CmdError {
     InvalidDocLink,
     #[error("That link no longer exists.")]
     DocLinkNotFound,
+    #[error("That link is already on this task.")]
+    DuplicateDocLink,
     #[error("GitHub rejected the request.")]
     GitHubApi,
     #[error("No Slack token is configured.")]

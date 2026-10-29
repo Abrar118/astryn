@@ -315,6 +315,51 @@ mod tests {
         assert!(load(&pool, "dl_1").await.unwrap().is_none());
     }
 
+    fn is_unique_violation(r: Result<DocLink, sqlx::Error>) -> bool {
+        matches!(r, Err(sqlx::Error::Database(e)) if e.is_unique_violation())
+    }
+
+    #[tokio::test]
+    async fn a_task_holds_each_target_once() {
+        let (_d, pool) = pool().await;
+        let doc = |path: &str| LinkFields {
+            target: Target::Doc {
+                source_id: "s".into(),
+                path: path.into(),
+            },
+            title: None,
+            note: None,
+            tags: vec![],
+        };
+        insert(&pool, "dl_1", "linear", "i1", &web("https://a"), "t")
+            .await
+            .unwrap();
+        insert(&pool, "dl_2", "linear", "i1", &doc("a.md"), "t")
+            .await
+            .unwrap();
+        assert!(is_unique_violation(
+            insert(&pool, "dl_3", "linear", "i1", &web("https://a"), "t").await
+        ));
+        assert!(is_unique_violation(
+            insert(&pool, "dl_3", "linear", "i1", &doc("a.md"), "t").await
+        ));
+        // The same target on another task, or under another tracker, is fine.
+        insert(&pool, "dl_4", "linear", "i2", &web("https://a"), "t")
+            .await
+            .unwrap();
+        insert(&pool, "dl_5", "local-tasks", "i1", &doc("a.md"), "t")
+            .await
+            .unwrap();
+        // Editing a link into a duplicate is refused too.
+        insert(&pool, "dl_6", "linear", "i1", &web("https://b"), "t")
+            .await
+            .unwrap();
+        assert!(matches!(
+            update(&pool, "dl_6", &web("https://a"), "t2").await,
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation()
+        ));
+    }
+
     #[tokio::test]
     async fn the_table_refuses_a_target_that_does_not_match_its_kind() {
         let (_d, pool) = pool().await;
