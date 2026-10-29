@@ -33,7 +33,7 @@ export function AssigneeSelect({
       disabled={disabled}
       align="start"
       buttonClassName={triggerClassName ?? "flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary/40 py-1.5 pl-2 pr-2 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"}
-      panelClassName="max-h-72 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-2xl"
+      panelClassName="max-h-72 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-[0_4px_16px_var(--overlay-shadow)]"
       button={
         <>
           {selected && <Avatar name={selected.name} src={selected.avatarUrl} />}

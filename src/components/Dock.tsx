@@ -29,7 +29,7 @@ function DockButton({
       }`}
     >
       {children}
-      <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground opacity-0 shadow-md transition-opacity duration-150 group-hover:opacity-100">
+      <span className="pointer-events-none absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md border border-border bg-popover px-2 py-1 text-[11px] text-foreground opacity-0 shadow-[0_4px_16px_var(--overlay-shadow)] transition-opacity duration-150 group-hover:opacity-100">
         {label}
       </span>
     </button>
@@ -84,7 +84,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
 
       {menu && (
         <div
-          className="fixed z-40 min-w-44 -translate-y-full rounded-lg border border-border bg-popover p-1 shadow-2xl"
+          className="fixed z-40 min-w-44 -translate-y-full rounded-lg border border-border bg-popover p-1 shadow-[0_4px_16px_var(--overlay-shadow)]"
           style={{ left: menu.x, top: menu.y }}
           onClick={(e) => e.stopPropagation()}
         >

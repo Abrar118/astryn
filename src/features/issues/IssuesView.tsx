@@ -1,3 +1,7 @@
+import { useConnectionStatus } from "@/lib/queries";
+import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
+import { SetupState } from "@/components/SetupState";
 import {
   useEffect,
   useMemo,
@@ -341,6 +345,8 @@ function Popover({
 // ── View ─────────────────────────────────────────────────────────────────────
 
 export function IssuesView() {
+  const linearStatus = useConnectionStatus();
+  const { setActiveView } = useWorkspace();
   const today = dhakaToday();
   const me = useMe();
   const { data: issues } = useIssues({});
@@ -473,6 +479,20 @@ export function IssuesView() {
   };
 
   const sel = `${TOOL_CONTROL} appearance-none pr-7`;
+
+  if (linearStatus.data?.state === "not_configured") {
+    return (
+      <SetupState
+        title="Issues"
+        message="Connect Linear to list your workspace's issues here."
+        action="Connect Linear"
+        onAction={() => {
+          requestSettingsSection("linear");
+          setActiveView("settings");
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full flex-col bg-background">

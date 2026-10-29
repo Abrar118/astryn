@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import "@xyflow/react/dist/style.css";
 
 import {
@@ -181,7 +182,7 @@ function IssueNode({ data }: { data: IssueNodeData }) {
       <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
       <span
         className="dash-lamp dash-lamp-lit self-start mt-[5px]"
-        style={{ backgroundColor: data.stateColor }}
+        style={{ backgroundColor: statusHue(data.stateColor) }}
         aria-hidden
       />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -598,7 +599,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
           pannable
           zoomable
           ariaLabel="Graph overview"
-          nodeColor={(n) => (n.type === "issueNode" ? (n.data as IssueNodeData).stateColor : "var(--muted)")}
+          nodeColor={(n) => (n.type === "issueNode" ? statusHue((n.data as IssueNodeData).stateColor) : "var(--muted)")}
           nodeStrokeWidth={2}
           className="!mb-24 !border !border-border !bg-card"
           maskColor="color-mix(in oklab, var(--background) 60%, transparent)"

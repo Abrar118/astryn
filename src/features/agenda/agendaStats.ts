@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import type { IssueListItem } from "../../lib/commands";
 import { weekWindow, addDays } from "../../lib/dates";
 import { PRIORITY_LABELS, PRIORITY_COLORS, PRIORITY_ORDER, STATE_RANK } from "../issues/IssueRow";
@@ -69,7 +70,7 @@ export function statusBreakdown(items: IssueListItem[]): StatusBreakdownEntry[] 
     } else {
       groups.set(item.stateType, {
         name: item.stateName ?? item.stateType,
-        color: item.stateColor ?? "var(--muted-foreground)",
+        color: statusHue(item.stateColor) ?? "var(--muted-foreground)",
         count: 1,
       });
     }

@@ -178,20 +178,23 @@ export function LocalTasksPage() {
                   ))}
                 </div>
                 <div className="lt-band">
-                  <select
-                    aria-label="Sprint"
-                    value={activeSprint ?? ""}
-                    onChange={(e) => setSprintId(e.target.value || null)}
-                    disabled={sprints.length === 0}
-                    className="lt-band-key lt-focus bg-transparent pr-1"
-                  >
-                    <option value="">{sprints.length === 0 ? "no sprints" : "all sprints"}</option>
-                    {sprints.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {s.name}
-                      </option>
-                    ))}
-                  </select>
+                  {sprints.length === 0 ? (
+                    <span className="text-[12px] text-muted-foreground">no sprints</span>
+                  ) : (
+                    <select
+                      aria-label="Sprint"
+                      value={activeSprint ?? ""}
+                      onChange={(e) => setSprintId(e.target.value || null)}
+                      className="lt-band-key lt-focus bg-transparent pr-1"
+                    >
+                      <option value="">all sprints</option>
+                      {sprints.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button
                     type="button"
                     aria-pressed={stored.mineOnly}

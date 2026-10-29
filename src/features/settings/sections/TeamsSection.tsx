@@ -169,7 +169,7 @@ export function TeamsSection() {
         {pending ? (
           <div className="dash-zone flex flex-col gap-3 px-4 py-4" aria-live="polite">
             <p className="flex items-center gap-2 text-[13px] text-foreground">
-              <IndicatorLamp tone="info" />
+              <IndicatorLamp tone="neutral" />
               Open the Microsoft sign-in page and enter this code:
             </p>
             <code className="w-fit rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-lg tracking-widest text-foreground select-all">

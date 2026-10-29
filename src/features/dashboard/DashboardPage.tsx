@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronRight } from "lucide-react";
@@ -402,7 +403,7 @@ function WeekAgenda({
                 onClick={() => onOpenIssue(issue.id)}
                 className="dash-control dash-week-row"
               >
-                <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: issue.stateColor }} />
+                <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: statusHue(issue.stateColor) }} />
                 <span className="font-mono text-[12px] text-muted-foreground">{issue.identifier}</span>
                 <span className="truncate text-[13px] text-foreground">{issue.title}</span>
                 {issue.dueDate && (

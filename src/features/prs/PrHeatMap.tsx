@@ -1,6 +1,6 @@
 import type { PrHeatWeek, PrHeatCell } from "./prActivity";
 
-const WEEKDAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = ["", "mon", "", "wed", "", "fri", ""];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const LEGEND_OPACITIES = [0, 0.2, 0.45, 0.7, 1];
 
@@ -39,14 +39,14 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
     <div className="flex flex-col gap-2">
       <div className="flex items-stretch gap-[3px]">
         {/* Weekday label column */}
-        <div className="flex w-3 shrink-0 flex-col gap-[3px]">
+        <div className="flex w-7 shrink-0 flex-col gap-[3px]">
           <span className="h-[14px]" aria-hidden />
-          {WEEKDAY_LETTERS.map((letter, i) => (
+          {WEEKDAY_LABELS.map((label, i) => (
             <span
               key={i}
-              className="flex flex-1 items-center justify-center text-[11px] leading-none text-muted-foreground"
+              className="flex flex-1 items-center text-[11px] leading-none text-muted-foreground"
             >
-              {letter}
+              {label}
             </span>
           ))}
         </div>
@@ -93,7 +93,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
 
       {/* Legend */}
       <div className="flex items-center gap-1.5 pl-4">
-        <span className="text-[11px] text-muted-foreground">Less</span>
+        <span className="text-[11px] text-muted-foreground">less</span>
         {LEGEND_OPACITIES.map((opacity, i) => (
           <span
             key={i}
@@ -105,7 +105,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             }
           />
         ))}
-        <span className="text-[11px] text-muted-foreground">More</span>
+        <span className="text-[11px] text-muted-foreground">more</span>
       </div>
     </div>
   );

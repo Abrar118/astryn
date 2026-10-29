@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
@@ -131,7 +132,7 @@ export function UnscheduledRail({
                   <span
                     aria-hidden
                     className="dash-lamp dash-lamp-lit mt-[5px]"
-                    style={{ backgroundColor: i.stateColor || "var(--muted-foreground)" }}
+                    style={{ backgroundColor: statusHue(i.stateColor) || "var(--muted-foreground)" }}
                   />
                   <span className="min-w-0">
                     <span className="block font-mono text-[12px] text-muted-foreground">{i.identifier}</span>

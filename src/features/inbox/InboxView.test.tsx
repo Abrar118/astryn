@@ -5,10 +5,12 @@ import type { Notification } from "@/lib/commands";
 
 const hooks = vi.hoisted(() => ({
   useNotifications: vi.fn(),
+  useConnectionStatus: vi.fn(() => ({ data: { state: "connected", name: "Lee" } })),
   useIssueDetail: vi.fn(() => ({ data: undefined, isError: false, isLoading: true, refetch: vi.fn() })),
 }));
 vi.mock("@/lib/queries", () => hooks);
 vi.mock("@/features/drawer/IssueDrawer", () => ({ IssueDetail: () => null }));
+vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView: vi.fn() }) }));
 
 import { InboxView } from "./InboxView";
 

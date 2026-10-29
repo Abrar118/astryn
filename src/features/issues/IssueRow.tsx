@@ -265,7 +265,7 @@ export function IssueRow({
         )}
         <span className="min-w-[10rem] flex-1 truncate font-medium text-foreground">{issue.title}</span>
         {startedOn && (
-          <Pill className="text-info" title={`Started working on ${startedOn}`}>
+          <Pill title={`Started working on ${startedOn}`}>
             <PlayCircle className="size-3" />
             Started {startedOn}
           </Pill>

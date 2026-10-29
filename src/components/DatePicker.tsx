@@ -42,7 +42,7 @@ export function DatePicker({
         triggerClassName ??
         "flex items-center gap-2 rounded-md px-1.5 py-1.5 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-70"
       }
-      panelClassName="rounded-xl border border-border bg-popover p-2 shadow-2xl"
+      panelClassName="rounded-xl border border-border bg-popover p-2 shadow-[0_4px_16px_var(--overlay-shadow)]"
       align="end"
       button={
         <span className="flex items-center gap-2">

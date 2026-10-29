@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
-import { Copy, Loader2, RefreshCw } from "lucide-react";
+import { ChevronRight, Copy, Loader2, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import { cn } from "@/lib/utils";
@@ -83,7 +83,7 @@ export function ReportsPage() {
   return (
     <main className="drawer-scrollbar h-full overflow-y-auto">
       {/* pb-28 keeps the last block clear of the floating dock */}
-      <div className="mx-auto flex max-w-[760px] flex-col gap-4 px-6 pt-8 pb-28">
+      <div className="flex max-w-[860px] flex-col gap-4 px-4 pt-4 pb-28">
         <header className="flex flex-col gap-1">
           <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Reports</h1>
           <p className="text-[13px] text-muted-foreground">
@@ -206,7 +206,8 @@ export function ReportsPage() {
 
           {slot.result?.llmText && (
             <details className="dash-zone group px-4 py-2.5">
-              <summary className="dash-control w-fit cursor-pointer select-none rounded-sm text-[12px] text-muted-foreground hover:text-foreground">
+              <summary className="dash-control flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-[12px] text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+                <ChevronRight aria-hidden className="size-3.5 transition-transform group-open:rotate-90" />
                 Source facts
               </summary>
               <pre className="mt-2 whitespace-pre-wrap pb-1 font-mono text-[12px] leading-relaxed text-muted-foreground">

@@ -14,7 +14,7 @@ export function Popover({
   align = "start",
   buttonClassName,
   buttonTitle,
-  panelClassName = "max-h-[18rem] w-60 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl",
+  panelClassName = "max-h-[18rem] w-60 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-[0_4px_16px_var(--overlay-shadow)]",
   disabled,
 }: {
   button: ReactNode;

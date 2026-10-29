@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import { useEffect, useRef } from "react";
 import { addDays, isOverdue } from "@/lib/dates";
 import { cn } from "@/lib/utils";
@@ -106,7 +107,7 @@ export function TimelineView(props: ViewProps) {
                         width: Math.max(bar.span * DAY - 4, DAY - 4),
                       }}
                     >
-                      <span className="dash-lamp dash-lamp-lit size-1.5" style={{ backgroundColor: t.stateColor || "var(--muted-foreground)" }} />
+                      <span className="dash-lamp dash-lamp-lit size-1.5" style={{ backgroundColor: statusHue(t.stateColor) || "var(--muted-foreground)" }} />
                       <span className={cn("truncate", overdue ? "text-destructive" : "text-foreground")}>{bar.span > 2 ? t.title : ""}</span>
                     </button>
                   )}

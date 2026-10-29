@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import { useState, useEffect, useId } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, CornerDownRight } from "lucide-react";
@@ -17,8 +18,8 @@ import { cn } from "@/lib/utils";
 
 const READOUTS: { key: keyof AgendaCounts; label: string; lamp: Lamp; alarm?: boolean }[] = [
   { key: "todo", label: "todo", lamp: "neutral" },
-  { key: "inProgress", label: "in progress", lamp: "info" },
-  { key: "inReview", label: "in review", lamp: "info" },
+  { key: "inProgress", label: "in progress", lamp: "neutral" },
+  { key: "inReview", label: "in review", lamp: "neutral" },
   { key: "overdue", label: "overdue", lamp: "danger", alarm: true },
 ];
 
@@ -170,7 +171,7 @@ export function AgendaView() {
     >
       <span
         className="dash-lamp dash-lamp-lit"
-        style={{ backgroundColor: issue.stateColor }}
+        style={{ backgroundColor: statusHue(issue.stateColor) }}
         title={issue.stateName ?? undefined}
       />
       <span className="shrink-0 font-mono">{issue.identifier}</span>

@@ -9,7 +9,7 @@ import type { LocalStatusCategory, LocalStatusInput, LocalTree } from "@/lib/com
 import { LocalDialog } from "./LocalDialog";
 
 /** Sober status colors (user data, shown as dots and chips only). */
-export const STATUS_COLORS = ["#8b8d98", "#a3a6b4", "#5b8bd9", "#3e9e9a", "#4b9e6a", "#d99a2b", "#d9773b", "#d05454", "#9479d1"];
+export const STATUS_COLORS = ["#858793", "#6f7a8c", "#5b8bd9", "#3a9894", "#479865", "#ac6721", "#c96a30", "#d05454", "#9479d1"];
 
 const CATEGORIES: { value: LocalStatusCategory; label: string }[] = [
   { value: "backlog", label: "Backlog" },

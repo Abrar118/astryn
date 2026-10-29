@@ -1,3 +1,6 @@
+import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
+import { SetupState } from "@/components/SetupState";
 import { useRef, useState, type ComponentType, type KeyboardEvent } from "react";
 import {
   AtSign,
@@ -7,7 +10,7 @@ import {
   RotateCw,
   type LucideProps,
 } from "lucide-react";
-import { useIssueDetail, useNotifications } from "@/lib/queries";
+import { useConnectionStatus, useIssueDetail, useNotifications } from "@/lib/queries";
 import type { Notification } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
 import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
@@ -150,6 +153,8 @@ function NotificationDetail({ issueId, onClose }: { issueId: string; onClose: ()
 }
 
 export function InboxView() {
+  const linearStatus = useConnectionStatus();
+  const { setActiveView } = useWorkspace();
   const { data, isLoading, isError, refetch } = useNotifications();
   const list = data?.notifications ?? [];
   const hasMore = data?.hasMore ?? false;
@@ -172,6 +177,20 @@ export function InboxView() {
     setCursor(next);
     rowRefs.current[next]?.focus();
   };
+
+  if (linearStatus.data?.state === "not_configured") {
+    return (
+      <SetupState
+        title="Inbox"
+        message="Connect Linear to read your notifications here."
+        action="Connect Linear"
+        onAction={() => {
+          requestSettingsSection("linear");
+          setActiveView("settings");
+        }}
+      />
+    );
+  }
 
   return (
     <div className="flex h-full min-h-0 bg-background">

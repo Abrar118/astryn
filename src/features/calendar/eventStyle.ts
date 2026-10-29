@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 import type { CalendarIssue } from "@/lib/commands";
 import { isOverdue } from "@/lib/dates";
 
@@ -19,7 +20,7 @@ export function eventAccent(
   const color =
     colorBy === "priority"
       ? PRIORITY_COLORS[i.priority] ?? "var(--muted-foreground)"
-      : i.stateColor || "var(--muted-foreground)";
+      : statusHue(i.stateColor) || "var(--muted-foreground)";
   return { color, overdue: isOverdue(i.dueDate, i.stateType, today) };
 }
 
