@@ -735,8 +735,10 @@
 .milkdown .ProseMirror h1 { margin: 1.25rem 0 0.5rem; font-size: calc(1.5rem * var(--editor-font-scale, 1)); font-weight: 650; }
 .milkdown .ProseMirror h2 { margin: 1rem 0 0.4rem; font-size: calc(1.25rem * var(--editor-font-scale, 1)); font-weight: 650; }
 .milkdown .ProseMirror h3 { margin: 0.875rem 0 0.35rem; font-size: calc(1.05rem * var(--editor-font-scale, 1)); font-weight: 650; }
-.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; }
-.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; }
+.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; margin: 0.5rem 0; }
+.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; margin: 0.5rem 0; }
+/* A task list sits flush with the text column, like Linear's; its boxes carry the indent. */
+.milkdown .ProseMirror ul:has(> li[data-item-type="task"]) { padding-left: 0; }
 /* GFM task lists: Milkdown's gfm renders `<li data-item-type="task" data-checked>`
    with NO checkbox element, so draw the box via ::before keyed on data-checked.
    The box is absolutely positioned (NOT flex) so a task item's paragraph, nested
@@ -756,11 +758,13 @@
   box-sizing: border-box;
   cursor: pointer;
 }
+/* A done task is a filled neutral key (foreground), not the signal key: done is content
+   state, not selection or focus. */
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
-  border-color: var(--primary);
-  background-color: var(--primary);
+  border-color: var(--foreground);
+  background-color: var(--foreground);
 }
-/* The check is a mask filled with --primary-foreground, so it keeps contrast on every theme's accent. */
+/* The check is a mask filled with --background, so it keeps contrast on the foreground fill in every finish. */
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
   content: "";
   position: absolute;
@@ -768,7 +772,7 @@
   top: 0.18em;
   width: 1.05rem;
   height: 1.05rem;
-  background-color: var(--primary-foreground);
+  background-color: var(--background);
   mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 0.7rem no-repeat;
   pointer-events: none;
 }
@@ -780,8 +784,18 @@
 .milkdown .ProseMirror td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
 .milkdown .ProseMirror th { background: var(--secondary); font-weight: 600; }
 .milkdown .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
-.milkdown .ProseMirror a { color: var(--primary); cursor: pointer; }
-.milkdown .ProseMirror a:hover { text-decoration: underline; }
+/* Links read as text with a muted underline (the shared Link button's treatment);
+   the signal key stays reserved for now, selection and focus. */
+.milkdown .ProseMirror a,
+.astryn-link {
+  color: var(--foreground);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+.milkdown .ProseMirror a:hover,
+.astryn-link:hover { text-decoration-color: var(--foreground); }
 
 /* Issue-mention pills inside the Milkdown editor */
 .milkdown .ProseMirror [data-mention-pill] {
@@ -842,7 +856,7 @@
   margin: 0;
   width: 1.05rem;
   height: 1.05rem;
-  accent-color: var(--primary);
+  accent-color: var(--foreground);
 }
 .astryn-prose li.task-list-item > p { margin: 0; }
 
@@ -931,7 +945,7 @@
 .md-codeblock .hljs-type,
 .md-codeblock .hljs-class .hljs-title,
 .md-codeblock .hljs-attribute,
-.md-codeblock .hljs-tag { color: var(--primary); }
+.md-codeblock .hljs-tag { color: var(--foreground); font-weight: 600; }
 .md-codeblock .hljs-comment,
 .md-codeblock .hljs-quote,
 .md-codeblock .hljs-meta { color: var(--muted-foreground); font-style: italic; }
@@ -952,8 +966,9 @@
 .md-preview-host { color:var(--muted-foreground); font-size:12px; }
 .md-preview-thumb { width:64px; height:64px; object-fit:cover; border-radius:4px; flex:none; }
 .md-preview-fav { width:16px; height:16px; border-radius:3px; flex:none; }
-.md-preview-fallback { color:var(--primary); background:transparent; border:none;
-  cursor:pointer; padding:0; text-align:left; }
+.md-preview-fallback { color:var(--foreground); background:transparent; border:none;
+  cursor:pointer; padding:0; text-align:left; text-decoration:underline;
+  text-decoration-color:var(--muted-foreground); text-underline-offset:3px; }
 
 /* React Flow — theme the zoom controls and attribution to match the dark UI */
 .react-flow__controls {
@@ -986,3 +1001,19 @@
 
 /* goey-toast hard-codes its timestamp gray (#777, 4.0:1); use the theme token for AA. */
 [data-theme] .gooey-timestamp { color: var(--muted-foreground); }
+
+/* ── Group 2: issues & drawer ── */
+/* Issue rows sit straight on the faceplate, divided by the queue's 70% hairline. */
+.issue-row {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.issue-row:last-child {
+  border-bottom: 0;
+}
+
+/* Transient overlays (options panels, the drag ghost, the drawer, the palette,
+   modals) are the only things that lift, with the finish's overlay shadow. */
+.issues-overlay {
+  box-shadow: 0 8px 24px var(--overlay-shadow);
+}
