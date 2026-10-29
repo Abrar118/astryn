@@ -68,6 +68,15 @@
   html {
     @apply font-sans;
     }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 32%, transparent);
+    color: var(--foreground);
+  }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--primary);
+  }
 }
 
 /* Icon size (Settings → Appearance): CSS zoom multiplies each lucide icon's own
@@ -113,7 +122,9 @@
   }
 }
 
-/* ── Dashboard — matte, data-dense command center ───────────────────────── */
+/* ── Dashboard: an instrument face ─────────────────────────────────────────
+   Card panels on the faceplate, round indicator lamps for state, light
+   tabular numerals, and the week drawn as a dial scale with one needle at now. */
 .dashboard-surface {
   position: relative;
   isolation: isolate;
@@ -122,67 +133,255 @@
   background: var(--background);
 }
 
-.dashboard-kpi-grid,
-.dashboard-main-grid,
-.dashboard-side-grid,
-.dashboard-lower-grid,
-.dashboard-source-grid {
+.dash-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-bottom: 6px;
+}
+
+.dash-control {
+  cursor: pointer;
+  outline: none;
+}
+
+/* A real outline, so focus survives forced-colors (Windows high contrast). */
+.dash-control:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* The faceplate's zones are divided by hairline rules, not separate cards. */
+.dash-face > .dash-zone + .dash-zone {
+  border-top: 1px solid var(--border);
+}
+
+.dash-lower {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
-}
-
-.dashboard-attention-status {
-  display: none;
-}
-
-@container dashboard-pane (min-width: 520px) {
-  .dashboard-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .dashboard-kpi-grid,
-  .dashboard-side-grid,
-  .dashboard-source-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* An odd last KPI tile spans the row instead of leaving a blank slot. */
-  .dashboard-kpi-grid > :last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-
-  .dashboard-attention-status {
-    display: table-cell;
-  }
+  gap: 12px;
 }
 
 @container dashboard-pane (min-width: 900px) {
-  /* One column per visible tile (set inline as --kpi-cols, at most 4). */
-  .dashboard-kpi-grid {
-    grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr));
-  }
-
-  .dashboard-kpi-grid > :last-child:nth-child(odd) {
-    grid-column: auto;
-  }
-
-  .dashboard-main-grid {
-    grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.8fr);
-  }
-
-  .dashboard-side-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-lower-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .dash-lower {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    align-items: start;
   }
 }
 
-.dashboard-glass {
-  border-color: var(--border);
-  background: var(--card);
+.dash-lamp {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+/* A lit lamp sits in a hairline bezel. */
+.dash-lamp-lit {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, black 22%, transparent);
+}
+
+.dash-numeral {
+  display: block;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Dial scale: the past (overdue) left of the needle, the week to its right. */
+.dash-dial {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+}
+
+.dash-dial-past {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 16px 2px 4px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.dash-dial-days {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.dash-day {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 4px 2px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.dash-dial-past:hover,
+.dash-day:hover {
+  background: var(--accent);
+}
+
+.dash-ticks line {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+}
+
+.dash-tick-minor {
+  opacity: 0.5;
+}
+
+/* The needle: the theme's one signal colour, standing at the start of today. */
+.dash-needle {
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  transform-origin: bottom;
+  animation: dash-needle 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: none;
+}
+
+.dash-needle::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+@keyframes dash-needle {
+  from {
+    transform: scaleY(0.15);
+  }
+}
+
+/* Readouts: the display row across the top of the overview panel. */
+.dash-readouts {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.dash-readouts > li {
+  flex: 1 1 132px;
+}
+
+.dash-readouts > li + li {
+  border-left: 1px solid var(--border);
+}
+
+.dash-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 132px;
+  height: 100%;
+  padding: 14px 20px 12px;
+  text-align: left;
+}
+
+.dash-readout:hover {
+  background: var(--accent);
+}
+
+/* Attention queue and week rows */
+.dash-queue > li + li,
+.dash-week-row-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.dash-queue-row,
+.dash-week-row,
+.dash-source-row {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+}
+
+.dash-queue-row {
+  grid-template-columns: 8px 3.25rem minmax(0, 7.5rem) minmax(0, 1fr) auto;
+  padding-block: 12px;
+}
+
+.dash-source-row {
+  grid-template-columns: 8px auto minmax(0, 1fr) auto;
+  padding-block: 9px;
+}
+
+.dash-week-row {
+  grid-template-columns: 8px minmax(0, 6rem) minmax(0, 1fr) auto;
+  padding-block: 8px;
+}
+
+.dash-queue-row:hover,
+.dash-week-row:hover,
+.dash-source-row:hover {
+  background: var(--accent);
+}
+
+.dash-queue > li:last-child .dash-queue-row {
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+@container dashboard-pane (max-width: 640px) {
+  .dash-queue-source,
+  .dash-day-date {
+    display: none;
+  }
+
+  .dash-queue-row {
+    grid-template-columns: 8px minmax(0, 7rem) minmax(0, 1fr) auto;
+  }
+}
+
+@container dashboard-pane (max-width: 460px) {
+  .dash-queue-detail {
+    display: none;
+  }
+
+  .dash-queue-row {
+    grid-template-columns: 8px minmax(0, 6rem) minmax(0, 1fr);
+  }
+
+  .dash-day {
+    padding-left: 6px;
+  }
+
+  .dash-dial {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+
+  .dash-dial-past {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

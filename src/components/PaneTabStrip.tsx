@@ -58,7 +58,7 @@ function SortableTab({
       onClick={() => selectTab(tab.id)}
       onContextMenu={(e) => onMenu(e, tab.id)}
       className={`group flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors ${
-        isActive ? "bg-card text-foreground" : "text-muted-foreground hover:bg-accent/50 hover:text-foreground"
+        isActive ? "bg-card text-foreground" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
       }`}
     >
       <span className="flex shrink-0">{icon}</span>
@@ -112,7 +112,7 @@ export function PaneTabStrip({
   return (
     <div
       onMouseDown={() => focusPane(pane.id)}
-      className={`flex items-center gap-1 border-b bg-background px-2 py-1.5 ${
+      className={`flex items-center gap-1 border-b bg-sidebar px-2 py-1.5 ${
         focused ? "border-b-border" : "border-b-border/60"
       }`}
     >
@@ -134,7 +134,7 @@ export function PaneTabStrip({
             type="button"
             aria-label="New tab"
             onClick={() => addTabIn(pane.id)}
-            className="ml-1 shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="ml-1 shrink-0 cursor-pointer rounded-md p-1 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
           >
             <Plus className="size-4" />
           </button>

@@ -25,7 +25,7 @@ function DockButton({
       className={`group relative flex size-11 cursor-pointer items-center justify-center rounded-xl transition-colors ${
         active
           ? "bg-primary/20 text-primary"
-          : "text-muted-foreground hover:bg-accent hover:text-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
       }`}
     >
       {children}
@@ -57,7 +57,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
   return (
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-border bg-sidebar p-1.5 shadow-2xl">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-sidebar-border bg-sidebar p-1.5">
           {visibleViews(isActive, disabledScreens).map((view) => {
             const { label, icon: Icon } = VIEW_META[view];
             return (
@@ -75,7 +75,7 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
               </DockButton>
             );
           })}
-          <div className="mx-1 h-6 w-px bg-border" />
+          <div className="mx-1 h-6 w-px bg-sidebar-border" />
           <DockButton label={isSyncing ? "Syncing…" : "Refresh"} active={false} onClick={refresh}>
             <RefreshCw className={`size-5 ${isSyncing ? "animate-spin" : ""}`} />
           </DockButton>
