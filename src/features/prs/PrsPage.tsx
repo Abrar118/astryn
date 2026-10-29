@@ -1,21 +1,15 @@
 import { SetupState } from "@/components/SetupState";
 import { useState } from "react";
-import {
-  Eye,
-  GitMerge,
-  GitPullRequest,
-  MessageSquareWarning,
-  RefreshCw,
-  type LucideIcon,
-} from "lucide-react";
 import { gooeyToast } from "goey-toast";
-import { Button } from "@/components/ui/button";
 import {
   errorText,
   type Contributions,
   type GithubPr,
 } from "@/lib/commands";
 import { useWorkspace } from "@/lib/tabs";
+import { cn } from "@/lib/utils";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
+import { SyncHeader, syncLamp } from "@/components/SyncHeader";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { CodeHostContext, type CodeHostApi } from "./codeHost";
 import { GITHUB_HOST } from "./githubHost";
@@ -25,8 +19,8 @@ import { PrDrawer } from "./PrDrawer";
 import { PrListPanel } from "./PrListPanel";
 import { PrSidebar } from "./PrSidebar";
 import { PrToolbar, type PrFilter } from "./PrToolbar";
-import { contributionsToWeeks, prStats, type PrStats } from "./prActivity";
-import { PR_SORTS, type PrSort } from "./prDisplay";
+import { contributionsToWeeks, prStats } from "./prActivity";
+import { PR_SORTS, waitingLabel, type PrSort } from "./prDisplay";
 import {
   isRepositoryScope,
   loadGroupByRepo,
@@ -50,23 +44,6 @@ const PRIMARY_PRESENTATION: Record<
   },
 };
 
-const METRICS: {
-  key: keyof PrStats;
-  label: string;
-  icon: LucideIcon;
-  tint: string;
-}[] = [
-  { key: "open", label: "Open", icon: GitPullRequest, tint: "text-foreground" },
-  { key: "needsReview", label: "Needs review", icon: Eye, tint: "text-muted-foreground" },
-  {
-    key: "changesRequested",
-    label: "Changes req.",
-    icon: MessageSquareWarning,
-    tint: "text-warning",
-  },
-  { key: "conflicts", label: "Conflicts", icon: GitMerge, tint: "text-destructive" },
-];
-
 function applyControls(
   list: GithubPr[],
   sort: PrSort,
@@ -81,50 +58,79 @@ function applyControls(
   return [...result].sort(PR_SORTS[sort]);
 }
 
-function ActivityCard({
+/** How long the longest-waiting review request has sat, coloured as it escalates. */
+function oldestReviewWait(prs: GithubPr[]): { text: string; className: string } | null {
+  const oldest = prs
+    .filter((p) => p.bucket === "needs_review" && p.updatedAt)
+    .sort((a, b) => Date.parse(a.updatedAt ?? "") - Date.parse(b.updatedAt ?? ""))[0];
+  const wait = oldest ? waitingLabel(oldest.updatedAt, Date.now()) : null;
+  if (!oldest || !wait) return null;
+  return {
+    text: `oldest #${oldest.number} · ${wait.short}`,
+    className: wait.level === "stale" ? "text-destructive" : wait.level === "warn" ? "text-warning" : "text-muted-foreground",
+  };
+}
+
+type Reading = { key: string; label: string; value: number; tone: Lamp; alarm?: boolean; detail?: { text: string; className: string } };
+
+/** The faceplate's top zone: one reading per thing that can need you, and GitHub's contribution year. */
+function ReadoutZone({
+  prs,
   contributions,
-  stats,
 }: {
+  prs: GithubPr[];
   /** `undefined` when the provider has no contribution calendar. */
   contributions?: Contributions | null;
-  stats: PrStats;
 }) {
+  const stats = prStats(prs);
+  const oldestWait = oldestReviewWait(prs);
+  const readings: Reading[] = [
+    {
+      key: "review",
+      label: "needs review",
+      value: stats.needsReview,
+      tone: stats.needsReview ? "neutral" : "off",
+      detail: oldestWait ?? undefined,
+    },
+    { key: "changes", label: "changes requested", value: stats.changesRequested, tone: stats.changesRequested ? "warning" : "off" },
+    { key: "conflicts", label: "conflicts", value: stats.conflicts, tone: stats.conflicts ? "danger" : "off", alarm: true },
+    { key: "ci", label: "ci failing", value: stats.ciFailing, tone: stats.ciFailing ? "danger" : "off", alarm: true },
+  ];
   const heatmap = contributions !== undefined;
   return (
-    <section className="rounded-xl border border-border/60 bg-card px-4 py-3">
-      <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+    <div className="dash-zone @container">
+      <div className="flex flex-col @5xl:flex-row">
+        <ul aria-label="Counts" className="prs-readings dash-readouts @5xl:shrink-0">
+          {readings.map((r) => (
+            <li key={r.key} className="min-w-0">
+              <div className="prs-reading">
+                <span className={cn("dash-numeral text-[28px]", r.alarm && r.value ? "text-destructive" : r.value ? "text-foreground" : "text-muted-foreground")}>
+                  {r.value}
+                </span>
+                <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+                  <IndicatorLamp tone={r.tone} />
+                  {r.label}
+                </span>
+                {r.detail && <span className={cn("text-[12px] tabular-nums", r.detail.className)}>{r.detail.text}</span>}
+              </div>
+            </li>
+          ))}
+        </ul>
         {heatmap && (
-          <div className="min-w-0 flex-1">
-            <div className="mb-2 flex items-baseline justify-between">
-              <p className="text-[10px] font-semibold lowercase text-muted-foreground">
-                Activity
-              </p>
-              <p className="text-[11px] text-muted-foreground">
+          <div className="hidden min-w-0 flex-1 border-t border-border px-4 pt-3 pb-3 @3xl:block @5xl:border-t-0 @5xl:border-l">
+            <div className="max-w-[760px]">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <h2 className="text-[13px] font-semibold tracking-tight text-foreground">Activity</h2>
+              <p className="text-[12px] tabular-nums text-muted-foreground">
                 {(contributions?.total ?? 0).toLocaleString()} contributions · last year
               </p>
             </div>
             <PrHeatMap weeks={contributionsToWeeks(contributions)} />
+            </div>
           </div>
         )}
-        <div
-          className={`grid shrink-0 grid-cols-4 divide-x divide-border/60 rounded-lg border border-border/50 bg-background/35 ${
-            heatmap ? "xl:w-[430px]" : "w-full"
-          }`}
-        >
-          {METRICS.map(({ key, label, icon: Icon, tint }) => (
-            <div key={key} className="flex min-w-0 items-center gap-2 px-3 py-2">
-              <Icon className={`size-3.5 shrink-0 ${tint}`} />
-              <div className="min-w-0">
-                <p className="text-lg font-semibold leading-none tabular-nums text-foreground">
-                  {stats[key]}
-                </p>
-                <p className="mt-1 truncate text-[10px] text-muted-foreground">{label}</p>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
-    </section>
+    </div>
   );
 }
 
@@ -239,29 +245,17 @@ function PrWorkspace({ host }: { host: CodeHostApi }) {
   };
 
   return (
-    <main className="flex h-full min-h-0 flex-col overflow-hidden">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/60 bg-background/80 px-5 py-3">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-base font-semibold text-foreground">{host.title}</h1>
-          {status?.state === "connected" && (
-            <span className="text-xs text-muted-foreground">@{status.login}</span>
-          )}
-          {sync.isError && (
-            <span className="text-xs text-warning">
-              Sync failed — showing cached data.
-            </span>
-          )}
-        </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          aria-label="Refresh"
-          disabled={sync.isFetching}
-          onClick={() => sync.refetch()}
-        >
-          <RefreshCw className={`size-4 ${sync.isFetching ? "animate-spin" : ""}`} />
-        </Button>
-      </header>
+    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <SyncHeader
+        title={host.title}
+        status={syncLamp({
+          state: status?.state,
+          syncFailed: sync.isError,
+          connectedDetail: viewerLogin ? `${host.name.toLowerCase()} · @${viewerLogin}` : host.name.toLowerCase(),
+        })}
+        refreshing={sync.isFetching}
+        onRefresh={() => void sync.refetch()}
+      />
 
       <div className="flex min-h-0 flex-1">
         <PrSidebar
@@ -274,33 +268,36 @@ function PrWorkspace({ host }: { host: CodeHostApi }) {
           onRetry={() => void sync.refetch()}
         />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-4">
-          <ActivityCard
-            contributions={host.contributions ? (contributions ?? null) : undefined}
-            stats={prStats(openPrs)}
-          />
-          <PrToolbar
-            prs={openPrs}
-            sort={sort}
-            setSort={setSort}
-            filter={filter}
-            setFilter={setFilter}
-            groupByRepo={groupByRepo}
-            setGroupByRepo={setGroupByRepo}
-          />
-          <PrListPanel
-            title={presentation.title}
-            empty={presentation.empty}
-            prs={activePrs}
-            meta={dashboard?.meta.find((item) => item.bucket === activeScope)}
-            stale={failed.has(activeScope)}
-            viewerLogin={viewerLogin}
-            groupByRepo={groupByRepo}
-            onOpenPr={(pr, origin) => setSelectedPr({ pr, origin })}
-            onOpenMenu={(pr, point, origin) =>
-              setMenu({ pr, x: point.x, y: point.y, origin })
-            }
-          />
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden p-4">
+          <section aria-label="Pull requests" className="dash-panel dash-face isolate flex min-h-0 flex-1 flex-col overflow-hidden">
+            <ReadoutZone
+              prs={openPrs}
+              contributions={host.contributions ? (contributions ?? null) : undefined}
+            />
+            <PrListPanel
+              title={presentation.title}
+              empty={presentation.empty}
+              prs={activePrs}
+              meta={dashboard?.meta.find((item) => item.bucket === activeScope)}
+              stale={failed.has(activeScope)}
+              viewerLogin={viewerLogin}
+              groupByRepo={groupByRepo}
+              controls={
+                <PrToolbar
+                  sort={sort}
+                  setSort={setSort}
+                  filter={filter}
+                  setFilter={setFilter}
+                  groupByRepo={groupByRepo}
+                  setGroupByRepo={setGroupByRepo}
+                />
+              }
+              onOpenPr={(pr, origin) => setSelectedPr({ pr, origin })}
+              onOpenMenu={(pr, point, origin) =>
+                setMenu({ pr, x: point.x, y: point.y, origin })
+              }
+            />
+          </section>
         </div>
       </div>
       {menu && (

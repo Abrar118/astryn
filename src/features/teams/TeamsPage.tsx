@@ -25,6 +25,7 @@ export function TeamsPage() {
         requestSettingsSection("teams");
         setActiveView("settings");
       }}
+      state={status?.state}
       subtitle={status?.state === "connected" ? status.userName : null}
       catchup={catchup}
       sync={sync}

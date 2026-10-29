@@ -85,11 +85,24 @@ describe("PrRow", () => {
     expect(screen.queryByText(/conflict/i)).toBeNull();
   });
 
-  it("shows explicit open vs draft status", () => {
-    const { rerender } = render(<PrRow pr={base} />);
-    expect(screen.getByText("Open")).toBeInTheDocument();
-    rerender(<PrRow pr={{ ...base, draft: true }} />);
-    expect(screen.getByText("Draft")).toBeInTheDocument();
+  it("marks drafts with a legend and leaves open PRs unlabelled", () => {
+    const { rerender } = render(<PrRow pr={{ ...base, reviewDecision: null }} />);
+    expect(screen.queryByText("draft")).toBeNull();
+    expect(screen.getByRole("button", { name: /Add widget pull request, open/i })).toBeInTheDocument();
+    rerender(<PrRow pr={{ ...base, reviewDecision: null, draft: true }} />);
+    expect(screen.getByText("draft")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Add widget pull request, draft/i })).toBeInTheDocument();
+  });
+
+  it("names the worst state on the row's health lamp", () => {
+    const { rerender } = render(<PrRow pr={{ ...base, mergeable: "conflicting", ciStatus: "failure" }} />);
+    expect(screen.getByRole("button", { name: /pull request, merge conflict/i })).toBeInTheDocument();
+    rerender(<PrRow pr={{ ...base, ciStatus: "failure" }} />);
+    expect(screen.getByRole("button", { name: /pull request, ci failing/i })).toBeInTheDocument();
+    rerender(<PrRow pr={base} />);
+    expect(screen.getByRole("button", { name: /pull request, changes requested/i })).toBeInTheDocument();
+    rerender(<PrRow pr={{ ...base, reviewDecision: "approved" }} />);
+    expect(screen.getByRole("button", { name: /pull request, approved/i })).toBeInTheDocument();
   });
 
   it.each([
@@ -98,12 +111,12 @@ describe("PrRow", () => {
     ["pending", "CI pending"],
   ] as const)("renders a CI badge for %s", (ci, label) => {
     render(<PrRow pr={{ ...base, ciStatus: ci }} />);
-    expect(screen.getByLabelText(label)).toBeInTheDocument();
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it.each(["none", null] as const)("renders no CI badge for %s", (ci) => {
     render(<PrRow pr={{ ...base, ciStatus: ci }} />);
-    expect(screen.queryByLabelText(/^CI /)).toBeNull();
+    expect(screen.queryByText(/^CI /)).toBeNull();
   });
 
   it.each([

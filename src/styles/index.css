@@ -1175,3 +1175,48 @@
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
+
+/* ── Group 4: PRs, chat & inbox ── */
+/* Read-only readings on the PR faceplate: the Dashboard readout without its
+   hover or button role; each sizes to its legend so none is clipped. */
+.prs-readings > li {
+  flex: 1 0 auto;
+}
+
+.prs-reading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  height: 100%;
+  padding: 14px 20px 12px;
+  white-space: nowrap;
+}
+
+/* The contribution year reads in the neutral ramp; only today takes the key. */
+.prs-heat-today {
+  box-shadow: 0 0 0 1.5px var(--primary);
+}
+
+/* Diff rows: additions and deletions keep the diff's own state colours; hunk
+   headers stay neutral so the only hue on the page is the change itself. */
+.prs-diff-hunk {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.prs-diff-add {
+  background: color-mix(in oklab, var(--success) 12%, transparent);
+}
+
+.prs-diff-del {
+  background: color-mix(in oklab, var(--destructive) 12%, transparent);
+}
+
+.prs-diff-add .prs-diff-marker {
+  color: var(--success);
+}
+
+.prs-diff-del .prs-diff-marker {
+  color: var(--destructive);
+}

@@ -97,7 +97,7 @@ describe("PrDrawerOverview", () => {
     const activity = screen.getByLabelText("Pull request activity");
     const text = within(activity).getAllByRole("article").map((item) => item.textContent);
     expect(text[0]).toContain("Initial commit");
-    expect(text[1]).toContain("Approved");
+    expect(text[1]).toMatch(/approved/i);
     expect(text[2]).toContain("Comment body");
     expect(screen.getByText("test")).toBeInTheDocument();
     expect(screen.getByText("ENG-42")).toBeInTheDocument();

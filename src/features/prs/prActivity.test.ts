@@ -40,18 +40,19 @@ describe("contributionsToWeeks", () => {
 });
 
 describe("prStats", () => {
-  it("counts open (deduped), needs-review, changes-requested, and conflicts", () => {
+  it("counts open (deduped), needs-review, changes-requested, conflicts and failing CI", () => {
     const prs = [
       pr({ id: "o/r#1", bucket: "needs_review" }),
       pr({ id: "o/r#2", bucket: "mine", reviewDecision: "changes_requested" }),
       pr({ id: "o/r#2", bucket: "assigned" }), // same PR, second bucket
-      pr({ id: "o/r#3", bucket: "involved", mergeable: "conflicting" }),
+      pr({ id: "o/r#3", bucket: "involved", mergeable: "conflicting", ciStatus: "failure" }),
     ];
     expect(prStats(prs)).toEqual({
       open: 3, // #1, #2, #3 distinct
       needsReview: 1,
       changesRequested: 1,
       conflicts: 1,
+      ciFailing: 1,
     });
   });
 
@@ -65,6 +66,7 @@ describe("prStats", () => {
       needsReview: 0,
       changesRequested: 0,
       conflicts: 0,
+      ciFailing: 0,
     });
   });
 });
