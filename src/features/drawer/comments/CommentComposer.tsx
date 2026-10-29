@@ -17,6 +17,9 @@ type InsertAssets = (assets: UploadedAsset[]) => void;
 
 type Variant = "pinned" | "reply" | "edit";
 
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent || "");
+const SEND_HINT = IS_MAC ? "⌘↵" : "Ctrl+Enter";
+
 interface Props {
   variant: Variant;
   initialMarkdown?: string;
@@ -107,7 +110,7 @@ export function CommentComposer({
     <EditorErrorBoundary fallback={<div className="text-sm text-muted-foreground">Composer unavailable.</div>}>
       <div
         data-comment-composer={variant}
-        className="rounded-xl border border-border bg-card focus-within:border-foreground/25"
+        className="rounded-lg border border-input bg-card transition-colors focus-within:border-ring"
         onKeyDown={(e) => {
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submit(); }
           if (e.key === "Escape" && onCancel) { e.preventDefault(); onCancel(); }
@@ -135,24 +138,25 @@ export function CommentComposer({
             title="Attach images, files, or videos"
             onMouseDown={(e) => e.preventDefault()}
             onClick={attach}
-            className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="dash-control flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <Paperclip className="size-4" />
           </button>
           <div className="flex-1" />
+          <span aria-hidden className="text-[12px] text-muted-foreground">{SEND_HINT} to send</span>
           {onCancel && (
             <button type="button" onClick={onCancel}
-              className="rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              className="dash-control rounded-md px-2 py-1 text-[12px] text-muted-foreground hover:bg-accent hover:text-foreground">
               Cancel
             </button>
           )}
           <button
             type="button"
             aria-label="Send comment"
-            title="Send (⌘↵)"
+            title={`Send (${SEND_HINT})`}
             disabled={submitting}
             onClick={submit}
-            className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="dash-control flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-colors hover:bg-foreground/85 disabled:opacity-50"
           >
             <ArrowUp className="size-4" />
           </button>

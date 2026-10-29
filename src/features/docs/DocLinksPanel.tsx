@@ -18,7 +18,7 @@ const FIELD = "text-sm md:text-sm";
 /** Focus target meaning the section's Add button. */
 const ADD = "\u0000add";
 const ROW_ACTION =
-  "rounded p-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100";
+  "dash-control flex size-7 items-center justify-center rounded-md text-muted-foreground opacity-0 hover:bg-background/60 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100";
 
 function openExternal(href: string) {
   const url = safeExternalUrl(href);
@@ -112,7 +112,7 @@ function DocPicker({
             >
               <span className="flex size-3.5 shrink-0 items-center justify-center text-primary">{chosen && <Check className="size-3.5" />}</span>
               <span className="min-w-0 truncate">{c.label}</span>
-              {c.trail && <span className="ml-auto min-w-0 shrink truncate text-[11px] text-muted-foreground">{c.trail}</span>}
+              {c.trail && <span className="ml-auto min-w-0 shrink truncate text-[12px] text-muted-foreground">{c.trail}</span>}
             </li>
           );
         })}
@@ -167,7 +167,7 @@ function DocLinkForm({
   return (
     <form
       aria-label={link ? "Edit link" : "Add a link"}
-      className="flex flex-col gap-2 rounded-xl border border-border bg-card p-3"
+      className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3"
       onSubmit={(e) => (e.preventDefault(), submit())}
       onKeyDown={(e) => {
         if (e.key === "Escape") {
@@ -176,7 +176,7 @@ function DocLinkForm({
         }
       }}
     >
-      <div className="inline-flex self-start rounded-md border border-border p-0.5 text-xs">
+      <div className="inline-flex self-start gap-0.5 rounded-md bg-sidebar p-0.5 text-[12px]">
         {(
           [
             ["url", "Web link"],
@@ -189,8 +189,8 @@ function DocLinkForm({
             aria-pressed={kind === k}
             onClick={() => setKind(k)}
             className={cn(
-              "cursor-pointer rounded-[5px] px-2 py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              kind === k ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
+              "dash-control rounded-[6px] px-2.5 py-1 transition-colors",
+              kind === k ? "bg-card text-foreground" : "text-muted-foreground hover:text-foreground",
             )}
           >
             {label}
@@ -282,7 +282,7 @@ function DocLinkRow({
     link.kind === "url" ? <Link2 className="size-4" /> : source ? <SourceKindIcon kind={source.kind} className="size-4" /> : <FileText className="size-4" />;
 
   return (
-    <li data-link-row={link.id} className={cn("group flex items-start gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-accent/50", pending && "opacity-60")}>
+    <li data-link-row={link.id} className={cn("group -mx-2 flex items-start gap-3 rounded-md px-2 py-2 transition-colors hover:bg-accent", pending && "opacity-60")}>
       <span aria-hidden className="mt-0.5 shrink-0 text-muted-foreground">
         {icon}
       </span>
@@ -291,11 +291,11 @@ function DocLinkRow({
           type="button"
           onClick={open}
           disabled={pending || !!blocked}
-          className="block max-w-full cursor-pointer truncate text-left text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none disabled:cursor-default disabled:text-foreground disabled:no-underline"
+          className="dash-control block max-w-full cursor-pointer truncate rounded-sm text-left text-sm font-medium text-foreground underline decoration-muted-foreground/70 underline-offset-[3px] hover:decoration-foreground disabled:cursor-default disabled:font-normal disabled:no-underline"
         >
           {label}
         </button>
-        <p className="truncate text-[11px] text-muted-foreground">
+        <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
           {text}
           {blocked && <span> · {blocked}</span>}
         </p>
@@ -303,7 +303,7 @@ function DocLinkRow({
         {link.tags.length > 0 && (
           <ul aria-label="Tags" className="mt-1.5 flex flex-wrap gap-1">
             {link.tags.map((t) => (
-              <li key={t} className="rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground">
+              <li key={t} className="rounded-full border border-border px-2 py-px text-[12px] text-muted-foreground">
                 {t}
               </li>
             ))}
@@ -374,10 +374,10 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
   return (
     <section ref={sectionRef} aria-labelledby={headingId}>
       <div className="mb-2 flex min-h-8 items-center gap-2">
-        <h3 id={headingId} className="text-sm font-semibold text-foreground">
+        <h3 id={headingId} className="text-[13px] font-semibold tracking-tight text-foreground">
           Docs & links
         </h3>
-        {!!links?.length && <span className="text-sm tabular-nums text-muted-foreground">{links.length}</span>}
+        {!!links?.length && <span className="text-[13px] tabular-nums text-muted-foreground">{links.length}</span>}
         {!adding && links && (
           <Button ref={addRef} variant="ghost" size="xs" className="ml-auto text-muted-foreground" onClick={() => (setEditing(null), setAdding(true))}>
             <Plus /> Add
@@ -386,7 +386,7 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
       </div>
       {!links && isError && <p className="text-[13px] text-muted-foreground">Couldn't load this task's links.</p>}
       {links && links.length > 0 && (
-        <ul className="mb-2 flex flex-col gap-0.5">
+        <ul className="mb-2 flex flex-col">
           {links.map((l) =>
             editing === l.id ? (
               <li key={l.id}>

@@ -28,21 +28,21 @@ export function LinearMarkdownImage({ src, alt }: { src: string; alt: string }) 
 
   if (failed) {
     return (
-      <span className="my-3 flex min-h-24 w-full items-center justify-center gap-2 rounded-xl border border-border bg-card text-sm text-muted-foreground" role="img" aria-label={alt || "Unavailable image"}>
+      <span className="my-3 flex min-h-24 w-full items-center justify-center gap-2 rounded-lg border border-border bg-card text-sm text-muted-foreground" role="img" aria-label={alt || "Unavailable image"}>
         <ImageOff className="size-4" />
         Image unavailable
       </span>
     );
   }
   if (!resolved) {
-    return <span className="my-3 block h-40 w-full animate-pulse rounded-xl border border-border bg-card motion-reduce:animate-none" aria-label="Loading image" />;
+    return <span className="my-3 block h-40 w-full animate-pulse rounded-lg border border-border bg-card motion-reduce:animate-none" aria-label="Loading image" />;
   }
   return (
     <img
       src={resolved}
       alt={alt}
       loading="lazy"
-      className="my-3 max-h-[70vh] w-auto max-w-full rounded-xl border border-border bg-card object-contain"
+      className="my-3 max-h-[70vh] w-auto max-w-full rounded-lg border border-border bg-card object-contain"
     />
   );
 }

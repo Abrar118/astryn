@@ -94,14 +94,14 @@ function DrawerShell({ id, open, onClose }: { id: string; open: boolean; onClose
       />
       <aside
         style={{ width }}
-        className={`absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+        className={`issues-overlay absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] motion-reduce:transition-none ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <div
           onPointerDown={startResize}
           title="Drag to resize"
-          className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-primary/40"
+          className="absolute left-0 top-0 z-20 h-full w-1.5 cursor-col-resize transition-colors hover:bg-input"
         />
         <TaskDetail id={id} mode="drawer" onClose={onClose} />
       </aside>
