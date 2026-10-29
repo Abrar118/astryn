@@ -31,7 +31,7 @@ export function SyncHeader({
   onRefresh: () => void;
 }) {
   return (
-    <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-5 py-3">
+    <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-1 border-b border-border px-4 py-3">
       <h1 className="text-[20px] font-semibold tracking-tight text-foreground">{title}</h1>
       <div className="flex min-w-0 items-center gap-2">
         <span role="status" className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">

@@ -52,7 +52,7 @@ export function AssigneeSelect({
               label={
                 <span className="flex items-center gap-1">
                   <span className="truncate">{u.name}</span>
-                  {u.id === meId && <span className="text-[10px] text-muted-foreground">me</span>}
+                  {u.id === meId && <span className="text-[11px] text-muted-foreground">me</span>}
                 </span>
               }
               active={value === u.id}

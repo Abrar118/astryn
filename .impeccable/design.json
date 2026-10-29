@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-29T09:02:26.494Z",
+  "generatedAt": "2026-10-29T11:12:16.000Z",
   "title": "Design System: Astryn",
   "extensions": {
     "colorMeta": {
@@ -1148,7 +1148,7 @@
     "typographyMeta": {
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page heading; the Dhaka date on the Dashboard."
+        "purpose": "Page heading on every screen at the 16px inset; issue and task titles in a panel."
       },
       "title": {
         "displayName": "Title",
@@ -1156,7 +1156,7 @@
       },
       "title-sm": {
         "displayName": "Title Small",
-        "purpose": "Secondary panel headings."
+        "purpose": "Secondary panel headings, sticky group bands, the setup row."
       },
       "numeral-lg": {
         "displayName": "Numeral Large",
@@ -1176,15 +1176,15 @@
       },
       "body-prose": {
         "displayName": "Body Prose",
-        "purpose": "Issue descriptions, comments, rendered markdown."
+        "purpose": "Issue descriptions, comments, Docs, rendered markdown."
       },
       "control-label": {
         "displayName": "Control Label",
-        "purpose": "Lowercase legends under readings, lamps and dial days."
+        "purpose": "Lowercase legends under readings and lamps, day names, band keys, segment items."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Pills, badges and tooltips on not-yet-redesigned screens; the 11px floor."
+        "purpose": "Heatmap legends, compact badges and tooltips; the 11px floor."
       },
       "mono": {
         "displayName": "Mono",
@@ -1193,19 +1193,19 @@
     },
     "shadows": [
       {
-        "name": "overlay-small",
-        "value": "0 2px 10px var(--overlay-shadow)",
-        "purpose": "Inline editor tooltip."
-      },
-      {
-        "name": "overlay-medium",
+        "name": "overlay-lift",
         "value": "0 4px 16px var(--overlay-shadow)",
-        "purpose": "Slash-command menu."
+        "purpose": "Default lift for menus, dropdowns, popovers and pickers."
       },
       {
-        "name": "overlay-large",
+        "name": "detached-layer",
         "value": "0 8px 24px var(--overlay-shadow)",
-        "purpose": "Calendar overflow popover."
+        "purpose": "Drawers, the command palette, the create modal and dialogs, dragged cards, the calendar overflow popover."
+      },
+      {
+        "name": "editor-tooltip",
+        "value": "0 2px 10px var(--overlay-shadow)",
+        "purpose": "The inline formatting tooltip only."
       },
       {
         "name": "lamp-bezel",
@@ -1217,31 +1217,36 @@
       {
         "name": "needle-rise",
         "value": "600ms cubic-bezier(0.16, 1, 0.3, 1)",
-        "purpose": "Dial needle rises from 15% height on mount; removed under prefers-reduced-motion."
+        "purpose": "Dashboard needle rises from 15% height on mount; removed under prefers-reduced-motion."
+      },
+      {
+        "name": "switch-slide",
+        "value": "180ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Slide-switch knob travel; fill and stroke change in 150ms ease-out."
       },
       {
         "name": "state-transition",
         "value": "150ms",
-        "purpose": "Color and opacity transitions on hover for tabs, dock and buttons."
+        "purpose": "Color and background transitions on hover for rows, tabs, dock, segments and buttons."
       }
     ],
     "breakpoints": [
       {
-        "name": "dashboard-narrow",
-        "value": "460px (container)"
+        "name": "dashboard",
+        "value": "460px / 640px / 900px (container)"
       },
       {
-        "name": "dashboard-compact",
-        "value": "640px (container)"
+        "name": "tasks",
+        "value": "560px / 720px / 820px (container)"
       },
       {
-        "name": "dashboard-wide",
-        "value": "900px (container)"
+        "name": "calendar",
+        "value": "760px (container)"
       }
     ],
     "focus": {
       "value": "outline: 2px solid var(--ring); outline-offset: -2px",
-      "purpose": "Dashboard controls; survives forced-colors mode."
+      "purpose": "Faceplate controls and rows; survives forced-colors mode."
     },
     "selection": {
       "background": "color-mix(in oklab, var(--primary) 32%, transparent)",
@@ -1286,9 +1291,9 @@
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Key-filled action; rare, one per view.",
-      "html": "<button class=\"ds-btn-primary\">Open Settings</button>",
-      "css": ".ds-btn-primary{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--primary);color:var(--primary-foreground);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:opacity .15s}.ds-btn-primary:hover{opacity:.9}.ds-btn-primary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
+      "description": "Neutral key: foreground fill with background text; never the signal key.",
+      "html": "<button class=\"ds-btn-primary\">Connect Linear</button>",
+      "css": ".ds-btn-primary{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--foreground);color:var(--background);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:background .15s}.ds-btn-primary:hover{background:color-mix(in oklab,var(--foreground) 85%,transparent)}.ds-btn-primary:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklab,var(--ring) 50%,transparent)}.ds-btn-primary:active{transform:translateY(1px)}"
     },
     {
       "name": "Ghost Button",
@@ -1296,7 +1301,7 @@
       "refersTo": "button-ghost",
       "description": "Default in-app action; transparent until hovered.",
       "html": "<button class=\"ds-btn-ghost\">Full agenda</button>",
-      "css": ".ds-btn-ghost{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--foreground);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:var(--accent)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
+      "css": ".ds-btn-ghost{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--foreground);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:var(--muted)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
     },
     {
       "name": "Input",
@@ -1321,38 +1326,68 @@
       "description": "Bottom-centred navigation on the body tone with a body hairline and no shadow; the active item takes the key.",
       "html": "<nav class=\"ds-dock\"><button class=\"ds-dock-btn ds-dock-active\" aria-label=\"Dashboard\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\" rx=\"1\"/></svg></button><button class=\"ds-dock-btn\" aria-label=\"Calendar\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg></button></nav>",
       "css": ".ds-dock{display:inline-flex;gap:4px;padding:6px;border:1px solid var(--sidebar-border);border-radius:18px;background:var(--sidebar)}.ds-dock-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:14px;background:transparent;color:var(--muted-foreground);cursor:pointer;transition:background .15s,color .15s}.ds-dock-btn:hover{background:var(--accent);color:var(--foreground)}.ds-dock-active,.ds-dock-active:hover{background:color-mix(in oklab,var(--primary) 20%,transparent);color:var(--primary)}.ds-dock-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
+    },
+    {
+      "name": "Setup Row",
+      "kind": "custom",
+      "refersTo": "setup-row",
+      "description": "Not-connected screen: page header at the 16px inset, then one faceplate row with an unlit lamp, the reason and a neutral key.",
+      "html": "<section class=\"ds-setup\"><h1 class=\"ds-setup-h\">Issues</h1><div class=\"ds-setup-row\"><span class=\"ds-setup-lamp\"></span><div class=\"ds-setup-text\"><p class=\"ds-setup-t\">Not connected</p><p class=\"ds-setup-m\">Connect Linear to list your workspace's issues here.</p></div><button class=\"ds-setup-btn\">Connect Linear</button></div></section>",
+      "css": ".ds-setup{background:var(--background);font-family:'Geist Variable',sans-serif}.ds-setup-h{margin:0;padding:16px 16px 12px;border-bottom:1px solid var(--border);font-size:20px;font-weight:600;letter-spacing:-0.025em;color:var(--foreground)}.ds-setup-row{display:flex;align-items:center;gap:16px;padding:16px;border-bottom:1px solid var(--border)}.ds-setup-lamp{width:8px;height:8px;border-radius:9999px;flex-shrink:0;border:1px solid color-mix(in oklab,var(--muted-foreground) 70%,transparent)}.ds-setup-text{flex:1;min-width:0}.ds-setup-t,.ds-setup-m{margin:0;font-size:13px}.ds-setup-t{font-weight:500;color:var(--foreground)}.ds-setup-m{margin-top:2px;color:var(--muted-foreground)}.ds-setup-btn{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--foreground);color:var(--background);font:500 14px 'Geist Variable',sans-serif;cursor:pointer}.ds-setup-btn:hover{background:color-mix(in oklab,var(--foreground) 85%,transparent)}.ds-setup-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
+    },
+    {
+      "name": "Slide Switch",
+      "kind": "custom",
+      "refersTo": "slide-switch",
+      "description": "On/off drawn on a native checkbox; on fills foreground, never the key.",
+      "html": "<label class=\"ds-sw-row\"><span>Issues</span><input type=\"checkbox\" class=\"ds-sw\" checked></label><label class=\"ds-sw-row\"><span>Slack</span><input type=\"checkbox\" class=\"ds-sw\"></label>",
+      "css": ".ds-sw-row{display:flex;align-items:center;justify-content:space-between;width:240px;padding:10px 16px;font:400 14px 'Geist Variable',sans-serif;color:var(--foreground)}.ds-sw-row+.ds-sw-row{border-top:1px solid color-mix(in oklab,var(--border) 70%,transparent)}.ds-sw{appearance:none;position:relative;width:30px;height:18px;margin:0;border:1px solid var(--input);border-radius:9999px;background:transparent;cursor:pointer;transition:background-color 150ms ease-out,border-color 150ms ease-out}.ds-sw::before{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:9999px;background:var(--muted-foreground);transition:transform 180ms cubic-bezier(0.16,1,0.3,1),background-color 150ms ease-out}.ds-sw:checked{border-color:var(--foreground);background:var(--foreground)}.ds-sw:checked::before{transform:translateX(12px);background:var(--background)}.ds-sw:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
+    },
+    {
+      "name": "View Switchers",
+      "kind": "chip",
+      "refersTo": "band-key",
+      "description": "Band selector (lowercase keys with lamps; the one selection lights in the key) and the segmented control (input bezel, accent for pressed).",
+      "html": "<div class=\"ds-band\"><button class=\"ds-bkey\" aria-selected=\"true\"><span class=\"ds-blamp\"></span>list</button><button class=\"ds-bkey\"><span class=\"ds-blamp\"></span>board</button><button class=\"ds-bkey\"><span class=\"ds-blamp\"></span>timeline</button></div><div class=\"ds-seg\"><button class=\"ds-seg-i\" aria-pressed=\"true\">Month</button><button class=\"ds-seg-i\">Week</button></div>",
+      "css": ".ds-band{display:inline-flex;gap:2px;margin-right:16px}.ds-bkey{display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 8px;border:0;border-radius:8px;background:transparent;font:400 12px 'Geist Variable',sans-serif;color:var(--muted-foreground);cursor:pointer}.ds-bkey:hover{background:var(--accent);color:var(--foreground)}.ds-bkey[aria-selected=true]{color:var(--foreground)}.ds-blamp{width:7px;height:7px;border-radius:9999px;border:1px solid color-mix(in oklab,var(--muted-foreground) 70%,transparent)}.ds-bkey[aria-selected=true] .ds-blamp{border-color:transparent;background:var(--primary)}.ds-bkey:focus-visible,.ds-seg-i:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}.ds-seg{display:inline-flex;gap:2px;padding:2px;border:1px solid var(--input);border-radius:10px}.ds-seg-i{height:24px;padding:0 10px;border:0;border-radius:8px;background:transparent;font:400 12px 'Geist Variable',sans-serif;color:var(--muted-foreground);cursor:pointer;transition:background-color 150ms ease,color 150ms ease}.ds-seg-i:hover{background:var(--muted);color:var(--foreground)}.ds-seg-i[aria-pressed=true]{background:var(--accent);color:var(--foreground);font-weight:500}"
     }
   ],
   "narrative": {
     "northStar": "The Instrument Face",
-    "overview": "Astryn is built like one well-made appliance from the Rams-era Braun lineage: a darker matte body holding a lighter faceplate, and on that faceplate only what the owner needs to read. The body (tab strip and dock) and the faceplate (content, panels) differ by lightness alone, in the same hue. Hairlines divide the faceplate into zones; nothing at rest casts a shadow.\n\nColor is a signal channel. One functional key, a signal yellow on the dark finishes and a deep ochre on the light ones, marks \"now\", selection and focus, and it is the same key in all four finishes. Every other hue reports state (success, warning, destructive, info, merged) or is data passed through from Linear. State is shown on round indicator lamps: a lit lamp reports something, an unlit ring means there is nothing to report. A screen with nothing wrong is almost colorless.\n\nThe system ships as four finishes of the same appliance sharing one token contract: Graphite (black finish, cool body, the default), Charcoal (brown-black, warm body), Paper (white lacquer faceplate in a warm grey body) and Stone (cool white faceplate in a brushed-aluminium body). The Dashboard is the first surface composed in this world. The other screens already inherit its tokens (the shared key, orange warning, body-tone chrome, flat dock) but keep their earlier composition until each is redesigned; do not read their card grids or 11px pills as the new world's composition. Gradients, glows, glass, backdrop blur and neon or purple-to-blue washes are confirmed rejections (PRODUCT.md brand commitments).",
+    "overview": "Astryn is built like one well-made appliance from the Rams-era Braun lineage: a darker matte body holding a lighter faceplate, and on that faceplate only what the owner needs to read. The body (tab strip, dock, side columns such as Settings and the Tasks spaces) and the faceplate (content, panels) differ by lightness alone, in the same hue. Hairlines divide the faceplate into zones and lists; nothing at rest casts a shadow.\n\nColor is a signal channel. One functional key, a signal yellow on the dark finishes and a deep ochre on the light ones, marks \"now\", selection and focus, and it is the same key in all four finishes. Every other hue reports state (success, warning, destructive, info, merged) or is data passed through from Linear or chosen by the owner for a local-task status. State is shown on round indicator lamps: a lit lamp reports something, an unlit ring means there is nothing to report. A screen with nothing wrong is almost colorless.\n\nThe system ships as four finishes of the same appliance sharing one token contract: Graphite (black finish, cool body, the default), Charcoal (brown-black, warm body), Paper (white lacquer faceplate in a warm grey body) and Stone (cool white faceplate in a brushed-aluminium body). Every screen is now composed in this world: Dashboard, Calendar, This Week, Dependencies, Issues and the issue panel, PRs and Bitbucket, chat boards, Inbox, local Tasks, Docs, Reports, Settings, the module picker, the command palette and the create modal. They share one page header, one not-connected row, hairline lists with sticky group bands, readout strips, the lamp vocabulary and the needle at \"today\". Surfaces that show Linear data keep Linear-familiar structure (list grouping, priority bars, workflow-state glyphs, the issue panel's properties rail) dressed in this world's tokens. Gradients, glows, glass, backdrop blur and neon or purple-to-blue washes are confirmed rejections (PRODUCT.md brand commitments).",
     "keyCharacteristics": [
       "Two-tone matte shell: darker body for chrome, lighter faceplate for content, stepped by lightness only.",
       "One shared signal-yellow key per finish, reserved for now, selection and focus.",
       "Hue means state; Linear workflow and label colors pass through as data.",
       "Round indicator lamps for state: lit vs unlit ring.",
-      "Lowercase small-sans control labels; light-weight tabular display numerals.",
-      "One faceplate divided into zones by hairlines; no shadows at rest."
+      "Lowercase small-sans control legends; light-weight tabular display numerals.",
+      "One faceplate divided into zones and hairline lists; no shadows at rest.",
+      "The same page header, setup row, readout strip and needle on every screen."
     ],
     "rules": [
       {
         "name": "The One Key Rule",
-        "body": "The yellow/ochre key appears only for \"now\", selection and focus (and the primary action it implies). It is the same key in every finish; never add a second accent hue or a per-finish accent.",
+        "body": "The yellow/ochre key appears only for \"now\", selection and focus. It is the same key in every finish; never add a second accent hue or a per-finish accent. A switch or toggle that is merely on fills with foreground, not the key.",
         "section": "colors"
       },
       {
         "name": "The Color Means State Rule",
-        "body": "A hue may appear only to report state (the five state tokens), to mark now/selection/focus (the key), or to render Linear-provided workflow-state and label colors. Never color an icon, tab or section by category.",
+        "body": "A hue may appear only to report state (the five state tokens), to mark now/selection/focus (the key), or to render a status color the data supplies. Never color an icon, tab or section by category.",
+        "section": "colors"
+      },
+      {
+        "name": "The Status Hue Rule",
+        "body": "Linear workflow-state and label colors render exactly as the API supplies them. Local-task status colors come from an AA-safe palette that holds 3:1 against every finish (`STATUS_COLORS`); values stored from the older palette map to their safe replacement at render time through `statusHue()`, never by rewriting the owner's data.",
         "section": "colors"
       },
       {
         "name": "The Orange Warning Rule",
-        "body": "Warning stays orange (hue 52 to 60), clear of the key's hue (78 to 95), so a warning is never mistaken for \"now\".",
+        "body": "Warning stays orange (hue 52 to 60), clear of the key's hue (78 to 95), so a warning is never mistaken for \"now\". Amber status colors move toward orange for the same reason.",
         "section": "colors"
       },
       {
         "name": "The Priority Mapping Rule",
-        "body": "Urgent = destructive, High = warning, Medium = info, Low and No priority = muted-foreground. The bar glyph fills in muted-foreground and turns destructive only for Urgent.",
+        "body": "Urgent = destructive, High = warning, Medium = info, Low = muted-foreground, No priority = an unlit ring. Linear's bar glyph fills in muted-foreground and turns destructive only for Urgent.",
         "section": "colors"
       },
       {
@@ -1362,12 +1397,12 @@
       },
       {
         "name": "The Contrast Floor Rule",
-        "body": "Text and state tokens hold at least 4.5:1 against background, card, body and muted in every finish; primary-foreground holds 4.5:1 on primary. A new or edited token must pass before it ships.",
+        "body": "Text and state tokens hold at least 4.5:1 against background, card, body and muted in every finish; primary-foreground holds 4.5:1 on primary; status hues and strokes hold 3:1. A new or edited token must pass before it ships.",
         "section": "colors"
       },
       {
         "name": "The 11px Floor Rule",
-        "body": "No functional text renders below 11px; redesigned surfaces hold 12px. Weight and color, not shrinking, create the quiet tier.",
+        "body": "No functional text renders below 11px; legends and rows hold 12px where they can. Weight and color, not shrinking, create the quiet tier.",
         "section": "typography"
       },
       {
@@ -1377,12 +1412,22 @@
       },
       {
         "name": "The Lowercase Legend Rule",
-        "body": "Control legends (labels under a reading, lamp names, day names) are lowercase small sans. Headings and titles stay sentence case.",
+        "body": "Control legends (labels under a reading, lamp names, day and weekday names, band keys, column and category labels, side-column group labels) are lowercase small sans, never uppercase with tracking. Headings, titles and segment items stay sentence case.",
         "section": "typography"
+      },
+      {
+        "name": "The Header Inset Rule",
+        "body": "Every page heading is the 20px headline at the 16px horizontal inset, over a hairline, so the title does not jump between screens.",
+        "section": "layout"
       },
       {
         "name": "The No Shadow At Rest Rule",
         "body": "If it is part of the layout, including the dock and tab strip, it has no shadow. Only transient overlays lift.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Overlay Shadow Rule",
+        "body": "Every lift uses the finish's `--overlay-shadow`, never a literal black or a Tailwind shadow preset.",
         "section": "elevation"
       },
       {
@@ -1394,25 +1439,32 @@
     "dos": [
       "Do reference role tokens (`background`, `card`, `sidebar`, `primary`, `success`...) so every component works in all four finishes unchanged.",
       "Do put chrome on the body tone (`bg-sidebar`, `sidebar-accent`, `sidebar-border`) and content on the faceplate (`background`, `card`).",
-      "Do reserve the key for now, selection and focus; one needle, one active item.",
-      "Do report state with round lamps: lit in a state token, or an unlit ring when there is nothing to report.",
+      "Do open every screen with the 20px heading at the 16px inset over a hairline, and use `SetupState` when its source is not connected.",
+      "Do set lists straight on the faceplate with 70% hairlines, sticky group bands and accent hover.",
+      "Do reserve the key for now, selection and focus; one needle, one active item. Fill an \"on\" switch with foreground.",
+      "Do report state with round lamps: lit in a state token or neutral, or an unlit ring when there is nothing to report.",
       "Do set readings as light (300) tabular numerals at 22, 28 or 32px, with lowercase 12px legends.",
-      "Do divide a faceplate into zones with hairlines rather than stacking separate cards.",
-      "Do show \"set up\" instead of a number for a source that is on but not connected.",
-      "Do map priority as Urgent = destructive, High = warning, Medium = info, Low/None = muted-foreground.",
-      "Do render Linear workflow-state and label colors exactly as the API supplies them.",
+      "Do mark today with the needle: 2px key rule, 8px cap.",
+      "Do keep heatmaps neutral: muted to foreground, 2px cells, \"less … more\" legend, lowercase mon/wed/fri.",
+      "Do lift menus and popovers with `0 4px 16px var(--overlay-shadow)`, and drawers, dialogs and the palette with `0 8px 24px var(--overlay-shadow)`.",
+      "Do show \"set up\" or the setup row instead of a number for a source that is on but not connected.",
+      "Do map priority as Urgent = destructive, High = warning, Medium = info, Low = muted-foreground, None = unlit.",
+      "Do render Linear workflow-state and label colors exactly as the API supplies them, and pass local-task status colors through `statusHue()`.",
+      "Do keep Linear surfaces Linear-familiar in structure while using this world's tokens.",
       "Do draw focus as a solid outline in the ring color so it survives forced-colors mode.",
-      "Do check any new or edited token for 4.5:1 text contrast on background, card, body and muted, and 3:1 for input strokes and the focus ring, in every finish."
+      "Do check any new or edited token for 4.5:1 text contrast on background, card, body and muted, and 3:1 for input strokes, status hues and the focus ring, in every finish."
     ],
     "donts": [
       "Don't use gradients, glows, glass, backdrop blur, neon accents or purple-to-blue washes.",
       "Don't add a second accent hue or a per-finish accent; reach for a state token or for neutrals.",
-      "Don't let warning drift toward yellow; it stays orange.",
+      "Don't let warning or an amber status drift toward yellow; it stays orange.",
       "Don't put shadows on resting panels, rows, the tab strip or the dock.",
-      "Don't color an icon, tab or section to tell categories apart.",
+      "Don't color an icon, tab, section or notification type to tell categories apart.",
+      "Don't wrap list rows in individual cards or stack separate cards where hairline zones will do.",
+      "Don't set legends uppercase with tracking.",
       "Don't show a zero for a source that is not configured.",
-      "Don't set functional text below 11px, or below 12px on redesigned surfaces.",
-      "Don't hard-code a hex or a finish name inside a component."
+      "Don't set functional text below 11px.",
+      "Don't hard-code a hex, a finish name or a literal shadow color inside a component."
     ]
   }
 }
