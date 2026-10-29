@@ -10,7 +10,7 @@ const NODE_H = 56;
 const FLAT_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "RIGHT",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "120",
   "elk.spacing.nodeNode": "40",
 };
 
@@ -26,7 +26,7 @@ const GROUP_OPTIONS = {
   "elk.algorithm": "layered",
   "elk.direction": "RIGHT",
   "elk.padding": "[top=30.0,left=14.0,bottom=14.0,right=14.0]",
-  "elk.layered.spacing.nodeNodeBetweenLayers": "90",
+  "elk.layered.spacing.nodeNodeBetweenLayers": "120",
   "elk.spacing.nodeNode": "40",
 };
 

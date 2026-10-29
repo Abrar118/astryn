@@ -61,7 +61,7 @@ export function BulkActionBar({
   const toggle = (k: MenuKey) => setOpen((cur) => (cur === k ? null : k));
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-card px-2 py-1 text-xs shadow-xl">
+    <div className="flex items-center gap-1 rounded-lg border border-border bg-popover px-2 py-1 text-xs shadow-[0_4px_16px_var(--overlay-shadow)]">
       <span className="px-1 font-medium text-foreground">{selectedIds.length} selected</span>
       <span className="mx-0.5 h-4 w-px bg-border" />
 
@@ -113,7 +113,7 @@ export function BulkActionBar({
         type="button"
         aria-label="Clear selection"
         onClick={onClear}
-        className="rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
+        className="dash-control rounded p-1 text-muted-foreground transition-colors hover:text-foreground"
       >
         <X className="size-3.5" />
       </button>
@@ -155,7 +155,7 @@ function BarButton({
         {label}
       </button>
       {open && !disabled && (
-        <div className="absolute bottom-full left-0 mb-1 max-h-64 w-44 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl">
+        <div className="absolute bottom-full left-0 mb-1 max-h-64 w-44 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-[0_8px_24px_var(--overlay-shadow)]">
           {children}
         </div>
       )}
