@@ -235,7 +235,7 @@ export function InboxView() {
               <IndicatorLamp tone={unread ? "neutral" : "off"} />
               unread
             </span>
-            <p className="mt-6 max-w-[44ch] text-[13px] text-muted-foreground">
+            <p className="mt-6 max-w-[52ch] text-[13px] text-pretty text-muted-foreground">
               {list.length > 0
                 ? "Select a notification to read its issue here. j / k to move, enter to open."
                 : "Notifications from Linear land here."}
