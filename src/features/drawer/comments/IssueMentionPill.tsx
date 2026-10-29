@@ -55,7 +55,7 @@ function HoverCard({
     <div
       role="tooltip"
       style={{ top, left, width: CARD_WIDTH }}
-      className="pointer-events-none fixed z-50 rounded-xl border border-border bg-popover p-3 shadow-2xl motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
+      className="pointer-events-none issues-overlay fixed z-50 rounded-lg border border-border bg-popover p-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
     >
       {/* Top row */}
       <div className="mb-2 flex items-center gap-2">

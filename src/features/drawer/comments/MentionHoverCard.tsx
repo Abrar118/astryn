@@ -66,7 +66,7 @@ export function MentionHoverCard({ user, children }: { user: User; children: Rea
             style={style}
             onMouseEnter={open}
             onMouseLeave={scheduleClose}
-            className="w-72 rounded-xl border border-border bg-popover p-3 shadow-2xl"
+            className="issues-overlay w-72 rounded-lg border border-border bg-popover p-3"
           >
             <div className="flex items-center gap-3">
               <Avatar name={user.name} src={user.avatarUrl} size={44} />

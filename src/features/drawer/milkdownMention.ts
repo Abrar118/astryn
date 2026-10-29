@@ -156,7 +156,7 @@ export function makeLinkMarkView(
     const dom = document.createElement("a");
     if (href) dom.setAttribute("href", href);
     if (attrs.title) dom.setAttribute("title", attrs.title);
-    dom.style.cssText = "color:var(--primary);cursor:pointer;";
+    dom.className = "astryn-link";
     dom.addEventListener("click", (e) => {
       // Prevent actual browser navigation inside the webview.
       e.preventDefault();

@@ -20,18 +20,19 @@ export function CommentThread({
   const parentId = thread.comment.id;
 
   return (
-    <div className="rounded-xl border border-border bg-card px-3 py-2.5">
-      <CommentCard comment={thread.comment} issueId={issueId} onOpenLink={onOpenLink} resolveMention={resolveMention} />
+    // One faceplate panel per thread; the reply and the reply action sit below hairlines inside it.
+    <div className="rounded-lg border border-border bg-card">
+      <div className="px-3.5 pt-3 pb-2">
+        <CommentCard comment={thread.comment} issueId={issueId} onOpenLink={onOpenLink} resolveMention={resolveMention} />
+      </div>
 
-      {thread.replies.length > 0 && (
-        <div className="mt-3 space-y-3 border-l border-border pl-3">
-          {thread.replies.map((reply) => (
-            <CommentCard key={reply.id} comment={reply} issueId={issueId} onOpenLink={onOpenLink} resolveMention={resolveMention} />
-          ))}
+      {thread.replies.map((reply) => (
+        <div key={reply.id} className="border-t border-border px-3.5 pt-3 pb-2">
+          <CommentCard comment={reply} issueId={issueId} onOpenLink={onOpenLink} resolveMention={resolveMention} />
         </div>
-      )}
+      ))}
 
-      <div className="mt-2 pl-3">
+      <div className={replying ? "border-t border-border p-2" : "border-t border-border px-2 py-1"}>
         {replying ? (
           <CommentComposer
             variant="reply"
@@ -46,7 +47,7 @@ export function CommentThread({
           <button
             type="button"
             onClick={() => setReplying(true)}
-            className="flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="dash-control flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <CornerDownRight className="size-3.5" /> Reply
           </button>

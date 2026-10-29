@@ -167,7 +167,7 @@ function Row({
 function SubMenu({ flip, children }: { flip: boolean; children: ReactNode }) {
   return (
     <div
-      className={`absolute -top-1 z-10 max-h-80 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl ${
+      className={`absolute -top-1 z-10 max-h-80 w-56 overflow-y-auto issues-overlay rounded-lg border border-border bg-popover p-1 ${
         flip ? "right-full mr-1" : "left-full ml-1"
       }`}
     >
@@ -483,7 +483,7 @@ function Menu({
     <div
       ref={ref}
       data-command-shortcut-blocker
-      className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
+      className="fixed z-50 w-56 issues-overlay rounded-lg border border-border bg-popover p-1 text-foreground"
       style={{ left, top }}
     >
       {/* Caller-injected contextual action (e.g. graph collapse) */}
