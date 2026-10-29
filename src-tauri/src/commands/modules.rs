@@ -2,7 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use serde::Serialize;
 use sqlx::SqlitePool;
@@ -14,7 +14,7 @@ use super::{AppState, CmdError, GITHUB_TOKEN_ACCOUNT, LINEAR_KEY_ACCOUNT, LLM_AP
 use crate::db;
 use crate::modules::screens::{self, ScreenId};
 use crate::modules::{self, Capability, ModuleId, ModuleKind, ModuleState};
-use crate::secrets::SecretStore;
+use crate::secrets::{SecretError, SecretStore};
 
 const SLACK_ACCOUNTS: [&str; 2] = ["slack_user_token", "slack_cookie_d"];
 
@@ -131,10 +131,22 @@ pub async fn set_enabled_modules_logic(
     Ok(disabled)
 }
 
+/// Run keychain work on the blocking pool; OS keychains can block for seconds.
+async fn keychain(
+    store: &Arc<dyn SecretStore>,
+    f: impl FnOnce(&dyn SecretStore) -> Result<(), SecretError> + Send + 'static,
+) -> Result<(), CmdError> {
+    let store = store.clone();
+    tokio::task::spawn_blocking(move || f(store.as_ref()))
+        .await
+        .map_err(|_| CmdError::Internal)?
+        .map_err(|_| CmdError::SecretStore)
+}
+
 /// Delete a disabled module's cached data and stored credentials.
 pub async fn remove_module_data_logic(
     pool: &SqlitePool,
-    store: &dyn SecretStore,
+    store: Arc<dyn SecretStore>,
     state: &ModuleState,
     id: ModuleId,
 ) -> Result<(), CmdError> {
@@ -142,23 +154,23 @@ pub async fn remove_module_data_logic(
         return Err(CmdError::InvalidInput);
     }
     let db_err = |_| CmdError::Internal;
-    let secret_err = |_| CmdError::SecretStore;
     match id {
         ModuleId::Linear => {
             db::issues::wipe_workspace_cache(pool)
                 .await
                 .map_err(db_err)?;
-            store.delete(LINEAR_KEY_ACCOUNT).map_err(secret_err)?;
+            keychain(&store, |s| s.delete(LINEAR_KEY_ACCOUNT)).await?;
         }
         ModuleId::Github => {
             db::github::wipe_github_cache(pool).await.map_err(db_err)?;
-            store.delete(GITHUB_TOKEN_ACCOUNT).map_err(secret_err)?;
+            keychain(&store, |s| s.delete(GITHUB_TOKEN_ACCOUNT)).await?;
         }
         ModuleId::Slack => {
             db::slack::wipe_slack_cache(pool).await.map_err(db_err)?;
-            for account in SLACK_ACCOUNTS {
-                store.delete(account).map_err(secret_err)?;
-            }
+            keychain(&store, |s| {
+                SLACK_ACCOUNTS.iter().try_for_each(|a| s.delete(a))
+            })
+            .await?;
         }
         ModuleId::Llm => {
             sqlx::query("DELETE FROM settings WHERE key IN (?1, ?2)")
@@ -167,13 +179,13 @@ pub async fn remove_module_data_logic(
                 .execute(pool)
                 .await
                 .map_err(db_err)?;
-            store.delete(LLM_API_KEY_ACCOUNT).map_err(secret_err)?;
+            keychain(&store, |s| s.delete(LLM_API_KEY_ACCOUNT)).await?;
         }
         ModuleId::Teams => {
             db::teams::remove_all_teams_data(pool)
                 .await
                 .map_err(db_err)?;
-            crate::teams::clear_refresh_token(store).map_err(secret_err)?;
+            keychain(&store, crate::teams::clear_refresh_token).await?;
         }
         ModuleId::Docs => {
             let mut tx = pool.begin().await.map_err(db_err)?;
@@ -195,15 +207,16 @@ pub async fn remove_module_data_logic(
             db::bitbucket::wipe_bitbucket_cache(pool)
                 .await
                 .map_err(db_err)?;
-            for account in [BITBUCKET_TOKEN_ACCOUNT, BITBUCKET_EMAIL_ACCOUNT] {
-                store.delete(account).map_err(secret_err)?;
-            }
+            keychain(&store, |s| {
+                [BITBUCKET_TOKEN_ACCOUNT, BITBUCKET_EMAIL_ACCOUNT]
+                    .iter()
+                    .try_for_each(|a| s.delete(a))
+            })
+            .await?;
         }
         ModuleId::Clickup => {
             db::docs::wipe_clickup_cache(pool).await.map_err(db_err)?;
-            store
-                .delete(super::clickup::CLICKUP_TOKEN_ACCOUNT)
-                .map_err(secret_err)?;
+            keychain(&store, |s| s.delete(super::clickup::CLICKUP_TOKEN_ACCOUNT)).await?;
         }
         // Nothing persisted: in-memory state only.
         ModuleId::Reports | ModuleId::LinkPreviews => {}
@@ -216,7 +229,7 @@ pub async fn remove_module_data_logic(
 /// The std read guard is released before any await; only the async lock spans the work.
 pub async fn remove_module_data_locked(
     pool: &SqlitePool,
-    store: &dyn SecretStore,
+    store: Arc<dyn SecretStore>,
     modules: &RwLock<ModuleState>,
     id: ModuleId,
 ) -> Result<(), CmdError> {
@@ -324,7 +337,7 @@ pub async fn remove_module_data(
         let dir = super::local_tasks::backups_dir(&app)?;
         crate::local_tasks::backup::write_safety(&state.pool, &dir, "before-removal").await?;
     }
-    remove_module_data_locked(&state.pool, state.secret_store.as_ref(), &state.modules, id).await
+    remove_module_data_locked(&state.pool, state.secret_store.clone(), &state.modules, id).await
 }
 
 #[cfg(test)]
@@ -420,20 +433,20 @@ mod tests {
     #[tokio::test]
     async fn removal_waits_for_module_writes_and_rechecks_state() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         store.set("slack_user_token", "x").unwrap();
         let lock = RwLock::new(state(&[]));
         let held = MODULES_WRITE.lock().await;
         let pending = tokio::time::timeout(
             std::time::Duration::from_millis(50),
-            remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack),
+            remove_module_data_locked(&pool, store.clone(), &lock, ModuleId::Slack),
         )
         .await;
         assert!(pending.is_err(), "removal ran during a module write");
         // The write re-enables Slack; the removal must see that and refuse.
         *lock.write().unwrap() = state(&[ModuleId::Slack]);
         drop(held);
-        let r = remove_module_data_locked(&pool, &store, &lock, ModuleId::Slack).await;
+        let r = remove_module_data_locked(&pool, store.clone(), &lock, ModuleId::Slack).await;
         assert!(matches!(r, Err(CmdError::InvalidInput)));
         assert!(store.get("slack_user_token").unwrap().is_some());
     }
@@ -489,36 +502,87 @@ mod tests {
     #[tokio::test]
     async fn remove_teams_wipes_cache_config_and_token() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
-        crate::teams::save_refresh_token(&store, &"r".repeat(1500)).unwrap();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
+        crate::teams::save_refresh_token(store.as_ref(), &"r".repeat(1500)).unwrap();
         store.set("slack_user_token", "x").unwrap();
         db::teams::save_config(&pool, "cid", "organizations")
             .await
             .unwrap();
         db::teams::save_identity(&pool, "me", None).await.unwrap();
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Teams)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::Teams)
             .await
             .unwrap();
-        assert_eq!(crate::teams::load_refresh_token(&store).unwrap(), None);
+        assert_eq!(
+            crate::teams::load_refresh_token(store.as_ref()).unwrap(),
+            None
+        );
         assert!(store.get("slack_user_token").unwrap().is_some());
         assert_eq!(db::teams::load_config(&pool).await.unwrap(), None);
         assert_eq!(db::teams::load_identity(&pool).await.unwrap(), None);
     }
 
+    /// Records the thread every keychain call runs on.
+    #[derive(Default)]
+    struct ThreadRecordingStore {
+        inner: FakeSecretStore,
+        threads: std::sync::Mutex<Vec<std::thread::ThreadId>>,
+    }
+
+    impl SecretStore for ThreadRecordingStore {
+        fn get(&self, a: &str) -> Result<Option<String>, crate::secrets::SecretError> {
+            self.inner.get(a)
+        }
+        fn set(&self, a: &str, s: &str) -> Result<(), crate::secrets::SecretError> {
+            self.inner.set(a, s)
+        }
+        fn delete(&self, a: &str) -> Result<(), crate::secrets::SecretError> {
+            self.threads
+                .lock()
+                .unwrap()
+                .push(std::thread::current().id());
+            self.inner.delete(a)
+        }
+    }
+
+    #[tokio::test]
+    async fn remove_runs_keychain_deletes_off_the_async_executor() {
+        let (_d, pool) = pool().await;
+        let store = std::sync::Arc::new(ThreadRecordingStore::default());
+        for id in [
+            ModuleId::Linear,
+            ModuleId::Slack,
+            ModuleId::Teams,
+            ModuleId::Bitbucket,
+        ] {
+            remove_module_data_logic(&pool, store.clone(), &state(&[]), id)
+                .await
+                .unwrap();
+        }
+        let threads = store.threads.lock().unwrap();
+        assert!(!threads.is_empty());
+        // The current-thread test runtime polls this task on the test thread.
+        let executor = std::thread::current().id();
+        assert!(threads.iter().all(|t| *t != executor));
+    }
+
     #[tokio::test]
     async fn remove_refuses_enabled_module() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
-        let r =
-            remove_module_data_logic(&pool, &store, &state(&[ModuleId::Slack]), ModuleId::Slack)
-                .await;
+        let store = std::sync::Arc::new(FakeSecretStore::default());
+        let r = remove_module_data_logic(
+            &pool,
+            store.clone(),
+            &state(&[ModuleId::Slack]),
+            ModuleId::Slack,
+        )
+        .await;
         assert!(matches!(r, Err(CmdError::InvalidInput)));
     }
 
     #[tokio::test]
     async fn remove_slack_wipes_cache_and_tokens() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         for a in ["slack_user_token", "slack_cookie_d", "linear_api_key"] {
             store.set(a, "x").unwrap();
         }
@@ -529,7 +593,7 @@ mod tests {
         .execute(&pool)
         .await
         .unwrap();
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Slack)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::Slack)
             .await
             .unwrap();
         assert_eq!(store.get("slack_user_token").unwrap(), None);
@@ -554,7 +618,7 @@ mod tests {
     #[tokio::test]
     async fn remove_clickup_wipes_its_pages_and_token_but_keeps_doc_entries() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         store.set("clickup_token", "pk").unwrap();
         store.set("github_token", "ghp").unwrap();
         db::docs::insert_clickup_docs_source(&pool, "Handbook", "901/abc-1", "now")
@@ -578,7 +642,7 @@ mod tests {
         )
         .await
         .unwrap();
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Clickup)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::Clickup)
             .await
             .unwrap();
         assert_eq!(store.get("clickup_token").unwrap(), None);
@@ -590,12 +654,12 @@ mod tests {
     #[tokio::test]
     async fn remove_bitbucket_wipes_cache_and_both_accounts() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         for a in ["bitbucket_token", "bitbucket_email", "github_token"] {
             store.set(a, "x").unwrap();
         }
         db::bitbucket::save_login(&pool, "me").await.unwrap();
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Bitbucket)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::Bitbucket)
             .await
             .unwrap();
         assert_eq!(store.get("bitbucket_token").unwrap(), None);
@@ -607,11 +671,11 @@ mod tests {
     #[tokio::test]
     async fn remove_llm_clears_settings_and_key() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         store.set("llm_api_key", "x").unwrap();
         db::save_setting(&pool, "llm_base_url", "u").await.unwrap();
         db::save_setting(&pool, "llm_model", "m").await.unwrap();
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::Llm)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::Llm)
             .await
             .unwrap();
         assert_eq!(store.get("llm_api_key").unwrap(), None);
@@ -622,17 +686,17 @@ mod tests {
     #[tokio::test]
     async fn remove_local_tasks_only_when_off_and_wipes_everything() {
         let (_d, pool) = pool().await;
-        let store = FakeSecretStore::default();
+        let store = std::sync::Arc::new(FakeSecretStore::default());
         crate::local_tasks::db::ensure_seeded(&pool).await.unwrap();
         assert!(remove_module_data_logic(
             &pool,
-            &store,
+            store.clone(),
             &state(&[ModuleId::LocalTasks]),
             ModuleId::LocalTasks
         )
         .await
         .is_err());
-        remove_module_data_logic(&pool, &store, &state(&[]), ModuleId::LocalTasks)
+        remove_module_data_logic(&pool, store.clone(), &state(&[]), ModuleId::LocalTasks)
             .await
             .unwrap();
         let tree = crate::local_tasks::db::load_tree(&pool).await.unwrap();
