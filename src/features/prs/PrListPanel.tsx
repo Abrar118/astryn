@@ -1,5 +1,6 @@
-import { FolderGit2, GitPullRequest } from "lucide-react";
+import type { ReactNode } from "react";
 import type { GithubPr, GithubSyncMeta } from "@/lib/commands";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { PrRow, type PrMenuPoint } from "./PrRow";
 
 function groupedByRepository(prs: GithubPr[]): [string, GithubPr[]][] {
@@ -17,19 +18,17 @@ function RepositoryHeader({ repo, count }: { repo: string; count: number }) {
   const owner = cut >= 0 ? repo.slice(0, cut + 1) : "";
   const name = cut >= 0 ? repo.slice(cut + 1) : repo;
   return (
-    <div className="sticky top-0 z-10 flex items-center gap-2 border-y border-border/60 bg-muted px-4 py-2">
-      <FolderGit2 className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="truncate font-mono text-[11.5px]">
+    <div className="sticky top-0 z-30 flex items-baseline gap-2 border-y border-border bg-muted px-4 py-1.5 first:border-t-0">
+      <span className="truncate font-mono text-[12px]">
         <span className="text-muted-foreground">{owner}</span>
         <span className="font-medium text-foreground">{name}</span>
       </span>
-      <span className="rounded bg-background/70 px-1 text-[10px] tabular-nums text-muted-foreground">
-        {count}
-      </span>
+      <span className="text-[12px] tabular-nums text-muted-foreground">{count}</span>
     </div>
   );
 }
 
+/** The queue zone of the PR faceplate: heading and controls over hairline rows. */
 export function PrListPanel({
   title,
   empty,
@@ -38,6 +37,7 @@ export function PrListPanel({
   stale,
   viewerLogin,
   groupByRepo,
+  controls,
   onOpenPr,
   onOpenMenu,
 }: {
@@ -48,61 +48,62 @@ export function PrListPanel({
   stale?: boolean;
   viewerLogin?: string | null;
   groupByRepo: boolean;
+  controls?: ReactNode;
   onOpenPr?: (pr: GithubPr, origin: HTMLElement) => void;
   onOpenMenu?: (pr: GithubPr, point: PrMenuPoint, origin: HTMLElement) => void;
 }) {
   const groups = groupByRepo ? groupedByRepository(prs) : null;
+  const rows = (list: GithubPr[], showRepo: boolean) => (
+    <div className="divide-y divide-border/70">
+      {list.map((pr) => (
+        <PrRow
+          key={`${pr.bucket}:${pr.id}`}
+          pr={pr}
+          showRepo={showRepo}
+          viewerLogin={viewerLogin}
+          onOpen={onOpenPr}
+          onOpenMenu={onOpenMenu}
+        />
+      ))}
+    </div>
+  );
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-card">
-      <header className="flex shrink-0 items-center gap-2.5 border-b border-border/50 bg-muted/10 px-4 py-3">
-        <GitPullRequest className="size-4 text-primary" />
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs tabular-nums text-muted-foreground">
-          {prs.length}
-        </span>
-        {meta?.truncated && (
-          <span className="truncate text-xs text-warning">
-            showing {meta.fetchedCount} most recent
-          </span>
-        )}
-        {stale && (
-          <span className="truncate text-xs text-warning">
-            couldn't refresh — cached
-          </span>
-        )}
+    <section className="dash-zone flex min-h-0 flex-1 flex-col">
+      <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-2.5">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <h2 className="truncate text-[15px] font-semibold tracking-tight text-foreground">{title}</h2>
+          <span className="text-[13px] tabular-nums text-muted-foreground">{prs.length}</span>
+          {meta?.truncated && (
+            <span className="flex items-center gap-1.5 self-center truncate text-[12px] text-muted-foreground">
+              <IndicatorLamp tone="warning" />
+              showing {meta.fetchedCount} most recent
+            </span>
+          )}
+          {stale && (
+            <span className="flex items-center gap-1.5 self-center truncate text-[12px] text-foreground">
+              <IndicatorLamp tone="warning" />
+              couldn't refresh — cached
+            </span>
+          )}
+        </div>
+        {controls}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-24">
+      <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-24">
         {prs.length === 0 ? (
-          <div className="flex h-full min-h-36 items-center justify-center gap-2.5 px-5 py-10 text-sm text-muted-foreground">
-            <GitPullRequest className="size-4 opacity-50" />
-            <span>{empty}</span>
+          <div className="flex items-start gap-3 px-4 py-6">
+            <IndicatorLamp tone="off" className="mt-1.5" />
+            <p className="text-[13px] text-muted-foreground">{empty}</p>
           </div>
         ) : groups ? (
-          groups.map(([repo, rows]) => (
+          groups.map(([repo, list]) => (
             <div key={repo}>
-              <RepositoryHeader repo={repo} count={rows.length} />
-              {rows.map((pr) => (
-                <PrRow
-                  key={`${pr.bucket}:${pr.id}`}
-                  pr={pr}
-                  viewerLogin={viewerLogin}
-                  onOpen={onOpenPr}
-                  onOpenMenu={onOpenMenu}
-                />
-              ))}
+              <RepositoryHeader repo={repo} count={list.length} />
+              {rows(list, false)}
             </div>
           ))
         ) : (
-          prs.map((pr) => (
-            <PrRow
-              key={`${pr.bucket}:${pr.id}`}
-              pr={pr}
-              viewerLogin={viewerLogin}
-              onOpen={onOpenPr}
-              onOpenMenu={onOpenMenu}
-            />
-          ))
+          rows(prs, true)
         )}
       </div>
     </section>

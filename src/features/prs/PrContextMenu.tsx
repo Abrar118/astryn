@@ -27,7 +27,7 @@ function MenuRow({
       aria-description={disabled ? disabledReason : undefined}
       title={disabled ? disabledReason : undefined}
       onClick={onSelect}
-      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-40"
+      className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent focus:bg-accent focus:outline-none disabled:opacity-50"
     >
       <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
         {icon}
@@ -120,7 +120,7 @@ export function PrContextMenu({
           onClose();
         }
       }}
-      className="fixed z-50 w-52 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
+      className="fixed z-50 w-52 rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_4px_16px_var(--overlay-shadow)]"
     >
       <MenuRow
         icon={<Copy className="size-4" />}
