@@ -25,6 +25,7 @@ const cmd = vi.hoisted(() => ({
   removeDocsSource: vi.fn().mockResolvedValue(undefined),
   setGithubToken: vi.fn().mockResolvedValue(undefined),
   getClickupStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
+  getBitbucketStatus: vi.fn().mockResolvedValue({ state: "not_configured" }),
   setClickupToken: vi.fn().mockResolvedValue(undefined),
   clearClickupToken: vi.fn(),
   testClickupConnection: vi.fn(),
@@ -54,6 +55,11 @@ const queries = vi.hoisted(() => ({
 vi.mock("@/lib/queries", () => ({
   clearWorkspaceQueries: vi.fn(), invalidateWorkspaceQueries: vi.fn(), clearGithubQueries: vi.fn(),
   clearSlackQueries: vi.fn(), clearClickupQueries: vi.fn(),
+  // The rail's connection lamps.
+  useConnectionStatus: () => ({ data: { state: "not_configured" } }),
+  useGithubStatus: () => ({ data: { state: "not_configured" } }),
+  useSlackStatus: () => ({ data: { state: "not_configured" } }),
+  useTeamsStatus: () => ({ data: { state: "not_configured" } }),
   useDocsSources: () => ({ data: queries.docsSources }),
   useDocsStatus: () => ({ data: queries.docsStatus }),
 }));

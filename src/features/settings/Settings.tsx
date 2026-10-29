@@ -59,9 +59,9 @@ export function Settings() {
   return (
     <main className="flex h-full min-h-0">
       <SettingsNav active={section} onSelect={setSection} />
-      <div className="min-w-0 flex-1 overflow-y-auto">
-        {/* pb-28 keeps the last card clear of the floating dock that overlaps the bottom */}
-        <div className="mx-auto flex max-w-2xl flex-col gap-6 px-10 pt-10 pb-28">
+      <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto">
+        {/* pb-28 keeps the last panel clear of the floating dock that overlaps the bottom */}
+        <div className="mx-auto flex max-w-[760px] flex-col gap-4 px-6 pt-8 pb-28">
           <SectionBody section={section} />
         </div>
       </div>

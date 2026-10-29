@@ -56,7 +56,7 @@ export function DocContextMenu({
     <div
       onClick={(e) => e.stopPropagation()}
       style={{ left, top }}
-      className="fixed z-50 w-48 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
+      className="fixed z-50 w-48 rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_4px_16px_var(--overlay-shadow)]"
     >
       <Row icon={<SquarePlus className="size-4" />} label="Open in new tab" onClick={act(() => openDocTab(sourceId, path))} />
       <Row icon={<PanelRight className="size-4" />} label="Open to the side" onClick={act(() => openDocToSide(sourceId, path))} />

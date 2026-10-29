@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Minus, Plus } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import {
   APPEARANCE_RANGES,
   clampAppearance,
@@ -12,32 +12,37 @@ import {
 import { cn } from "@/lib/utils";
 import { saveTheme, THEMES, useThemePreference, type Scheme, type ThemeId } from "@/lib/theme";
 import { SectionHeader } from "../SectionHeader";
+import { SettingsPanel, SettingsZone } from "../SettingsPanel";
 
-/** A miniature of the theme, drawn with that theme's own tokens via `data-theme`. */
-function ThemeSwatch({ id }: { id: ThemeId }) {
+/**
+ * A miniature of one finish, drawn with that finish's own tokens via `data-theme`:
+ * the body tone around a faceplate, two lines of text, a lit lamp and the key's needle.
+ */
+function FinishSwatch({ id }: { id: ThemeId }) {
   return (
-    <span data-theme={id} aria-hidden className="flex h-14 w-full overflow-hidden rounded-md border border-border bg-background">
-      <span className="w-1/4 border-r border-sidebar-border bg-sidebar" />
-      <span className="flex flex-1 flex-col gap-1.5 p-2">
-        <span className="h-1.5 w-3/4 rounded-full bg-foreground/80" />
-        <span className="h-1.5 w-1/2 rounded-full bg-muted-foreground/60" />
-        <span className="mt-auto flex items-center gap-1">
-          <span className="h-2.5 w-6 rounded-sm bg-primary" />
-          <span className="size-2.5 rounded-full bg-success" />
-          <span className="size-2.5 rounded-full bg-warning" />
-          <span className="size-2.5 rounded-full bg-destructive" />
+    <span data-theme={id} aria-hidden className="g5-finish">
+      <span className="g5-finish-plate">
+        <span className="g5-finish-zone">
+          <span className="h-1.5 w-3/5 rounded-full bg-foreground" />
+          <span className="h-1.5 w-2/5 rounded-full bg-muted-foreground" />
+        </span>
+        <span className="g5-finish-zone g5-finish-scale">
+          <span className="dash-lamp dash-lamp-lit size-1.5 bg-success" />
+          <span className="dash-lamp dash-lamp-lit size-1.5 bg-muted-foreground" />
+          <span className="g5-finish-needle" />
         </span>
       </span>
     </span>
   );
 }
 
-/** One radio option rendered as a selectable tile (native radio keeps arrow-key navigation). */
-function ThemeOption({
+/** One radio option drawn as a finish tile (native radio keeps arrow-key navigation). */
+function FinishOption({
   name,
   value,
   checked,
   label,
+  legend,
   onSelect,
   children,
 }: {
@@ -45,19 +50,18 @@ function ThemeOption({
   value: string;
   checked: boolean;
   label: string;
+  legend?: string;
   onSelect: () => void;
   children: ReactNode;
 }) {
   return (
-    <label
-      className={cn(
-        "flex cursor-pointer flex-col gap-1.5 rounded-lg border p-1.5 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-        checked ? "border-primary" : "border-border hover:border-input",
-      )}
-    >
+    <label className={cn("g5-finish-option", checked && "g5-finish-option-on")}>
       <input type="radio" name={name} value={value} checked={checked} onChange={onSelect} className="sr-only" />
       {children}
-      <span className={cn("px-0.5 text-xs", checked ? "font-medium text-foreground" : "text-muted-foreground")}>{label}</span>
+      <span className="flex items-baseline justify-between gap-2 px-0.5">
+        <span className={cn("truncate text-[13px] text-foreground", checked && "font-medium")}>{label}</span>
+        {legend && <span className="text-[12px] text-muted-foreground">{legend}</span>}
+      </span>
     </label>
   );
 }
@@ -68,21 +72,22 @@ function ThemePicker() {
 
   return (
     <fieldset className="flex flex-col gap-3">
-      <legend className="mb-3 text-sm text-foreground">Theme</legend>
-      <div className="grid grid-cols-5 gap-2">
+      <legend className="mb-3 text-[13px] font-semibold tracking-tight text-foreground">Theme</legend>
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(124px,1fr))] gap-2">
         {THEMES.map((t) => (
-          <ThemeOption
+          <FinishOption
             key={t.id}
             name="theme-mode"
             value={t.id}
             label={t.label}
+            legend={t.scheme}
             checked={pref.mode === t.id}
             onSelect={() => saveTheme({ ...pref, mode: t.id })}
           >
-            <ThemeSwatch id={t.id} />
-          </ThemeOption>
+            <FinishSwatch id={t.id} />
+          </FinishOption>
         ))}
-        <ThemeOption
+        <FinishOption
           name="theme-mode"
           value="auto"
           label="Match system"
@@ -90,17 +95,22 @@ function ThemePicker() {
           onSelect={() => saveTheme({ ...pref, mode: "auto" })}
         >
           <span aria-hidden className="grid grid-cols-2 gap-1">
-            <ThemeSwatch id={pref.light} />
-            <ThemeSwatch id={pref.dark} />
+            <FinishSwatch id={pref.light} />
+            <FinishSwatch id={pref.dark} />
           </span>
-        </ThemeOption>
+        </FinishOption>
       </div>
       {pref.mode === "auto" &&
         (["light", "dark"] as const).map((scheme) => (
-          <div key={scheme} role="radiogroup" aria-label={`Theme when the system is ${scheme}`} className="flex items-center gap-3">
-            <span className="w-40 text-xs text-muted-foreground">When the system is {scheme}</span>
+          <div
+            key={scheme}
+            role="radiogroup"
+            aria-label={`Theme when the system is ${scheme}`}
+            className="flex flex-wrap items-center gap-x-4 gap-y-1"
+          >
+            <span className="w-44 text-[12px] text-muted-foreground">When the system is {scheme}</span>
             {pairFor(scheme).map((t) => (
-              <label key={t.id} className="flex cursor-pointer items-center gap-1.5 text-xs text-foreground">
+              <label key={t.id} className="flex cursor-pointer items-center gap-1.5 text-[13px] text-foreground">
                 <input
                   type="radio"
                   name={`theme-${scheme}`}
@@ -117,7 +127,7 @@ function ThemePicker() {
   );
 }
 
-/** A −/value%/+ stepper for one appearance scale. */
+/** A −/reading/+ stepper for one appearance scale; the reading is a light tabular numeral. */
 function ScaleStepper({
   label,
   hint,
@@ -134,33 +144,36 @@ function ScaleStepper({
   const { min, max, step } = APPEARANCE_RANGES[field];
   const bump = (dir: 1 | -1) => onChange(clampAppearance(field, value + dir * step));
   return (
-    <div className="flex items-center gap-3">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="text-sm text-foreground">{label}</span>
-        <span className="text-xs text-muted-foreground">{hint}</span>
+    <div className="dash-zone flex items-center gap-4 px-4 py-3">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="text-[14px] text-foreground">{label}</span>
+        <span className="text-[12px] text-muted-foreground">{hint}</span>
       </div>
       <div className="flex items-center gap-1">
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon-sm"
           aria-label={`Decrease ${label.toLowerCase()}`}
           disabled={value <= min}
           onClick={() => bump(-1)}
-          className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Minus className="size-3.5" />
-        </button>
-        <span className="w-12 text-center text-sm tabular-nums text-foreground">
-          {Math.round(value * 100)}%
+          <Minus />
+        </Button>
+        <span className="flex w-16 items-baseline justify-center gap-0.5 text-foreground">
+          <span className="dash-numeral text-[22px]">{Math.round(value * 100)}</span>
+          <span className="text-[12px] text-muted-foreground">%</span>
         </span>
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="icon-sm"
           aria-label={`Increase ${label.toLowerCase()}`}
           disabled={value >= max}
           onClick={() => bump(1)}
-          className="flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
         >
-          <Plus className="size-3.5" />
-        </button>
+          <Plus />
+        </Button>
       </div>
     </div>
   );
@@ -170,14 +183,20 @@ export function AppearanceSection() {
   const appearance = useAppearance();
   const setScale = (field: keyof Appearance) => (v: number) =>
     saveAppearance({ ...appearance, [field]: v });
+  const changed =
+    appearance.appZoom !== DEFAULT_APPEARANCE.appZoom ||
+    appearance.iconScale !== DEFAULT_APPEARANCE.iconScale ||
+    appearance.editorScale !== DEFAULT_APPEARANCE.editorScale;
 
   return (
     <>
       <SectionHeader title="Appearance" description="Color theme and interface scale." />
-      <Card className="p-6">
-        <ThemePicker />
-      </Card>
-      <Card className="flex flex-col gap-4 p-6">
+      <SettingsPanel label="Theme">
+        <SettingsZone>
+          <ThemePicker />
+        </SettingsZone>
+      </SettingsPanel>
+      <SettingsPanel label="Scale">
         <ScaleStepper
           label="App font size"
           hint="Zooms the whole interface — text, icons and layout."
@@ -199,18 +218,14 @@ export function AppearanceSection() {
           value={appearance.editorScale}
           onChange={setScale("editorScale")}
         />
-        {(appearance.appZoom !== DEFAULT_APPEARANCE.appZoom ||
-          appearance.iconScale !== DEFAULT_APPEARANCE.iconScale ||
-          appearance.editorScale !== DEFAULT_APPEARANCE.editorScale) && (
-          <button
-            type="button"
-            onClick={() => saveAppearance({ ...DEFAULT_APPEARANCE })}
-            className="w-fit text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-          >
-            Reset to defaults
-          </button>
+        {changed && (
+          <div className="dash-zone px-4 py-2.5">
+            <Button type="button" variant="link" size="sm" className="px-0" onClick={() => saveAppearance({ ...DEFAULT_APPEARANCE })}>
+              Reset to defaults
+            </Button>
+          </div>
         )}
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

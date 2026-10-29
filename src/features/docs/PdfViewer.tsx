@@ -128,7 +128,7 @@ export default function PdfViewer({ data }: { data: ArrayBuffer }) {
         <p className="py-10 text-sm text-muted-foreground">Opening PDF…</p>
       ) : (
         <>
-          <p className="self-stretch text-right text-[11px] tabular-nums text-muted-foreground">
+          <p className="self-stretch text-right text-[12px] tabular-nums text-muted-foreground">
             {doc.numPages} page{doc.numPages === 1 ? "" : "s"}
           </p>
           {Array.from({ length: doc.numPages }, (_, i) => (

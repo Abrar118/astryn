@@ -1451,3 +1451,160 @@
 .lt-calendar .fc .fc-event:hover .lt-chip {
   background: var(--accent);
 }
+
+/* ── Group 5: settings, docs & reports ── */
+
+/* The instrument's slide switch, drawn on a native checkbox (keeps role, focus and Space). */
+.g5-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.g5-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease-out;
+}
+
+.g5-switch:checked {
+  border-color: var(--foreground);
+  background: var(--foreground);
+}
+
+.g5-switch:checked::before {
+  transform: translateX(12px);
+  background: var(--background);
+}
+
+.g5-switch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.g5-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (forced-colors: active) {
+  .g5-switch { border-color: CanvasText; }
+  .g5-switch::before { background: CanvasText; }
+  .g5-switch:checked { background: Highlight; border-color: Highlight; }
+  .g5-switch:checked::before { background: Canvas; }
+}
+
+/* Rows inside a zone, divided by the faceplate's softer hairline. */
+.g5-rule-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+/* Theme picker: each finish as a miniature appliance (body, faceplate, lamps, key). */
+.g5-finish-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.g5-finish-option:hover {
+  background: var(--accent);
+}
+
+.g5-finish-option-on {
+  border-color: var(--primary);
+}
+
+.g5-finish-option:has(:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.g5-finish {
+  display: flex;
+  height: 64px;
+  padding: 7px 7px 9px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-md);
+  background: var(--sidebar);
+}
+
+.g5-finish-plate {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+}
+
+.g5-finish-zone {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+}
+
+.g5-finish-zone + .g5-finish-zone {
+  border-top: 1px solid var(--border);
+}
+
+.g5-finish-scale {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* The finish's key, drawn as the Dashboard's needle. */
+.g5-finish-needle {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+/* Docs reader: one centred reading column on the faceplate panel. */
+.docs-reader {
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 32px 40px 112px;
+}
+
+/* Links read as text with a muted rule, not in the key (the key is for now, selection and focus). */
+.docs-reader a,
+.docs-reader .milkdown .ProseMirror a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+
+.docs-reader a:hover,
+.docs-reader .milkdown .ProseMirror a:hover {
+  text-decoration-color: var(--foreground);
+}

@@ -27,10 +27,11 @@ function TreeRow({
           type="button"
           onClick={() => setOpen((o) => !o)}
           style={pad}
-          className="flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-accent/40 hover:text-foreground"
+          aria-expanded={open}
+          className="dash-control flex w-full cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <ChevronRight
-            className={`size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-150 ${open ? "rotate-90" : ""}`}
+            className={`size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ${open ? "rotate-90" : ""}`}
           />
           {open ? (
             <FolderOpen className="size-3.5 shrink-0 text-muted-foreground" />
@@ -61,16 +62,14 @@ function TreeRow({
       onClick={() => onSelect(node.path)}
       onContextMenu={(e) => onContextMenu(e, node.path)}
       style={node.children.length > 0 ? undefined : pad}
-      className={`relative flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-xs transition-colors ${
+      aria-current={active ? "page" : undefined}
+      className={`dash-control flex w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-md py-1.5 pr-2 text-left text-[13px] transition-colors ${
         active
-          ? "bg-primary/10 font-medium text-foreground"
-          : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+          ? "bg-accent font-medium text-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground"
       }`}
     >
-      {active && (
-        <span className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-primary" aria-hidden />
-      )}
-      <FileText className={`size-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground/70"}`} />
+      <FileText className={`size-3.5 shrink-0 ${active ? "text-primary" : "text-muted-foreground"}`} />
       <span className="truncate">{node.label}</span>
     </button>
   );
@@ -87,7 +86,7 @@ function TreeRow({
           aria-label={`${open ? "Collapse" : "Expand"} ${node.label}`}
           aria-expanded={open}
           onClick={() => setOpen((o) => !o)}
-          className="-ml-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-accent/40 hover:text-foreground"
+          className="dash-control -ml-1 flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <ChevronRight
             className={`size-3.5 transition-transform duration-150 ${open ? "rotate-90" : ""}`}

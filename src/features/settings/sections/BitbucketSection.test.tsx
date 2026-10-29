@@ -41,6 +41,20 @@ describe("BitbucketSection", () => {
     await waitFor(() => expect(email.value).toBe(""));
   });
 
+  it("offers test and clear only once credentials are saved", async () => {
+    renderIt();
+    expect(await screen.findByText("Not connected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Test connection" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Clear credentials" })).toBeNull();
+
+    cleanup();
+    cmd.getBitbucketStatus.mockResolvedValueOnce({ state: "unverified" });
+    renderIt();
+    expect(await screen.findByText("Credentials saved — not verified")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Test connection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear credentials" })).toBeInTheDocument();
+  });
+
   it("does not submit without both parts", () => {
     cmd.setBitbucketCredentials.mockClear();
     renderIt();

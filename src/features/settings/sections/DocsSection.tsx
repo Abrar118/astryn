@@ -5,7 +5,7 @@ import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import {
   addClickupDocsSource,
   addDocsSource,
@@ -21,6 +21,7 @@ import { timeAgo } from "@/features/drawer/timeAgo";
 import { sourceDetail, unavailableReason } from "@/features/docs/docSource";
 import { SourceKindIcon } from "@/features/docs/SourceKindIcon";
 import { SectionHeader } from "../SectionHeader";
+import { SettingsPanel, SettingsZone } from "../SettingsPanel";
 
 /** "12 files · synced 3m ago", or the not-yet state, per source kind. */
 function freshness(source: DocsSource): string {
@@ -62,8 +63,9 @@ function SourceRow({
   };
 
   return (
-    <Card className="flex flex-col gap-3 p-4">
-      <div className="flex items-center gap-2">
+    <li className="dash-zone flex flex-col gap-2 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <IndicatorLamp tone={source.available ? (source.lastSyncedAt ? "success" : "off") : "warning"} />
         <Input
           aria-label={`Name for ${sourceDetail(source)}`}
           value={draft}
@@ -80,7 +82,7 @@ function SourceRow({
             <Button type="button" variant="ghost" size="sm" onClick={() => setConfirming(false)}>
               Cancel
             </Button>
-            <Button type="button" variant="secondary" size="sm" disabled={busy} onClick={onRemove}>
+            <Button type="button" variant="destructive" size="sm" disabled={busy} onClick={onRemove}>
               Remove
             </Button>
           </div>
@@ -97,8 +99,8 @@ function SourceRow({
           </Button>
         )}
       </div>
-      <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-        <SourceKindIcon kind={source.kind} className="size-3 shrink-0" />
+      <p className="flex min-w-0 items-center gap-1.5 pl-5 text-[12px] text-muted-foreground">
+        <SourceKindIcon kind={source.kind} className="size-3.5 shrink-0" />
         <span className="truncate" title={sourceDetail(source)}>
           {sourceDetail(source)}
           {" — "}
@@ -107,7 +109,7 @@ function SourceRow({
           {!source.available && ` · ${unavailableReason(source.kind)}`}
         </span>
       </p>
-    </Card>
+    </li>
   );
 }
 
@@ -207,43 +209,11 @@ export function DocsSection() {
     addClickupMut.mutate({ url, name: clickupName });
   };
 
-  const clickupCard = clickupOn && (
-        <Card className="flex flex-col gap-4 p-6">
-          {status && !status.clickupTokenPresent && (
-            <p className="text-sm text-warning">
-              Connect a ClickUp token first — Docs are checked and fetched with it.
-            </p>
-          )}
-          <form className="flex flex-col gap-3" onSubmit={handleAddClickup}>
-            <Label htmlFor="docs-clickup">Add a ClickUp Doc</Label>
-            <Input
-              id="docs-clickup"
-              type="text"
-              autoComplete="off"
-              placeholder="https://app.clickup.com/…/v/dc/…"
-              value={clickupUrl}
-              onChange={(e) => setClickupUrl(e.currentTarget.value)}
-              disabled={busy}
-            />
-            <Label htmlFor="docs-clickup-name">ClickUp Doc name (optional)</Label>
-            <Input
-              id="docs-clickup-name"
-              type="text"
-              autoComplete="off"
-              placeholder="Defaults to the Doc's name"
-              value={clickupName}
-              onChange={(e) => setClickupName(e.currentTarget.value)}
-              disabled={busy}
-            />
-            <p className="text-xs text-muted-foreground">
-              Paste the Doc's link from ClickUp. Its pages and sub-pages are cached for offline
-              reading and refreshed from the Docs page.
-            </p>
-            <div className="flex gap-2">
-              <Button type="submit" disabled={busy}>Add ClickUp Doc</Button>
-            </div>
-          </form>
-        </Card>
+  const tokenWarning = (text: string) => (
+    <p className="flex items-center gap-2 text-[13px] text-foreground">
+      <IndicatorLamp tone="warning" />
+      {text}
+    </p>
   );
 
   return (
@@ -253,84 +223,136 @@ export function DocsSection() {
         description="GitHub repositories, ClickUp Docs and folders on this computer that the Docs page reads from. Switch between them in the Docs header."
       />
 
-      <div className="flex flex-col gap-3">
-        <Label>Sources</Label>
+      <section aria-labelledby="docs-sources-title" className="flex flex-col gap-2">
+        <h2 id="docs-sources-title" className="flex items-baseline gap-2 text-[13px] font-semibold tracking-tight text-foreground">
+          Sources
+          {sources && sources.length > 0 && (
+            <span className="font-normal tabular-nums text-muted-foreground">{sources.length}</span>
+          )}
+        </h2>
         {sources === undefined ? (
-          <p className="text-sm text-muted-foreground">Checking…</p>
+          <SettingsPanel className="px-4 py-3.5 text-[13px] text-muted-foreground">Checking…</SettingsPanel>
         ) : sources.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No documentation sources yet.</p>
+          <SettingsPanel className="flex items-center gap-3 px-4 py-3.5">
+            <IndicatorLamp tone="off" />
+            <p className="text-[13px] text-muted-foreground">No documentation sources yet. Add one below.</p>
+          </SettingsPanel>
         ) : (
-          sources.map((s) => (
-            <SourceRow
-              // Name in the key so a confirmed rename — or a revert after a failed
-              // one — remounts the row with the stored name as its draft.
-              key={`${s.id}:${s.name}`}
-              source={s}
-              busy={busy}
-              onRename={(name) => renameMut.mutate({ id: s.id, name })}
-              onRemove={() => removeMut.mutate(s.id)}
-            />
-          ))
+          <ul className="dash-panel dash-face">
+            {sources.map((s) => (
+              <SourceRow
+                // Name in the key so a confirmed rename — or a revert after a failed
+                // one — remounts the row with the stored name as its draft.
+                key={`${s.id}:${s.name}`}
+                source={s}
+                busy={busy}
+                onRename={(name) => renameMut.mutate({ id: s.id, name })}
+                onRemove={() => removeMut.mutate(s.id)}
+              />
+            ))}
+          </ul>
         )}
-      </div>
+      </section>
 
-      <Card className="flex flex-col gap-3 p-6">
-        <Label>Add a local folder</Label>
-        <p className="text-xs text-muted-foreground">
-          Markdown, plain-text and PDF files in the folder and its subfolders are read in place —
-          nothing is copied. Use the Docs page's rescan button after changing files.
-        </p>
-        <div className="flex gap-2">
-          <Button type="button" variant="secondary" disabled={busy} onClick={() => addLocalMut.mutate()}>
-            Choose folder…
-          </Button>
-        </div>
-      </Card>
-
-      {!githubOn ? (
-        <p className="text-sm text-muted-foreground">
-          Turn on GitHub in Modules to add documentation repositories.
-        </p>
-      ) : (
-      <Card className="flex flex-col gap-4 p-6">
-        {status && !status.tokenPresent && (
-          <p className="text-sm text-warning">
-            Connect a GitHub token first — repositories are fetched with it.
-          </p>
-        )}
-        <form className="flex flex-col gap-3" onSubmit={handleAdd}>
-          <Label htmlFor="docs-repo">Add a repository</Label>
-          <Input
-            id="docs-repo"
-            type="text"
-            autoComplete="off"
-            placeholder="https://github.com/owner/repo"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.currentTarget.value)}
-            disabled={busy}
+      <section aria-labelledby="docs-add-title" className="flex flex-col gap-2">
+        <h2 id="docs-add-title" className="text-[13px] font-semibold tracking-tight text-foreground">Add a source</h2>
+        <SettingsPanel>
+          <SettingsZone
+            title="Local folder"
+            hint="Markdown, plain-text and PDF files in the folder and its subfolders are read in place — nothing is copied. Use the Docs page's rescan button after changing files."
+            aside={
+              <Button type="button" variant="outline" disabled={busy} onClick={() => addLocalMut.mutate()}>
+                Choose folder…
+              </Button>
+            }
           />
-          <Label htmlFor="docs-repo-name">Display name (optional)</Label>
-          <Input
-            id="docs-repo-name"
-            type="text"
-            autoComplete="off"
-            placeholder="Defaults to the repository name"
-            value={nameInput}
-            onChange={(e) => setNameInput(e.currentTarget.value)}
-            disabled={busy}
-          />
-          <p className="text-xs text-muted-foreground">
-            Paste a GitHub repo URL (optionally <code>/tree/&lt;branch&gt;</code>; defaults to{" "}
-            <code>main</code>). Each repo is cached separately and synced the first time you view it.
-          </p>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>Add source</Button>
-          </div>
-        </form>
-      </Card>
-      )}
 
-      {clickupCard}
+          {!githubOn ? (
+            <SettingsZone title="GitHub repository">
+              <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+                <IndicatorLamp tone="off" />
+                Turn on GitHub in Modules to add documentation repositories.
+              </p>
+            </SettingsZone>
+          ) : (
+            <form className="dash-zone grid gap-x-3 gap-y-3 px-4 py-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" onSubmit={handleAdd}>
+              {status && !status.tokenPresent && (
+                <div className="sm:col-span-2">{tokenWarning("Connect a GitHub token first — repositories are fetched with it.")}</div>
+              )}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="docs-repo" className="text-[13px]">Add a repository</Label>
+                <Input
+                  id="docs-repo"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="https://github.com/owner/repo"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.currentTarget.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="docs-repo-name" className="text-[13px]">Display name (optional)</Label>
+                <Input
+                  id="docs-repo-name"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Defaults to the repository name"
+                  value={nameInput}
+                  onChange={(e) => setNameInput(e.currentTarget.value)}
+                  disabled={busy}
+                />
+              </div>
+              <p className="text-[12px] text-muted-foreground sm:col-span-2">
+                Paste a GitHub repo URL (optionally <code>/tree/&lt;branch&gt;</code>; defaults to{" "}
+                <code>main</code>). Each repo is cached separately and synced the first time you view it.
+              </p>
+              <div className="sm:col-span-2">
+                <Button type="submit" disabled={busy}>Add source</Button>
+              </div>
+            </form>
+          )}
+
+          {clickupOn && (
+            <form className="dash-zone grid gap-x-3 gap-y-3 px-4 py-4 sm:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]" onSubmit={handleAddClickup}>
+              {status && !status.clickupTokenPresent && (
+                <div className="sm:col-span-2">{tokenWarning("Connect a ClickUp token first — Docs are checked and fetched with it.")}</div>
+              )}
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="docs-clickup" className="text-[13px]">Add a ClickUp Doc</Label>
+                <Input
+                  id="docs-clickup"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="https://app.clickup.com/…/v/dc/…"
+                  value={clickupUrl}
+                  onChange={(e) => setClickupUrl(e.currentTarget.value)}
+                  disabled={busy}
+                />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="docs-clickup-name" className="text-[13px]">ClickUp Doc name (optional)</Label>
+                <Input
+                  id="docs-clickup-name"
+                  type="text"
+                  autoComplete="off"
+                  placeholder="Defaults to the Doc's name"
+                  value={clickupName}
+                  onChange={(e) => setClickupName(e.currentTarget.value)}
+                  disabled={busy}
+                />
+              </div>
+              <p className="text-[12px] text-muted-foreground sm:col-span-2">
+                Paste the Doc's link from ClickUp. Its pages and sub-pages are cached for offline
+                reading and refreshed from the Docs page.
+              </p>
+              <div className="sm:col-span-2">
+                <Button type="submit" disabled={busy}>Add ClickUp Doc</Button>
+              </div>
+            </form>
+          )}
+        </SettingsPanel>
+      </section>
     </>
   );
 }
