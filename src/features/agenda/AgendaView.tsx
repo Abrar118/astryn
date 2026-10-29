@@ -1,17 +1,17 @@
-import { statusHue } from "@/lib/statusHue";
 import { useState, useEffect, useId } from "react";
 import { useSearchParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, CornerDownRight } from "lucide-react";
-import { useTasks, useTaskUsers, useViewer } from "../../lib/taskQueries";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useTasks, useUpdateTask, useViewer } from "../../lib/taskQueries";
 import { dhakaToday, weekWindow, addDays, isoWeek } from "../../lib/dates";
-import { buildAgenda, dueIssues, type AgendaGroup, type AgendaItem } from "./agenda";
+import { useWorkdays } from "../../lib/workweek";
+import { buildAgenda, dueIssues } from "./agenda";
 import type { Task } from "../../lib/tracker";
-import { IssueRow } from "../issues/IssueRow";
-import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
-import { buildHeatmap, agendaCounts, type AgendaCounts } from "./agendaStats";
+import { buildHeatmap, agendaCounts, type AgendaCounts, type HeatWeek } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
 import { LampMessage } from "./LampMessage";
+import { WeekBoard } from "./WeekBoard";
+import { boardColumns } from "./weekColumns";
 import { Button } from "@/components/ui/button";
 import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import { cn } from "@/lib/utils";
@@ -53,26 +53,60 @@ function shortDate(date: string): string {
   return `${months[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
 }
 
-function GroupHeader({ group, today, count }: { group: AgendaGroup; today: string; count: number }) {
-  const isToday = group.key === today;
-  const overdue = group.key === "overdue";
+/** Whether the activity strip is open; remembered per viewer in local storage. */
+const ACTIVITY_KEY = "astryn.this-week.activity";
+
+function readActivityOpen(): boolean {
+  try {
+    return localStorage.getItem(ACTIVITY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** The 12-month heatmap, folded into one strip under the readouts until it is opened. */
+function ActivityStrip({
+  weeks,
+  offset,
+  onSelectWeek,
+}: {
+  weeks: HeatWeek[];
+  offset: number;
+  onSelectWeek: (offset: number) => void;
+}) {
+  const [open, setOpen] = useState(readActivityOpen);
+  const labelId = useId();
+  const panelId = useId();
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(ACTIVITY_KEY, next ? "1" : "0");
+    } catch {
+      // Storage unavailable: the strip still toggles for this session.
+    }
+  };
   return (
-    <div className="sticky top-0 z-10 flex items-baseline gap-2.5 border-b border-border bg-background px-4 pt-3 pb-2">
-      <h2 className="text-[15px] font-semibold tracking-tight text-foreground">{group.label}</h2>
-      {group.date && <span className="text-[13px] tabular-nums text-muted-foreground">{shortDate(group.date)}</span>}
-      {isToday && (
-        <span className="flex items-center gap-1.5 self-center text-[12px] font-semibold text-foreground">
-          <span aria-hidden className="dash-lamp bg-primary" />
-          today
-        </span>
+    <section aria-labelledby={labelId} className="border-y border-border">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={toggle}
+          className="dash-control flex w-full items-center gap-2 px-4 py-2 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent"
+        >
+          <ChevronDown aria-hidden className={cn("size-3.5 shrink-0 transition-transform", !open && "-rotate-90")} />
+          <span id={labelId} className="font-medium text-foreground">activity</span>
+          <span className="truncate">tasks due over the last 12 months{open ? " · select a week to jump to it" : ""}</span>
+        </button>
+      </h2>
+      {open && (
+        <div id={panelId} className="px-4 pt-1 pb-4">
+          <HeatMap labelledBy={labelId} weeks={weeks} currentOffset={offset} onSelectWeek={onSelectWeek} />
+        </div>
       )}
-      <span className={cn(
-        "ml-auto text-[12px] tabular-nums",
-        overdue && count ? "text-destructive" : "text-muted-foreground",
-      )}>
-        {count} due
-      </span>
-    </div>
+    </section>
   );
 }
 
@@ -80,26 +114,24 @@ export function AgendaView() {
   const today = dhakaToday();
   const [weekOffset, setWeekOffset] = useState(0);
   const win = weekWindow(new Date(), weekOffset);
-  const activityId = useId();
+  const hintId = useId();
+  const workdays = useWorkdays();
 
   const viewer = useViewer();
   const { data: issues, isLoading: issuesLoading } = useTasks({});
-  const { data: users } = useTaskUsers();
+  const update = useUpdateTask();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
 
   const open = (id: string) => setParams({ issue: id });
-  const avatarOf = (id: string | null) => {
-    if (!id) return null;
-    const u = (users ?? []).find((x) => x.id === id);
-    return u ? { name: u.name, avatarUrl: u.avatarUrl } : null;
-  };
+  const byId = new Map((issues ?? []).map((i) => [i.id, i]));
+  const parentOf = (task: Task) => (task.parentId ? byId.get(task.parentId) : undefined);
 
-  // Arrow-key week navigation
+  // Arrow-key week navigation. A focused board card keeps the arrows for itself.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if modifier key held
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Ignore if a modifier key is held or something already handled the key
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
       // Ignore if focus is in an input-like element
       const target = e.target as HTMLElement | null;
       if (target) {
@@ -127,9 +159,11 @@ export function AgendaView() {
 
   const { viewerIds } = viewer;
   const hasViewer = viewerIds.length > 0;
+  const includeOverdue = weekOffset === 0;
   const groups = hasViewer
-    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win, includeOverdue: weekOffset === 0 })
+    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win, includeOverdue })
     : [];
+  const columns = boardColumns(groups, win, workdays, includeOverdue);
 
   const isEmpty = groups.every((g) => g.items.length === 0);
 
@@ -147,118 +181,61 @@ export function AgendaView() {
   const counts = agendaCounts(groups);
   const weekTotal = groups.reduce((n, g) => n + dueIssues(g).length, 0);
 
-  const renderRow = (issue: Task) => (
-    <IssueRow
-      issue={issue}
-      display={DEFAULT_DISPLAY}
-      avatar={avatarOf(issue.assigneeId)}
-      onOpen={open}
-      onContextMenu={(e) => openMenu(e, issue.id)}
-      today={today}
-      size="base"
-      startedAt={issue.startedAt}
-    />
-  );
-
-  // A parent shown only to give its due sub-issues context (it isn't itself due
-  // in this group) — a muted heading, still clickable/right-clickable.
-  const renderContextParent = (issue: Task) => (
-    <button
-      type="button"
-      onClick={() => open(issue.id)}
-      onContextMenu={(e) => openMenu(e, issue.id)}
-      className="dash-control flex w-full items-center gap-2 px-4 py-1.5 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent"
-    >
-      <span
-        className="dash-lamp dash-lamp-lit"
-        style={{ backgroundColor: statusHue(issue.stateColor) }}
-        title={issue.stateName ?? undefined}
-      />
-      <span className="shrink-0 font-mono">{issue.identifier}</span>
-      <span className="truncate">{issue.title}</span>
-      <CornerDownRight className="size-3 shrink-0" aria-hidden />
-    </button>
-  );
-
-  const renderItem = (item: AgendaItem) => (
-    <div key={item.issue.id}>
-      {item.contextOnly ? renderContextParent(item.issue) : renderRow(item.issue)}
-      {item.children.length > 0 && (
-        <div className="ml-5 border-l border-border pl-1">
-          {item.children.map((c) => (
-            <div key={c.id}>{renderRow(c)}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <main className="drawer-scrollbar flex h-full flex-col overflow-y-auto">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-5 pb-3">
-        <h1 className="text-[20px] font-semibold tracking-tight text-foreground tabular-nums">{weekLabel}</h1>
-        <span className="text-[13px] tabular-nums text-muted-foreground">{rangeLabel}</span>
-        <div className="flex items-center gap-0.5">
-          <Button variant="ghost" size="icon-sm" aria-label="Previous week" title="Previous week" onClick={() => setWeekOffset((o) => o - 1)}>
-            <ChevronLeft />
-          </Button>
-          <Button variant="outline" size="sm" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)}>
-            This week
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Next week" title="Next week" onClick={() => setWeekOffset((o) => o + 1)}>
-            <ChevronRight />
-          </Button>
-        </div>
-        <span className="ml-auto text-[12px] text-muted-foreground">← / → to change week</span>
-      </header>
-
-      {/* Overview: the week's readouts, then a year of due dates to jump through. */}
-      {hasViewer && (
-        <section aria-label="Week overview" className="border-y border-border">
-          <WeekReadouts counts={counts} total={weekTotal} />
-          <div className="border-t border-border px-4 pt-3 pb-4">
-            <div className="mb-2.5 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-              <h2 id={activityId} className="text-[13px] font-semibold tracking-tight text-foreground">Activity</h2>
-              <p className="text-[12px] text-muted-foreground">tasks due over the last 12 months · select a week to jump to it</p>
-            </div>
-            <HeatMap
-              labelledBy={activityId}
-              weeks={heatmapWeeks}
-              currentOffset={weekOffset}
-              onSelectWeek={setWeekOffset}
-            />
+    <div className="week-pane h-full">
+      <main className="week-main drawer-scrollbar flex h-full flex-col overflow-y-auto">
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-5 pb-3">
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground tabular-nums">{weekLabel}</h1>
+          <span className="text-[13px] tabular-nums text-muted-foreground">{rangeLabel}</span>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon-sm" aria-label="Previous week" title="Previous week" onClick={() => setWeekOffset((o) => o - 1)}>
+              <ChevronLeft />
+            </Button>
+            <Button variant="outline" size="sm" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)}>
+              This week
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Next week" title="Next week" onClick={() => setWeekOffset((o) => o + 1)}>
+              <ChevronRight />
+            </Button>
           </div>
-        </section>
-      )}
+          <span className="ml-auto text-[12px] text-muted-foreground">← / → to change week</span>
+        </header>
 
-      {/* Issue list */}
-      {isEmpty ? (
-        <LampMessage
-          tone="success"
-          title="Nothing on your plate this week."
-          body="Tasks assigned to you and due this week are listed here by day."
-          className={hasViewer ? undefined : "border-t border-border"}
-        />
-      ) : (
-        <div className="pb-28">
-          {groups.map((g) => {
-            const count = dueIssues(g).length;
-            return (
-              <section key={g.key} aria-label={g.date ? `${g.label} ${shortDate(g.date)}` : g.label}>
-                <GroupHeader group={g} today={today} count={count} />
-                {g.items.length ? (
-                  g.items.map(renderItem)
-                ) : (
-                  <p className="flex items-center gap-3 px-4 py-2.5 text-[12px] text-muted-foreground">
-                    <IndicatorLamp tone="off" />
-                    nothing due
-                  </p>
-                )}
-              </section>
-            );
-          })}
-        </div>
-      )}
-    </main>
+        {/* Overview: the week's readouts, then a year of due dates folded into one strip. */}
+        {hasViewer && (
+          <section aria-label="Week overview" className="border-t border-border">
+            <WeekReadouts counts={counts} total={weekTotal} />
+          </section>
+        )}
+        {hasViewer && <ActivityStrip weeks={heatmapWeeks} offset={weekOffset} onSelectWeek={setWeekOffset} />}
+
+        {isEmpty ? (
+          <LampMessage
+            tone="success"
+            title="Nothing on your plate this week."
+            body="Tasks assigned to you and due this week are laid out here by day."
+            className={hasViewer ? undefined : "border-t border-border"}
+          />
+        ) : (
+          <>
+            <p id={hintId} className="border-b border-border px-4 py-2 text-[12px] text-muted-foreground">
+              Drag a card onto a day to reschedule it. Keyboard: arrows move between cards, shift + ← / → moves a card a
+              day, enter opens it.
+            </p>
+            <div className="week-board-wrap">
+              <WeekBoard
+                columns={columns}
+                today={today}
+                hintId={hintId}
+                parentOf={parentOf}
+                onOpen={open}
+                onMenu={(e, id) => openMenu(e, id)}
+                onMove={(id, date) => update.mutate({ id, patch: { dueDate: date } })}
+              />
+            </div>
+          </>
+        )}
+      </main>
+    </div>
   );
 }
