@@ -35,7 +35,7 @@ import { STATUS_COLORS } from "./WorkflowDialog";
 import { AssigneeToggle, PrioritySelect, SprintSelect, StatusSelect } from "./LocalFields";
 import { QuickAdd } from "./QuickAdd";
 
-const RELATION_LABEL: Record<string, string> = { blocks: "Blocking", blocked_by: "Blocked by", related: "Related" };
+const RELATION_LABEL: Record<string, string> = { blocks: "blocking", blocked_by: "blocked by", related: "related" };
 
 function openExternal(href: string) {
   const url = safeExternalUrl(href);
@@ -45,10 +45,10 @@ function openExternal(href: string) {
 
 function Section({ title, count, children, action }: { title: string; count?: number; children: ReactNode; action?: ReactNode }) {
   return (
-    <section className="border-t border-border/60 px-6 py-4">
-      <div className="mb-2 flex items-center gap-2">
+    <section className="border-t border-border px-6 py-4">
+      <div className="mb-2 flex min-h-7 items-center gap-2">
         <h3 className="text-[13px] font-semibold tracking-tight text-foreground">{title}</h3>
-        {count !== undefined && count > 0 && <span className="text-xs tabular-nums text-muted-foreground">{count}</span>}
+        {count !== undefined && count > 0 && <span className="text-[12px] tabular-nums text-muted-foreground">{count}</span>}
         <div className="ml-auto">{action}</div>
       </div>
       {children}
@@ -59,7 +59,7 @@ function Section({ title, count, children, action }: { title: string; count?: nu
 function Field({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex min-h-8 items-center gap-2">
-      <span className="w-20 shrink-0 text-[13px] text-muted-foreground">{label}</span>
+      <span className="w-20 shrink-0 text-[12px] lowercase text-muted-foreground">{label}</span>
       <div className="min-w-0 flex-1">{children}</div>
     </div>
   );
@@ -77,8 +77,8 @@ function LabelsField({ d, onChange }: { d: Detail; onChange: (ids: string[]) => 
   return (
     <Popover
       buttonTitle="Labels"
-      buttonClassName="flex min-w-0 cursor-pointer flex-wrap items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      panelClassName="w-64 rounded-md border border-border bg-popover p-1 shadow-2xl"
+      buttonClassName="flex min-w-0 cursor-pointer flex-wrap items-center gap-1 rounded-md px-1.5 py-1 text-sm hover:bg-accent lt-focus"
+      panelClassName="w-64 rounded-md border border-border bg-popover p-1 lt-overlay"
       button={
         d.labels.length === 0 ? (
           <span className="flex items-center gap-1.5 text-muted-foreground">
@@ -86,7 +86,7 @@ function LabelsField({ d, onChange }: { d: Detail; onChange: (ids: string[]) => 
           </span>
         ) : (
           d.labels.map((l) => (
-            <span key={l.id} className="inline-flex items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-foreground">
+            <span key={l.id} className="mr-2 inline-flex items-center gap-1.5 text-[13px] text-foreground">
               <span aria-hidden className="size-1.5 rounded-full" style={{ backgroundColor: l.color ?? undefined }} />
               {l.name}
             </span>
@@ -151,10 +151,10 @@ function Checklist({ d }: { d: Detail }) {
     <Section title="Checklist" count={d.checklist.length}>
       {d.checklist.length > 0 && (
         <div className="mb-2 flex items-center gap-2" aria-label={`${done} of ${d.checklist.length} done`}>
-          <div className="h-1 flex-1 overflow-hidden rounded-full bg-accent">
-            <div className="h-full rounded-full bg-primary" style={{ width: `${(done / d.checklist.length) * 100}%` }} />
+          <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+            <div className="h-full rounded-full bg-muted-foreground" style={{ width: `${(done / d.checklist.length) * 100}%` }} />
           </div>
-          <span className="text-xs tabular-nums text-muted-foreground">
+          <span className="text-[12px] tabular-nums text-muted-foreground">
             {done}/{d.checklist.length}
           </span>
         </div>
@@ -167,14 +167,14 @@ function Checklist({ d }: { d: Detail }) {
               checked={c.done}
               aria-label={c.body}
               onChange={(e) => update.mutate({ id: c.id, done: e.target.checked })}
-              className="size-4 cursor-pointer accent-primary"
+              className="lt-focus size-4 cursor-pointer accent-foreground"
             />
             <span className={cn("flex-1 text-sm", c.done && "text-muted-foreground line-through")}>{c.body}</span>
             <button
               type="button"
               aria-label={`Delete ${c.body}`}
               onClick={() => remove.mutate(c.id)}
-              className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+              className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 lt-focus group-hover:opacity-100"
             >
               <X className="size-3.5" />
             </button>
@@ -227,8 +227,8 @@ function Dependencies({ d, onOpen }: { d: Detail; onOpen: (id: string) => void }
         <Popover
           align="end"
           buttonTitle="Add dependency"
-          buttonClassName="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          panelClassName="w-80 rounded-md border border-border bg-popover p-2 shadow-2xl"
+          buttonClassName="flex cursor-pointer items-center gap-1 rounded-md px-1.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-foreground lt-focus"
+          panelClassName="w-80 rounded-md border border-border bg-popover p-2 lt-overlay"
           button={
             <>
               <Plus className="size-3.5" /> Add
@@ -237,7 +237,7 @@ function Dependencies({ d, onOpen }: { d: Detail; onOpen: (id: string) => void }
         >
           {(close) => (
             <>
-              <div role="radiogroup" aria-label="Dependency type" className="mb-2 inline-flex rounded-md border border-border p-0.5 text-xs">
+              <div role="radiogroup" aria-label="Dependency type" className="lt-band mb-2 -ml-1">
                 {(["blocks", "blocked_by", "related"] as const).map((k) => (
                   <button
                     key={k}
@@ -245,8 +245,9 @@ function Dependencies({ d, onOpen }: { d: Detail; onOpen: (id: string) => void }
                     role="radio"
                     aria-checked={kind === k}
                     onClick={() => setKind(k)}
-                    className={cn("cursor-pointer rounded-[5px] px-2 py-1", kind === k ? "bg-accent text-foreground" : "text-muted-foreground")}
+                    className="lt-band-key lt-focus"
                   >
+                    <span aria-hidden className="lt-band-lamp" />
                     {RELATION_LABEL[k]}
                   </button>
                 ))}
@@ -265,7 +266,7 @@ function Dependencies({ d, onOpen }: { d: Detail; onOpen: (id: string) => void }
                   icon={<StatusIcon type={t.stateType} color={t.stateColor} />}
                   label={
                     <span className="flex min-w-0 items-center gap-2">
-                      <span className="font-mono text-[11px] text-muted-foreground">{t.identifier}</span>
+                      <span className="font-mono text-[12px] text-muted-foreground">{t.identifier}</span>
                       <span className="truncate">{t.title}</span>
                     </span>
                   }
@@ -283,19 +284,19 @@ function Dependencies({ d, onOpen }: { d: Detail; onOpen: (id: string) => void }
       ) : (
         groups.map((g) => (
           <div key={g.type} className="mb-2">
-            <p className="mb-1 text-[11px] font-medium text-muted-foreground">{RELATION_LABEL[g.type]}</p>
+            <p className="mb-1 text-[12px] font-medium text-muted-foreground">{RELATION_LABEL[g.type]}</p>
             {g.items.map((r) => (
               <div key={`${g.type}-${r.relatedId}`} className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-accent/50">
                 <StatusIcon type={r.relatedStateType ?? "unstarted"} color={r.relatedStateColor ?? ""} />
-                <button type="button" onClick={() => onOpen(r.relatedId)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm focus-visible:outline-none focus-visible:underline">
-                  <span className="font-mono text-[11px] text-muted-foreground">{r.relatedIdentifier}</span>
+                <button type="button" onClick={() => onOpen(r.relatedId)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm lt-focus rounded-sm">
+                  <span className="font-mono text-[12px] text-muted-foreground">{r.relatedIdentifier}</span>
                   <span className="truncate">{r.relatedTitle}</span>
                 </button>
                 <button
                   type="button"
                   aria-label={`Remove ${r.relatedIdentifier}`}
                   onClick={() => remove.mutate({ taskId: d.id, relatedId: r.relatedId, kind: r.type })}
-                  className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+                  className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 lt-focus group-hover:opacity-100"
                 >
                   <X className="size-3.5" />
                 </button>
@@ -318,7 +319,7 @@ function Links({ d }: { d: Detail }) {
         {d.attachments.map((a) => (
           <li key={a.id} className="group flex items-center gap-2 rounded-md px-1 py-1 hover:bg-accent/50">
             <Link2 className="size-3.5 shrink-0 text-muted-foreground" />
-            <button type="button" onClick={() => openExternal(a.url)} className="min-w-0 flex-1 cursor-pointer truncate text-left text-sm text-primary hover:underline focus-visible:outline-none focus-visible:underline">
+            <button type="button" onClick={() => openExternal(a.url)} className="lt-focus min-w-0 flex-1 cursor-pointer truncate rounded-sm text-left text-sm text-foreground underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground">
               {a.title}
             </button>
             <ExternalLink aria-hidden className="size-3 text-muted-foreground" />
@@ -326,7 +327,7 @@ function Links({ d }: { d: Detail }) {
               type="button"
               aria-label={`Remove ${a.title}`}
               onClick={() => remove.mutate(a.id)}
-              className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100"
+              className="rounded p-1 text-muted-foreground opacity-0 hover:text-destructive focus-visible:opacity-100 lt-focus group-hover:opacity-100"
             >
               <X className="size-3.5" />
             </button>
@@ -359,16 +360,16 @@ function CommentItem({ c }: { c: LocalComment }) {
   const [editing, setEditing] = useState(false);
   const [body, setBody] = useState(c.body);
   return (
-    <li className="group rounded-[10px] border border-border bg-card px-3 py-2">
-      <div className="mb-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+    <li className="group py-3">
+      <div className="mb-1 flex items-center gap-2 text-[12px] text-muted-foreground">
         <span className="font-medium text-foreground">You</span>
         <span>{timeAgo(c.createdAt)}</span>
         {c.updatedAt !== c.createdAt && <span>(edited)</span>}
         <div className="ml-auto flex gap-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100">
-          <button type="button" onClick={() => setEditing(true)} className="cursor-pointer rounded px-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={() => setEditing(true)} className="cursor-pointer rounded px-1 hover:text-foreground lt-focus">
             Edit
           </button>
-          <button type="button" onClick={() => remove.mutate(c.id)} className="cursor-pointer rounded px-1 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button type="button" onClick={() => remove.mutate(c.id)} className="cursor-pointer rounded px-1 hover:text-destructive lt-focus">
             Delete
           </button>
         </div>
@@ -405,7 +406,7 @@ function Comments({ d }: { d: Detail }) {
   const post = () => body.trim() && add.mutate({ taskId: d.id, body: body.trim() }, { onSuccess: () => setBody("") });
   return (
     <Section title="Comments" count={d.comments.length}>
-      <ul className="mb-3 flex flex-col gap-2">
+      <ul className="mb-3 flex flex-col divide-y divide-border/70">
         {d.comments.map((c) => (
           <CommentItem key={c.id} c={c} />
         ))}
@@ -422,7 +423,7 @@ function Comments({ d }: { d: Detail }) {
         aria-label="New comment"
         placeholder="Write a note (Markdown). Ctrl/⌘+Enter to post."
         rows={3}
-        className="w-full resize-y rounded-[10px] border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+        className="w-full resize-y rounded-[10px] border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50 dark:bg-input/30"
       />
       <div className="mt-2 flex justify-end">
         <Button size="sm" disabled={!body.trim() || add.isPending} onClick={post}>
@@ -496,7 +497,7 @@ export function LocalTaskDetail({
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-border/60 px-6 py-2.5">
+      <header className="flex items-center gap-2 border-b border-border px-6 py-2.5">
         <span className="min-w-0 truncate text-[13px] text-muted-foreground">
           {space?.name} / {d.listName} · <span className="font-mono text-xs">{d.identifier}</span>
         </span>
@@ -528,7 +529,7 @@ export function LocalTaskDetail({
       <div className="min-h-0 flex-1 overflow-y-auto pb-16">
         <div className="px-6 pb-4 pt-5">
           {d.parent && (
-            <button type="button" onClick={() => open(d.parent!.id)} className="mb-2 flex cursor-pointer items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:underline">
+            <button type="button" onClick={() => open(d.parent!.id)} className="mb-2 flex cursor-pointer items-center gap-1.5 text-[13px] text-muted-foreground hover:text-foreground lt-focus rounded-sm">
               Subtask of <span className="font-mono text-xs">{d.parent.identifier}</span> {d.parent.title}
             </button>
           )}
@@ -545,7 +546,7 @@ export function LocalTaskDetail({
                 e.currentTarget.blur();
               }
             }}
-            className="w-full resize-none overflow-hidden bg-transparent text-lg font-semibold tracking-tight text-foreground outline-none"
+            className="w-full resize-none overflow-hidden rounded-sm bg-transparent text-[20px] font-semibold leading-snug tracking-tight text-foreground outline-none focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ring"
           />
           <div className="mt-3 grid grid-cols-1 gap-x-8 gap-y-0.5 sm:grid-cols-2">
             <Field label="Status">
@@ -588,7 +589,7 @@ export function LocalTaskDetail({
             </Field>
           </div>
         </div>
-        <section className="border-t border-border/60 px-6 py-4">
+        <section className="border-t border-border px-6 py-4">
           <h3 className="mb-2 text-[13px] font-semibold tracking-tight text-foreground">Description</h3>
           <DescriptionEditor
             key={d.id}
@@ -610,8 +611,8 @@ export function LocalTaskDetail({
             {d.subtasks.map((s) => (
               <li key={s.id} className="flex items-center gap-2 rounded-md px-1 py-1 hover:bg-accent/50">
                 <StatusSelect compact statuses={d.statuses} value={s.stateId} onChange={(stateId) => update.mutate({ id: s.id, patch: { stateId } })} />
-                <button type="button" onClick={() => open(s.id)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm focus-visible:outline-none focus-visible:underline">
-                  <span className="font-mono text-[11px] text-muted-foreground">{s.identifier}</span>
+                <button type="button" onClick={() => open(s.id)} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm lt-focus rounded-sm">
+                  <span className="font-mono text-[12px] text-muted-foreground">{s.identifier}</span>
                   <span className={cn("truncate", (s.stateType === "completed" || s.stateType === "canceled") && "text-muted-foreground line-through")}>{s.title}</span>
                 </button>
               </li>
@@ -622,9 +623,9 @@ export function LocalTaskDetail({
         <Checklist d={d} />
         <Dependencies d={d} onOpen={open} />
         <Links d={d} />
-        {docLinks && <div className="border-t border-border/60 px-6 py-4">{docLinks}</div>}
+        {docLinks && <div className="border-t border-border px-6 py-4">{docLinks}</div>}
         <Comments d={d} />
-        <p className="px-6 pt-2 text-[11px] text-muted-foreground">
+        <p className="px-6 pt-2 text-[12px] text-muted-foreground">
           Created {timeAgo(d.createdAt)} · Updated {timeAgo(d.updatedAt)}
         </p>
       </div>

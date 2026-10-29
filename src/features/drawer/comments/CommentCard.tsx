@@ -77,8 +77,8 @@ export function CommentCard({
           src={(users.data ?? []).find((u) => u.id === comment.userId)?.avatarUrl}
           size={22}
         />
-        <span className="text-sm font-medium text-foreground">{comment.userName ?? "Unknown"}</span>
-        <span className="text-xs text-muted-foreground">
+        <span className="text-[13px] font-medium text-foreground">{comment.userName ?? "Unknown"}</span>
+        <span className="text-[12px] tabular-nums text-muted-foreground">
           {timeAgo(comment.createdAt)}{comment.editedAt ? " (edited)" : ""}
         </span>
         {isAuthor && !editing && (
@@ -86,9 +86,9 @@ export function CommentCard({
             <Popover
               align="end"
               buttonTitle="Comment actions"
-              buttonClassName="flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              buttonClassName="dash-control flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
               button={<MoreHorizontal className="size-4" />}
-              panelClassName="w-40 rounded-lg border border-border bg-popover p-1 shadow-2xl"
+              panelClassName="issues-overlay w-40 rounded-lg border border-border bg-popover p-1"
             >
               {(close) => (
                 <AuthorActionsMenu

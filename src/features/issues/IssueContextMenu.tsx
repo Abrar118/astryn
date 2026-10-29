@@ -167,7 +167,7 @@ function Row({
 function SubMenu({ flip, children }: { flip: boolean; children: ReactNode }) {
   return (
     <div
-      className={`absolute -top-1 z-10 max-h-80 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl ${
+      className={`absolute -top-1 z-10 max-h-80 w-56 overflow-y-auto issues-overlay rounded-lg border border-border bg-popover p-1 ${
         flip ? "right-full mr-1" : "left-full ml-1"
       }`}
     >
@@ -306,7 +306,7 @@ function AddLinkSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boo
           type="button"
           onClick={submit}
           disabled={!url.trim()}
-          className="w-full cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full cursor-pointer rounded-md bg-foreground px-2 py-1.5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Add link
         </button>
@@ -483,7 +483,7 @@ function Menu({
     <div
       ref={ref}
       data-command-shortcut-blocker
-      className="fixed z-50 w-56 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
+      className="fixed z-50 w-56 issues-overlay rounded-lg border border-border bg-popover p-1 text-foreground"
       style={{ left, top }}
     >
       {/* Caller-injected contextual action (e.g. graph collapse) */}

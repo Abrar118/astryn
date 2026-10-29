@@ -1,4 +1,3 @@
-import { MessagesSquare } from "lucide-react";
 import { useWorkspace } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { useTeamsCatchup, useTeamsStatus, useTeamsSync } from "@/lib/queries";
@@ -21,12 +20,12 @@ export function TeamsPage() {
     <CatchupBoard
       provider={teamsProvider}
       notConfigured={status?.state === "not_configured"}
-      icon={MessagesSquare}
       connectText="Sign in with your work account to catch up on unread Teams chats."
       onConnect={() => {
         requestSettingsSection("teams");
         setActiveView("settings");
       }}
+      state={status?.state}
       subtitle={status?.state === "connected" ? status.userName : null}
       catchup={catchup}
       sync={sync}

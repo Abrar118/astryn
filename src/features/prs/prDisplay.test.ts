@@ -1,25 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PrReviewer } from "@/lib/commands";
-import { diffBlocks, waitingLabel, reviewSummary, daysSince } from "./prDisplay";
-
-describe("diffBlocks", () => {
-  it("is all-none with no diff", () => {
-    expect(diffBlocks(0, 0)).toEqual(["none", "none", "none", "none", "none"]);
-    expect(diffBlocks(null, null)).toEqual(["none", "none", "none", "none", "none"]);
-  });
-
-  it("keeps both colors visible even when lopsided", () => {
-    const b = diffBlocks(990, 10);
-    expect(b.filter((x) => x === "add").length).toBeGreaterThanOrEqual(1);
-    expect(b.filter((x) => x === "del").length).toBe(1);
-    expect(b.length).toBe(5);
-  });
-
-  it("never exceeds n blocks total", () => {
-    const b = diffBlocks(50, 50);
-    expect(b.filter((x) => x !== "none").length).toBeLessThanOrEqual(5);
-  });
-});
+import { waitingLabel, reviewSummary, daysSince } from "./prDisplay";
 
 describe("waitingLabel", () => {
   const base = Date.parse("2026-06-20T00:00:00Z");

@@ -37,9 +37,11 @@ export type PrStats = {
   changesRequested: number;
   /** Distinct PRs with merge conflicts. */
   conflicts: number;
+  /** Distinct PRs whose CI is failing. */
+  ciFailing: number;
 };
 
-/** Headline counts for the activity card's metric tiles. */
+/** Headline counts for the PR workspace's readouts. */
 export function prStats(prs: GithubPr[]): PrStats {
   const viewerPrs = prs.filter((pr) => !pr.bucket.startsWith("repo:"));
   const unique = uniqueById(viewerPrs);
@@ -50,5 +52,6 @@ export function prStats(prs: GithubPr[]): PrStats {
       (p) => p.bucket === "mine" && p.reviewDecision === "changes_requested",
     ).length,
     conflicts: unique.filter((p) => p.mergeable === "conflicting").length,
+    ciFailing: unique.filter((p) => p.ciStatus === "failure").length,
   };
 }

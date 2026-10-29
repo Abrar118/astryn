@@ -1,3 +1,4 @@
+import { statusHue } from "@/lib/statusHue";
 /** Shared issue glyph components extracted from IssueDrawer to avoid circular imports. */
 
 export const PRIORITIES = [
@@ -9,7 +10,7 @@ export const PRIORITIES = [
 ];
 
 export function StatusIcon({ type, color }: { type: string; color: string }) {
-  const c = color || "var(--muted-foreground)";
+  const c = statusHue(color) || "var(--muted-foreground)";
   if (type === "completed")
     return (
       <svg viewBox="0 0 14 14" className="size-3.5">

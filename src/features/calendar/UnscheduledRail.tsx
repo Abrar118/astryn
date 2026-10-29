@@ -1,7 +1,10 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { statusHue } from "@/lib/statusHue";
+import { useEffect, useId, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Draggable } from "@fullcalendar/interaction";
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import type { CalendarIssue } from "@/lib/commands";
+import { Button } from "@/components/ui/button";
+import { LampMessage } from "@/features/agenda/LampMessage";
 
 const COLLAPSE_KEY = "astryn.unscheduled.collapsed";
 
@@ -18,6 +21,7 @@ export function UnscheduledRail({
   onCollapseChange?: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === "1";
@@ -47,34 +51,24 @@ export function UnscheduledRail({
     return () => d.destroy();
   }, [collapsed]);
 
-  // Collapsed: a thin strip pinned to the right with a vertical label + expand button.
+  // Collapsed: a thin strip on the right with the count and a vertical legend.
   if (collapsed) {
     return (
       <aside
         id="astryn-unscheduled"
-        className="flex w-10 shrink-0 flex-col items-center gap-3 border-l border-border py-3"
+        aria-label="Unscheduled"
+        className="flex w-11 shrink-0 flex-col items-center border-l border-border pt-2"
       >
         <button
           type="button"
-          aria-label="Expand unscheduled"
+          aria-label={`Expand unscheduled, ${issues.length} task${issues.length === 1 ? "" : "s"}`}
           title="Expand unscheduled"
           onClick={() => setCollapsed(false)}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="dash-control flex flex-col items-center gap-3 rounded-md px-1.5 py-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         >
           <PanelRightOpen className="size-4" />
-        </button>
-        <button
-          type="button"
-          onClick={() => setCollapsed(false)}
-          title="Expand unscheduled"
-          className="flex flex-1 cursor-pointer flex-col items-center gap-2"
-        >
-          <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {issues.length}
-          </span>
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
-            Unscheduled
-          </span>
+          <span className="text-[12px] tabular-nums text-foreground">{issues.length}</span>
+          <span className="text-[12px] [writing-mode:vertical-rl]">unscheduled</span>
         </button>
       </aside>
     );
@@ -83,55 +77,73 @@ export function UnscheduledRail({
   return (
     <aside
       id="astryn-unscheduled"
+      aria-labelledby={titleId}
       ref={ref}
-      className="flex w-64 shrink-0 flex-col border-l border-border"
+      className="cal-rail flex shrink-0 flex-col border-l border-border"
     >
-      <div className="flex items-center justify-between px-3 py-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Unscheduled
-          </span>
-          <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
-            {issues.length}
-          </span>
-        </div>
-        <button
-          type="button"
+      <div className="flex items-center justify-between gap-2 py-2 pr-2 pl-4">
+        <h2 id={titleId} className="text-[13px] font-semibold tracking-tight text-foreground">
+          Unscheduled
+          <span className="ml-2 font-normal tabular-nums text-muted-foreground">{issues.length}</span>
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon-sm"
           aria-label="Collapse unscheduled"
           title="Collapse unscheduled"
           onClick={() => setCollapsed(true)}
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className="text-muted-foreground"
         >
-          <PanelRightClose className="size-4" />
-        </button>
+          <PanelRightClose />
+        </Button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-1.5 overflow-y-auto px-3 pb-20">
-        {issues.map((i) => (
-          <div
-            key={i.id}
-            data-id={i.id}
-            onClick={() => onOpen(i.id)}
-            onContextMenu={(e) => onContextMenu(e, i.id)}
-            title={i.title}
-            className="astryn-rail-item cursor-grab rounded-md border border-border/60 px-2.5 py-2 text-xs transition-colors hover:border-border hover:bg-accent active:cursor-grabbing"
-          >
-            <div className="flex items-center gap-1.5">
-              <span
-                className="h-1.5 w-1.5 shrink-0 rounded-full"
-                style={{ backgroundColor: i.stateColor || "var(--muted-foreground)" }}
-              />
-              <span className="font-medium text-muted-foreground">{i.identifier}</span>
-            </div>
-            <div className="mt-0.5 line-clamp-2 text-foreground">{i.title}</div>
-          </div>
-        ))}
-        {issues.length === 0 && (
-          <div className="rounded-md border border-dashed border-border/60 px-3 py-6 text-center text-xs text-muted-foreground">
-            Nothing unscheduled.
-          </div>
-        )}
-      </div>
+      {issues.length === 0 ? (
+        <LampMessage
+          tone="off"
+          title="Nothing unscheduled"
+          body="Every task in this view has a due date."
+          className="border-t border-border py-4"
+        />
+      ) : (
+        <>
+          <p className="border-b border-border px-4 pb-2 text-[12px] text-muted-foreground">
+            Drag a task onto a day to schedule it.
+          </p>
+          <ul className="cal-rail-list drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-20">
+            {issues.map((i) => (
+              <li key={i.id}>
+                <div
+                  data-id={i.id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${i.identifier}: ${i.title}`}
+                  onClick={() => onOpen(i.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpen(i.id);
+                    }
+                  }}
+                  onContextMenu={(e) => onContextMenu(e, i.id)}
+                  title={i.title}
+                  className="astryn-rail-item dash-control cal-rail-row"
+                >
+                  <span
+                    aria-hidden
+                    className="dash-lamp dash-lamp-lit mt-[5px]"
+                    style={{ backgroundColor: statusHue(i.stateColor) || "var(--muted-foreground)" }}
+                  />
+                  <span className="min-w-0">
+                    <span className="block font-mono text-[12px] text-muted-foreground">{i.identifier}</span>
+                    <span className="mt-0.5 line-clamp-2 text-[13px] leading-snug text-foreground">{i.title}</span>
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </aside>
   );
 }

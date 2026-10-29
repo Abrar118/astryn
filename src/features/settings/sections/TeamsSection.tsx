@@ -5,7 +5,8 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
+import { ConnectionReadout, SettingsPanel } from "../SettingsPanel";
 import {
   cancelTeamsSignIn,
   clearTeamsAccount,
@@ -145,73 +146,81 @@ export function TeamsSection() {
   return (
     <>
       <SectionHeader title="Microsoft Teams" description="Read-only catch-up on your unread Teams chats." />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {status === undefined
-            ? "Checking…"
-            : status.state === "connected"
-              ? `Connected as ${status.userName}`
-              : status.state === "unverified"
-                ? "Signed in — not verified"
-                : "Not connected"}
-        </p>
+      <SettingsPanel label="Teams connection">
+        <ConnectionReadout
+          state={status?.state}
+          text={
+            status === undefined
+              ? "Checking…"
+              : status.state === "connected"
+                ? `Connected as ${status.userName}`
+                : status.state === "unverified"
+                  ? "Signed in — not verified"
+                  : "Not connected"
+          }
+          actions={signedIn && !pending ? (
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => testMut.mutate()}>Test connection</Button>
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => clearMut.mutate()}>Sign out</Button>
+            </>
+          ) : undefined}
+        />
 
         {pending ? (
-          <div className="flex flex-col gap-3" aria-live="polite">
-            <p className="text-sm text-foreground">
+          <div className="dash-zone flex flex-col gap-3 px-4 py-4" aria-live="polite">
+            <p className="flex items-center gap-2 text-[13px] text-foreground">
+              <IndicatorLamp tone="neutral" />
               Open the Microsoft sign-in page and enter this code:
             </p>
-            <code className="w-fit rounded-md border border-border bg-muted/50 px-3 py-1.5 font-mono text-lg tracking-widest text-foreground select-all">
+            <code className="w-fit rounded-md border border-border bg-muted px-3 py-1.5 font-mono text-lg tracking-widest text-foreground select-all">
               {pending.userCode}
             </code>
             <div className="flex flex-wrap gap-2">
               <Button type="button" onClick={() => void openUrl(pending.verificationUri)}>Open sign-in page</Button>
-              <Button type="button" variant="secondary" onClick={() => void copyCode(pending.userCode)}>Copy code</Button>
+              <Button type="button" variant="outline" onClick={() => void copyCode(pending.userCode)}>Copy code</Button>
               <Button type="button" variant="ghost" onClick={() => void handleCancel()}>Cancel</Button>
             </div>
-            <p className="text-xs text-muted-foreground">Waiting for you to finish signing in…</p>
+            <p className="text-[12px] text-muted-foreground">Waiting for you to finish signing in…</p>
           </div>
         ) : (
-          <form className="flex flex-col gap-3" onSubmit={handleStart}>
-            <Label htmlFor="teams-client-id">Application (client) ID</Label>
-            <Input
-              id="teams-client-id"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="00000000-0000-0000-0000-000000000000"
-              value={clientId}
-              onChange={(e) => setClientId(e.currentTarget.value)}
-              disabled={busy}
-            />
-            <Label htmlFor="teams-tenant">Tenant (optional)</Label>
-            <Input
-              id="teams-tenant"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="organizations"
-              value={tenant}
-              onChange={(e) => setTenant(e.currentTarget.value)}
-              disabled={busy}
-            />
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" disabled={busy || !clientId.trim()}>
-                {signedIn ? "Sign in again" : "Sign in with Microsoft"}
-              </Button>
-              {signedIn && (
-                <>
-                  <Button type="button" variant="secondary" disabled={busy} onClick={() => testMut.mutate()}>Test connection</Button>
-                  <Button type="button" variant="ghost" disabled={busy} onClick={() => clearMut.mutate()}>Sign out</Button>
-                </>
-              )}
+          <form className="dash-zone grid gap-x-3 gap-y-3 px-4 py-4 sm:grid-cols-2" onSubmit={handleStart}>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="teams-client-id">Application (client) ID</Label>
+              <Input
+                id="teams-client-id"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                value={clientId}
+                onChange={(e) => setClientId(e.currentTarget.value)}
+                disabled={busy}
+              />
             </div>
-            <p className="text-xs text-muted-foreground">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="teams-tenant">Tenant (optional)</Label>
+              <Input
+                id="teams-tenant"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="organizations"
+                value={tenant}
+                onChange={(e) => setTenant(e.currentTarget.value)}
+                disabled={busy}
+              />
+            </div>
+            <p className="text-[12px] text-muted-foreground sm:col-span-2">
               Uses your own Microsoft Entra app registration: enable “Allow public client flows” and add the delegated
               Microsoft Graph permissions User.Read and Chat.Read. Astryn only reads chats; channels aren’t covered.
               Signing in again with another account replaces the cached Teams data.
             </p>
+            <div className="sm:col-span-2">
+              <Button type="submit" disabled={busy || !clientId.trim()}>
+                {signedIn ? "Sign in again" : "Sign in with Microsoft"}
+              </Button>
+            </div>
           </form>
         )}
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

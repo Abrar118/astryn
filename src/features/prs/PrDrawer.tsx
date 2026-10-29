@@ -10,17 +10,16 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import {
   ExternalLink,
-  GitBranch,
-  GitPullRequest,
   Link2,
-  LoaderCircle,
   RefreshCw,
   Star,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import type { GithubPr } from "@/lib/commands";
 import { useCodeHost } from "./codeHost";
+import { PrHealthLamp } from "./prBadges";
 import { PrDrawerChanges } from "./PrDrawerChanges";
 import { PrDrawerOverview } from "./PrDrawerOverview";
 import {
@@ -216,7 +215,7 @@ export function PrDrawer({
         aria-modal="true"
         aria-label={`${pr.repo} pull request ${pr.number}`}
         style={{ width }}
-        className="absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background shadow-2xl transition-transform duration-200 ease-out motion-reduce:transition-none"
+        className="absolute right-0 top-0 flex h-full max-w-[96vw] flex-col border-l border-border bg-background shadow-[0_8px_24px_var(--overlay-shadow)] transition-transform duration-200 ease-out motion-reduce:transition-none"
       >
         <div
           role="separator"
@@ -225,28 +224,24 @@ export function PrDrawer({
           tabIndex={0}
           onPointerDown={startResize}
           onKeyDown={resizeWithKeyboard}
-          className="absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize outline-none transition-colors hover:bg-primary/40 focus-visible:bg-primary/60"
+          className="absolute left-0 top-0 z-20 h-full w-1.5 -translate-x-1/2 cursor-col-resize outline-none transition-colors hover:bg-border focus-visible:bg-ring"
         />
 
         <header
           aria-label="Pull request header"
-          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4 text-xs"
+          className="flex h-11 shrink-0 items-center gap-2.5 border-b border-border px-4 text-[12px]"
         >
-          <GitPullRequest
-            className={`size-4 shrink-0 ${pr.draft ? "text-muted-foreground" : pr.bucket === "merged" ? "text-merged" : "text-success"}`}
-          />
-          <span className="shrink-0 font-medium text-foreground">
+          <PrHealthLamp pr={pr} className="flex shrink-0 items-center" />
+          <span className="shrink-0 font-mono text-muted-foreground">
             {pr.repo} #{pr.number}
           </span>
-          <span className="text-border">›</span>
-          <GitBranch className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+          <span className="min-w-0 flex-1 truncate text-[13px] font-medium text-foreground">
             {title}
           </span>
-          <span className="shrink-0 tabular-nums text-success">
+          <span className="shrink-0 font-mono tabular-nums text-success">
             +{additions}
           </span>
-          <span className="shrink-0 tabular-nums text-destructive">−{deletions}</span>
+          <span className="shrink-0 font-mono tabular-nums text-destructive">−{deletions}</span>
           <div className="ml-1 flex shrink-0 items-center gap-0.5">
             <Button
               variant="ghost"
@@ -258,7 +253,7 @@ export function PrDrawer({
               onClick={() => void onFavoriteChange(pr.repo, !favorite)}
             >
               <Star
-                className={`size-4 ${favorite ? "fill-current text-primary" : ""}`}
+                className={`size-4 ${favorite ? "fill-current text-foreground" : ""}`}
               />
             </Button>
             <Button
@@ -302,7 +297,7 @@ export function PrDrawer({
         <div
           role="tablist"
           aria-label="Pull request detail"
-          className="flex h-11 shrink-0 items-center gap-2 border-b border-border/60 bg-background/95 px-4"
+          className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4"
         >
           {(["overview", "diff"] as const).map((value) => (
             <button
@@ -313,10 +308,10 @@ export function PrDrawer({
               aria-controls={`pr-drawer-${value}-panel`}
               aria-selected={tab === value}
               onClick={() => setTab(value)}
-              className={`rounded-full border px-3 py-1 text-xs font-medium capitalize transition-colors ${
+              className={`dash-control rounded-md px-2.5 py-1 text-[12px] font-medium transition-colors ${
                 tab === value
-                  ? "border-border bg-muted text-foreground"
-                  : "border-transparent text-muted-foreground hover:border-border/70 hover:text-foreground"
+                  ? "bg-accent text-foreground"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
             >
               {value === "overview" ? "Overview" : "Diff"}
@@ -328,17 +323,18 @@ export function PrDrawer({
           <div
             role="status"
             aria-label="Loading pull request details"
-            className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-muted/20 px-5 py-2 text-xs text-muted-foreground"
+            className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2 text-[12px] text-muted-foreground"
           >
-            <LoaderCircle className="size-3.5 animate-spin" />
+            <IndicatorLamp tone="off" />
             Loading live details…
           </div>
         )}
         {detailQuery.isError && (
           <div
             role="alert"
-            className="flex shrink-0 items-center gap-3 border-b border-warning/20 bg-warning/[0.06] px-5 py-2 text-xs text-warning"
+            className="flex shrink-0 items-center gap-2 border-b border-border px-5 py-2 text-[12px] text-foreground"
           >
+            <IndicatorLamp tone="warning" />
             <span className="min-w-0 flex-1">
               Couldn't load live details. Cached pull request data remains available.
             </span>

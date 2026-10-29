@@ -15,6 +15,7 @@ export function AssigneeSelect({
   meId,
   emptyLabel,
   disabled,
+  triggerClassName,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
@@ -22,6 +23,8 @@ export function AssigneeSelect({
   meId?: string;
   emptyLabel: string;
   disabled?: boolean;
+  /** Replaces the trigger's default chip styling, so a host screen can match its own controls. */
+  triggerClassName?: string;
 }) {
   const selected = value ? users.find((u) => u.id === value) : undefined;
 
@@ -29,8 +32,8 @@ export function AssigneeSelect({
     <Popover
       disabled={disabled}
       align="start"
-      buttonClassName="flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary/40 py-1.5 pl-2 pr-2 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-      panelClassName="max-h-72 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-2xl"
+      buttonClassName={triggerClassName ?? "flex cursor-pointer items-center gap-1.5 rounded-md border border-border bg-secondary/40 py-1.5 pl-2 pr-2 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"}
+      panelClassName="max-h-72 w-56 overflow-y-auto rounded-md border border-border bg-popover p-1 shadow-[0_4px_16px_var(--overlay-shadow)]"
       button={
         <>
           {selected && <Avatar name={selected.name} src={selected.avatarUrl} />}
@@ -49,7 +52,7 @@ export function AssigneeSelect({
               label={
                 <span className="flex items-center gap-1">
                   <span className="truncate">{u.name}</span>
-                  {u.id === meId && <span className="text-[10px] text-muted-foreground">me</span>}
+                  {u.id === meId && <span className="text-[11px] text-muted-foreground">me</span>}
                 </span>
               }
               active={value === u.id}

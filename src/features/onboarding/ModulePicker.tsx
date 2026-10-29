@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
-import { Check } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { setDisabledScreens, setEnabledModules, type ModuleId, type ScreenId } from "@/lib/commands";
 import {
   CAPABILITY_PROVIDERS,
@@ -65,92 +64,85 @@ export function ModulePicker() {
   }
 
   return (
-    <div className="flex h-screen items-center justify-center overflow-auto bg-background p-6 text-foreground">
-      <form onSubmit={submit} className="w-full max-w-2xl space-y-6">
-        <div className="space-y-1">
-          <h1 className="text-lg font-semibold">Choose your tools</h1>
-          <p className="text-sm text-muted-foreground">You can change this any time in Settings → Modules.</p>
-        </div>
+    <div className="drawer-scrollbar h-screen overflow-auto bg-background text-foreground">
+      <form onSubmit={submit} className="mx-auto flex w-full max-w-[680px] flex-col gap-6 px-6 pt-14 pb-16">
+        <header className="flex flex-col gap-1">
+          <h1 className="text-[20px] font-semibold tracking-tight">Choose your tools</h1>
+          <p className="text-[13px] text-muted-foreground">
+            Turn on only what you use. You can change this any time in Settings → Modules.
+          </p>
+        </header>
         {GROUPS.map((g, gi) => (
-          <fieldset key={g.title}>
-            <legend className="mb-2 text-xs font-medium text-muted-foreground">{g.title}</legend>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <fieldset key={g.title} className="flex flex-col gap-2">
+            <legend className="mb-2 text-[13px] font-semibold tracking-tight">{g.title}</legend>
+            <ul className="dash-panel dash-face">
               {g.ids.map((id, i) => {
                 const on = selected.has(id);
                 const missing = on ? previewMissing(id, selected) : [];
-                const { name, icon: Icon, description } = MODULE_COPY[id];
+                const screens = on ? SWITCHABLE_SCREENS.filter((s) => screenListedUnder(s, id)) : [];
+                const { name, description } = MODULE_COPY[id];
                 return (
-                  <label
-                    key={id}
-                    className={cn(
-                      "relative flex cursor-pointer flex-col gap-2 rounded-lg border p-3 transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-                      on ? "border-primary bg-primary/[0.06]" : "border-border hover:border-input",
-                    )}
-                  >
-                    <input
-                      ref={gi === 0 && i === 0 ? first : undefined}
-                      type="checkbox"
-                      className="sr-only"
-                      checked={on}
-                      onChange={() => toggle(id)}
-                    />
-                    <span className="flex items-center justify-between">
-                      <Icon aria-hidden className={cn("size-5", on ? "text-primary" : "text-muted-foreground")} />
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "flex size-4 items-center justify-center rounded-full border",
-                          on ? "border-primary bg-primary text-primary-foreground" : "border-input",
+                  <li key={id} className="dash-zone">
+                    <label className="flex cursor-pointer items-center gap-4 px-4 py-3.5 transition-colors hover:bg-accent/60">
+                      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <span className="text-[14px] font-medium">{name}</span>
+                        <span className="text-[13px] text-muted-foreground">{description}</span>
+                        {missing.length > 0 && (
+                          <span className="mt-1 flex items-center gap-2 text-[12px]">
+                            <IndicatorLamp tone="warning" />
+                            Needs {missing.map((c) => CAPABILITY_PROVIDERS[c]).join(", ")}
+                          </span>
                         )}
-                      >
-                        {on && <Check className="size-3" strokeWidth={3} />}
                       </span>
-                    </span>
-                    <span className="text-sm font-medium">{name}</span>
-                    <span className="text-xs leading-snug text-muted-foreground">{description}</span>
-                    {missing.length > 0 && (
-                      <span className="text-xs leading-snug text-warning">
-                        Needs {missing.map((c) => CAPABILITY_PROVIDERS[c]).join(", ")}
-                      </span>
+                      <input
+                        ref={gi === 0 && i === 0 ? first : undefined}
+                        type="checkbox"
+                        className="g5-switch"
+                        checked={on}
+                        onChange={() => toggle(id)}
+                      />
+                    </label>
+                    {screens.length > 0 && (
+                      <fieldset className="px-4 pb-3 pl-8">
+                        <legend className="sr-only">{name} screens</legend>
+                        <ul className="g5-rule-list flex flex-col">
+                          {screens.map((s) => {
+                            const { label, icon: Icon } = VIEW_META[s];
+                            return (
+                              <li key={s}>
+                                <label className="flex cursor-pointer items-center gap-2.5 py-2 text-[13px]">
+                                  <Icon aria-hidden className="size-4 text-muted-foreground" />
+                                  <span className="flex-1">{label}</span>
+                                  <input
+                                    type="checkbox"
+                                    className="g5-switch"
+                                    checked={!screensOff.has(s)}
+                                    onChange={() => toggleScreen(s)}
+                                  />
+                                </label>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                        {id === "linear" && (
+                          <p className="pt-1 text-[12px] text-muted-foreground">Calendar is always on with Linear.</p>
+                        )}
+                      </fieldset>
                     )}
-                  </label>
+                  </li>
                 );
               })}
-            </div>
+            </ul>
           </fieldset>
         ))}
-        {IDS.filter((id) => selected.has(id)).map((id) => {
-          const screens = SWITCHABLE_SCREENS.filter((s) => screenListedUnder(s, id));
-          if (screens.length === 0) return null;
-          return (
-            <fieldset key={id}>
-              <legend className="mb-2 text-xs font-medium text-muted-foreground">{MODULE_COPY[id].name} screens</legend>
-              <div className="flex flex-wrap gap-2">
-                {screens.map((s) => {
-                  const on = !screensOff.has(s);
-                  const { label, icon: Icon } = VIEW_META[s];
-                  return (
-                    <label
-                      key={s}
-                      className={cn(
-                        "flex cursor-pointer items-center gap-2 rounded-md border px-2.5 py-1.5 text-sm transition-colors has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring",
-                        on ? "border-primary bg-primary/[0.06]" : "border-border text-muted-foreground hover:border-input",
-                      )}
-                    >
-                      <input type="checkbox" className="sr-only" checked={on} onChange={() => toggleScreen(s)} />
-                      <Icon aria-hidden className={cn("size-4", on ? "text-primary" : "text-muted-foreground")} />
-                      {label}
-                    </label>
-                  );
-                })}
-              </div>
-              {id === "linear" && <p className="mt-2 text-xs text-muted-foreground">Calendar is always on with Linear.</p>}
-            </fieldset>
-          );
-        })}
-        <Button type="submit" disabled={busy}>
-          Continue
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={busy}>
+            Continue
+          </Button>
+          <span className="text-[12px] tabular-nums text-muted-foreground">
+            {selected.size === 0 ? "Nothing on yet" : `${selected.size} on`}
+          </span>
+        </div>
       </form>
     </div>
   );

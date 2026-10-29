@@ -7,11 +7,11 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { safeExternalUrl } from "@/lib/links";
 import { gooeyToast } from "goey-toast";
 import {
-  AlertCircle,
   Box,
   CalendarDays,
   Check,
   ChevronDown,
+  ChevronRight,
   CircleDot,
   Copy,
   ExternalLink,
@@ -28,7 +28,6 @@ import {
   Pencil,
   Plus,
   SlidersHorizontal,
-  Tag,
   Trash2,
   User,
   X,
@@ -49,7 +48,9 @@ import {
 } from "@/lib/queries";
 import { useDeleteTask, useUpdateTask } from "@/lib/taskQueries";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
-import { IssueRow, compareIssues } from "@/features/issues/IssueRow";
+import { IssueRow, PriorityIcon, compareIssues } from "@/features/issues/IssueRow";
+import { Button } from "@/components/ui/button";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { DisplayOptions } from "@/features/issues/DisplayOptions";
 import { type Ordering, type Completed, type DisplayKey, type DisplayProps } from "@/features/issues/viewConfig";
 import { loadSubIssueDisplay, saveSubIssueDisplay, type SubIssueDisplay } from "./subIssueDisplay";
@@ -71,6 +72,14 @@ import { timeAgo } from "./timeAgo";
 import { createUserMentionRemarkPlugin } from "./remarkUserMentions";
 
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
+
+/** A property value in the rail: a borderless row that hovers to the accent fill. */
+const FIELD_ROW =
+  "dash-control flex w-full min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent disabled:cursor-default disabled:hover:bg-transparent";
+/** A transient menu panel: the only surfaces in the panel that lift. */
+const MENU_PANEL = "issues-overlay rounded-lg border border-border bg-popover p-1";
+const INPUT =
+  "w-full rounded-md border border-input bg-transparent px-2 py-1.5 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring dark:bg-input/30";
 
 function LabelDropdown({
   allLabels,
@@ -107,22 +116,23 @@ function LabelDropdown({
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Change or add labels…"
-        className="mb-1 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+        aria-label="Find or create a label"
+        className={`mb-1 ${INPUT}`}
       />
-      <div className="max-h-64 overflow-y-auto">
+      <div className="drawer-scrollbar max-h-64 overflow-y-auto">
         {filtered.map((l) => (
-          <button key={l.id} type="button" onClick={() => onToggle(l.id)}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent">
-            <span className={`flex size-3.5 items-center justify-center rounded border ${appliedIds.has(l.id) ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+          <button key={l.id} type="button" aria-pressed={appliedIds.has(l.id)} onClick={() => onToggle(l.id)}
+            className="dash-control flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent">
+            <span className={`flex size-3.5 items-center justify-center rounded-[4px] border ${appliedIds.has(l.id) ? "border-primary bg-primary text-primary-foreground" : "border-input"}`}>
               {appliedIds.has(l.id) && <Check className="size-2.5" />}
             </span>
-            <span className="size-2.5 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
+            <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
             <span className="flex-1 truncate">{l.name ?? "label"}</span>
           </button>
         ))}
         {q && !exact && (
           <button type="button" onClick={create} disabled={createLabelMut.isPending}
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent disabled:opacity-60">
+            className="dash-control flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent disabled:opacity-60">
             <Plus className="size-3.5 text-muted-foreground" />
             <span>Create label "{query.trim()}"</span>
           </button>
@@ -150,10 +160,6 @@ async function copyText(text: string, label: string) {
   gooeyToast.success(`${label} copied`);
 }
 
-const priorityDot = (value: number) => {
-  const p = PRIORITIES.find((x) => x.value === value) ?? PRIORITIES[0];
-  return <span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />;
-};
 
 /** Group relations by type, preserving first-seen order (Blocking before Related, etc.). */
 function groupRelations(relations: DetailRelation[]): [string, DetailRelation[]][] {
@@ -257,24 +263,16 @@ function ResourceActionsMenu({
             if (e.key === "Escape") setMode("menu");
           }}
           placeholder="Title"
-          className="mb-2 w-full rounded-md border border-border bg-secondary/40 px-2 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-foreground/25"
+          aria-label="Resource title"
+          className={`mb-2 ${INPUT}`}
         />
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => setMode("menu")}
-            className="flex-1 cursor-pointer rounded-md border border-border px-2 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          >
+        <div className="flex justify-end gap-1.5">
+          <Button type="button" variant="ghost" size="sm" onClick={() => setMode("menu")}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={save}
-            disabled={!title.trim()}
-            className="flex-1 cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
-          >
+          </Button>
+          <Button type="button" size="sm" onClick={save} disabled={!title.trim()}>
             Save
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -320,18 +318,13 @@ function FallbackChildRow({
     <div
       onClick={() => onOpen(child.id)}
       onContextMenu={onContextMenu}
-      className="group flex cursor-pointer items-center gap-3 border-b border-border/40 px-4 py-2 text-sm transition-colors last:border-b-0 hover:bg-accent/50"
+      className="issue-row group flex cursor-pointer items-center gap-3 px-4 py-2.5 text-sm transition-colors hover:bg-accent"
     >
       <StatusIcon type={child.stateType} color={child.stateColor} />
-      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{child.identifier}</span>
-      <span className="min-w-0 flex-1 truncate text-foreground">{child.title}</span>
-      <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-        {child.priority > 0 && (
-          <span className="flex items-center gap-1">
-            {priorityDot(child.priority)}
-            {PRIORITIES.find((p) => p.value === child.priority)?.label}
-          </span>
-        )}
+      <span className="w-[4.5rem] shrink-0 font-mono text-xs text-muted-foreground">{child.identifier}</span>
+      <span className="min-w-0 flex-1 truncate font-medium text-foreground">{child.title}</span>
+      <div className="flex shrink-0 items-center gap-3 text-[12px] tabular-nums text-muted-foreground">
+        {child.priority > 0 && <PriorityIcon p={child.priority} />}
         {child.dueDate && (
           <span className="flex items-center gap-1">
             <CalendarDays className="size-3" />
@@ -356,12 +349,7 @@ function eventIcon(event: ActivityItem): ReactNode {
         ? <Avatar name={event.toAssigneeName} size={20} />
         : <User className="size-3.5 text-muted-foreground" />;
     case "priority":
-      return (
-        <span
-          className="size-2.5 rounded-full"
-          style={{ backgroundColor: PRIORITIES.find((p) => p.value === event.toPriority)?.color ?? "var(--muted-foreground)" }}
-        />
-      );
+      return <PriorityIcon p={event.toPriority ?? 0} />;
     case "title": return <Pencil className="size-3.5 text-muted-foreground" />;
     case "description": return <FileText className="size-3.5 text-muted-foreground" />;
     case "relation": return <Link2 className="size-3.5 text-muted-foreground" />;
@@ -468,12 +456,20 @@ export function IssueDetail({
     setExpandedResource(null);
   }, [id, result.source, detailTitle]);
 
+  // Grow the title field to its content, and again whenever the column width
+  // changes (a narrower pane wraps the title onto more lines).
   useEffect(() => {
     const el = titleRef.current;
-    if (el) {
+    if (!el) return;
+    const fit = () => {
       el.style.height = "auto";
       el.style.height = `${el.scrollHeight}px`;
-    }
+    };
+    fit();
+    // Watch the column, not the field, so resizing the field never re-triggers itself.
+    const ro = new ResizeObserver(fit);
+    if (el.parentElement) ro.observe(el.parentElement);
+    return () => ro.disconnect();
   }, [title]);
 
   const patch = (p: UpdateIssuePatch) => update.mutate({ id, patch: p });
@@ -553,31 +549,34 @@ export function IssueDetail({
   return (
     <>
       {/* Breadcrumb / action header */}
-      <header className="flex items-center gap-2 border-b border-border px-4 py-2.5 text-sm">
+      <header className="flex min-h-12 items-center gap-2 border-b border-border px-4 py-2 text-[13px]">
         <Box className="size-4 shrink-0 text-muted-foreground" />
-        <span className="shrink-0 text-muted-foreground">{projectName ?? d.teamKey ?? "Issue"}</span>
-        <span className="text-border">›</span>
-        <span className="shrink-0 font-medium text-foreground">{identifier}</span>
+        <span className="max-w-[12rem] shrink-0 truncate text-muted-foreground">{projectName ?? d.teamKey ?? "Issue"}</span>
+        <ChevronRight aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+        <span className="shrink-0 font-mono text-xs font-medium text-foreground">{identifier}</span>
         <span className="min-w-0 truncate text-muted-foreground">{detailTitle}</span>
-        <div className="ml-auto flex shrink-0 items-center gap-2">
-          {saveState === "saving" && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              Saving…
-            </span>
-          )}
-          {saveState === "saved" && (
-            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Check className="size-3" />
-              Saved
-            </span>
-          )}
-          {saveState === "error" && (
-            <span className="flex items-center gap-1 text-xs text-destructive">
-              <AlertCircle className="size-3" />
-              Save failed
-            </span>
-          )}
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          {/* Description autosave, reported on a lamp: unlit while saving, lit once saved. */}
+          <span role="status" aria-live="polite" className="flex items-center gap-1.5 text-[12px]">
+            {saveState === "saving" && (
+              <>
+                <IndicatorLamp tone="off" />
+                <span className="text-muted-foreground">saving…</span>
+              </>
+            )}
+            {saveState === "saved" && (
+              <>
+                <IndicatorLamp tone="success" />
+                <span className="text-muted-foreground">saved</span>
+              </>
+            )}
+            {saveState === "error" && (
+              <>
+                <IndicatorLamp tone="danger" />
+                <span className="text-destructive">save failed</span>
+              </>
+            )}
+          </span>
           <div className="flex items-center gap-0.5">
           {mode === "drawer" && (
             <IconBtn title="Open in full page" onClick={() => { openIssueTab(id); onClose(); }}>
@@ -603,9 +602,9 @@ export function IssueDetail({
           <Popover
             align="end"
             buttonTitle="More"
-            buttonClassName="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            buttonClassName={ICON_BUTTON}
             button={<MoreHorizontal className="size-4" />}
-            panelClassName="w-52 rounded-lg border border-border bg-popover p-1 shadow-2xl"
+            panelClassName={`w-52 ${MENU_PANEL}`}
           >
             {(close) => (
               <>
@@ -640,12 +639,13 @@ export function IssueDetail({
       </header>
 
       {result.source !== "live" && (
-        <p className="border-b border-border bg-secondary/40 px-4 py-1.5 text-xs text-muted-foreground">
-          {result.source === "preview" ? "Loading…" : "Offline — showing cached data. Editing is disabled."}
+        <p role="status" className="flex items-center gap-2 border-b border-border px-4 py-2 text-[12px] text-muted-foreground">
+          <IndicatorLamp tone={result.source === "preview" ? "off" : "warning"} />
+          {result.source === "preview" ? "Loading…" : "Offline: showing cached data. Editing is disabled."}
         </p>
       )}
 
-      <div className="flex min-h-0 flex-1">
+      <div className="@container flex min-h-0 flex-1">
         {/* Main column (pb clears the floating dock that overlaps the bottom) */}
         <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto pb-24">
           {/* Page mode centers the reading column (Linear-style full-page);
@@ -658,21 +658,23 @@ export function IssueDetail({
             disabled={!editable}
             onChange={(e) => setTitle(e.target.value)}
             onBlur={() => editable && title.trim() && title !== d.title && patch({ title: title.trim() })}
-            className="w-full resize-none bg-transparent text-2xl font-semibold leading-snug text-foreground focus:outline-none disabled:opacity-100"
+            aria-label="Issue title"
+            className="w-full resize-none overflow-hidden bg-transparent text-[22px] font-semibold leading-snug tracking-tight text-foreground focus:outline-none disabled:opacity-100"
           />
 
           {live?.parent && (
             <button
               type="button"
               onClick={() => openIssue(live.parent!.id)}
-              className="mt-1.5 flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+              className="dash-control -mx-1.5 mt-1 flex max-w-full items-center gap-1.5 rounded-md px-1.5 py-0.5 text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
-              Sub-issue of <span className="font-medium text-foreground">{live.parent.identifier}</span>
+              <span className="shrink-0">Sub-issue of</span>
+              <span className="shrink-0 font-mono text-xs font-medium text-foreground">{live.parent.identifier}</span>
               <span className="truncate">{live.parent.title}</span>
             </button>
           )}
 
-          <section className="mt-6">
+          <section className="mt-5">
             <DescriptionEditor
               key={id}
               markdown={detailDesc}
@@ -690,14 +692,13 @@ export function IssueDetail({
             <DrawerSection
               title="Sub-issues"
               meta={`${live.children.filter((child) => child.stateType === "completed").length}/${live.children.length}`}
-            >
-              <div className="mb-1 flex justify-end">
+              aside={
                 <Popover
                   align="end"
                   buttonTitle="Display options"
-                  buttonClassName="flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  buttonClassName={ICON_BUTTON}
                   button={<SlidersHorizontal className="size-3.5" />}
-                  panelClassName="w-72 rounded-lg border border-border bg-popover p-3 shadow-2xl"
+                  panelClassName="issues-overlay w-72 rounded-lg border border-border bg-popover p-3"
                 >
                   {() => (
                     <div className="space-y-3">
@@ -712,7 +713,8 @@ export function IssueDetail({
                     </div>
                   )}
                 </Popover>
-              </div>
+              }
+            >
               {(() => {
                 const today = dhakaToday();
                 const entries = live.children
@@ -727,7 +729,7 @@ export function IssueDetail({
                 const uncachedEntries = entries.filter((e) => e.cached === null);
                 const ordered = [...cachedEntries, ...uncachedEntries];
                 return (
-                  <div className="drawer-scrollbar overflow-x-auto">
+                  <div className="drawer-scrollbar -mx-4 overflow-x-auto border-y border-border">
                     {ordered.map(({ child, cached }) =>
                       cached ? (
                         <IssueRow
@@ -749,9 +751,11 @@ export function IssueDetail({
                       )
                     )}
                     {ordered.length === 0 && (
-                      <p className="px-2 py-1 text-xs text-muted-foreground">No sub-issues match the current filter.</p>
+                      <p className="px-4 py-2.5 text-[12px] text-muted-foreground">No sub-issues match the current filter.</p>
                     )}
-                    {live.hasMoreChildren && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 sub-issues.</p>}
+                    {live.hasMoreChildren && (
+                      <p className="border-t border-border px-4 py-2 text-[12px] text-muted-foreground">Showing the first 50 sub-issues.</p>
+                    )}
                   </div>
                 );
               })()}
@@ -760,26 +764,47 @@ export function IssueDetail({
 
 
           {live && (live.attachments.length > 0 || editable) && (
-            <DrawerSection title="Resources">
-              <div className="space-y-2">
+            <DrawerSection
+              title="Resources"
+              meta={live.attachments.length > 0 ? `${live.attachments.length}${live.attachmentsTruncated ? "+" : ""}` : undefined}
+              aside={
+                editable ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="xs"
+                    className="text-muted-foreground"
+                    onClick={attachDocuments}
+                    disabled={attaching}
+                    aria-label={attaching ? "Attaching…" : "Attach document…"}
+                  >
+                    {attaching ? <Loader2 className="animate-spin" /> : <Paperclip />}
+                    {attaching ? "Attaching…" : "Attach"}
+                  </Button>
+                ) : undefined
+              }
+            >
+              {live.attachments.length === 0 && <p className="text-[13px] text-muted-foreground">Nothing attached yet.</p>}
+              {live.attachments.length > 0 && (
+              <ul className="-mx-4 border-y border-border">
                 {live.attachments.map((attachment) => (
-                  <div key={attachment.id} className="flex min-w-0 items-center rounded-xl border border-border bg-card transition-colors hover:border-foreground/20 hover:bg-accent">
+                  <li key={attachment.id} className="issue-row flex min-w-0 items-center transition-colors hover:bg-accent">
                     <button
                       type="button"
                       onClick={() => setExpandedResource(attachment)}
-                      className="flex min-w-0 flex-1 items-center gap-3 px-3 py-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="dash-control flex min-w-0 flex-1 items-center gap-3 py-2.5 pl-4 pr-2 text-left"
                     >
                       <ResourceIcon url={attachment.url} sourceType={attachment.sourceType} />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">{attachment.title}</span>
-                      {attachment.subtitle && <span className="max-w-52 truncate text-xs text-muted-foreground">{attachment.subtitle}</span>}
-                      <span className="shrink-0 text-xs text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
+                      {attachment.subtitle && <span className="hidden max-w-52 truncate text-[12px] text-muted-foreground sm:inline">{attachment.subtitle}</span>}
+                      <span className="shrink-0 text-[12px] tabular-nums text-muted-foreground">{timeAgo(attachment.createdAt)}</span>
                     </button>
                     <Popover
                       align="end"
                       buttonTitle="Resource actions"
-                      buttonClassName="mr-2 flex size-8 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                      buttonClassName={`${ICON_BUTTON} mr-2`}
                       button={<MoreHorizontal className="size-4" />}
-                      panelClassName="w-52 rounded-xl border border-border bg-popover p-1.5 shadow-2xl"
+                      panelClassName={`w-52 ${MENU_PANEL}`}
                     >
                       {(close) => (
                         <ResourceActionsMenu
@@ -797,51 +822,46 @@ export function IssueDetail({
                         />
                       )}
                     </Popover>
-                  </div>
+                  </li>
                 ))}
-                {live.attachmentsTruncated && <p className="px-2 pt-1 text-xs text-muted-foreground">Showing the first 50 resources.</p>}
-                {editable && (
-                  <button
-                    type="button"
-                    onClick={attachDocuments}
-                    disabled={attaching}
-                    className="flex w-full cursor-pointer items-center gap-2 rounded-xl border border-dashed border-border px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:border-foreground/25 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {attaching ? <Loader2 className="size-4 animate-spin" /> : <Paperclip className="size-4" />}
-                    {attaching ? "Attaching…" : "Attach document…"}
-                  </button>
+                {live.attachmentsTruncated && (
+                  <li className="px-4 py-2 text-[12px] text-muted-foreground">Showing the first 50 resources.</li>
                 )}
-              </div>
+              </ul>
+              )}
             </DrawerSection>
           )}
 
-          {docLinks && <div className="mt-8">{docLinks}</div>}
+          {docLinks && <div className="mt-8 border-t border-border pt-4">{docLinks}</div>}
 
           {live && (
-            <DrawerSection title="Activity" className="border-t border-border pt-6">
+            <DrawerSection title="Activity">
               <div className="space-y-4">
-                <div className="space-y-3">
+                <ol className="space-y-3">
                   {timeline.map((entry) =>
                     entry.kind === "event" ? (
-                      <div key={entry.key} className="flex gap-3">
-                        <span className="mt-0.5 flex size-6 shrink-0 items-center justify-center text-muted-foreground">
+                      <li key={entry.key} className="flex gap-3">
+                        <span className="flex size-6 shrink-0 items-center justify-center text-muted-foreground">
                           {eventIcon(entry.event)}
                         </span>
-                        <p className="min-w-0 flex-1 pt-0.5 text-sm leading-5 text-muted-foreground">
+                        <p className="min-w-0 flex-1 pt-0.5 text-[13px] leading-5 text-muted-foreground">
                           <span className="font-medium text-foreground">{entry.event.actorName ?? "Linear"}</span>{" "}
-                          {entry.event.summary} · {timeAgo(entry.event.createdAt)}
+                          {entry.event.summary}
+                          <span className="tabular-nums"> · {timeAgo(entry.event.createdAt)}</span>
                         </p>
-                      </div>
+                      </li>
                     ) : (
-                      <CommentThread key={entry.key} thread={entry.thread} issueId={id} onOpenLink={handleLink} resolveMention={resolveMention} />
+                      <li key={entry.key}>
+                        <CommentThread thread={entry.thread} issueId={id} onOpenLink={handleLink} resolveMention={resolveMention} />
+                      </li>
                     ),
                   )}
-                </div>
+                </ol>
                 {timeline.length === 0 && (
-                  <p className="text-sm text-muted-foreground">No activity yet.</p>
+                  <p className="text-[13px] text-muted-foreground">No activity yet.</p>
                 )}
                 {(live.hasMoreHistory || live.hasMoreComments) && (
-                  <p className="text-xs text-muted-foreground">Showing the first 50 history events and comments.</p>
+                  <p className="text-[12px] text-muted-foreground">Showing the first 50 history events and comments.</p>
                 )}
                 {editable && (
                   <div className="mt-4">
@@ -864,11 +884,13 @@ export function IssueDetail({
 
         {/* Properties rail — right-click anywhere here for the full issue menu */}
         <aside
-          className="drawer-scrollbar flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto p-3"
+          aria-label="Properties"
+          className="drawer-scrollbar flex w-[300px] shrink-0 flex-col overflow-y-auto border-l border-border pb-24 @max-[760px]:w-[232px]"
           onContextMenu={(e) => openMenu(e, id)}
         >
-          <RailCard title="Properties">
+          <RailSection title="properties">
             <Field
+              title="Status"
               icon={<StatusIcon type={stateType} color={stateColor} />}
               label={stateName}
               disabled={!editable}
@@ -879,19 +901,26 @@ export function IssueDetail({
               }
             />
             <Field
-              icon={priorityDot(priority)}
+              title="Priority"
+              icon={<PriorityIcon p={priority} />}
               label={PRIORITIES.find((p) => p.value === priority)?.label ?? "No priority"}
               disabled={!editable}
               menu={(close) =>
                 PRIORITIES.map((p) => (
-                  <PopoverItem key={p.value} icon={<span className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />} label={p.label} active={p.value === priority} onClick={() => (patch({ priority: p.value }), close())} />
+                  <PopoverItem key={p.value} icon={<PriorityIcon p={p.value} />} label={p.label} active={p.value === priority} onClick={() => (patch({ priority: p.value }), close())} />
                 ))
               }
             />
-            <div className="px-1.5 py-1">
-              <AssigneeSelect value={d.assigneeId ?? null} onChange={(uid) => patch({ assigneeId: uid })} users={users.data ?? []} emptyLabel="Unassigned" disabled={!editable} />
-            </div>
+            <AssigneeSelect
+              value={d.assigneeId ?? null}
+              onChange={(uid) => patch({ assigneeId: uid })}
+              users={users.data ?? []}
+              emptyLabel="Unassigned"
+              disabled={!editable}
+              triggerClassName={FIELD_ROW}
+            />
             <Field
+              title="Estimate"
               icon={<Gauge className="size-3.5 text-muted-foreground" />}
               label={estimate != null ? `${estimate} ${estimate === 1 ? "Point" : "Points"}` : "No estimate"}
               disabled={!editable}
@@ -905,6 +934,7 @@ export function IssueDetail({
               )}
             />
             <Field
+              title="Cycle"
               icon={<IterationCcw className="size-3.5 text-muted-foreground" />}
               label={cycleLabel ?? "No cycle"}
               disabled={!editable}
@@ -918,20 +948,19 @@ export function IssueDetail({
                 </>
               )}
             />
-            <DatePicker value={dueDate} onChange={(v) => patch({ dueDate: v })} disabled={!editable} />
+            <DatePicker value={dueDate} onChange={(v) => patch({ dueDate: v })} disabled={!editable} triggerClassName={FIELD_ROW} />
+          </RailSection>
 
-          </RailCard>
-
-          <RailCard
-            title="Labels"
+          <RailSection
+            title="labels"
             action={
               editable ? (
                 <Popover
                   align="end"
                   buttonTitle="Add label"
-                  buttonClassName="flex size-5 items-center justify-center rounded-full border border-dashed border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                  button={<Tag className="size-3" />}
-                  panelClassName="rounded-lg border border-border bg-popover p-1 shadow-2xl"
+                  buttonClassName={`${ICON_BUTTON} size-6`}
+                  button={<Plus className="size-3.5" />}
+                  panelClassName={MENU_PANEL}
                 >
                   {() => {
                     const appliedIds = new Set(live?.labels.map((x) => x.id) ?? []);
@@ -956,19 +985,20 @@ export function IssueDetail({
               ) : undefined
             }
           >
-            <div className="flex flex-wrap items-center gap-1.5 px-1.5">
+            <div className="flex flex-wrap items-center gap-1.5 px-2 pb-1">
               {live?.labels.map((l) => (
-                <span key={l.id} className="flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-xs text-foreground">
+                <span key={l.id} className="flex items-center gap-1.5 rounded-full border border-border px-2 py-0.5 text-[12px] text-foreground">
                   <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
                   {l.name}
                 </span>
               ))}
-              {(!live || live.labels.length === 0) && <span className="text-xs text-muted-foreground">None</span>}
+              {(!live || live.labels.length === 0) && <span className="text-[13px] text-muted-foreground">No labels</span>}
             </div>
-          </RailCard>
+          </RailSection>
 
-          <RailCard title="Project">
+          <RailSection title="project">
             <Field
+              title="Project"
               icon={<Box className="size-3.5 text-muted-foreground" />}
               label={projectName ?? "No project"}
               disabled={!editable}
@@ -981,21 +1011,21 @@ export function IssueDetail({
                 </>
               )}
             />
-          </RailCard>
+          </RailSection>
 
           {live && live.relations.length > 0 && (
-            <RailCard title="Relations">
-              <div className="flex flex-col gap-3 px-1.5 pb-1">
+            <RailSection title="relations">
+              <div className="flex flex-col gap-2 pb-1">
                 {groupRelations(live.relations).map(([type, items]) => (
-                  <div key={type} className="flex flex-col gap-0.5">
-                    <span className="px-0.5 text-xs text-muted-foreground">{relationGroupLabel(type)}</span>
+                  <div key={type} className="flex flex-col">
+                    <span className="px-2 pb-0.5 text-[12px] font-medium text-muted-foreground">{relationGroupLabel(type).toLowerCase()}</span>
                     {items.map((relation, index) => (
                       <button
                         key={`${relation.issue.id}-${index}`}
                         type="button"
                         onClick={() => openIssue(relation.issue.id)}
                         title={`${relation.issue.identifier} ${relation.issue.title}`}
-                        className="flex w-full min-w-0 items-center gap-2 rounded-md px-0.5 py-1 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className={FIELD_ROW}
                       >
                         <span className="flex size-3.5 shrink-0 items-center justify-center">
                           {relation.issue.stateType ? (
@@ -1004,14 +1034,15 @@ export function IssueDetail({
                             <Link2 className="size-3.5 text-muted-foreground" />
                           )}
                         </span>
+                        <span className="shrink-0 font-mono text-xs text-muted-foreground">{relation.issue.identifier}</span>
                         <span className="truncate">{relation.issue.title}</span>
                       </button>
                     ))}
                   </div>
                 ))}
-                {live.hasMoreRelations && <p className="px-0.5 pt-1 text-xs text-muted-foreground">Showing the first 50 relations.</p>}
+                {live.hasMoreRelations && <p className="px-2 pt-1 text-[12px] text-muted-foreground">Showing the first 50 relations.</p>}
               </div>
-            </RailCard>
+            </RailSection>
           )}
 
         </aside>
@@ -1051,7 +1082,7 @@ function ResourceModal({
   };
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-6"
       data-drawer-resource-modal
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) onClose();
@@ -1064,26 +1095,27 @@ function ResourceModal({
         }
       }}
     >
-      <section role="dialog" aria-modal="true" aria-labelledby="resource-modal-title" className="drawer-scrollbar flex max-h-[84vh] w-[min(760px,92vw)] flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
-        <header className="flex items-start gap-3 border-b border-border px-5 py-4">
+      <section role="dialog" aria-modal="true" aria-labelledby="resource-modal-title" className="issues-overlay drawer-scrollbar flex max-h-[84vh] w-[min(760px,92vw)] flex-col overflow-hidden rounded-lg border border-border bg-popover">
+        <header className="flex items-start gap-3 border-b border-border px-5 py-3.5">
           <div className="min-w-0 flex-1">
-            <h2 id="resource-modal-title" className="truncate text-base font-semibold text-foreground">{attachment.title}</h2>
-            <p className="mt-0.5 truncate text-sm text-muted-foreground">{attachment.subtitle ?? attachment.sourceType ?? "Resource"}</p>
+            <h2 id="resource-modal-title" className="truncate text-[15px] font-semibold tracking-tight text-foreground">{attachment.title}</h2>
+            <p className="mt-0.5 truncate text-[13px] text-muted-foreground">{attachment.subtitle ?? attachment.sourceType ?? "Resource"}</p>
           </div>
           <IconBtn title="Open original" onClick={openOriginal}><ExternalLink className="size-4" /></IconBtn>
-          <button ref={closeRef} type="button" aria-label="Close resource" onClick={onClose} className="flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <button ref={closeRef} type="button" aria-label="Close resource" title="Close" onClick={onClose} className={ICON_BUTTON}>
             <X className="size-4" />
           </button>
         </header>
         <div className="drawer-scrollbar min-h-0 overflow-y-auto px-6 py-5">
           {attachment.body ? (
-            <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+            <div className="astryn-prose max-w-none">
               <ReactMarkdown remarkPlugins={[remarkGfm, userMentionPlugin]} components={markdownComponents} urlTransform={mentionAwareUrlTransform}>{attachment.body}</ReactMarkdown>
             </div>
           ) : (
-            <div className="flex min-h-40 flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm text-muted-foreground">This resource does not include expandable content.</p>
-              <button type="button" onClick={openOriginal} className="rounded-lg border border-border bg-secondary px-3 py-2 text-sm font-medium text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Open original</button>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
+              <IndicatorLamp tone="off" />
+              <p className="min-w-0 flex-1 text-[13px] text-muted-foreground">This resource does not include expandable content.</p>
+              <Button type="button" variant="outline" onClick={openOriginal}>Open original</Button>
             </div>
           )}
         </div>
@@ -1092,54 +1124,67 @@ function ResourceModal({
   );
 }
 
-function DrawerSection({ title, meta, className = "", children }: { title: string; meta?: string; className?: string; children: ReactNode }) {
+/** A main-column zone: a hairline above, a 13px title with its reading, and an optional action. */
+function DrawerSection({ title, meta, aside, children }: { title: string; meta?: string; aside?: ReactNode; children: ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <section className={`mt-8 ${className}`}>
-      <button
-        type="button"
-        onClick={() => setOpen((value) => !value)}
-        aria-expanded={open}
-        className="mb-3 flex min-h-8 items-center gap-2 rounded-md text-sm font-semibold text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
-        {title}
-        {meta && <span className="font-normal tabular-nums text-muted-foreground">{meta}</span>}
-      </button>
+    <section className="mt-8 border-t border-border pt-3">
+      <div className="mb-2 flex min-h-8 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-expanded={open}
+          className="dash-control -ml-1.5 flex items-center gap-1.5 rounded-md px-1.5 py-1 text-[13px] font-semibold tracking-tight text-foreground transition-colors hover:bg-accent"
+        >
+          {title}
+          {meta && <span className="font-normal tabular-nums text-muted-foreground">{meta}</span>}
+          <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${open ? "" : "-rotate-90"}`} />
+        </button>
+        {aside && <div className="ml-auto flex items-center">{aside}</div>}
+      </div>
       {open && children}
     </section>
   );
 }
 
+/** Square icon button for headers and row actions. */
+const ICON_BUTTON =
+  "dash-control flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground";
+
 function IconBtn({ title, onClick, children }: { title: string; onClick: () => void; children: ReactNode }) {
   return (
-    <button type="button" title={title} onClick={onClick} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+    <button type="button" title={title} aria-label={title} onClick={onClick} className={ICON_BUTTON}>
       {children}
     </button>
   );
 }
 
-/** A collapsible card grouping rail properties (Properties / Labels / etc.). */
-function RailCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+/** A rail zone: a lowercase legend that collapses it, an optional action, then its rows. A hairline separates zones. */
+function RailSection({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   const [open, setOpen] = useState(true);
   return (
-    <div className="rounded-xl border border-border bg-card">
-      <div className="flex items-center px-3 py-2">
-        <button type="button" onClick={() => setOpen((o) => !o)} className="flex flex-1 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+    <section className="border-b border-border px-2 pt-2 pb-2.5">
+      <div className="flex min-h-7 items-center gap-1 px-1">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+          className="dash-control flex flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-left text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
           {title}
           <ChevronDown className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>
-        {action && <span onClick={(e) => e.stopPropagation()}>{action}</span>}
+        {action}
       </div>
-      {open && <div className="px-1.5 pb-2">{children}</div>}
-    </div>
+      {open && <div className="mt-0.5">{children}</div>}
+    </section>
   );
 }
 
 /** A clickable property row that opens a portal dropdown (read-only when disabled). */
-function Field({ icon, label, menu, disabled }: { icon: ReactNode; label: ReactNode; menu: (close: () => void) => ReactNode; disabled?: boolean }) {
+function Field({ title, icon, label, menu, disabled }: { title: string; icon: ReactNode; label: ReactNode; menu: (close: () => void) => ReactNode; disabled?: boolean }) {
   // Fixed-width, centered icon slot so every row's label starts at the same x
-  // regardless of the leading icon's intrinsic size (e.g. the 10px priority dot
+  // regardless of the leading icon's intrinsic size (e.g. the priority bars
   // vs the 14px status icon) — keeps the rail's labels in one clean column.
   const content = (
     <>
@@ -1148,12 +1193,14 @@ function Field({ icon, label, menu, disabled }: { icon: ReactNode; label: ReactN
     </>
   );
   if (disabled) {
-    return <div className="flex min-w-0 items-center gap-2 px-1.5 py-1.5 text-sm text-foreground">{content}</div>;
+    return <div title={title} className="flex min-w-0 items-center gap-2 px-2 py-1.5 text-[13px] text-foreground">{content}</div>;
   }
   return (
     <Popover
       align="end"
-      buttonClassName="flex w-full min-w-0 items-center gap-2 rounded-md px-1.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent"
+      buttonTitle={title}
+      buttonClassName={FIELD_ROW}
+      panelClassName={`max-h-[18rem] w-60 overflow-y-auto ${MENU_PANEL}`}
       button={<span className="flex min-w-0 items-center gap-2">{content}</span>}
     >
       {menu}

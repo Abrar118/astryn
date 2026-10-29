@@ -1,9 +1,9 @@
 import { useSearchParams } from "react-router-dom";
-import { Network } from "lucide-react";
 import { useTaskRelations, useTasks, useViewer } from "../../lib/taskQueries";
 import { weekWindow } from "../../lib/dates";
 import { buildAgenda, dueIssues } from "./agenda";
 import { DependencyGraph } from "./DependencyGraph";
+import { LampMessage } from "./LampMessage";
 
 /**
  * Standalone page hosting the task-dependency graph for the viewer's current
@@ -17,41 +17,40 @@ export function DependencyGraphPage() {
   const [, setParams] = useSearchParams();
 
   const open = (id: string) => setParams({ issue: id });
-
-  if (issuesLoading || relsLoading || viewer.isLoading) {
-    return (
-      <div className="p-4">
-        <div className="h-72 animate-pulse rounded-lg bg-muted/40" />
-      </div>
-    );
-  }
+  const loading = issuesLoading || relsLoading || viewer.isLoading;
 
   const { viewerIds } = viewer;
   const win = weekWindow(new Date(), 0);
-  const groups = viewerIds.length > 0
+  const groups = !loading && viewerIds.length > 0
     ? buildAgenda({ issues: issues ?? [], viewerIds, window: win })
     : [];
   const rootIds = groups.flatMap((g) => dueIssues(g).map((i) => i.id));
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <header className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
-        <Network className="size-4 shrink-0 text-muted-foreground" />
-        <div className="flex flex-col min-w-0">
-          <span className="text-sm font-semibold leading-tight">Dependencies</span>
-          <span className="text-[11px] text-muted-foreground leading-tight">
-            This week's issues — expand a node to explore its neighbors
-          </span>
-        </div>
+    <main className="flex h-full flex-col overflow-hidden">
+      <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 px-4 pt-5 pb-3">
+        <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Dependencies</h1>
+        <p className="text-[13px] text-muted-foreground">
+          This week's issues · expand a node to explore its neighbors
+        </p>
       </header>
-      <div className="min-h-0 flex-1 p-4">
-        <DependencyGraph
-          rootIds={rootIds}
-          issues={issues ?? []}
-          relations={relations ?? []}
-          onOpen={open}
+      {loading ? (
+        <LampMessage
+          tone="off"
+          title="Reading cached tasks…"
+          body="The graph appears as soon as tasks and their relations are read."
+          className="border-t border-border"
         />
-      </div>
-    </div>
+      ) : (
+        <div className="min-h-0 flex-1">
+          <DependencyGraph
+            rootIds={rootIds}
+            issues={issues ?? []}
+            relations={relations ?? []}
+            onOpen={open}
+          />
+        </div>
+      )}
+    </main>
   );
 }

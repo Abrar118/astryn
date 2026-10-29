@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Copy,
   ExternalLink,
+  Link2,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -27,6 +28,8 @@ import { useTasks } from "@/lib/taskQueries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
 import { syncIssues, type IssueListItem } from "@/lib/commands";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
+import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { CreateIssueModal } from "./CreateIssueModal";
 import { shouldOpenCreateShortcut } from "./shortcuts";
 
@@ -328,10 +331,13 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 pt-[12vh]" onMouseDown={onClose}>
       <div
-        className="flex w-[min(640px,92vw)] flex-col overflow-hidden rounded-xl border border-border bg-popover shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="issues-overlay flex w-[min(640px,92vw)] flex-col overflow-hidden rounded-lg border border-border bg-popover"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2.5 border-b border-border px-4 py-3">
+        <div className="flex items-center gap-3 border-b border-border px-4 py-3">
           {target === "rightSplit" ? (
             <button
               type="button"
@@ -340,7 +346,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
                 setTarget("drawer");
                 setQ("");
               }}
-              className="shrink-0 cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              className="dash-control -m-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <ArrowLeft className="size-4" />
             </button>
@@ -352,14 +358,18 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
             value={q}
             onChange={(e) => setQ(e.target.value)}
             onKeyDown={onKey}
+            aria-label={target === "rightSplit" ? "Pick an issue to open in the right split" : "Command or issue"}
             placeholder={target === "rightSplit" ? "Open in right split — pick an issue…" : "Type a command or search…"}
-            className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="w-full bg-transparent text-[15px] text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
 
-        <div ref={listRef} className="max-h-[52vh] overflow-y-auto p-1.5">
+        <div ref={listRef} className="drawer-scrollbar max-h-[52vh] overflow-y-auto p-1.5">
           {items.length === 0 && (
-            <div className="px-3 py-6 text-center text-sm text-muted-foreground">No results</div>
+            <div className="flex items-center gap-3 px-2.5 py-4 text-[13px] text-muted-foreground">
+              <IndicatorLamp tone="off" />
+              No results
+            </div>
           )}
           {items.map((it, idx) => {
             const section = it.kind === "cmd" ? it.cmd.section : "Issues";
@@ -369,7 +379,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
             return (
               <div key={it.kind === "cmd" ? `c-${it.cmd.key}` : `i-${it.issue.id}`}>
                 {heading && (
-                  <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="px-2.5 pb-1 pt-2.5 text-[12px] font-medium lowercase text-muted-foreground">
                     {heading}
                   </div>
                 )}
@@ -383,10 +393,11 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
                       selected ? "bg-accent" : ""
                     }`}
                   >
+                    <SelectionLamp on={selected} />
                     <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">{it.cmd.icon}</span>
                     <span className="flex-1 truncate">{it.cmd.label}</span>
                     {it.cmd.hint && (
-                      <kbd className="rounded border border-border bg-secondary/60 px-1.5 py-0.5 text-[10px] text-muted-foreground">{it.cmd.hint}</kbd>
+                      <kbd className="font-sans text-[12px] tabular-nums text-muted-foreground">{it.cmd.hint}</kbd>
                     )}
                   </button>
                 ) : (
@@ -396,9 +407,21 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
             );
           })}
         </div>
+
+        {/* Keyboard legend, read like the lowercase legends on the faceplate */}
+        <div aria-hidden className="flex items-center gap-4 border-t border-border px-4 py-2 text-[12px] text-muted-foreground">
+          <span><kbd className="font-sans text-foreground">↑↓</kbd> move</span>
+          <span><kbd className="font-sans text-foreground">↵</kbd> open</span>
+          <span><kbd className="font-sans text-foreground">esc</kbd> {target === "rightSplit" ? "back" : "close"}</span>
+        </div>
       </div>
     </div>
   );
+}
+
+/** The selected row's indicator: a lit lamp in the signal key; unselected rows keep the slot dark. */
+function SelectionLamp({ on }: { on: boolean }) {
+  return <span aria-hidden className={`dash-lamp ${on ? "dash-lamp-lit bg-primary" : ""}`} />;
 }
 
 function IssueRow({
@@ -418,19 +441,22 @@ function IssueRow({
     <div
       data-idx={idx}
       onMouseMove={() => onSelect(idx)}
-      className={`group flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] ${selected ? "bg-accent" : ""}`}
+      className={`group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] ${selected ? "bg-accent" : ""}`}
     >
-      <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: issue.stateColor }} />
-      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left">
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{issue.identifier}</span>
+      <SelectionLamp on={selected} />
+      <span className="flex size-4 shrink-0 items-center justify-center">
+        <StatusIcon type={issue.stateType} color={issue.stateColor} />
+      </span>
+      <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5 py-0.5 text-left">
+        <span className="w-[4.5rem] shrink-0 font-mono text-xs text-muted-foreground">{issue.identifier}</span>
         <span className="truncate text-foreground">{issue.title}</span>
       </button>
-      <div className={`flex shrink-0 items-center gap-0.5 ${selected ? "" : "opacity-0 group-hover:opacity-100"}`}>
+      <div className={`flex shrink-0 items-center gap-0.5 ${selected ? "" : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100"}`}>
         <IconBtn title="Copy ID" onClick={() => copyText(issue.identifier, "ID")}>
           <Copy className="size-3.5" />
         </IconBtn>
         <IconBtn title="Copy link" onClick={() => copyText(issue.url, "Link")}>
-          <Copy className="size-3.5 opacity-60" />
+          <Link2 className="size-3.5" />
         </IconBtn>
         <IconBtn title="Open in Linear" onClick={() => openUrl(issue.url).catch(() => gooeyToast.error("Couldn't open the link"))}>
           <ExternalLink className="size-3.5" />
@@ -445,8 +471,9 @@ function IconBtn({ title, onClick, children }: { title: string; onClick: () => v
     <button
       type="button"
       title={title}
+      aria-label={title}
       onClick={onClick}
-      className="rounded p-1 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+      className="dash-control flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-popover hover:text-foreground"
     >
       {children}
     </button>

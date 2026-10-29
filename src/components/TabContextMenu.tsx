@@ -57,7 +57,7 @@ export function TabContextMenu({
     <div
       data-command-shortcut-blocker
       onClick={(e) => e.stopPropagation()}
-      className="fixed z-50 w-44 rounded-lg border border-border bg-popover p-1 text-foreground shadow-2xl"
+      className="fixed z-50 w-44 rounded-lg border border-border bg-popover p-1 text-foreground shadow-[0_4px_16px_var(--overlay-shadow)]"
       style={{ left, top }}
     >
       {!isSplit && (

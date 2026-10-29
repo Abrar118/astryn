@@ -1,3 +1,7 @@
+import { useConnectionStatus } from "@/lib/queries";
+import { useWorkspace } from "@/lib/tabs";
+import { requestSettingsSection } from "@/features/settings/settingsSection";
+import { SetupState } from "@/components/SetupState";
 import {
   useEffect,
   useMemo,
@@ -67,8 +71,13 @@ import {
   PRIORITY_ORDER,
   STATE_RANK,
 } from "./IssueRow";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { StatusIcon } from "../drawer/issueGlyphs";
-import { DisplayOptions, miniSelect } from "./DisplayOptions";
+import { DisplayOptions, LampToggle, OptionRow, miniSelect } from "./DisplayOptions";
+
+/** Toolbar filter controls: a quiet outline control on the faceplate. */
+const TOOL_CONTROL =
+  "dash-control flex h-7 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 text-[12px] text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60 dark:bg-input/30";
 
 function loadConfig(): ViewConfig {
   return parseViewConfig(localStorage.getItem(VIEW_KEY));
@@ -157,7 +166,7 @@ function BoardCardView({
   return (
     <>
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="font-mono text-[11px] text-muted-foreground">{display.id ? issue.identifier : ""}</span>
+        <span className="font-mono text-xs text-muted-foreground">{display.id ? issue.identifier : ""}</span>
         {display.assignee &&
           (avatar ? (
             <Avatar name={avatar.name} src={avatar.avatarUrl} size={18} />
@@ -210,20 +219,20 @@ function BoardCardView({
           </Pill>
         )}
         {display.dueDate && issue.dueDate && (
-          <Pill className={overdue ? "border-destructive/40 text-destructive" : ""}>
-            <CalendarDays className="size-3" />
+          <Pill className={overdue ? "text-destructive" : ""}>
+            {overdue ? <IndicatorLamp tone="danger" className="mx-0.5 size-1.5" /> : <CalendarDays className="size-3" />}
             {dueLabel(issue.dueDate, today)}
           </Pill>
         )}
       </div>
       {display.created && (
-        <div className="mt-2 text-[11px] text-muted-foreground">Created {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}</div>
+        <div className="mt-2 text-[12px] tabular-nums text-muted-foreground">Created {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}</div>
       )}
     </>
   );
 }
 
-const CARD_CLASS = "rounded-lg border border-border bg-card p-3 transition-colors hover:border-foreground/25";
+const CARD_CLASS = "rounded-lg border border-border bg-card p-3 transition-colors hover:bg-accent";
 
 /** A draggable board card (@dnd-kit). Disabled groupings render it click-only. */
 function BoardCard({
@@ -267,14 +276,14 @@ function BoardColumn({ group, children }: { group: Group; children: ReactNode })
   return (
     <div
       ref={setNodeRef}
-      className={`flex w-80 shrink-0 flex-col border-r border-border/50 transition-colors last:border-r-0 ${
-        isOver ? "bg-accent/25" : ""
+      className={`flex w-80 shrink-0 flex-col border-r border-border transition-colors last:border-r-0 ${
+        isOver ? "bg-accent/40" : ""
       }`}
     >
-      <div className="flex items-center gap-2 px-2.5 py-2.5 text-xs font-semibold text-foreground">
+      <div className="flex items-center gap-2 px-3 py-3 text-[13px] font-semibold text-foreground">
         <GroupHeading group={group} />
       </div>
-      <div className="flex flex-col gap-2.5 overflow-y-auto px-2.5 pb-20">{children}</div>
+      <div className="drawer-scrollbar flex flex-col gap-2 overflow-y-auto px-2.5 pb-28">{children}</div>
     </div>
   );
 }
@@ -285,10 +294,10 @@ function GroupHeading({ group }: { group: Group }) {
       {group.type ? (
         <StatusIcon type={group.type} color={group.color || "var(--muted-foreground)"} />
       ) : group.color ? (
-        <span className="size-2.5 rounded-full" style={{ backgroundColor: group.color }} />
+        <span className="size-2 rounded-full" style={{ backgroundColor: group.color }} />
       ) : null}
-      <span>{group.label}</span>
-      <span className="rounded bg-secondary/60 px-1.5 text-[11px] text-muted-foreground">{group.issues.length}</span>
+      <span className="truncate">{group.label}</span>
+      <span className="font-normal tabular-nums text-muted-foreground">{group.issues.length}</span>
     </>
   );
 }
@@ -297,9 +306,11 @@ function GroupHeading({ group }: { group: Group }) {
 
 function Popover({
   trigger,
+  buttonClassName,
   children,
 }: {
   trigger: (open: boolean) => ReactNode;
+  buttonClassName: string;
   children: (close: () => void) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -319,11 +330,11 @@ function Popover({
   }, [open]);
   return (
     <div className="relative" ref={ref}>
-      <button type="button" onClick={() => setOpen((o) => !o)} className="cursor-pointer">
+      <button type="button" aria-expanded={open} onClick={() => setOpen((o) => !o)} className={buttonClassName}>
         {trigger(open)}
       </button>
       {open && (
-        <div className="absolute right-0 z-30 mt-1 w-72 rounded-lg border border-border bg-popover p-3 shadow-2xl">
+        <div className="issues-overlay absolute right-0 z-30 mt-1 w-72 rounded-lg border border-border bg-popover p-3">
           {children(() => setOpen(false))}
         </div>
       )}
@@ -331,26 +342,11 @@ function Popover({
   );
 }
 
-function ToggleRow({ label, on, onClick }: { label: string; on: boolean; onClick: () => void }) {
-  return (
-    <div className="flex items-center justify-between">
-      <span className="text-muted-foreground">{label}</span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={on}
-        onClick={onClick}
-        className={`relative h-4 w-7 cursor-pointer rounded-full transition-colors ${on ? "bg-primary" : "bg-secondary"}`}
-      >
-        <span className={`absolute top-0.5 size-3 rounded-full transition-transform ${on ? "translate-x-3.5 bg-primary-foreground" : "translate-x-0.5 bg-foreground"}`} />
-      </button>
-    </div>
-  );
-}
-
 // ── View ─────────────────────────────────────────────────────────────────────
 
 export function IssuesView() {
+  const linearStatus = useConnectionStatus();
+  const { setActiveView } = useWorkspace();
   const today = dhakaToday();
   const me = useMe();
   const { data: issues } = useIssues({});
@@ -482,15 +478,31 @@ export function IssuesView() {
     setDisplay(DEFAULT_DISPLAY);
   };
 
-  const sel =
-    "cursor-pointer appearance-none rounded-md border border-border bg-secondary/40 py-1.5 pl-2.5 pr-7 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  const sel = `${TOOL_CONTROL} appearance-none pr-7`;
+
+  if (linearStatus.data?.state === "not_configured") {
+    return (
+      <SetupState
+        title="Issues"
+        message="Connect Linear to list your workspace's issues here."
+        action="Connect Linear"
+        onAction={() => {
+          requestSettingsSection("linear");
+          setActiveView("settings");
+        }}
+      />
+    );
+  }
 
   return (
-    <div className="flex h-full flex-col gap-3 p-4 pb-4">
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-2 text-sm font-semibold text-foreground">
-          Issues <span className="text-muted-foreground">{visible.length}</span>
+    <div className="flex h-full flex-col bg-background">
+      {/* Header: the page heading with its count as a reading, then the filters */}
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 border-b border-border px-4 pt-4 pb-3">
+        <h1 className="mr-3 flex items-baseline gap-2 text-[20px] font-semibold tracking-tight text-foreground">
+          Issues
+          <span className="dash-numeral text-[20px] text-muted-foreground" aria-label={`${visible.length} shown`}>
+            {visible.length}
+          </span>
         </h1>
         <AssigneeSelect
           value={filters.assigneeId ?? null}
@@ -498,9 +510,11 @@ export function IssuesView() {
           users={users ?? []}
           meId={me.data?.viewerId}
           emptyLabel="All assignees"
+          triggerClassName={TOOL_CONTROL}
         />
         <div className="relative">
           <select
+            aria-label="Team"
             className={sel}
             value={filters.teamId ?? "__all"}
             onChange={(e) => setFilters((f) => ({ ...f, teamId: e.target.value === "__all" ? undefined : e.target.value }))}
@@ -514,6 +528,7 @@ export function IssuesView() {
         </div>
         <div className="relative">
           <select
+            aria-label="Project"
             className={sel}
             value={filters.projectId ?? "__all"}
             onChange={(e) => setFilters((f) => ({ ...f, projectId: e.target.value === "__all" ? undefined : e.target.value }))}
@@ -528,16 +543,17 @@ export function IssuesView() {
 
         <div className="ml-auto">
           <Popover
+            buttonClassName={TOOL_CONTROL}
             trigger={() => (
-              <span className="flex items-center gap-1.5 rounded-md border border-border bg-secondary/40 px-2.5 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent">
-                <SlidersHorizontal className="size-3.5" /> Display
-              </span>
+              <>
+                <SlidersHorizontal className="size-3.5 text-muted-foreground" /> Display
+              </>
             )}
           >
             {() => (
-              <div className="flex flex-col gap-3 text-xs">
-                {/* List / Board */}
-                <div className="inline-flex rounded-md border border-border p-0.5">
+              <div className="flex flex-col gap-3 text-[12px]">
+                {/* List / Board: a two-position selector, the active side on the faceplate */}
+                <div role="group" aria-label="Layout" className="grid grid-cols-2 gap-0.5 rounded-md bg-sidebar p-0.5">
                   {([
                     ["list", ListIcon, "List"],
                     ["board", LayoutGrid, "Board"],
@@ -545,9 +561,10 @@ export function IssuesView() {
                     <button
                       key={mode}
                       type="button"
+                      aria-pressed={viewMode === mode}
                       onClick={() => setViewMode(mode)}
-                      className={`flex flex-1 items-center justify-center gap-1.5 rounded-[5px] px-2 py-1 font-medium transition-colors ${
-                        viewMode === mode ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
+                      className={`dash-control flex items-center justify-center gap-1.5 rounded-[6px] px-2 py-1 transition-colors ${
+                        viewMode === mode ? "bg-popover text-foreground" : "text-muted-foreground hover:text-foreground"
                       }`}
                     >
                       <Icon className="size-3.5" /> {label}
@@ -555,17 +572,21 @@ export function IssuesView() {
                   ))}
                 </div>
 
-                <div className="flex flex-col gap-2 border-t border-border/60 pt-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-muted-foreground">{viewMode === "board" ? "Columns" : "Grouping"}</span>
-                    <select className={miniSelect} value={groupBy} onChange={(e) => setGroupBy(e.target.value as GroupBy)}>
+                <div className="flex flex-col gap-2 border-t border-border pt-3">
+                  <OptionRow label={viewMode === "board" ? "columns" : "grouping"}>
+                    <select
+                      aria-label={viewMode === "board" ? "Columns" : "Grouping"}
+                      className={miniSelect}
+                      value={groupBy}
+                      onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                    >
                       <option value="status">Status</option>
                       <option value="assignee">Assignee</option>
                       <option value="priority">Priority</option>
                       <option value="project">Project</option>
                       <option value="none">None</option>
                     </select>
-                  </div>
+                  </OptionRow>
                   <DisplayOptions
                     ordering={ordering}
                     onOrdering={setOrdering}
@@ -574,14 +595,14 @@ export function IssuesView() {
                     display={display}
                     onToggleDisplay={(k) => setDisplay((d) => ({ ...d, [k]: !d[k] }))}
                   />
-                  <ToggleRow label="Show sub-issues" on={showSubIssues} onClick={() => setShowSubIssues((v) => !v)} />
+                  <LampToggle className="-mx-1.5" label="show sub-issues" on={showSubIssues} onClick={() => setShowSubIssues((v) => !v)} />
                 </div>
 
-                <div className="flex justify-end border-t border-border/60 pt-2.5">
+                <div className="flex justify-end border-t border-border pt-2.5">
                   <button
                     type="button"
                     onClick={reset}
-                    className="flex cursor-pointer items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+                    className="dash-control flex items-center gap-1 rounded-md px-1.5 py-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <RotateCcw className="size-3" /> Reset
                   </button>
@@ -592,22 +613,27 @@ export function IssuesView() {
         </div>
       </div>
 
-      {/* Content */}
-      <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+      {/* Content: rows straight on the faceplate, divided by hairlines */}
+      <div className="min-h-0 flex-1 overflow-hidden">
         {visible.length === 0 ? (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            No issues. Sync to populate, or relax the filters.
+          <div className="flex items-start gap-3 px-4 py-6">
+            <IndicatorLamp tone="off" className="mt-1.5" />
+            <div>
+              <p className="text-[13px] font-medium text-foreground">No issues</p>
+              <p className="mt-0.5 text-[13px] text-muted-foreground">Sync to populate, or relax the filters.</p>
+            </div>
           </div>
         ) : viewMode === "list" ? (
           // Vertical scroll only; each IssueRow scrolls horizontally on its own
           // (so a narrow split pane never shifts the whole list / clips the left).
-          <div className="h-full overflow-y-auto pb-20">
+          <div className="drawer-scrollbar h-full overflow-y-auto pb-28">
             {groups.map((g) => (
               <div key={g.key}>
                 <button
                   type="button"
+                  aria-expanded={!collapsed[g.key]}
                   onClick={() => setCollapsed((c) => ({ ...c, [g.key]: !c[g.key] }))}
-                  className="sticky top-0 z-10 flex w-full cursor-pointer items-center gap-2 border-b border-border/60 bg-card px-4 py-2 text-xs font-semibold text-foreground"
+                  className="issues-group dash-control sticky top-0 z-10 flex w-full items-center gap-2 border-b border-border bg-card px-4 py-2 text-[13px] font-semibold text-foreground"
                 >
                   <ChevronDown className={`size-3.5 text-muted-foreground transition-transform ${collapsed[g.key] ? "-rotate-90" : ""}`} />
                   <GroupHeading group={g} />
@@ -628,8 +654,8 @@ export function IssuesView() {
             ))}
           </div>
         ) : (
-          // Darker board surface so the (bg-card) cards pop; columns separated by
-          // a single hairline divider rather than a heavy gap.
+          // Cards sit one lightness step above the faceplate; columns are
+          // separated by a single hairline rather than a gap.
           <DndContext
             sensors={sensors}
             collisionDetection={closestCorners}
@@ -637,7 +663,7 @@ export function IssuesView() {
             onDragEnd={onBoardDragEnd}
             onDragCancel={() => setActiveCardId(null)}
           >
-            <div className="flex h-full overflow-x-auto bg-background">
+            <div className="drawer-scrollbar flex h-full overflow-x-auto bg-background">
               {groups.map((g) => (
                 <BoardColumn key={g.key} group={g}>
                   {g.issues.map((i) => (
@@ -657,7 +683,7 @@ export function IssuesView() {
             </div>
             <DragOverlay dropAnimation={null}>
               {activeCard ? (
-                <div className={`${CARD_CLASS} w-72 cursor-grabbing shadow-2xl`}>
+                <div className={`${CARD_CLASS} issues-overlay w-72 cursor-grabbing`}>
                   <BoardCardView issue={activeCard} display={display} avatar={avatarOf(activeCard.assigneeId)} today={today} />
                 </div>
               ) : null}

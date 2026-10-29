@@ -1,4 +1,3 @@
-import { MessageSquare } from "lucide-react";
 import { useWorkspace } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { useSlackCatchup, useSlackStatus, useSlackSync } from "@/lib/queries";
@@ -16,12 +15,12 @@ export function SlackPage() {
     <CatchupBoard
       provider={slackProvider}
       notConfigured={status?.state === "not_configured"}
-      icon={MessageSquare}
       connectText="Link your Slack workspace to catch up on what you missed."
       onConnect={() => {
         requestSettingsSection("slack");
         setActiveView("settings");
       }}
+      state={status?.state}
       subtitle={status?.state === "connected" ? status.workspaceName : null}
       catchup={catchup}
       sync={sync}

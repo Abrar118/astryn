@@ -11,6 +11,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import type { GithubPr } from "@/lib/commands";
 import { useCodeHost } from "./codeHost";
 import {
@@ -103,8 +104,8 @@ export function PrSidebar({
   };
 
   return (
-    <aside className="relative flex w-14 shrink-0 flex-col border-r border-border/60 bg-card/35 px-1.5 py-3 lg:w-52 lg:px-2.5">
-      <nav aria-label="Pull request queues" className="space-y-1">
+    <aside className="relative flex w-14 shrink-0 flex-col border-r border-sidebar-border bg-sidebar px-1.5 py-3 lg:w-52 lg:px-2">
+      <nav aria-label="Pull request queues" className="space-y-0.5">
         {primaryItems.map(({ scope, label, Icon }) => {
           const active = activeScope === scope;
           return (
@@ -115,17 +116,17 @@ export function PrSidebar({
               aria-current={active ? "page" : undefined}
               title={label}
               onClick={() => onSelect(scope)}
-              className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors ${
+              className={`dash-control flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors ${
                 active
-                  ? "bg-primary/12 text-foreground"
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  ? "bg-card text-foreground"
+                  : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
               }`}
             >
-              <Icon className={`size-4 shrink-0 ${active ? "text-primary" : ""}`} />
+              <Icon aria-hidden className={`size-4 shrink-0 ${active ? "text-primary" : ""}`} />
               <span className="hidden min-w-0 flex-1 truncate text-left lg:block">
                 {label}
               </span>
-              <span className="hidden min-w-5 rounded-md bg-background/60 px-1 text-center text-[11px] tabular-nums text-muted-foreground lg:block">
+              <span className="hidden text-[12px] tabular-nums text-muted-foreground lg:block">
                 {scopePrs(prs, scope).length}
               </span>
             </button>
@@ -133,9 +134,9 @@ export function PrSidebar({
         })}
       </nav>
 
-      <div className="mt-5 flex items-center justify-center px-1 lg:justify-between">
-        <span className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:block">
-          Favorite repositories
+      <div className="mt-5 flex items-center justify-center lg:justify-between lg:pl-2.5">
+        <span className="hidden text-[12px] font-medium text-muted-foreground lg:block">
+          favorite repositories
         </span>
         <button
           ref={pickerTriggerRef}
@@ -149,9 +150,9 @@ export function PrSidebar({
               return !open;
             })
           }
-          className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+          className="dash-control flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
-          <Plus className="size-3.5" />
+          <Plus aria-hidden className="size-3.5" />
         </button>
       </div>
 
@@ -160,7 +161,7 @@ export function PrSidebar({
           ref={pickerRef}
           role="dialog"
           aria-label="Favorite repository search"
-          className="absolute left-12 top-40 z-40 w-64 rounded-xl border border-border bg-popover p-2 shadow-xl lg:left-3 lg:top-40"
+          className="absolute left-12 top-40 z-40 w-64 rounded-lg border border-border bg-popover p-1.5 shadow-[0_4px_16px_var(--overlay-shadow)] lg:left-2 lg:top-40"
         >
           <div className="relative">
             <Search className="pointer-events-none absolute left-2.5 top-2 size-3.5 text-muted-foreground" />
@@ -179,7 +180,7 @@ export function PrSidebar({
             {repositoryQuery.isLoading && (
               <div
                 role="status"
-                className="flex items-center gap-2 px-2 py-2 text-xs text-muted-foreground"
+                className="flex items-center gap-2 px-2 py-2 text-[12px] text-muted-foreground"
               >
                 <LoaderCircle className="size-3.5 animate-spin" />
                 Loading repositories…
@@ -188,8 +189,9 @@ export function PrSidebar({
             {repositoryQuery.isError && (
               <div
                 role="alert"
-                className="flex items-center gap-2 border-b border-border/60 px-2 py-2 text-xs text-warning"
+                className="flex items-center gap-2 border-b border-border px-2 py-2 text-[12px] text-foreground"
               >
+                <IndicatorLamp tone="warning" />
                 <span className="min-w-0 flex-1">
                   Couldn't load all repositories.
                 </span>
@@ -197,19 +199,19 @@ export function PrSidebar({
                   type="button"
                   aria-label="Retry repositories"
                   onClick={() => void repositoryQuery.refetch()}
-                  className="flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-muted"
+                  className="dash-control flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 >
                   <RefreshCw className="size-3.5" />
                 </button>
               </div>
             )}
             {repositoryQuery.data?.truncated && (
-              <p className="px-2 py-2 text-xs text-warning">
+              <p className="px-2 py-2 text-[12px] text-warning">
                 Showing the first 10,000 accessible repositories.
               </p>
             )}
             {candidates.length === 0 && !repositoryQuery.isLoading ? (
-              <p className="px-2 py-4 text-center text-xs text-muted-foreground">
+              <p className="px-2 py-3 text-[12px] text-muted-foreground">
                 No repositories available.
               </p>
             ) : (
@@ -219,10 +221,10 @@ export function PrSidebar({
                   type="button"
                   aria-label={repo}
                   onClick={() => chooseFavorite(repo)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-foreground hover:bg-muted"
+                  className="dash-control flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-foreground hover:bg-accent"
                 >
-                  <Star className="size-3.5 text-muted-foreground" />
-                  <span className="truncate">{repo}</span>
+                  <Star aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-mono text-[12px]">{repo}</span>
                 </button>
               ))
             )}
@@ -230,7 +232,7 @@ export function PrSidebar({
         </div>
       )}
 
-      <div className="mt-1 space-y-1">
+      <div className="mt-1 space-y-0.5">
         {favorites.map((repo) => {
           const scope = repoScope(repo);
           const active = activeScope === scope;
@@ -243,13 +245,14 @@ export function PrSidebar({
                 aria-current={active ? "page" : undefined}
                 title={stale ? `${repo} — refresh failed` : repo}
                 onClick={() => onSelect(scope)}
-                className={`flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-sm transition-colors ${
+                className={`dash-control flex h-8 w-full items-center gap-2.5 rounded-md px-2.5 text-[13px] transition-colors ${
                   active
-                    ? "bg-primary/12 text-foreground"
-                    : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    ? "bg-card text-foreground"
+                    : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                 }`}
               >
                 <Star
+                  aria-hidden
                   className={`size-4 shrink-0 ${
                     stale
                       ? "text-warning"
@@ -261,7 +264,7 @@ export function PrSidebar({
                 <span className="hidden min-w-0 flex-1 truncate text-left lg:block">
                   {repo}
                 </span>
-                <span className="hidden min-w-5 rounded-md bg-background/60 px-1 text-center text-[11px] tabular-nums text-muted-foreground group-hover/favorite:opacity-0 lg:block">
+                <span className="hidden text-[12px] tabular-nums text-muted-foreground group-focus-within/favorite:opacity-0 group-hover/favorite:opacity-0 lg:block">
                   {scopePrs(prs, scope).length}
                 </span>
               </button>
@@ -274,7 +277,7 @@ export function PrSidebar({
                     event.stopPropagation();
                     onRetry();
                   }}
-                  className="absolute right-8 top-1 hidden size-7 items-center justify-center rounded-md text-warning hover:bg-muted hover:text-warning/80 lg:flex"
+                  className="dash-control absolute right-7 top-1 hidden size-6 items-center justify-center rounded-md text-warning hover:bg-sidebar-accent lg:flex"
                 >
                   <RefreshCw className="size-3.5" />
                 </button>
@@ -287,7 +290,7 @@ export function PrSidebar({
                   event.stopPropagation();
                   void onFavoriteChange(repo, false);
                 }}
-                className="absolute right-1 top-1 hidden size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground group-hover/favorite:flex focus:flex"
+                className="dash-control absolute right-1 top-1 hidden size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground group-hover/favorite:flex focus-visible:flex"
               >
                 <Star className="size-3.5 fill-current" />
               </button>

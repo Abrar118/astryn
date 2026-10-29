@@ -3,13 +3,19 @@ import { useSearchParams } from "react-router-dom";
 import {
   Box,
   Check,
+  ChevronRight,
   Gauge,
   IterationCcw,
+  Link2,
   ListChecks,
   SignalHigh,
   Tag,
   X,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { StatusIcon } from "@/features/drawer/issueGlyphs";
+import { PriorityIcon } from "@/features/issues/IssueRow";
+import { LampToggle } from "@/features/issues/DisplayOptions";
 import {
   useCreateIssue,
   useCycles,
@@ -46,6 +52,8 @@ const STATE_RANK: Record<string, number> = {
   canceled: 4,
 };
 const ESTIMATES = [0, 1, 2, 3, 5, 8];
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iP(hone|ad)/.test(navigator.platform || navigator.userAgent || "");
+const SUBMIT_HINT = IS_MAC ? "⌘↵" : "Ctrl+Enter";
 
 /** A pill button that opens a small popover; `children` receives a `close` fn. */
 function Pop({
@@ -90,15 +98,14 @@ function Pop({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className={`flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-accent ${
-          active ? "text-foreground" : "text-muted-foreground"
-        }`}
+        aria-expanded={open}
+        className={`${PROPERTY_CONTROL} ${active ? "text-foreground" : "text-muted-foreground"}`}
       >
         <span className="flex size-3.5 items-center justify-center">{icon}</span>
         <span className="max-w-[10rem] truncate">{label}</span>
       </button>
       {open && (
-        <div className="absolute bottom-full left-0 z-10 mb-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl">
+        <div className="issues-overlay drawer-scrollbar absolute bottom-full left-0 z-10 mb-1 max-h-72 w-56 overflow-y-auto rounded-lg border border-border bg-popover p-1">
           {children(() => setOpen(false))}
         </div>
       )}
@@ -121,7 +128,7 @@ function Opt({
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent"
+      className="dash-control flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground transition-colors hover:bg-accent"
     >
       <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">{icon}</span>
       <span className="flex-1 truncate">{label}</span>
@@ -130,7 +137,11 @@ function Opt({
   );
 }
 
-const dot = (color: string) => <span className="size-2.5 rounded-full" style={{ backgroundColor: color }} />;
+const dot = (color: string) => <span className="size-2 rounded-full" style={{ backgroundColor: color }} />;
+
+/** A property control in the footer row: a quiet outline control, one per field (Linear's create modal). */
+const PROPERTY_CONTROL =
+  "dash-control flex h-7 items-center gap-1.5 rounded-md border border-input bg-transparent px-2 text-[12px] transition-colors hover:bg-accent dark:bg-input/30";
 
 export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed | null; onClose: () => void }) {
   const { data: teamsOpts } = useFilterOptions();
@@ -270,25 +281,29 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
       onMouseDown={onClose}
     >
       <div
-        className="flex w-[min(680px,92vw)] flex-col rounded-xl border border-border bg-card shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="New issue"
+        className="issues-overlay flex w-[min(680px,92vw)] flex-col rounded-lg border border-border bg-popover"
         onMouseDown={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="flex items-center gap-2 px-4 pt-3.5 text-sm">
-          <span className="rounded-md bg-secondary/60 px-2 py-0.5 text-xs font-semibold text-foreground">
-            {team?.key ?? "—"}
-          </span>
-          <span className="text-muted-foreground">›</span>
+        {/* Header: team › New issue, and the pre-link this issue is created with */}
+        <div className="flex items-center gap-2 px-4 pt-3 text-[13px]">
+          <span className="font-mono text-xs font-medium text-foreground">{team?.key ?? "—"}</span>
+          <ChevronRight aria-hidden className="size-3.5 text-muted-foreground" />
           <span className="text-muted-foreground">New issue</span>
           {activeSeed && (
-            <span className="rounded-md bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Link2 aria-hidden className="ml-1 size-3.5" />
               {SEED_LABEL[activeSeed.relation](activeSeed.issue.identifier)}
             </span>
           )}
           <button
             type="button"
+            aria-label="Close"
+            title="Close"
             onClick={onClose}
-            className="ml-auto rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className="dash-control ml-auto flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
             <X className="size-4" />
           </button>
@@ -307,20 +322,22 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
               }
             }}
             rows={1}
+            aria-label="Issue title"
             placeholder="Issue title"
-            className="w-full resize-none bg-transparent text-lg font-medium text-foreground placeholder:text-muted-foreground/70 focus:outline-none"
+            className="w-full resize-none bg-transparent text-[20px] font-semibold tracking-tight text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:outline-none"
           />
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={3}
+            aria-label="Description"
             placeholder="Add description…"
-            className="mt-1 w-full resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+            className="mt-1 w-full resize-none bg-transparent text-[15px] leading-relaxed text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
         </div>
 
-        {/* Property pills */}
-        <div className="flex flex-wrap items-center gap-1.5 px-4 py-3">
+        {/* Properties */}
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pt-1 pb-3">
           <Pop icon={<Box className="size-3.5" />} label={team?.key ?? "Team"} active={!!team}>
             {(close) =>
               teams.map((t) => (
@@ -340,26 +357,33 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
             }
           </Pop>
 
-          <Pop icon={curState ? dot(curState.color) : <ListChecks className="size-3.5" />} label={curState?.name ?? "Status"} active={!!curState}>
+          <Pop icon={curState ? <StatusIcon type={curState.type} color={curState.color} /> : <ListChecks className="size-3.5" />} label={curState?.name ?? "Status"} active={!!curState}>
             {(close) => (
               <>
                 {teamStates.length === 0 && <div className="px-2.5 py-1.5 text-[12px] text-muted-foreground">No states cached</div>}
                 {teamStates.map((s) => (
-                  <Opt key={s.id} icon={dot(s.color)} label={s.name} active={s.id === stateId} onClick={() => (setStateId(s.id), close())} />
+                  <Opt key={s.id} icon={<StatusIcon type={s.type} color={s.color} />} label={s.name} active={s.id === stateId} onClick={() => (setStateId(s.id), close())} />
                 ))}
               </>
             )}
           </Pop>
 
-          <Pop icon={curPriority && priority ? dot(curPriority.color) : <SignalHigh className="size-3.5" />} label={priority ? curPriority!.label : "Priority"} active={!!priority}>
+          <Pop icon={priority ? <PriorityIcon p={priority} /> : <SignalHigh className="size-3.5" />} label={priority ? curPriority!.label : "Priority"} active={!!priority}>
             {(close) =>
               PRIORITIES.map((p) => (
-                <Opt key={p.value} icon={dot(p.color)} label={p.label} active={p.value === priority} onClick={() => (setPriority(p.value), close())} />
+                <Opt key={p.value} icon={<PriorityIcon p={p.value} />} label={p.label} active={p.value === priority} onClick={() => (setPriority(p.value), close())} />
               ))
             }
           </Pop>
 
-          <AssigneeSelect value={assigneeId} onChange={setAssigneeId} users={users ?? []} meId={me?.viewerId} emptyLabel="Assignee" />
+          <AssigneeSelect
+            value={assigneeId}
+            onChange={setAssigneeId}
+            users={users ?? []}
+            meId={me?.viewerId}
+            emptyLabel="Assignee"
+            triggerClassName={`${PROPERTY_CONTROL} text-foreground`}
+          />
 
           <Pop icon={<Box className="size-3.5" />} label={curProject?.name ?? "Project"} active={!!curProject}>
             {(close) => (
@@ -418,30 +442,17 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
             value={dueDate}
             onChange={setDueDate}
             placeholder="Due date"
-            triggerClassName="flex items-center gap-1.5 rounded-full border border-border bg-secondary/40 px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent"
+            triggerClassName={`${PROPERTY_CONTROL} ${dueDate ? "text-foreground" : "text-muted-foreground"}`}
           />
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 border-t border-border px-4 py-3">
-          <button
-            type="button"
-            onClick={() => setCreateMore((v) => !v)}
-            className="flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <span className={`relative h-4 w-7 rounded-full transition-colors ${createMore ? "bg-primary" : "bg-secondary"}`}>
-              <span className={`absolute top-0.5 size-3 rounded-full transition-all ${createMore ? "left-3.5 bg-primary-foreground" : "left-0.5 bg-foreground"}`} />
-            </span>
-            Create more
-          </button>
-          <button
-            type="button"
-            onClick={submit}
-            disabled={!title.trim() || !teamId || create.isPending}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
-          >
+        <div className="flex items-center justify-end gap-3 border-t border-border px-4 py-2.5">
+          <span aria-hidden className="mr-auto text-[12px] text-muted-foreground">{SUBMIT_HINT} to create</span>
+          <LampToggle label="create more" on={createMore} onClick={() => setCreateMore((v) => !v)} />
+          <Button type="button" onClick={submit} disabled={!title.trim() || !teamId || create.isPending}>
             {create.isPending ? "Creating…" : "Create issue"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

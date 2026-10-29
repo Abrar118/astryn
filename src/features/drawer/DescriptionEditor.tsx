@@ -95,7 +95,7 @@ export function ReadOnlyDescription({
     [users],
   );
   return (
-    <div className="astryn-prose prose prose-sm prose-invert max-w-none prose-headings:font-semibold prose-a:text-primary">
+    <div className="astryn-prose max-w-none">
       <ReactMarkdown remarkPlugins={[remarkGfm, userMentionPlugin]} components={components} urlTransform={mentionAwareUrlTransform}>
         {markdown || "_No description_"}
       </ReactMarkdown>

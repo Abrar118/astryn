@@ -1,3 +1,4 @@
+import { SetupState } from "@/components/SetupState";
 import {
   lazy,
   Suspense,
@@ -9,7 +10,6 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
-  BookText,
   Check,
   ChevronDown,
   PanelLeftClose,
@@ -18,6 +18,7 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import { Popover } from "@/components/Popover";
 import { useWorkspace } from "@/lib/tabs";
 import {
@@ -56,17 +57,16 @@ function DocsEmptyState({
   action: string;
   onAction: () => void;
 }) {
+  return <SetupState title="Docs" message={message} action={action} onAction={onAction} />;
+}
+
+/** A reader-pane state (loading, nothing selected, unreadable): a lamp and one line, top-left like the text it replaces. */
+function ReaderMessage({ tone, text }: { tone: Lamp; text: string }) {
   return (
-    <main className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
-      <span className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
-        <BookText className="size-7 text-muted-foreground" />
-      </span>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-base font-semibold text-foreground">Docs</h1>
-        <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
-      </div>
-      <Button onClick={onAction}>{action}</Button>
-    </main>
+    <p role="status" className="docs-reader flex items-center gap-2.5 text-[13px] text-muted-foreground">
+      <IndicatorLamp tone={tone} />
+      {text}
+    </p>
   );
 }
 
@@ -86,8 +86,8 @@ function SourcePicker({
     <Popover
       align="start"
       buttonTitle="Switch documentation source"
-      buttonClassName="flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-sm font-semibold tracking-tight text-foreground transition-colors hover:bg-accent"
-      panelClassName="max-h-[22rem] w-64 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-2xl"
+      buttonClassName="dash-control flex cursor-pointer items-center gap-1.5 rounded-md px-1.5 py-1 text-[15px] font-semibold tracking-tight text-foreground transition-colors hover:bg-accent"
+      panelClassName="max-h-[22rem] w-72 overflow-y-auto rounded-lg border border-border bg-popover p-1 shadow-[0_4px_16px_var(--overlay-shadow)]"
       button={
         <>
           <span className="max-w-56 truncate">{active.name}</span>
@@ -116,7 +116,7 @@ function SourcePicker({
                   <SourceKindIcon kind={s.kind} className="size-3 shrink-0 text-muted-foreground" />
                   <span className="truncate">{s.name}</span>
                 </span>
-                <span className="truncate text-[11px] text-muted-foreground" title={sourceDetail(s)}>
+                <span className="truncate text-[12px] text-muted-foreground" title={sourceDetail(s)}>
                   {s.available ? sourceDetail(s) : unavailableReason(s.kind)}
                 </span>
               </span>
@@ -276,41 +276,37 @@ export function DocsPage({
   }
 
   // When the active source can't show a tree, explain why in place of the reader.
-  const notice: { message: string; action: string; onAction: () => void } | null = !active
+  const notice: { tone: Lamp; message: string; action: string; onAction: () => void } | null = !active
     ? null
     : !available
       ? {
+          tone: "warning",
           message: `${unavailableReason(active.kind)}, so this source can't be read. Turn it back on in Settings → Modules.`,
           action: "Open Modules",
           onAction: () => openSettingsAt("modules"),
         }
       : needsToken && provider && (flat?.length ?? 0) === 0
         ? {
+            tone: "off",
             message: `Connect your ${provider.name} account to sync this ${active.kind === "clickup" ? "Doc" : "repository"}.`,
             action: `Connect ${provider.name}`,
             onAction: () => openSettingsAt(provider.section),
           }
         : isLocal && treeError
           ? {
+              tone: "danger",
               message: "This folder can't be read. It may have been moved, renamed or deleted.",
               action: "Manage sources",
               onAction: openSourceSettings,
             }
           : null;
 
-  const loading = (
-    <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-      <RefreshCw className="size-4 animate-spin" />
-      Loading…
-    </div>
-  );
-  const unreadable = (message: string) => (
-    <div className="flex h-full items-center justify-center text-sm text-muted-foreground">{message}</div>
-  );
+  const loading = <ReaderMessage tone="off" text="Reading document…" />;
+  const unreadable = (message: string) => <ReaderMessage tone="warning" text={message} />;
 
   let reader;
   if (!selected) {
-    reader = unreadable("Select a document to read.");
+    reader = <ReaderMessage tone="off" text="Select a document to read." />;
   } else if (format === "pdf") {
     reader = pdfQuery.isError
       ? unreadable("This PDF couldn't be read.")
@@ -327,7 +323,7 @@ export function DocsPage({
     reader = unreadable(isLocal ? "This file couldn't be read." : "This document isn't cached.");
   } else if (format === "text") {
     reader = (
-      <pre className="whitespace-pre-wrap break-words px-10 py-8 font-mono text-[13px] leading-relaxed text-foreground">
+      <pre className="docs-reader whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-foreground">
         {docQuery.data}
       </pre>
     );
@@ -337,20 +333,17 @@ export function DocsPage({
 
   return (
     <main className="flex h-full min-h-0 flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border/50 bg-background px-4 py-2.5">
-        <div className="flex min-w-0 items-center gap-2">
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-background px-3 py-2">
+        <div className="flex min-w-0 items-center gap-1.5">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             aria-label={collapsed ? "Show sidebar" : "Hide sidebar"}
             aria-pressed={!collapsed}
             onClick={() => setCollapsed((c) => !c)}
           >
             {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
           </Button>
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-            <BookText className="size-3.5" />
-          </span>
           {active && sources ? (
             <SourcePicker
               sources={sources}
@@ -359,20 +352,24 @@ export function DocsPage({
               onManage={openSourceSettings}
             />
           ) : (
-            <h1 className="text-sm font-semibold tracking-tight text-foreground">Docs</h1>
+            <h1 className="px-1.5 text-[15px] font-semibold tracking-tight text-foreground">Docs</h1>
           )}
           {sync.isError && !isLocal && (
-            <span className="shrink-0 text-xs text-warning">Sync failed — showing cached.</span>
+            <span className="flex shrink-0 items-center gap-1.5 pl-1.5 text-[12px] text-foreground">
+              <IndicatorLamp tone="warning" />
+              Sync failed — showing cached.
+            </span>
           )}
           {needsToken && provider && !notice && (
-            <span className="shrink-0 text-xs text-warning">
+            <span className="flex shrink-0 items-center gap-1.5 pl-1.5 text-[12px] text-foreground">
+              <IndicatorLamp tone="warning" />
               {provider.name} not connected — showing cached.
             </span>
           )}
         </div>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           aria-label={isLocal ? "Rescan folder" : "Refresh"}
           title={isLocal ? "Rescan folder" : "Refresh"}
           disabled={refreshing || !canSync}
@@ -383,11 +380,14 @@ export function DocsPage({
       </header>
 
       {notice ? (
-        <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 bg-card p-10 text-center">
-          <p className="max-w-sm text-sm text-muted-foreground">{notice.message}</p>
-          <Button variant="secondary" onClick={notice.onAction}>
-            {notice.action}
-          </Button>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-[760px] px-6 pt-8">
+            <section className="dash-panel flex flex-wrap items-center gap-x-4 gap-y-3 px-4 py-4">
+              <IndicatorLamp tone={notice.tone} />
+              <p className="min-w-0 flex-1 text-[13px] text-foreground">{notice.message}</p>
+              <Button onClick={notice.onAction}>{notice.action}</Button>
+            </section>
+          </div>
         </div>
       ) : (
       <div ref={rowRef} className="flex min-h-0 flex-1">
@@ -395,21 +395,20 @@ export function DocsPage({
           <>
             <aside
               style={{ width: sidebarWidth }}
-              className="flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar/40"
+              className="flex shrink-0 flex-col overflow-hidden bg-background"
             >
-              <div className="flex shrink-0 items-center justify-between px-3.5 pb-1.5 pt-3">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-                  Contents
-                </span>
+              <div className="flex shrink-0 items-baseline justify-between px-4 pb-2 pt-3.5">
+                <span className="text-[12px] font-medium lowercase text-muted-foreground">Contents</span>
                 {(active?.fileCount ?? 0) > 0 && (
-                  <span className="text-[10px] tabular-nums text-muted-foreground/60">
-                    {active?.fileCount}
+                  <span className="text-[12px] tabular-nums text-muted-foreground">
+                    {active?.fileCount} file{active?.fileCount === 1 ? "" : "s"}
                   </span>
                 )}
               </div>
-              <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+              <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-28">
                 {tree.length === 0 || !activeId ? (
-                  <p className="px-4 py-6 text-xs text-muted-foreground">
+                  <p className="flex items-start gap-2.5 px-4 py-3 text-[13px] text-muted-foreground">
+                    <IndicatorLamp tone="off" className="mt-1.5" />
                     {refreshing
                       ? "Loading docs…"
                       : isLocal
@@ -438,13 +437,13 @@ export function DocsPage({
               tabIndex={0}
               onPointerDown={startResize}
               onKeyDown={onDividerKey}
-              className="group relative w-1 shrink-0 cursor-col-resize outline-none"
+              className="group relative -mx-0.5 w-1 shrink-0 cursor-col-resize outline-none"
             >
-              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/70 transition-colors group-hover:bg-primary/50 group-focus-visible:bg-primary/60" />
+              <span className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border transition-colors group-hover:bg-muted-foreground group-focus-visible:w-0.5 group-focus-visible:bg-ring" />
             </div>
           </>
         )}
-        <div className="min-w-0 flex-1 overflow-y-auto bg-card">{reader}</div>
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto bg-card">{reader}</div>
       </div>
       )}
     </main>

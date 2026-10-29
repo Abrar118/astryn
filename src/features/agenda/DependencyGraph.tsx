@@ -1,8 +1,10 @@
+import { statusHue } from "@/lib/statusHue";
 import "@xyflow/react/dist/style.css";
 
 import {
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -34,6 +36,9 @@ import { cn } from "@/lib/utils";
 import { buildIndex, computeVisible, buildGraphElements, neighbors, hiddenNeighborCount, buildGroups, type GroupBy } from "./graphModel";
 import { layoutGraph } from "./graphLayout";
 import { BulkActionBar } from "./BulkActionBar";
+import { LampMessage } from "./LampMessage";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 // ── Mention-target helpers ───────────────────────────────────────────────────
 
@@ -67,7 +72,7 @@ function mentionTargetFromRelation(rel: Relation): MentionTarget {
 
 // Color carries meaning only: blocking is danger, every other relation is neutral.
 // Neutral kinds are told apart by dash pattern (sub-issue dashed, related dotted).
-type EdgeKind = { label: string; color: string; dash?: string; animated?: boolean };
+type EdgeKind = { label: string; color: string; dash?: string };
 
 const NEUTRAL = "var(--muted-foreground)";
 const DASHED = "5 4";
@@ -76,8 +81,8 @@ const DOTTED = "1.5 3";
 const SUB_ISSUE: EdgeKind = { label: "Sub-issue", color: NEUTRAL, dash: DASHED };
 
 const EDGE_KINDS: Record<string, EdgeKind> = {
-  blocks: { label: "Blocks", color: "var(--destructive)", animated: true },
-  blocked_by: { label: "Blocked by", color: "var(--destructive)", animated: true },
+  blocks: { label: "Blocks", color: "var(--destructive)" },
+  blocked_by: { label: "Blocked by", color: "var(--destructive)" },
   related: { label: "Related to", color: NEUTRAL, dash: DOTTED },
   duplicate: { label: "Duplicate", color: NEUTRAL, dash: DOTTED },
   duplicate_of: { label: "Duplicate of", color: NEUTRAL, dash: DOTTED },
@@ -163,30 +168,26 @@ function IssueNode({ data }: { data: IssueNodeData }) {
           data.onOpen(data.issueId);
         }
       }}
+      aria-label={`${data.identifier}: ${data.title}${data.isRoot ? "" : " (neighbor)"}`}
       className={cn(
-        "relative flex w-[200px] cursor-pointer items-center gap-1.5 overflow-hidden rounded-lg border bg-card py-1.5 pl-3 pr-1.5 text-foreground shadow-sm transition-all hover:bg-accent focus-visible:outline-none",
+        "dash-control relative flex w-[200px] items-center gap-2 rounded-lg border bg-card py-2 pr-1.5 pl-2.5 text-foreground transition-[background-color,opacity] hover:bg-accent",
         data.highlight
-          ? "border-primary ring-2 ring-primary"
+          ? "border-ring ring-1 ring-ring"
           : data.isRoot
-            ? "border-primary/40 ring-1 ring-primary/15"
-            : "border-border",
+            ? "border-input"
+            : "border-dashed border-input",
         data.dimmed && "opacity-30",
       )}
     >
-      <span
-        className="absolute inset-y-0 left-0 w-1"
-        style={{ backgroundColor: data.stateColor }}
-        aria-hidden
-      />
-      <span
-        className="pointer-events-none absolute inset-0 opacity-[0.08]"
-        style={{ backgroundColor: data.stateColor }}
-        aria-hidden
-      />
       <Handle type="target" position={Position.Left} className={HANDLE_CLASS} />
-      <div className="relative flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-mono text-[11px] font-semibold">{data.identifier}</span>
-        <span className="truncate text-[11px] leading-snug text-muted-foreground">{data.title}</span>
+      <span
+        className="dash-lamp dash-lamp-lit self-start mt-[5px]"
+        style={{ backgroundColor: statusHue(data.stateColor) }}
+        aria-hidden
+      />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate font-mono text-[12px] text-muted-foreground">{data.identifier}</span>
+        <span className="truncate text-[12px] font-medium leading-snug">{data.title}</span>
       </div>
       {showToggle && (
         <button
@@ -197,7 +198,7 @@ function IssueNode({ data }: { data: IssueNodeData }) {
             e.stopPropagation();
             data.onToggleExpand(data.issueId);
           }}
-          className="relative z-10 flex shrink-0 items-center gap-0.5 rounded-md border border-border bg-background/80 px-1 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="dash-control relative z-10 flex h-6 shrink-0 items-center gap-0.5 rounded-md px-1.5 text-[12px] tabular-nums text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
         >
           {data.expanded ? (
             <ChevronDown className="size-3" />
@@ -218,9 +219,9 @@ type GroupNodeData = { label: string; count: number };
 
 function GroupNode({ data }: { data: GroupNodeData }) {
   return (
-    <div className="pointer-events-none h-full w-full rounded-xl border border-border/70 bg-muted/10">
-      <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-        {data.label} <span className="text-muted-foreground/50">· {data.count}</span>
+    <div className="pointer-events-none h-full w-full rounded-lg border border-border bg-muted/30">
+      <div className="px-2.5 py-1.5 text-[12px] font-medium text-muted-foreground">
+        {data.label} <span className="font-normal tabular-nums">· {data.count}</span>
       </div>
     </div>
   );
@@ -272,9 +273,12 @@ type Props = {
 export function DependencyGraph(props: Props) {
   if (props.rootIds.length === 0) {
     return (
-      <div className="flex h-full min-h-72 w-full items-center justify-center rounded-lg border border-border bg-card text-sm text-muted-foreground">
-        Nothing to graph this week
-      </div>
+      <LampMessage
+        tone="off"
+        title="Nothing to graph this week"
+        body="Issues due this week appear here with their blockers, sub-issues and related issues."
+        className="border-t border-border"
+      />
     );
   }
   return (
@@ -307,6 +311,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     [],
   );
   const [query, setQuery] = useState("");
+  const groupLabelId = useId();
   const [groupBy, setGroupBy] = useState<GroupBy>("none");
 
   // Stable handlers so node-data identity stays steady across re-renders.
@@ -412,19 +417,17 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         target: e.target,
         type: "smoothstep",
         label: kind.label || undefined,
-        animated: kind.animated ?? false,
         markerEnd: { type: MarkerType.ArrowClosed, color: kind.color, width: 16, height: 16 },
         style: {
           stroke: kind.color,
           strokeWidth: 1.5,
-          strokeOpacity: 0.8,
           ...(kind.dash ? { strokeDasharray: kind.dash } : {}),
         },
-        labelStyle: { fontSize: 10, fontWeight: 500, fill: kind.color },
+        labelStyle: { fontSize: 11, fontWeight: 500, fill: kind.color },
         labelShowBg: Boolean(kind.label),
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 4,
-        labelBgStyle: { fill: "var(--color-card)", fillOpacity: 0.95, stroke: kind.color, strokeOpacity: 0.35 },
+        labelBgStyle: { fill: "var(--background)" },
       };
     });
 
@@ -434,7 +437,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     void layoutGraph(rfNodes, rfEdges, groups).then((positioned) => {
       if (token !== layoutToken.current) return;
       setNodes(positioned);
-      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300, maxZoom: 1.25 }));
     });
     // elements already depends on expandedIds; listing it too would double-fire the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -461,7 +464,7 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
     void layoutGraph(issueNodes, edges, groups).then((positioned) => {
       if (token !== layoutToken.current) return;
       setNodes(positioned);
-      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300 }));
+      requestAnimationFrame(() => fitView({ padding: 0.2, duration: 300, maxZoom: 1.25 }));
     });
   }, [nodes, edges, elements.visible, groupBy, setNodes, fitView]);
 
@@ -504,7 +507,72 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
   }, [nodes, term, selectedIds, index]);
 
   return (
-    <div className="h-full min-h-72 w-full overflow-hidden rounded-lg border border-border bg-card">
+    <div className="flex h-full min-h-72 w-full flex-col">
+      {/* Toolbar: search, grouping and layout above the canvas, then the legend. */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border px-4 pb-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            type="search"
+            aria-label="Search issues in the graph"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" && query) {
+                e.stopPropagation();
+                setQuery("");
+              }
+            }}
+            placeholder="Search issues…"
+            className="h-7 w-52 pr-7 pl-8 text-[12px] md:text-[12px] [&::-webkit-search-cancel-button]:hidden"
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => setQuery("")}
+              className="dash-control absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <span id={groupLabelId} className="text-[12px] text-muted-foreground">group by</span>
+          <div role="group" aria-labelledby={groupLabelId} className="face-segment">
+            {GROUP_OPTIONS.map((o) => (
+              <button
+                key={o.value}
+                type="button"
+                aria-pressed={groupBy === o.value}
+                onClick={() => setGroupBy(o.value)}
+                className="face-segment-item lowercase"
+              >
+                {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={relayout} className="text-[12px]">
+          <RotateCcw />
+          Re-layout
+        </Button>
+        <ul aria-label="Legend" className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-muted-foreground">
+          {LEGEND.map((k) => (
+            <li key={k.label} className="flex items-center gap-1.5">
+              <svg width="22" height="6" className="shrink-0" aria-hidden>
+                <line x1="0" y1="3" x2="22" y2="3" stroke={k.color} strokeWidth="1.5" strokeDasharray={k.dash} />
+              </svg>
+              {k.label.toLowerCase()}
+            </li>
+          ))}
+          <li className="flex items-center gap-1.5">
+            <span aria-hidden className="h-3 w-5 rounded-[3px] border border-dashed border-input" />
+            neighbor
+          </li>
+        </ul>
+      </div>
+      <div className="min-h-0 flex-1">
       <ReactFlow
         nodes={displayNodes}
         edges={edges}
@@ -520,90 +588,24 @@ function DependencyGraphInner({ rootIds, issues, relations, onOpen }: Props) {
         proOptions={{ hideAttribution: false }}
       >
         {selectedIds.length >= 2 && (
-          <Panel position="bottom-center">
+          // Lifted clear of the dock, which floats over the bottom of the pane.
+          <Panel position="bottom-center" className="!mb-24">
             <BulkActionBar selectedIds={selectedIds} index={index} onClear={clearSelection} />
           </Panel>
         )}
-        <Panel position="top-left">
-          <div className="flex items-center gap-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search issues…"
-                className="h-7 w-48 rounded-md border border-border bg-card pl-7 pr-6 text-xs text-foreground shadow-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-              />
-              {query && (
-                <button
-                  type="button"
-                  aria-label="Clear search"
-                  onClick={() => setQuery("")}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="size-3.5" />
-                </button>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={relayout}
-              title="Re-layout"
-              className="flex items-center gap-1.5 rounded-md border border-border bg-card px-2.5 py-1 text-[11px] text-muted-foreground shadow-sm transition-colors hover:text-foreground"
-            >
-              <RotateCcw className="size-3.5" />
-              Re-layout
-            </button>
-            <div className="flex items-center gap-0.5 rounded-md border border-border bg-card p-0.5 shadow-sm">
-              {GROUP_OPTIONS.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  onClick={() => setGroupBy(o.value)}
-                  className={cn(
-                    "rounded px-2 py-0.5 text-[11px] transition-colors",
-                    groupBy === o.value
-                      ? "bg-accent text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </Panel>
         <Background gap={16} size={1} color="var(--border)" />
-        <Controls showInteractive={false} className="[&>button]:border-border [&>button]:bg-card [&>button]:text-foreground" />
+        <Controls showInteractive={false} className="!mb-24" />
         <MiniMap
           pannable
           zoomable
-          nodeColor={(n) => (n.type === "issueNode" ? (n.data as IssueNodeData).stateColor : "var(--muted)")}
+          ariaLabel="Graph overview"
+          nodeColor={(n) => (n.type === "issueNode" ? statusHue((n.data as IssueNodeData).stateColor) : "var(--muted)")}
           nodeStrokeWidth={2}
-          className="!border !border-border !bg-card"
+          className="!mb-24 !border !border-border !bg-card"
           maskColor="color-mix(in oklab, var(--background) 60%, transparent)"
         />
-        <Panel position="top-right">
-          <div className="flex flex-col gap-1.5 rounded-lg border border-border bg-card px-3 py-2">
-            {LEGEND.map((k) => (
-              <div key={k.label} className="flex items-center gap-2">
-                <svg width="22" height="6" className="shrink-0" aria-hidden>
-                  <line
-                    x1="0"
-                    y1="3"
-                    x2="22"
-                    y2="3"
-                    stroke={k.color}
-                    strokeWidth="1.5"
-                    strokeDasharray={k.dash}
-                  />
-                </svg>
-                <span className="text-[10px] text-muted-foreground">{k.label}</span>
-              </div>
-            ))}
-          </div>
-        </Panel>
       </ReactFlow>
+      </div>
     </div>
   );
 }

@@ -40,10 +40,10 @@ export function LocalDialog({
         aria-modal="true"
         aria-labelledby={headingId}
         onMouseDown={(e) => e.stopPropagation()}
-        className="flex max-h-[76vh] w-[min(560px,92vw)] flex-col overflow-hidden rounded-[14px] border border-border bg-popover shadow-2xl"
+        className="lt-lifted flex max-h-[76vh] w-[min(560px,92vw)] flex-col overflow-hidden rounded-lg border border-border bg-popover"
       >
         <header className="flex items-center justify-between border-b border-border px-5 py-3">
-          <h2 id={headingId} className="text-[13px] font-semibold tracking-tight text-foreground">
+          <h2 id={headingId} className="text-[15px] font-semibold tracking-tight text-foreground">
             {title}
           </h2>
           <button
@@ -51,7 +51,7 @@ export function LocalDialog({
             data-dialog-close
             aria-label="Close"
             onClick={onClose}
-            className="cursor-pointer rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="lt-focus cursor-pointer rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground"
           >
             <X className="size-4" />
           </button>

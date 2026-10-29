@@ -137,7 +137,7 @@ export function createMarkdownComponents(opts: {
             e.preventDefault();
             if (href) opts.onActivateLink(href);
           }}
-          className="cursor-pointer text-primary hover:underline"
+          className="astryn-link"
         >
           {children}
         </a>

@@ -5,6 +5,7 @@ import type {
   SlackCatchup,
 } from "@/lib/commands";
 import { addDays } from "@/lib/dates";
+import { fmtDate } from "@/features/issues/IssueRow";
 
 export type DashboardInput = {
   issues: IssueListItem[];
@@ -148,7 +149,7 @@ export function attentionItems(raw: DashboardInput, limit = 8): AttentionItem[] 
       entityId: issue.id,
       context: issue.identifier,
       title: issue.title,
-      detail: `Due ${issue.dueDate}`,
+      detail: `Overdue since ${fmtDate(issue.dueDate ?? "")}`,
       tone: "danger",
       rank: 0,
       sortAt: issue.dueDate ?? "",

@@ -1,17 +1,8 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
-import {
-  ExternalLink,
-  FileDiff,
-  FileMinus2,
-  FilePen,
-  FilePlus2,
-  Files,
-  GitCommitHorizontal,
-  LoaderCircle,
-  type LucideIcon,
-} from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import type {
   GithubPr,
   GithubPrDetail,
@@ -21,22 +12,12 @@ import type {
 import { useCodeHost } from "./codeHost";
 import { parseUnifiedPatch, type PrDiffRow } from "./prDiffDisplay";
 
-function fileIcon(changeType: string): {
-  Icon: LucideIcon;
-  className: string;
-} {
-  switch (changeType.toLowerCase()) {
-    case "added":
-      return { Icon: FilePlus2, className: "text-success" };
-    case "deleted":
-    case "removed":
-      return { Icon: FileMinus2, className: "text-destructive" };
-    case "renamed":
-    case "modified":
-      return { Icon: FilePen, className: "text-muted-foreground" };
-    default:
-      return { Icon: FileDiff, className: "text-muted-foreground" };
-  }
+/** A changed file's kind as a lowercase legend; added and deleted files light their lamp. */
+function changeKind(changeType: string): { label: string; tone: Lamp } {
+  const kind = changeType.toLowerCase();
+  if (kind === "added") return { label: "added", tone: "success" };
+  if (kind === "deleted" || kind === "removed") return { label: "deleted", tone: "danger" };
+  return { label: kind || "changed", tone: "off" };
 }
 
 function openExternal(url: string, message: string) {
@@ -44,11 +25,10 @@ function openExternal(url: string, message: string) {
 }
 
 const rowClasses: Record<PrDiffRow["kind"], string> = {
-  hunk: "bg-info/[0.055] text-info/80",
-  context: "text-foreground/85",
-  addition:
-    "bg-success/[0.10] text-foreground selection:bg-success/35",
-  deletion: "bg-destructive/[0.10] text-foreground selection:bg-destructive/35",
+  hunk: "prs-diff-hunk",
+  context: "text-foreground",
+  addition: "prs-diff-add text-foreground",
+  deletion: "prs-diff-del text-foreground",
   metadata: "text-muted-foreground italic",
 };
 
@@ -59,7 +39,7 @@ function DiffRow({ row }: { row: PrDiffRow }) {
         <td
           aria-hidden="true"
           colSpan={2}
-          className="border-r border-border/50 px-2 text-right"
+          className="border-r border-border px-2 text-right font-mono text-[12px]"
         >
           ···
         </td>
@@ -74,15 +54,15 @@ function DiffRow({ row }: { row: PrDiffRow }) {
     row.kind === "addition" ? "+" : row.kind === "deletion" ? "−" : " ";
   return (
     <tr className={rowClasses[row.kind]}>
-      <td className="w-12 select-none border-r border-border/40 px-2 text-right font-mono text-[11px] leading-5 text-muted-foreground/65">
+      <td className="w-12 select-none border-r border-border/70 px-2 text-right font-mono text-[11px] leading-5 text-muted-foreground">
         {row.oldLine ?? ""}
       </td>
-      <td className="w-12 select-none border-r border-border/50 px-2 text-right font-mono text-[11px] leading-5 text-muted-foreground/65">
+      <td className="w-12 select-none border-r border-border px-2 text-right font-mono text-[11px] leading-5 text-muted-foreground">
         {row.newLine ?? ""}
       </td>
       <td className="whitespace-pre px-3 font-mono text-[12px] leading-5">
         <code>
-          <span aria-hidden="true" className="mr-2 inline-block w-2 select-none">
+          <span aria-hidden="true" className="prs-diff-marker mr-2 inline-block w-2 select-none">
             {marker}
           </span>
           <span>{row.text || " "}</span>
@@ -94,25 +74,26 @@ function DiffRow({ row }: { row: PrDiffRow }) {
 
 function FilePanel({ file }: { file: GithubPrDiffFile }) {
   const host = useCodeHost();
-  const { Icon, className } = fileIcon(file.changeType);
+  const kind = changeKind(file.changeType);
   const rows = file.patch ? parseUnifiedPatch(file.patch) : [];
 
   return (
-    <section className="overflow-hidden rounded-lg border border-border/70 bg-card">
-      <header className="flex h-10 items-center gap-2 border-b border-border/60 bg-muted/20 px-3">
-        <Icon className={`size-3.5 shrink-0 ${className}`} />
-        <h3 className="min-w-0 flex-1 truncate font-mono text-xs font-medium text-foreground">
+    <section className="overflow-hidden rounded-lg border border-border bg-card">
+      <header className="flex h-10 items-center gap-2.5 border-b border-border px-3">
+        <IndicatorLamp tone={kind.tone} />
+        <h3 className="min-w-0 flex-1 truncate font-mono text-[12px] font-medium text-foreground">
           {file.path}
         </h3>
+        <span className="shrink-0 text-[12px] text-muted-foreground">{kind.label}</span>
         {file.previousPath && (
-          <span className="hidden min-w-0 truncate text-[11px] text-muted-foreground lg:inline">
+          <span className="hidden min-w-0 truncate text-[12px] text-muted-foreground lg:inline">
             from {file.previousPath}
           </span>
         )}
-        <span className="shrink-0 text-xs tabular-nums text-success">
+        <span className="shrink-0 font-mono text-[12px] tabular-nums text-success">
           +{file.additions}
         </span>
-        <span className="shrink-0 text-xs tabular-nums text-destructive">
+        <span className="shrink-0 font-mono text-[12px] tabular-nums text-destructive">
           −{file.deletions}
         </span>
         {file.blobUrl && (
@@ -131,7 +112,7 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
       </header>
 
       {rows.length === 0 ? (
-        <p className="px-4 py-10 text-center text-xs text-muted-foreground">
+        <p className="px-4 py-4 text-[12px] text-muted-foreground">
           {host.name} did not provide a text patch for this file.
         </p>
       ) : (
@@ -156,6 +137,16 @@ function FilePanel({ file }: { file: GithubPrDiffFile }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** A one-line state message in the diff: lamp, sentence, optional action. */
+function DiffMessage({ tone, children }: { tone: Lamp; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-border px-4 py-3.5 text-[13px] text-muted-foreground">
+      <IndicatorLamp tone={tone} />
+      {children}
+    </div>
   );
 }
 
@@ -185,17 +176,11 @@ export function PrDrawerChanges({
 
   return (
     <div className="px-4 py-3">
-      <div className="mb-4 flex h-9 items-center gap-1 rounded-lg border border-border/60 bg-muted/20 px-2 text-xs">
-        <span className="flex items-center gap-1.5 rounded-md bg-muted/60 px-2 py-1 text-foreground">
-          <Files className="size-3.5" />
-          Files {changedFiles}
-        </span>
-        <span className="flex items-center gap-1.5 px-2 py-1 text-muted-foreground">
-          <GitCommitHorizontal className="size-3.5" />
-          Commits {commitCount}
-        </span>
-        <span className="ml-auto tabular-nums text-success">+{additions}</span>
-        <span className="tabular-nums text-destructive">−{deletions}</span>
+      <div className="mb-3 flex min-h-8 flex-wrap items-center gap-x-3 gap-y-1 text-[12px]">
+        <span className="tabular-nums text-foreground">Files {changedFiles}</span>
+        <span className="tabular-nums text-muted-foreground">Commits {commitCount}</span>
+        <span className="ml-auto font-mono tabular-nums text-success">+{additions}</span>
+        <span className="font-mono tabular-nums text-destructive">−{deletions}</span>
         <Button
           variant="ghost"
           size="xs"
@@ -212,35 +197,26 @@ export function PrDrawerChanges({
       </div>
 
       {loading ? (
-        <div
-          role="status"
-          className="flex items-center justify-center gap-2 rounded-lg border border-border/60 px-5 py-12 text-sm text-muted-foreground"
-        >
-          <LoaderCircle className="size-4 animate-spin" />
-          Loading file patches…
+        <div role="status">
+          <DiffMessage tone="off">Loading file patches…</DiffMessage>
         </div>
       ) : error ? (
-        <div
-          role="alert"
-          className="rounded-lg border border-warning/20 bg-warning/[0.06] px-5 py-10 text-center text-sm text-warning"
-        >
-          <p>Couldn't load the full diff.</p>
-          {onRetry && (
-            <Button variant="ghost" size="xs" className="mt-3" onClick={onRetry}>
-              Retry
-            </Button>
-          )}
+        <div role="alert">
+          <DiffMessage tone="warning">
+            <p className="min-w-0 flex-1 text-foreground">Couldn't load the full diff.</p>
+            {onRetry && (
+              <Button variant="outline" size="xs" onClick={onRetry}>
+                Retry
+              </Button>
+            )}
+          </DiffMessage>
         </div>
       ) : !diff ? (
-        <div className="rounded-lg border border-border/60 px-5 py-12 text-center text-sm text-muted-foreground">
-          File patches load when Diff is opened.
-        </div>
+        <DiffMessage tone="off">File patches load when Diff is opened.</DiffMessage>
       ) : diff.files.length === 0 ? (
-        <div className="rounded-lg border border-border/60 px-5 py-12 text-center text-sm text-muted-foreground">
-          No changed files.
-        </div>
+        <DiffMessage tone="off">No changed files.</DiffMessage>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-3">
           {diff.files.map((file) => (
             <FilePanel key={file.path} file={file} />
           ))}
@@ -248,7 +224,7 @@ export function PrDrawerChanges({
       )}
 
       {diff?.truncated && (
-        <p className="mt-3 text-xs text-muted-foreground">
+        <p className="mt-3 text-[12px] text-muted-foreground">
           Showing the first {diff.files.length} changed files. Open {host.name}{" "}
           for the complete diff.
         </p>

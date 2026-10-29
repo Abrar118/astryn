@@ -1,7 +1,73 @@
+import type { ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { IconComponent } from "@/lib/modules";
+import { getClickupStatus } from "@/lib/commands";
+import { useBitbucketStatus } from "@/lib/bitbucketQueries";
 import { ownerActive, useModules } from "@/lib/modules";
+import { useConnectionStatus, useGithubStatus, useSlackStatus, useTeamsStatus } from "@/lib/queries";
+import { cn } from "@/lib/utils";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
+import { connectionLamp, type ConnectionState } from "./SettingsPanel";
 import { SETTINGS_GROUPS, type SettingsSection } from "./settingsSection";
 
-/** Left rail: grouped section list, Linear-style. */
+const useClickupStatus = () => useQuery({ queryKey: ["clickup-status"], queryFn: getClickupStatus });
+
+type StatusHook = () => { data?: { state: ConnectionState } | null };
+
+/** Connection sections carry their provider's lamp in the rail. */
+const STATUS_HOOKS: Partial<Record<SettingsSection, StatusHook>> = {
+  linear: useConnectionStatus,
+  github: useGithubStatus,
+  bitbucket: useBitbucketStatus,
+  slack: useSlackStatus,
+  teams: useTeamsStatus,
+  clickup: useClickupStatus,
+};
+
+const STATE_TEXT: Record<ConnectionState, string> = {
+  connected: "connected",
+  unverified: "not verified",
+  not_configured: "not connected",
+};
+
+/** A connection's rail button: its lamp, with the state spelled out as the button's description. */
+function ConnectionItem({ useStatus, label, ...props }: { useStatus: StatusHook } & ItemProps) {
+  const state = useStatus().data?.state;
+  return (
+    <NavItem {...props} label={label} title={state ? `${label}: ${STATE_TEXT[state]}` : undefined}>
+      <IndicatorLamp tone={connectionLamp(state)} className="ml-auto" />
+    </NavItem>
+  );
+}
+
+type ItemProps = {
+  label: string;
+  icon: IconComponent;
+  tint?: string;
+  selected: boolean;
+  onSelect: () => void;
+};
+
+function NavItem({ label, icon: Icon, tint, selected, onSelect, title, children }: ItemProps & { title?: string; children?: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-current={selected ? "page" : undefined}
+      title={title}
+      onClick={onSelect}
+      className={cn(
+        "dash-control flex items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] transition-colors",
+        selected ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+      )}
+    >
+      <Icon aria-hidden className={cn("size-4 shrink-0", tint || (selected ? "text-primary" : "text-muted-foreground"))} />
+      <span className="truncate">{label}</span>
+      {children}
+    </button>
+  );
+}
+
+/** Left rail: grouped section list, each connection with its status lamp. */
 export function SettingsNav({
   active,
   onSelect,
@@ -17,36 +83,27 @@ export function SettingsNav({
   return (
     <nav
       aria-label="Settings sections"
-      className="flex w-52 shrink-0 flex-col gap-5 overflow-y-auto border-r border-border/60 bg-sidebar/40 px-3 pb-28 pt-10"
+      className="drawer-scrollbar flex w-56 shrink-0 flex-col gap-4 overflow-y-auto border-r border-border bg-background px-3 pb-28 pt-8"
     >
-      <span className="px-2 text-sm font-semibold tracking-tight text-foreground">Settings</span>
+      <span className="px-2 pb-1 text-[15px] font-semibold tracking-tight text-foreground">Settings</span>
       {visibleGroups.map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
-          <span className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
-            {group.label}
-          </span>
+          {/* A one-item group named after its item needs no legend of its own. */}
+          {group.label !== group.items[0].label && (
+            <span className="px-2 pb-1 text-[12px] font-medium lowercase text-muted-foreground">{group.label}</span>
+          )}
           {group.items.map((item) => {
-            const selected = item.id === active;
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                aria-current={selected ? "page" : undefined}
-                onClick={() => onSelect(item.id)}
-                className={`relative flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] font-semibold transition-colors ${
-                  selected
-                    ? "bg-primary/10 text-foreground"
-                    : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
-                }`}
-              >
-                {selected && (
-                  <span className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-primary" aria-hidden />
-                )}
-                <Icon className={`size-4 shrink-0 ${selected ? "text-primary" : "text-muted-foreground/70"}`} />
-                <span className="truncate">{item.label}</span>
-              </button>
-            );
+            const props = {
+              label: item.label,
+              icon: item.icon,
+              tint: item.tint,
+              selected: item.id === active,
+              onSelect: () => onSelect(item.id),
+            };
+            const useStatus = STATUS_HOOKS[item.id];
+            return useStatus
+              ? <ConnectionItem key={item.id} useStatus={useStatus} {...props} />
+              : <NavItem key={item.id} {...props} />;
           })}
         </div>
       ))}

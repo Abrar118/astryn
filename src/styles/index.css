@@ -68,6 +68,15 @@
   html {
     @apply font-sans;
     }
+  ::selection {
+    background: color-mix(in oklab, var(--primary) 32%, transparent);
+    color: var(--foreground);
+  }
+  input,
+  textarea,
+  [contenteditable="true"] {
+    caret-color: var(--primary);
+  }
 }
 
 /* Icon size (Settings → Appearance): CSS zoom multiplies each lucide icon's own
@@ -113,7 +122,9 @@
   }
 }
 
-/* ── Dashboard — matte, data-dense command center ───────────────────────── */
+/* ── Dashboard: an instrument face ─────────────────────────────────────────
+   Card panels on the faceplate, round indicator lamps for state, light
+   tabular numerals, and the week drawn as a dial scale with one needle at now. */
 .dashboard-surface {
   position: relative;
   isolation: isolate;
@@ -122,67 +133,255 @@
   background: var(--background);
 }
 
-.dashboard-kpi-grid,
-.dashboard-main-grid,
-.dashboard-side-grid,
-.dashboard-lower-grid,
-.dashboard-source-grid {
+.dash-panel {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+}
+
+.dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding-bottom: 6px;
+}
+
+.dash-control {
+  cursor: pointer;
+  outline: none;
+}
+
+/* A real outline, so focus survives forced-colors (Windows high contrast). */
+.dash-control:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* The faceplate's zones are divided by hairline rules, not separate cards. */
+.dash-face > .dash-zone + .dash-zone {
+  border-top: 1px solid var(--border);
+}
+
+.dash-lower {
+  display: grid;
   grid-template-columns: minmax(0, 1fr);
-}
-
-.dashboard-attention-status {
-  display: none;
-}
-
-@container dashboard-pane (min-width: 520px) {
-  .dashboard-header {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-  }
-
-  .dashboard-kpi-grid,
-  .dashboard-side-grid,
-  .dashboard-source-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  /* An odd last KPI tile spans the row instead of leaving a blank slot. */
-  .dashboard-kpi-grid > :last-child:nth-child(odd) {
-    grid-column: 1 / -1;
-  }
-
-  .dashboard-attention-status {
-    display: table-cell;
-  }
+  gap: 12px;
 }
 
 @container dashboard-pane (min-width: 900px) {
-  /* One column per visible tile (set inline as --kpi-cols, at most 4). */
-  .dashboard-kpi-grid {
-    grid-template-columns: repeat(var(--kpi-cols, 4), minmax(0, 1fr));
-  }
-
-  .dashboard-kpi-grid > :last-child:nth-child(odd) {
-    grid-column: auto;
-  }
-
-  .dashboard-main-grid {
-    grid-template-columns: minmax(0, 1.8fr) minmax(260px, 0.8fr);
-  }
-
-  .dashboard-side-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dashboard-lower-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .dash-lower {
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+    align-items: start;
   }
 }
 
-.dashboard-glass {
-  border-color: var(--border);
-  background: var(--card);
+.dash-lamp {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+/* A lit lamp sits in a hairline bezel. */
+.dash-lamp-lit {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, black 22%, transparent);
+}
+
+.dash-numeral {
+  display: block;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+/* Dial scale: the past (overdue) left of the needle, the week to its right. */
+.dash-dial {
+  display: grid;
+  grid-template-columns: minmax(84px, auto) minmax(0, 1fr);
+}
+
+.dash-dial-past {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 6px 16px 2px 4px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.dash-dial-days {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.dash-day {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  min-width: 0;
+  padding: 6px 4px 2px 10px;
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.dash-dial-past:hover,
+.dash-day:hover {
+  background: var(--accent);
+}
+
+.dash-ticks line {
+  stroke: var(--muted-foreground);
+  stroke-width: 1;
+}
+
+.dash-tick-minor {
+  opacity: 0.5;
+}
+
+/* The needle: the theme's one signal colour, standing at the start of today. */
+.dash-needle {
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  transform-origin: bottom;
+  animation: dash-needle 600ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  pointer-events: none;
+}
+
+.dash-needle::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+@keyframes dash-needle {
+  from {
+    transform: scaleY(0.15);
+  }
+}
+
+/* Readouts: the display row across the top of the overview panel. */
+.dash-readouts {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.dash-readouts > li {
+  flex: 1 1 132px;
+}
+
+.dash-readouts > li + li {
+  border-left: 1px solid var(--border);
+}
+
+.dash-readout {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 132px;
+  height: 100%;
+  padding: 14px 20px 12px;
+  text-align: left;
+}
+
+.dash-readout:hover {
+  background: var(--accent);
+}
+
+/* Attention queue and week rows */
+.dash-queue > li + li,
+.dash-week-row-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.dash-queue-row,
+.dash-week-row,
+.dash-source-row {
+  display: grid;
+  align-items: center;
+  column-gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  text-align: left;
+}
+
+.dash-queue-row {
+  grid-template-columns: 8px 3.25rem minmax(0, 7.5rem) minmax(0, 1fr) auto;
+  padding-block: 12px;
+}
+
+.dash-source-row {
+  grid-template-columns: 8px auto minmax(0, 1fr) auto;
+  padding-block: 9px;
+}
+
+.dash-week-row {
+  grid-template-columns: 8px minmax(0, 6rem) minmax(0, 1fr) auto;
+  padding-block: 8px;
+}
+
+.dash-queue-row:hover,
+.dash-week-row:hover,
+.dash-source-row:hover {
+  background: var(--accent);
+}
+
+.dash-queue > li:last-child .dash-queue-row {
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+@container dashboard-pane (max-width: 640px) {
+  .dash-queue-source,
+  .dash-day-date {
+    display: none;
+  }
+
+  .dash-queue-row {
+    grid-template-columns: 8px minmax(0, 7rem) minmax(0, 1fr) auto;
+  }
+}
+
+@container dashboard-pane (max-width: 460px) {
+  .dash-queue-detail {
+    display: none;
+  }
+
+  .dash-queue-row {
+    grid-template-columns: 8px minmax(0, 6rem) minmax(0, 1fr);
+  }
+
+  .dash-day {
+    padding-left: 6px;
+  }
+
+  .dash-dial {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 10px;
+  }
+
+  .dash-dial-past {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 10px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -196,13 +395,15 @@
   }
 }
 
-/* ── FullCalendar — Astryn dark, Linear-style ──────────────────────────── */
+/* ── FullCalendar: the month as a faceplate scale ──────────────────────────
+   Hairline grid on the faceplate, lowercase weekday legends, tabular day
+   numbers, and one needle in the key standing at the start of today. */
 .fc {
   --fc-border-color: var(--border);
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: var(--secondary);
+  --fc-neutral-bg-color: var(--muted);
   --fc-neutral-text-color: var(--muted-foreground);
-  --fc-today-bg-color: color-mix(in oklch, var(--primary) 7%, transparent);
+  --fc-today-bg-color: transparent;
   --fc-event-bg-color: transparent;
   --fc-event-border-color: transparent;
   --fc-event-text-color: var(--foreground);
@@ -211,31 +412,33 @@
   font-size: 0.8125rem;
 }
 
-/* Toolbar */
+/* Toolbar (screens that keep FullCalendar's own header) */
 .fc .fc-toolbar.fc-header-toolbar {
   margin-bottom: 0.75rem;
 }
 .fc .fc-toolbar-title {
-  font-size: 1.05rem;
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.025em;
   color: var(--foreground);
 }
 
-/* Buttons — flat ghost, Linear-ish */
+/* Buttons: ghost keys with an input-tone stroke, like the shared outline button */
 .fc .fc-button {
+  height: 28px;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input);
   color: var(--foreground);
   border-radius: var(--radius-md);
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8125rem;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  text-transform: capitalize;
   box-shadow: none;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms ease;
 }
 .fc .fc-button:hover {
-  background: var(--accent);
+  background: var(--muted);
+  color: var(--foreground);
 }
 .fc .fc-button:focus,
 .fc .fc-button:focus-visible {
@@ -244,53 +447,97 @@
   outline-offset: 1px;
 }
 .fc .fc-button:disabled {
-  opacity: 0.4;
+  background: transparent;
+  border-color: var(--input);
+  color: var(--foreground);
+  opacity: 0.5;
 }
 .fc .fc-button-primary:not(:disabled).fc-button-active {
   background: var(--accent);
-  border-color: var(--border);
+  border-color: var(--input);
   color: var(--foreground);
 }
 .fc .fc-button-group > .fc-button:not(:first-child) {
   margin-left: -1px;
 }
 
-/* Column headers (day names) */
+/* The grid meets the header and rail hairlines edge to edge. */
+.calendar-surface .fc-theme-standard .fc-scrollgrid {
+  border-top: 0;
+  border-left: 0;
+}
+.calendar-surface .fc-theme-standard td:last-child,
+.calendar-surface .fc-theme-standard th:last-child {
+  border-right: 0;
+}
+
+/* Column headers: lowercase weekday legends */
 .fc .fc-col-header-cell {
   background: transparent;
 }
 .fc .fc-col-header-cell-cushion {
   padding: 0.5rem 0.5rem;
-  font-size: 0.6875rem;
+  font-size: 12px;
+  font-weight: 400;
+  text-transform: lowercase;
+  color: var(--muted-foreground);
+}
+.fc .fc-col-header-cell.fc-day-today .fc-col-header-cell-cushion {
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: var(--foreground);
+}
+
+/* Day numbers read top-left, tabular; days outside the month drop to muted. */
+.fc .fc-daygrid-day-top {
+  flex-direction: row;
+}
+.fc .fc-daygrid-day-number {
+  padding: 0.375rem 0.5rem 0.25rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+.fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 1; /* FullCalendar fades these to 30%, below AA */
+}
+.fc .fc-day-other .fc-daygrid-day-number {
   color: var(--muted-foreground);
 }
 
-/* Day cells + day numbers */
-.fc .fc-daygrid-day-number {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
+/* Today: the needle. A 2px rule in the key at the start of the day, capped
+   by an 8px circle, as on the Dashboard dial. Nothing else uses the key. */
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame {
+  position: relative;
 }
-.fc .fc-day-other .fc-daygrid-day-number {
-  opacity: 0.45;
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame::before,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame::before {
+  content: "";
+  display: block; /* FullCalendar's clearfix sets display: table on ::before */
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: -1px;
+  z-index: 4;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
 }
-.fc .fc-day-today {
-  background: var(--fc-today-bg-color);
-}
-.fc .fc-day-today .fc-daygrid-day-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.4rem;
-  height: 1.4rem;
-  margin: 0.15rem;
-  padding: 0;
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame::after,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: -4px;
+  z-index: 4;
+  width: 8px;
+  height: 8px;
   border-radius: 9999px;
   background: var(--primary);
-  color: var(--primary-foreground);
+  pointer-events: none;
+}
+.fc .fc-day-today .fc-daygrid-day-number {
   font-weight: 600;
 }
 
@@ -304,10 +551,8 @@
 .fc .fc-event {
   cursor: pointer;
 }
-.fc .fc-event:hover {
-  filter: brightness(1.18);
-}
-.fc .fc-daygrid-event:focus-visible {
+.fc .fc-daygrid-event:focus-visible,
+.fc .fc-timegrid-event:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
   border-radius: var(--radius-md);
@@ -315,9 +560,9 @@
 
 /* "+N more" link + overflow popover */
 .fc .fc-daygrid-more-link {
-  font-size: 0.6875rem;
+  font-size: 12px;
   color: var(--muted-foreground);
-  padding: 1px 4px;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
 .fc .fc-daygrid-more-link:hover {
@@ -331,15 +576,19 @@
   box-shadow: 0 8px 24px var(--overlay-shadow);
 }
 .fc .fc-popover-header {
-  background: var(--secondary);
+  background: transparent;
+  border-bottom: 1px solid var(--border);
   color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* Week (timeGrid) labels */
 .fc .fc-timegrid-slot-label-cushion,
 .fc .fc-timegrid-axis-cushion {
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 /* ── react-day-picker (DatePicker) — dark Linear-style theme ───────────────── */
 .rdp-root {
@@ -364,7 +613,7 @@
   color: var(--muted-foreground);
   font-weight: 500;
   font-size: 0.6875rem;
-  text-transform: uppercase;
+  text-transform: lowercase;
 }
 .rdp-day_button {
   color: var(--foreground);
@@ -537,8 +786,10 @@
 .milkdown .ProseMirror h1 { margin: 1.25rem 0 0.5rem; font-size: calc(1.5rem * var(--editor-font-scale, 1)); font-weight: 650; }
 .milkdown .ProseMirror h2 { margin: 1rem 0 0.4rem; font-size: calc(1.25rem * var(--editor-font-scale, 1)); font-weight: 650; }
 .milkdown .ProseMirror h3 { margin: 0.875rem 0 0.35rem; font-size: calc(1.05rem * var(--editor-font-scale, 1)); font-weight: 650; }
-.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; }
-.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; }
+.milkdown .ProseMirror ul { list-style: disc; padding-left: 1.4rem; margin: 0.5rem 0; }
+.milkdown .ProseMirror ol { list-style: decimal; padding-left: 1.4rem; margin: 0.5rem 0; }
+/* A task list sits flush with the text column, like Linear's; its boxes carry the indent. */
+.milkdown .ProseMirror ul:has(> li[data-item-type="task"]) { padding-left: 0; }
 /* GFM task lists: Milkdown's gfm renders `<li data-item-type="task" data-checked>`
    with NO checkbox element, so draw the box via ::before keyed on data-checked.
    The box is absolutely positioned (NOT flex) so a task item's paragraph, nested
@@ -558,11 +809,13 @@
   box-sizing: border-box;
   cursor: pointer;
 }
+/* A done task is a filled neutral key (foreground), not the signal key: done is content
+   state, not selection or focus. */
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
-  border-color: var(--primary);
-  background-color: var(--primary);
+  border-color: var(--foreground);
+  background-color: var(--foreground);
 }
-/* The check is a mask filled with --primary-foreground, so it keeps contrast on every theme's accent. */
+/* The check is a mask filled with --background, so it keeps contrast on the foreground fill in every finish. */
 .milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::after {
   content: "";
   position: absolute;
@@ -570,7 +823,7 @@
   top: 0.18em;
   width: 1.05rem;
   height: 1.05rem;
-  background-color: var(--primary-foreground);
+  background-color: var(--background);
   mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'><polyline points='20 6 9 17 4 12'/></svg>") center / 0.7rem no-repeat;
   pointer-events: none;
 }
@@ -582,8 +835,18 @@
 .milkdown .ProseMirror td { border: 1px solid var(--border); padding: 0.4rem 0.55rem; text-align: left; }
 .milkdown .ProseMirror th { background: var(--secondary); font-weight: 600; }
 .milkdown .ProseMirror hr { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
-.milkdown .ProseMirror a { color: var(--primary); cursor: pointer; }
-.milkdown .ProseMirror a:hover { text-decoration: underline; }
+/* Links read as text with a muted underline (the shared Link button's treatment);
+   the signal key stays reserved for now, selection and focus. */
+.milkdown .ProseMirror a,
+.astryn-link {
+  color: var(--foreground);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+.milkdown .ProseMirror a:hover,
+.astryn-link:hover { text-decoration-color: var(--foreground); }
 
 /* Issue-mention pills inside the Milkdown editor */
 .milkdown .ProseMirror [data-mention-pill] {
@@ -644,7 +907,7 @@
   margin: 0;
   width: 1.05rem;
   height: 1.05rem;
-  accent-color: var(--primary);
+  accent-color: var(--foreground);
 }
 .astryn-prose li.task-list-item > p { margin: 0; }
 
@@ -733,7 +996,7 @@
 .md-codeblock .hljs-type,
 .md-codeblock .hljs-class .hljs-title,
 .md-codeblock .hljs-attribute,
-.md-codeblock .hljs-tag { color: var(--primary); }
+.md-codeblock .hljs-tag { color: var(--foreground); font-weight: 600; }
 .md-codeblock .hljs-comment,
 .md-codeblock .hljs-quote,
 .md-codeblock .hljs-meta { color: var(--muted-foreground); font-style: italic; }
@@ -754,8 +1017,9 @@
 .md-preview-host { color:var(--muted-foreground); font-size:12px; }
 .md-preview-thumb { width:64px; height:64px; object-fit:cover; border-radius:4px; flex:none; }
 .md-preview-fav { width:16px; height:16px; border-radius:3px; flex:none; }
-.md-preview-fallback { color:var(--primary); background:transparent; border:none;
-  cursor:pointer; padding:0; text-align:left; }
+.md-preview-fallback { color:var(--foreground); background:transparent; border:none;
+  cursor:pointer; padding:0; text-align:left; text-decoration:underline;
+  text-decoration-color:var(--muted-foreground); text-underline-offset:3px; }
 
 /* React Flow — theme the zoom controls and attribution to match the dark UI */
 .react-flow__controls {
@@ -788,3 +1052,801 @@
 
 /* goey-toast hard-codes its timestamp gray (#777, 4.0:1); use the theme token for AA. */
 [data-theme] .gooey-timestamp { color: var(--muted-foreground); }
+
+/* ── Group 1: calendar & agenda ─────────────────────────────────────────────
+   Calendar, This Week and Dependencies on the instrument face: full-bleed
+   faceplates divided by hairlines, matte plates, lamps for state. */
+
+/* Segmented control: a row of keys in one input-tone bezel. */
+.face-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+}
+
+.face-segment-item {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.face-segment-item:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.face-segment-item[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.face-segment-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Calendar event chip: a matte plate one step above the faceplate. */
+.cal-chip {
+  white-space: normal; /* FullCalendar sets nowrap; titles may take two lines */
+  background: var(--muted);
+  transition: background-color 150ms ease;
+}
+
+.fc-event:hover .cal-chip {
+  background: var(--accent);
+}
+
+/* Unscheduled rail rows */
+.cal-rail-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.cal-rail-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 10px;
+  padding: 9px 16px;
+  cursor: grab;
+}
+
+.cal-rail-row:hover {
+  background: var(--accent);
+}
+
+.cal-rail-row:active {
+  cursor: grabbing;
+}
+
+.calendar-surface .fc-scroller {
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 72%, transparent) var(--background);
+  scrollbar-width: thin;
+}
+
+/* The rail gives the grid room in a narrow split pane. */
+.calendar-surface {
+  container: calendar-pane / inline-size;
+}
+
+.cal-rail {
+  width: 16rem;
+}
+
+@container calendar-pane (max-width: 760px) {
+  .cal-rail {
+    width: 12.5rem;
+  }
+}
+
+/* This Week: readouts across the overview, as on the Dashboard face. */
+.week-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: hidden; /* clips the hairlines that fall on the outer edge */
+}
+
+/* Each readout draws its left and top hairline; on a wrapped row the ones
+   at the edge are clipped, so rows and columns stay divided cleanly. */
+.week-readout {
+  display: flex;
+  flex: 1 1 100px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 16px 12px;
+  box-shadow: -1px 0 0 var(--border), 0 -1px 0 var(--border);
+}
+
+/* Activity map: the selected week carries a pointer in the key beneath it. */
+.heat-week {
+  position: relative;
+}
+
+.heat-week:hover .heat-cell {
+  box-shadow: inset 0 0 0 1px var(--muted-foreground);
+}
+
+.heat-week[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+.heat-week:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ── Group 4: PRs, chat & inbox ── */
+/* Read-only readings on the PR faceplate: the Dashboard readout without its
+   hover or button role; each sizes to its legend so none is clipped. */
+.prs-readings > li {
+  flex: 1 0 auto;
+}
+
+.prs-reading {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  height: 100%;
+  padding: 14px 20px 12px;
+  white-space: nowrap;
+}
+
+/* The contribution year reads in the neutral ramp; only today takes the key. */
+.prs-heat-today {
+  box-shadow: 0 0 0 1.5px var(--primary);
+}
+
+/* Diff rows: additions and deletions keep the diff's own state colours; hunk
+   headers stay neutral so the only hue on the page is the change itself. */
+.prs-diff-hunk {
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+.prs-diff-add {
+  background: color-mix(in oklab, var(--success) 12%, transparent);
+}
+
+.prs-diff-del {
+  background: color-mix(in oklab, var(--destructive) 12%, transparent);
+}
+
+.prs-diff-add .prs-diff-marker {
+  color: var(--success);
+}
+
+.prs-diff-del .prs-diff-marker {
+  color: var(--destructive);
+}
+
+/* ── Group 3: local tasks ──────────────────────────────────────────────────
+   The Tasks screen on the instrument face: the spaces column on the body
+   tone, the open list on the faceplate, round lamps for state and priority,
+   a band selector for the view, and the dashboard's needle at now on the
+   timeline. */
+.lt-surface {
+  container-type: inline-size;
+  container-name: lt-pane;
+  background: var(--background);
+}
+
+/* A real outline, so focus survives forced-colors (Windows high contrast). */
+.lt-focus {
+  outline: none;
+}
+
+.lt-focus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* Spaces column: chrome on the body; the open list sits on the faceplate tone,
+   like the active tab. */
+.lt-nav {
+  width: 15rem;
+}
+
+.lt-nav-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  color: var(--muted-foreground);
+}
+
+.lt-nav-list:hover {
+  background: var(--sidebar-accent);
+  color: var(--foreground);
+}
+
+.lt-nav-list[aria-current="page"] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+@container lt-pane (max-width: 720px) {
+  .lt-nav {
+    width: 11.5rem;
+  }
+}
+
+/* Band selector: lowercase legends, each with a lamp; the key lights the
+   selected one. */
+.lt-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.lt-band-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lt-band-key:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.lt-band-key[aria-selected="true"],
+.lt-band-key[aria-checked="true"],
+.lt-band-key[aria-pressed="true"] {
+  color: var(--foreground);
+}
+
+.lt-band-key:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.lt-band-lamp {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+}
+
+[aria-selected="true"] > .lt-band-lamp,
+[aria-checked="true"] > .lt-band-lamp {
+  border-color: transparent;
+  background: var(--primary);
+}
+
+/* A switch that is on lights its lamp in the foreground; the key stays for the
+   one selection. */
+[aria-pressed="true"] > .lt-band-lamp {
+  border-color: transparent;
+  background: var(--foreground);
+}
+
+/* List rows: one grid, so due dates, priority lamps and assignee line up. */
+/* Rows and cards are positioned so their screen-reader-only text stays inside
+   the scroll container instead of widening the page. */
+.lt-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px 18px minmax(0, 4.75rem) minmax(0, 1fr) auto 5.5rem 8px 1.25rem;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 36px;
+  padding-right: 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.lt-row:hover {
+  background: var(--accent);
+}
+
+@container lt-pane (max-width: 820px) {
+  .lt-row-meta {
+    display: none;
+  }
+}
+
+@container lt-pane (max-width: 560px) {
+  .lt-row {
+    grid-template-columns: 16px 18px minmax(0, 1fr) auto 8px;
+  }
+
+  .lt-row-id,
+  .lt-row-who,
+  .lt-row-meta {
+    display: none;
+  }
+}
+
+/* Board: columns are zones of one faceplate, divided by hairlines. */
+.lt-column {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 17.5rem;
+  border-right: 1px solid var(--border);
+}
+
+.lt-column[data-over="true"] {
+  background: var(--accent);
+}
+
+.lt-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.lt-card:hover {
+  border-color: var(--input);
+}
+
+/* Where a dragged card will land: a key rule along the target's top edge. */
+.lt-card[data-drop="true"] {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+/* Transient overlays lift (menus, popovers, the dragged card, dialogs);
+   nothing at rest casts a shadow. */
+.lt-overlay {
+  box-shadow: 0 4px 16px var(--overlay-shadow);
+}
+
+.lt-lifted {
+  box-shadow: 0 8px 24px var(--overlay-shadow);
+}
+
+/* Timeline: the dashboard's needle, standing at today. */
+.lt-needle {
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.lt-needle::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.lt-bar {
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+}
+
+.lt-bar:hover {
+  background: var(--accent);
+}
+
+/* Calendar chips are neutral rows with a status lamp; no hover brightening. */
+.lt-calendar .fc .fc-event:hover {
+  filter: none;
+}
+
+.lt-calendar .fc .fc-event:hover .lt-chip {
+  background: var(--accent);
+}
+
+/* ── Group 5: settings, docs & reports ── */
+
+/* The instrument's slide switch, drawn on a native checkbox (keeps role, focus and Space). */
+.g5-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 30px;
+  height: 18px;
+  margin: 0;
+  border: 1px solid var(--input);
+  border-radius: 9999px;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, border-color 150ms ease-out;
+}
+
+.g5-switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--muted-foreground);
+  transition: transform 180ms cubic-bezier(0.16, 1, 0.3, 1), background-color 150ms ease-out;
+}
+
+.g5-switch:checked {
+  border-color: var(--foreground);
+  background: var(--foreground);
+}
+
+.g5-switch:checked::before {
+  transform: translateX(12px);
+  background: var(--background);
+}
+
+.g5-switch:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.g5-switch:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (forced-colors: active) {
+  .g5-switch { border-color: CanvasText; }
+  .g5-switch::before { background: CanvasText; }
+  .g5-switch:checked { background: Highlight; border-color: Highlight; }
+  .g5-switch:checked::before { background: Canvas; }
+}
+
+/* Rows inside a zone, divided by the faceplate's softer hairline. */
+.g5-rule-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+/* Theme picker: each finish as a miniature appliance (body, faceplate, lamps, key). */
+.g5-finish-option {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color 150ms ease-out, background-color 150ms ease-out;
+}
+
+.g5-finish-option:hover {
+  background: var(--accent);
+}
+
+.g5-finish-option-on {
+  border-color: var(--primary);
+}
+
+.g5-finish-option:has(:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.g5-finish {
+  display: flex;
+  height: 64px;
+  padding: 7px 7px 9px;
+  border: 1px solid var(--sidebar-border);
+  border-radius: var(--radius-md);
+  background: var(--sidebar);
+}
+
+.g5-finish-plate {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--card);
+}
+
+.g5-finish-zone {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 0 7px;
+}
+
+.g5-finish-zone + .g5-finish-zone {
+  border-top: 1px solid var(--border);
+}
+
+.g5-finish-scale {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* The finish's key, drawn as the Dashboard's needle. */
+.g5-finish-needle {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  right: 9px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+/* Docs reader: one centred reading column on the faceplate panel. */
+.docs-reader {
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 32px 40px 112px;
+}
+
+/* Links read as text with a muted rule, not in the key (the key is for now, selection and focus). */
+.docs-reader a,
+.docs-reader .milkdown .ProseMirror a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+
+.docs-reader a:hover,
+.docs-reader .milkdown .ProseMirror a:hover {
+  text-decoration-color: var(--foreground);
+}
+
+/* ── Group 2: issues & drawer ── */
+/* Issue rows sit straight on the faceplate, divided by the queue's 70% hairline. */
+.issue-row {
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.issue-row:last-child {
+  border-bottom: 0;
+}
+
+/* Transient overlays (options panels, the drag ghost, the drawer, the palette,
+   modals) are the only things that lift, with the finish's overlay shadow. */
+.issues-overlay {
+  box-shadow: 0 8px 24px var(--overlay-shadow);
+}
+
+/* ── Brand marks ──────────────────────────────────────────────────────────
+   Integration logos keep their own brand color (the owner's choice); dark
+   finishes get a brighter variant so each mark holds 3:1 on body and faceplate. */
+.brand-linear { color: #5e6ad2; }
+.brand-github { color: var(--foreground); }
+.brand-bitbucket { color: #0052cc; }
+.brand-teams { color: #5059c9; }
+.brand-clickup { color: #7b68ee; }
+.dark .brand-linear { color: #8f98f3; }
+.dark .brand-bitbucket { color: #4c9aff; }
+.dark .brand-teams { color: #8d93f0; }
+.dark .brand-clickup { color: #a396f5; }
+
+/* ── Icon tints ───────────────────────────────────────────────────────────
+   The owner wants every dock and Settings icon in color: one hue per screen,
+   with a light-finish / dark-finish pair that holds 3:1 on body and faceplate. */
+.tint-blue { color: #2563eb; }
+.tint-violet { color: #7c3aed; }
+.tint-green { color: #15803d; }
+.tint-orange { color: #c2410c; }
+.tint-teal { color: #0f766e; }
+.tint-pink { color: #be185d; }
+.tint-amber { color: #a16207; }
+.tint-red { color: #b91c1c; }
+.tint-slate { color: #475569; }
+.tint-indigo { color: #4338ca; }
+.tint-cyan { color: #0e7490; }
+.dark .tint-blue { color: #60a5fa; }
+.dark .tint-violet { color: #a78bfa; }
+.dark .tint-green { color: #4ade80; }
+.dark .tint-orange { color: #fb923c; }
+.dark .tint-teal { color: #2dd4bf; }
+.dark .tint-pink { color: #f472b6; }
+.dark .tint-amber { color: #facc15; }
+.dark .tint-red { color: #f87171; }
+.dark .tint-slate { color: #94a3b8; }
+.dark .tint-indigo { color: #818cf8; }
+.dark .tint-cyan { color: #22d3ee; }
+
+/* ── This Week board ──
+   The week as a planner on the faceplate: Overdue, then a column per day
+   divided by hairlines, with the needle standing at the start of today.
+   Below 760px the columns stack into a list grouped by day, and each run of
+   empty days folds onto one line. */
+.week-pane {
+  container: week-pane / inline-size;
+}
+
+.week-board-wrap {
+  flex: 1 0 320px;
+  min-height: 320px;
+}
+
+.week-board {
+  display: grid;
+  grid-template-columns: repeat(var(--week-cols), minmax(0, 1fr));
+  height: 100%;
+}
+
+.week-col {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.week-col + .week-col {
+  border-left: 1px solid var(--border);
+}
+
+.week-col-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 10px 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Each column scrolls on its own; the bottom clears the dock. */
+.week-col-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 8px 112px;
+}
+
+/* Where a dragged card will land: accent fill under a key rule along the top. */
+.week-col[data-over="true"] {
+  background: var(--accent);
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+/* Today: the needle, a 2px key rule at the start of the day under an 8px cap. */
+.week-col[data-today="true"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: -1px;
+  z-index: 3;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.week-col[data-today="true"]::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: -4px;
+  z-index: 3;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.week-card {
+  padding: 8px 10px;
+}
+
+/* Narrow panes: a stacked list grouped by day. */
+@container week-pane (max-width: 759px) {
+  .week-board-wrap {
+    flex: none;
+    min-height: 0;
+  }
+
+  .week-board {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    height: auto;
+    padding-bottom: 112px;
+  }
+
+  .week-col {
+    flex: 1 0 100%;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .week-col + .week-col {
+    border-left: 0;
+  }
+
+  .week-col-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    padding: 10px 16px 8px;
+    background: var(--background);
+  }
+
+  .week-col-body {
+    gap: 0;
+    overflow: visible;
+    padding: 0;
+  }
+
+  /* The list runs to the pane's edge, so the needle steps in to keep its cap whole. */
+  .week-col[data-today="true"]::before {
+    left: 3px;
+  }
+
+  .week-col[data-today="true"]::after {
+    left: 0;
+  }
+
+  /* Cards become hairline rows in the list. */
+  .week-card.lt-card {
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .week-card.lt-card + .week-card.lt-card {
+    border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+  }
+
+  .week-card.lt-card:hover {
+    background: var(--accent);
+  }
+
+  /* Empty days sit side by side, legends only; the last of a run fills the line. */
+  .week-col[data-empty] {
+    flex: 0 0 auto;
+  }
+
+  .week-col[data-empty]:has(+ .week-col:not([data-empty])),
+  .week-col[data-empty]:last-child {
+    flex-grow: 1;
+  }
+
+  .week-col[data-empty] .week-col-head {
+    position: static;
+    padding-right: 4px;
+    border-bottom: 0;
+  }
+
+  .week-col[data-empty] .week-col-body {
+    display: none;
+  }
+}

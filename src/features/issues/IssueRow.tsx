@@ -12,6 +12,8 @@ import {
 import { dhakaDateFromTimestamp, isOverdue } from "@/lib/dates";
 import type { IssueListItem, Label } from "@/lib/commands";
 import { Avatar } from "@/components/Avatar";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
+import { cn } from "@/lib/utils";
 import { StatusIcon } from "../drawer/issueGlyphs";
 import type { DisplayProps, Ordering } from "./viewConfig";
 
@@ -73,18 +75,31 @@ export function PriorityIcon({ p }: { p: number }) {
   );
 }
 
+/** One meta reading on a row: a small glyph and a 12px tabular legend, no chip. */
 export function Pill({ children, className = "", title }: { children: ReactNode; className?: string; title?: string }) {
   return (
     <span
       title={title}
-      className={`inline-flex shrink-0 items-center gap-1 rounded-md border border-border px-1.5 py-0.5 text-[11px] text-muted-foreground ${className}`}
+      className={cn("inline-flex shrink-0 items-center gap-1 text-[12px] tabular-nums text-muted-foreground", className)}
     >
       {children}
     </span>
   );
 }
 
-/** Up to `max` label chips (colored dot + name), then a "+N" overflow pill. */
+/** A Linear label chip: a hairline outline with the label's own color as its dot. */
+function LabelChip({ children, title }: { children: ReactNode; title?: string }) {
+  return (
+    <span
+      title={title}
+      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-border px-2 py-px text-[12px] text-muted-foreground"
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Up to `max` label chips (colored dot + name), then a "+N" overflow chip. */
 export function LabelPills({ labels, max = 2 }: { labels: Label[]; max?: number }) {
   if (labels.length === 0) return null;
   const shown = labels.slice(0, max);
@@ -92,13 +107,13 @@ export function LabelPills({ labels, max = 2 }: { labels: Label[]; max?: number 
   return (
     <span className="flex shrink-0 items-center gap-1">
       {shown.map((l) => (
-        <Pill key={l.id} title={`Label: ${l.name ?? "label"}`}>
-          <span className="size-1.5 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
+        <LabelChip key={l.id} title={`Label: ${l.name ?? "label"}`}>
+          <span className="size-2 rounded-full" style={{ backgroundColor: l.color ?? "var(--muted-foreground)" }} />
           <span className="max-w-24 truncate">{l.name ?? "label"}</span>
-        </Pill>
+        </LabelChip>
       ))}
       {extra.length > 0 && (
-        <Pill title={`Labels: ${extra.map((l) => l.name ?? "label").join(", ")}`}>+{extra.length}</Pill>
+        <LabelChip title={`Labels: ${extra.map((l) => l.name ?? "label").join(", ")}`}>+{extra.length}</LabelChip>
       )}
     </span>
   );
@@ -120,11 +135,11 @@ export function MetaCluster({
   const overdue = isOverdue(issue.dueDate, issue.stateType, today);
   const cycle = cycleText(issue);
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="flex shrink-0 items-center gap-3">
+      {/* The status glyph already leads the row; the meta adds its name on wide panes. */}
       {display.status && issue.stateName && (
-        <Pill title={`Status: ${issue.stateName}`}>
-          <StatusIcon type={issue.stateType} color={issue.stateColor} />
-          <span className="hidden lg:inline">{issue.stateName}</span>
+        <Pill className="hidden lg:inline-flex" title={`Status: ${issue.stateName}`}>
+          {issue.stateName}
         </Pill>
       )}
       {display.labels && <span className="hidden lg:flex"><LabelPills labels={issue.labels} /></span>}
@@ -171,16 +186,17 @@ export function MetaCluster({
       )}
       {display.dueDate && issue.dueDate && (
         <Pill
-          className={overdue ? "border-destructive/40 text-destructive" : ""}
+          className={overdue ? "text-destructive" : ""}
           title={`Due date: ${fmtDate(issue.dueDate)}${overdue ? " (overdue)" : ""}`}
         >
-          <CalendarDays className="size-3" />
+          {/* Overdue is an alarm: a lit lamp stands in for the calendar glyph. */}
+          {overdue ? <IndicatorLamp tone="danger" className="mx-0.5 size-1.5" /> : <CalendarDays className="size-3" />}
           {dueLabel(issue.dueDate, today)}
         </Pill>
       )}
       {display.created && (
         <span
-          className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground xl:inline"
+          className="hidden w-14 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground xl:inline"
           title={`Created ${fmtDate(dhakaDateFromTimestamp(issue.createdAt))}`}
         >
           {fmtDate(dhakaDateFromTimestamp(issue.createdAt))}
@@ -188,7 +204,7 @@ export function MetaCluster({
       )}
       {display.updated && (
         <span
-          className="hidden w-14 shrink-0 text-right text-[11px] text-muted-foreground xl:inline"
+          className="hidden w-14 shrink-0 text-right text-[12px] tabular-nums text-muted-foreground xl:inline"
           title={`Updated ${fmtDate(dhakaDateFromTimestamp(issue.updatedAt))}`}
         >
           {fmtDate(dhakaDateFromTimestamp(issue.updatedAt))}
@@ -200,7 +216,7 @@ export function MetaCluster({
             <Avatar name={avatar.name} src={avatar.avatarUrl} size={20} />
           </span>
         ) : (
-          <span title="Unassigned" className="size-5 shrink-0 rounded-full border border-dashed border-border" />
+          <span title="Unassigned" className="size-5 shrink-0 rounded-full border border-dashed border-muted-foreground/60" />
         ))}
     </div>
   );
@@ -224,7 +240,7 @@ export function IssueRow({
   today: string;
   /** Row text size. "base" gives a slightly larger title (used by the agenda). */
   size?: "sm" | "base";
-  /** When set (a Linear timestamp), show an inline "Started {date}" pill on the row. */
+  /** When set (a Linear timestamp), show an inline "Started {date}" reading on the row. */
   startedAt?: string | null;
 }) {
   const startedOn = startedAt ? fmtDate(dhakaDateFromTimestamp(startedAt)) : null;
@@ -232,24 +248,24 @@ export function IssueRow({
     <div
       onClick={() => onOpen(issue.id)}
       onContextMenu={onContextMenu}
-      className="group cursor-pointer border-b border-border/40 transition-colors last:border-b-0 hover:bg-accent/50"
+      className="issue-row group cursor-pointer transition-colors hover:bg-accent"
     >
       {/* Per-row horizontal scroll: in a narrow (split) pane the dense meta
           cluster overflows this row alone, instead of shifting the whole list. */}
       <div
-        className={`no-scrollbar flex items-center gap-3 overflow-x-auto px-4 ${size === "base" ? "py-3 text-base" : "py-2 text-sm"}`}
+        className={`no-scrollbar flex items-center gap-3 overflow-x-auto px-4 ${size === "base" ? "py-3 text-base" : "py-2.5 text-sm"}`}
       >
         <span title={`Status: ${issue.stateName || issue.stateType || "No status"}`} className="flex shrink-0">
           <StatusIcon type={issue.stateType} color={issue.stateColor} />
         </span>
         {display.id && (
-          <span className="w-16 shrink-0 font-mono text-xs text-muted-foreground" title={issue.identifier}>
+          <span className="w-[4.5rem] shrink-0 font-mono text-xs text-muted-foreground" title={issue.identifier}>
             {issue.identifier}
           </span>
         )}
-        <span className="min-w-[10rem] flex-1 truncate text-foreground">{issue.title}</span>
+        <span className="min-w-[10rem] flex-1 truncate font-medium text-foreground">{issue.title}</span>
         {startedOn && (
-          <Pill className="shrink-0 border-info/30 text-info" title={`Started working on ${startedOn}`}>
+          <Pill title={`Started working on ${startedOn}`}>
             <PlayCircle className="size-3" />
             Started {startedOn}
           </Pill>

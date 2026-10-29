@@ -1,7 +1,8 @@
-import { Card } from "@/components/ui/card";
-import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { DAY_LABELS, saveWorkdays, useWorkdays } from "@/lib/workweek";
 import { SectionHeader } from "../SectionHeader";
+import { SettingsPanel, SettingsZone } from "../SettingsPanel";
 
 export function CalendarSection() {
   const workdays = useWorkdays();
@@ -18,34 +19,33 @@ export function CalendarSection() {
   return (
     <>
       <SectionHeader title="Calendar" description="How your week is laid out." />
-      <Card className="flex flex-col gap-4 p-6">
-        <div className="flex flex-col gap-1">
-          <Label>Week days</Label>
-          <p className="text-sm text-muted-foreground">
-            Days shown on the calendar. Unselected days are hidden so the rest get more space.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {DAY_LABELS.map((label, day) => {
-            const active = workdays.includes(day);
-            return (
-              <button
-                key={label}
-                type="button"
-                aria-pressed={active}
-                onClick={() => toggleWorkday(day)}
-                className={`cursor-pointer rounded-md px-3 py-1.5 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
-                  active
-                    ? "bg-primary/15 text-foreground ring-1 ring-primary/40"
-                    : "text-muted-foreground ring-1 ring-border hover:bg-accent hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </Card>
+      <SettingsPanel label="Week days">
+        <SettingsZone
+          title="Week days"
+          hint="Days shown on the calendar. Unselected days are hidden so the rest get more space."
+        >
+          <div role="group" aria-label="Week days" className="grid grid-cols-7 gap-1">
+            {DAY_LABELS.map((label, day) => {
+              const active = workdays.includes(day);
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => toggleWorkday(day)}
+                  className={cn(
+                    "dash-control flex flex-col items-start gap-2 rounded-md px-2.5 py-2 text-[12px] transition-colors hover:bg-accent",
+                    active ? "font-medium text-foreground" : "text-muted-foreground",
+                  )}
+                >
+                  <IndicatorLamp tone={active ? "neutral" : "off"} />
+                  <span className="lowercase">{label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </SettingsZone>
+      </SettingsPanel>
     </>
   );
 }

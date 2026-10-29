@@ -1,54 +1,48 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useId } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarRange, ChevronLeft, ChevronRight, CornerDownRight } from "lucide-react";
-import { useTasks, useTaskUsers, useViewer } from "../../lib/taskQueries";
+import { ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
+import { useTasks, useUpdateTask, useViewer } from "../../lib/taskQueries";
 import { dhakaToday, weekWindow, addDays, isoWeek } from "../../lib/dates";
-import { buildAgenda, dueIssues, type AgendaItem } from "./agenda";
+import { useWorkdays } from "../../lib/workweek";
+import { buildAgenda, dueIssues } from "./agenda";
 import type { Task } from "../../lib/tracker";
-import { IssueRow } from "../issues/IssueRow";
-import { DEFAULT_DISPLAY } from "../issues/viewConfig";
 import { useIssueMenu } from "../issues/IssueContextMenu";
-import { buildHeatmap, agendaCounts, type AgendaCounts } from "./agendaStats";
+import { buildHeatmap, agendaCounts, type AgendaCounts, type HeatWeek } from "./agendaStats";
 import { HeatMap } from "./HeatMap";
+import { LampMessage } from "./LampMessage";
+import { WeekBoard } from "./WeekBoard";
+import { boardColumns } from "./weekColumns";
+import { Button } from "@/components/ui/button";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
+import { cn } from "@/lib/utils";
 
-const STAT_TILES: { key: keyof AgendaCounts; label: string; color: string }[] = [
-  { key: "todo", label: "Todo", color: "var(--muted-foreground)" },
-  { key: "inProgress", label: "In Progress", color: "var(--warning)" },
-  { key: "inReview", label: "In Review", color: "var(--info)" },
-  { key: "overdue", label: "Overdue", color: "var(--destructive)" },
+const READOUTS: { key: keyof AgendaCounts; label: string; lamp: Lamp; alarm?: boolean }[] = [
+  { key: "todo", label: "todo", lamp: "neutral" },
+  { key: "inProgress", label: "in progress", lamp: "neutral" },
+  { key: "inReview", label: "in review", lamp: "neutral" },
+  { key: "overdue", label: "overdue", lamp: "danger", alarm: true },
 ];
 
-/** Four-count glance card shown beside the heatmap. */
-function StatsCard({ counts, total }: { counts: AgendaCounts; total: number }) {
+/** The week's counts as readouts: light numerals over lowercase legends with lamps. */
+function WeekReadouts({ counts, total }: { counts: AgendaCounts; total: number }) {
+  const cells = [
+    { key: "due", label: "on your plate", value: total, lamp: "neutral" as Lamp, alarm: false },
+    ...READOUTS.map((r) => ({ ...r, value: counts[r.key], alarm: !!r.alarm })),
+  ];
   return (
-    <div className="flex flex-col gap-2 lg:w-60 lg:shrink-0">
-      <div className="flex items-baseline justify-between">
-        <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-          This week
-        </p>
-        <p className="text-[11px] text-muted-foreground">
-          {total} issue{total !== 1 ? "s" : ""}
-        </p>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-      {STAT_TILES.map((t) => (
-        <div
-          key={t.key}
-          className="flex flex-col gap-1 rounded-lg border border-border/60 bg-card px-3 py-2.5"
-        >
-          <div className="flex items-center gap-1.5">
-            <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: t.color }} />
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
-              {t.label}
-            </span>
-          </div>
-          <span className="text-2xl font-semibold tabular-nums leading-none text-foreground">
-            {counts[t.key]}
+    <ul aria-label="This week's counts" className="week-readouts">
+      {cells.map((c) => (
+        <li key={c.key} className="week-readout">
+          <span className={cn("dash-numeral text-[28px]", c.alarm && c.value ? "text-destructive" : "text-foreground")}>
+            {c.value}
           </span>
-        </div>
+          <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            <IndicatorLamp tone={c.value ? c.lamp : "off"} />
+            {c.label}
+          </span>
+        </li>
       ))}
-      </div>
-    </div>
+    </ul>
   );
 }
 
@@ -59,29 +53,85 @@ function shortDate(date: string): string {
   return `${months[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
 }
 
+/** Whether the activity strip is open; remembered per viewer in local storage. */
+const ACTIVITY_KEY = "astryn.this-week.activity";
+
+function readActivityOpen(): boolean {
+  try {
+    return localStorage.getItem(ACTIVITY_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+/** The 12-month heatmap, folded into one strip under the readouts until it is opened. */
+function ActivityStrip({
+  weeks,
+  offset,
+  onSelectWeek,
+}: {
+  weeks: HeatWeek[];
+  offset: number;
+  onSelectWeek: (offset: number) => void;
+}) {
+  const [open, setOpen] = useState(readActivityOpen);
+  const labelId = useId();
+  const panelId = useId();
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try {
+      localStorage.setItem(ACTIVITY_KEY, next ? "1" : "0");
+    } catch {
+      // Storage unavailable: the strip still toggles for this session.
+    }
+  };
+  return (
+    <section aria-labelledby={labelId} className="border-y border-border">
+      <h2>
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={toggle}
+          className="dash-control flex w-full items-center gap-2 px-4 py-2 text-left text-[12px] text-muted-foreground transition-colors hover:bg-accent"
+        >
+          <ChevronDown aria-hidden className={cn("size-3.5 shrink-0 transition-transform", !open && "-rotate-90")} />
+          <span id={labelId} className="font-medium text-foreground">activity</span>
+          <span className="truncate">tasks due over the last 12 months{open ? " · select a week to jump to it" : ""}</span>
+        </button>
+      </h2>
+      {open && (
+        <div id={panelId} className="px-4 pt-1 pb-4">
+          <HeatMap labelledBy={labelId} weeks={weeks} currentOffset={offset} onSelectWeek={onSelectWeek} />
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function AgendaView() {
   const today = dhakaToday();
   const [weekOffset, setWeekOffset] = useState(0);
   const win = weekWindow(new Date(), weekOffset);
+  const hintId = useId();
+  const workdays = useWorkdays();
 
   const viewer = useViewer();
   const { data: issues, isLoading: issuesLoading } = useTasks({});
-  const { data: users } = useTaskUsers();
+  const update = useUpdateTask();
   const { openMenu } = useIssueMenu();
   const [, setParams] = useSearchParams();
 
   const open = (id: string) => setParams({ issue: id });
-  const avatarOf = (id: string | null) => {
-    if (!id) return null;
-    const u = (users ?? []).find((x) => x.id === id);
-    return u ? { name: u.name, avatarUrl: u.avatarUrl } : null;
-  };
+  const byId = new Map((issues ?? []).map((i) => [i.id, i]));
+  const parentOf = (task: Task) => (task.parentId ? byId.get(task.parentId) : undefined);
 
-  // Arrow-key week navigation
+  // Arrow-key week navigation. A focused board card keeps the arrows for itself.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if modifier key held
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Ignore if a modifier key is held or something already handled the key
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey || e.defaultPrevented) return;
       // Ignore if focus is in an input-like element
       const target = e.target as HTMLElement | null;
       if (target) {
@@ -101,19 +151,19 @@ export function AgendaView() {
 
   if (issuesLoading || viewer.isLoading) {
     return (
-      <div className="space-y-2 p-6">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <div key={i} className="h-9 animate-pulse rounded bg-muted/50" />
-        ))}
+      <div aria-busy className="h-full">
+        <LampMessage tone="off" title="Reading cached tasks…" body="Your week appears as soon as the local cache is read." />
       </div>
     );
   }
 
   const { viewerIds } = viewer;
   const hasViewer = viewerIds.length > 0;
+  const includeOverdue = weekOffset === 0;
   const groups = hasViewer
-    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win, includeOverdue: weekOffset === 0 })
+    ? buildAgenda({ issues: issues ?? [], viewerIds, window: win, includeOverdue })
     : [];
+  const columns = boardColumns(groups, win, workdays, includeOverdue);
 
   const isEmpty = groups.every((g) => g.items.length === 0);
 
@@ -124,143 +174,68 @@ export function AgendaView() {
   const weekLabel = weekYear !== currentYear ? `Week ${weekNum} · ${weekYear}` : `Week ${weekNum}`;
   const rangeLabel = `${shortDate(win.weekStart)} – ${shortDate(addDays(win.weekStart, 6))}`;
 
-  // Dashboard data
+  // Overview data
   const heatmapWeeks = hasViewer
     ? buildHeatmap(issues ?? [], viewerIds, { now: new Date(), weeksBack: 51, weeksForward: 1 })
     : [];
   const counts = agendaCounts(groups);
   const weekTotal = groups.reduce((n, g) => n + dueIssues(g).length, 0);
 
-  const renderRow = (issue: Task) => (
-    <IssueRow
-      issue={issue}
-      display={DEFAULT_DISPLAY}
-      avatar={avatarOf(issue.assigneeId)}
-      onOpen={open}
-      onContextMenu={(e) => openMenu(e, issue.id)}
-      today={today}
-      size="base"
-      startedAt={issue.startedAt}
-    />
-  );
-
-  // A parent shown only to give its due sub-issues context (it isn't itself due
-  // in this group) — a muted heading, still clickable/right-clickable.
-  const renderContextParent = (issue: Task) => (
-    <button
-      type="button"
-      onClick={() => open(issue.id)}
-      onContextMenu={(e) => openMenu(e, issue.id)}
-      className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span
-        className="size-2 shrink-0 rounded-full"
-        style={{ backgroundColor: issue.stateColor }}
-        title={issue.stateName ?? undefined}
-      />
-      <span className="shrink-0 font-mono">{issue.identifier}</span>
-      <span className="truncate text-foreground/80">{issue.title}</span>
-      <CornerDownRight className="size-3 shrink-0 text-muted-foreground/60" aria-hidden />
-    </button>
-  );
-
-  const renderItem = (item: AgendaItem) => (
-    <div key={item.issue.id}>
-      {item.contextOnly ? renderContextParent(item.issue) : renderRow(item.issue)}
-      {item.children.length > 0 && (
-        <div className="ml-5 border-l border-border pl-1">
-          {item.children.map((c) => (
-            <div key={c.id}>{renderRow(c)}</div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
-      {/* Header */}
-      <header className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
-        <CalendarRange className="size-4 shrink-0 text-muted-foreground" />
-        <div className="flex flex-1 items-center gap-1.5 min-w-0">
-          {/* Week nav */}
-          <button
-            type="button"
-            aria-label="Previous week"
-            onClick={() => setWeekOffset((o) => o - 1)}
-            className="cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <ChevronLeft className="size-4" />
-          </button>
-          <div className="flex flex-col min-w-0">
-            <span className="text-sm font-semibold leading-tight">{weekLabel}</span>
-            <span className="text-[11px] text-muted-foreground leading-tight">{rangeLabel}</span>
+    <div className="week-pane h-full">
+      <main className="week-main drawer-scrollbar flex h-full flex-col overflow-y-auto">
+        <header className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-5 pb-3">
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground tabular-nums">{weekLabel}</h1>
+          <span className="text-[13px] tabular-nums text-muted-foreground">{rangeLabel}</span>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon-sm" aria-label="Previous week" title="Previous week" onClick={() => setWeekOffset((o) => o - 1)}>
+              <ChevronLeft />
+            </Button>
+            <Button variant="outline" size="sm" disabled={weekOffset === 0} onClick={() => setWeekOffset(0)}>
+              This week
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label="Next week" title="Next week" onClick={() => setWeekOffset((o) => o + 1)}>
+              <ChevronRight />
+            </Button>
           </div>
-          <button
-            type="button"
-            aria-label="Next week"
-            onClick={() => setWeekOffset((o) => o + 1)}
-            className="cursor-pointer rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <ChevronRight className="size-4" />
-          </button>
-          {weekOffset !== 0 && (
-            <button
-              type="button"
-              onClick={() => setWeekOffset(0)}
-              className="ml-1 cursor-pointer rounded px-2 py-0.5 text-[11px] text-muted-foreground ring-1 ring-border transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            >
-              This Week
-            </button>
-          )}
-        </div>
-      </header>
+          <span className="ml-auto text-[12px] text-muted-foreground">← / → to change week</span>
+        </header>
 
-      {/* Dashboard — heatmap (full-width) + glance card on the same row */}
-      {hasViewer && (
-        <div className="border-b border-border/60 px-4 py-4">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
-            <div className="flex min-w-0 flex-1 flex-col">
-              <div className="mb-2 flex items-baseline justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
-                  Activity
-                </p>
-                <p className="text-[11px] text-muted-foreground">Last 12 months · click a column to jump</p>
-              </div>
-              <HeatMap
-                weeks={heatmapWeeks}
-                currentOffset={weekOffset}
-                onSelectWeek={setWeekOffset}
+        {/* Overview: the week's readouts, then a year of due dates folded into one strip. */}
+        {hasViewer && (
+          <section aria-label="Week overview" className="border-t border-border">
+            <WeekReadouts counts={counts} total={weekTotal} />
+          </section>
+        )}
+        {hasViewer && <ActivityStrip weeks={heatmapWeeks} offset={weekOffset} onSelectWeek={setWeekOffset} />}
+
+        {isEmpty ? (
+          <LampMessage
+            tone="success"
+            title="Nothing on your plate this week."
+            body="Tasks assigned to you and due this week are laid out here by day."
+            className={hasViewer ? undefined : "border-t border-border"}
+          />
+        ) : (
+          <>
+            <p id={hintId} className="border-b border-border px-4 py-2 text-[12px] text-muted-foreground">
+              Drag a card onto a day to reschedule it. Keyboard: arrows move between cards, shift + ← / → moves a card a
+              day, enter opens it.
+            </p>
+            <div className="week-board-wrap">
+              <WeekBoard
+                columns={columns}
+                today={today}
+                hintId={hintId}
+                parentOf={parentOf}
+                onOpen={open}
+                onMenu={(e, id) => openMenu(e, id)}
+                onMove={(id, date) => update.mutate({ id, patch: { dueDate: date } })}
               />
             </div>
-            <StatsCard counts={counts} total={weekTotal} />
-          </div>
-        </div>
-      )}
-
-      {/* Issue list */}
-      {isEmpty ? (
-        <div className="flex flex-1 items-center justify-center p-10 text-sm text-muted-foreground">
-          Nothing on your plate this week.
-        </div>
-      ) : (
-        <div className="divide-y divide-border/40 pb-12">
-          {groups.map((g) => (
-            <section key={g.key}>
-              <div className="sticky top-0 z-10 flex items-center gap-2 bg-background px-4 py-2.5">
-                <span className="text-base font-semibold">{g.label}</span>
-                {g.date && <span className="text-[13px] text-muted-foreground">{g.date}</span>}
-                <span className="ml-auto text-[13px] text-muted-foreground">{dueIssues(g).length}</span>
-              </div>
-              {g.items.length ? (
-                g.items.map(renderItem)
-              ) : (
-                <div className="px-4 py-2 text-xs text-muted-foreground/70">Nothing due</div>
-              )}
-            </section>
-          ))}
-        </div>
-      )}
+          </>
+        )}
+      </main>
     </div>
   );
 }

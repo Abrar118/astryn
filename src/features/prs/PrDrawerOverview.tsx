@@ -3,20 +3,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { gooeyToast } from "goey-toast";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-  Check,
-  CheckCircle2,
-  ChevronDown,
-  CircleDot,
-  FileCode2,
-  GitCommitHorizontal,
-  GitMerge,
-  MessageSquare,
-  ShieldCheck,
-  UserRoundCheck,
-  XCircle,
-} from "lucide-react";
+import { GitCommitHorizontal, MessageSquare, UserRoundCheck } from "lucide-react";
 import type { GithubPr, GithubPrDetail } from "@/lib/commands";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import { timeAgo } from "@/features/drawer/timeAgo";
 import { useCodeHost } from "./codeHost";
 import {
@@ -27,6 +16,23 @@ import {
 
 function openExternal(url: string) {
   openUrl(url).catch(() => gooeyToast.error("Couldn't open the link"));
+}
+
+/** A review state (GitHub's or the cached reviewer's) read as a lamp. */
+function reviewLamp(state: string): Lamp {
+  const s = state.toLowerCase();
+  if (s === "approved") return "success";
+  if (s === "changes_requested") return "warning";
+  if (s === "commented") return "info";
+  return "off";
+}
+
+/** A check conclusion read as a lamp: passing, failing, or still running. */
+function checkLamp(conclusion: string | null): Lamp {
+  const c = conclusion?.toLowerCase();
+  if (c === "success") return "success";
+  if (c === "failure" || c === "timed_out" || c === "action_required" || c === "startup_failure") return "danger";
+  return "off";
 }
 
 function Markdown({ children }: { children: string }) {
@@ -48,7 +54,7 @@ function Markdown({ children }: { children: string }) {
     [],
   );
   return (
-    <div className="astryn-prose prose prose-sm prose-invert max-w-none break-words prose-headings:font-semibold prose-a:text-primary">
+    <div className="astryn-prose max-w-none break-words">
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {children}
       </ReactMarkdown>
@@ -56,77 +62,70 @@ function Markdown({ children }: { children: string }) {
   );
 }
 
+function Legend({ children }: { children: string }) {
+  return <h2 className="mb-2.5 text-[12px] font-medium text-muted-foreground">{children}</h2>;
+}
+
 function Actor({
   avatar,
   login,
+  size = 6,
 }: {
   avatar: string | null;
   login: string | null;
+  size?: 5 | 6;
 }) {
+  const dim = size === 5 ? "size-5" : "size-6";
   return (
-    <span className="flex items-center gap-2">
+    <span className="flex min-w-0 items-center gap-2">
       {avatar ? (
-        <img
-          src={avatar}
-          alt=""
-          className="size-6 rounded-full ring-1 ring-border"
-        />
+        <img src={avatar} alt="" className={`${dim} shrink-0 rounded-full`} />
       ) : (
-        <span className="flex size-6 items-center justify-center rounded-full bg-muted text-[10px] uppercase text-muted-foreground">
-          {login?.slice(0, 1) ?? "?"}
+        <span className={`flex ${dim} shrink-0 items-center justify-center rounded-full bg-muted text-[11px] text-muted-foreground`}>
+          {login?.slice(0, 1).toUpperCase() ?? "?"}
         </span>
       )}
-      <span className="font-medium text-foreground">{login ?? "Unknown user"}</span>
+      <span className="truncate font-medium text-foreground">{login ?? "Unknown user"}</span>
     </span>
   );
 }
 
 function TimelineIcon({ event }: { event: PrTimelineEvent }) {
-  if (event.kind === "commit") {
-    return <GitCommitHorizontal className="size-4 text-muted-foreground" />;
-  }
-  if (event.kind === "review") {
-    return event.review.state.toLowerCase() === "approved" ? (
-      <CheckCircle2 className="size-4 text-success" />
-    ) : (
-      <UserRoundCheck className="size-4 text-warning" />
-    );
-  }
-  return <MessageSquare className="size-4 text-info" />;
+  const Icon =
+    event.kind === "commit" ? GitCommitHorizontal : event.kind === "review" ? UserRoundCheck : MessageSquare;
+  return <Icon aria-hidden className="size-4 text-muted-foreground" />;
 }
 
+/** One activity entry: kind glyph, who and what on one line, the body under it. */
 function TimelineItem({ event }: { event: PrTimelineEvent }) {
   const actor =
     event.kind === "comment"
-      ? {
-          avatar: event.comment.authorAvatar,
-          login: event.comment.authorLogin,
-        }
+      ? { avatar: event.comment.authorAvatar, login: event.comment.authorLogin }
       : event.kind === "review"
-        ? {
-            avatar: event.review.authorAvatar,
-            login: event.review.authorLogin,
-          }
+        ? { avatar: event.review.authorAvatar, login: event.review.authorLogin }
         : {
             avatar: event.commit.authorAvatar,
             login: event.commit.authorLogin ?? event.commit.authorName,
           };
   return (
-    <article className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-3 pb-5 last:pb-0">
-      <div className="relative z-10 flex size-7 items-center justify-center rounded-full border border-border bg-card">
+    <article className="grid grid-cols-[16px_minmax(0,1fr)] gap-x-3 py-3.5">
+      <span className="flex h-6 items-center">
         <TimelineIcon event={event} />
-      </div>
-      <div className="min-w-0 rounded-lg border border-border/60 bg-background/30 px-3.5 py-3">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
-          <Actor avatar={actor.avatar} login={actor.login} />
-          <span className="text-muted-foreground">
-            {event.kind === "commit"
-              ? "committed"
-              : event.kind === "review"
-                ? reviewStateLabel(event.review.state)
-                : "commented"}
-          </span>
-          <span className="ml-auto text-muted-foreground">
+      </span>
+      <div className="min-w-0">
+        <div className="flex min-h-6 flex-wrap items-center gap-x-2 gap-y-1 text-[12px]">
+          <Actor avatar={actor.avatar} login={actor.login} size={5} />
+          {event.kind === "review" ? (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <IndicatorLamp tone={reviewLamp(event.review.state)} />
+              {reviewStateLabel(event.review.state).toLowerCase()}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              {event.kind === "commit" ? "committed" : "commented"}
+            </span>
+          )}
+          <span className="ml-auto tabular-nums text-muted-foreground">
             {timeAgo(event.timestamp)}
           </span>
         </div>
@@ -134,25 +133,21 @@ function TimelineItem({ event }: { event: PrTimelineEvent }) {
           <button
             type="button"
             onClick={() => openExternal(event.commit.url)}
-            className="mt-2 flex max-w-full items-center gap-2 text-left text-sm text-foreground hover:text-primary"
+            className="dash-control mt-1 flex max-w-full items-center gap-2 rounded-sm text-left text-[13px] text-foreground underline-offset-4 hover:underline"
           >
-            <code className="shrink-0 text-xs text-muted-foreground">
+            <code className="shrink-0 font-mono text-[12px] text-muted-foreground">
               {event.commit.oid.slice(0, 7)}
             </code>
             <span className="truncate">{event.commit.headline}</span>
           </button>
         ) : event.kind === "review" ? (
           event.review.body ? (
-            <div className="mt-2">
+            <div className="mt-1">
               <Markdown>{event.review.body}</Markdown>
             </div>
-          ) : (
-            <p className="mt-2 text-sm text-muted-foreground">
-              {reviewStateLabel(event.review.state)}
-            </p>
-          )
+          ) : null
         ) : (
-          <div className="mt-2">
+          <div className="mt-1">
             <Markdown>{event.comment.body}</Markdown>
           </div>
         )}
@@ -175,81 +170,94 @@ export function PrDrawerOverview({
     (check) => check.conclusion?.toLowerCase() === "success",
   ).length;
   const reviewers = useMemo(() => {
-    const merged = new Map<string, { login: string; avatar: string | null }>();
+    const merged = new Map<string, { login: string; avatar: string | null; state: string }>();
     for (const reviewer of seed.reviewers) {
       merged.set(reviewer.login.toLowerCase(), {
         login: reviewer.login,
         avatar: reviewer.avatar,
+        state: reviewer.state,
       });
     }
-    for (const review of detail?.reviews ?? []) {
+    // Oldest first, so the last live review per author is their current verdict.
+    const live = [...(detail?.reviews ?? [])].sort(
+      (a, b) => Date.parse(a.submittedAt) - Date.parse(b.submittedAt),
+    );
+    for (const review of live) {
       if (!review.authorLogin) continue;
       const key = review.authorLogin.toLowerCase();
       const cached = merged.get(key);
       merged.set(key, {
         login: review.authorLogin,
         avatar: review.authorAvatar ?? cached?.avatar ?? null,
+        state: review.state,
       });
     }
     return [...merged.values()];
   }, [detail?.reviews, seed.reviewers]);
   const files = detail?.files ?? [];
+  const draft = detail?.draft ?? seed.draft;
+  const state = detail?.state.toLowerCase() ?? "open";
+  const mergeable = detail?.mergeable ?? seed.mergeable ?? "unknown";
+  const statusLamp: Lamp = draft
+    ? "off"
+    : state === "merged"
+      ? "neutral"
+      : mergeable === "conflicting"
+        ? "danger"
+        : state === "closed"
+          ? "off"
+          : "neutral";
 
   return (
-    <div className="grid min-h-full grid-cols-1 items-start gap-12 px-8 py-7 xl:grid-cols-[minmax(0,1fr)_300px] xl:px-12">
+    <div className="grid min-h-full grid-cols-1 items-start gap-10 px-8 py-6 xl:grid-cols-[minmax(0,1fr)_280px] xl:px-10">
       <div className="min-w-0">
-        <h1 className="max-w-4xl text-2xl font-semibold leading-tight tracking-[-0.02em] text-foreground">
+        <h1 className="max-w-4xl text-[20px] font-semibold leading-tight tracking-tight text-foreground">
           {detail?.title ?? seed.title ?? "(untitled)"}
         </h1>
-        <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <div className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-muted-foreground">
           <Actor
             avatar={detail?.authorAvatar ?? seed.authorAvatar}
             login={detail?.authorLogin ?? seed.authorLogin}
+            size={5}
           />
-          <span>·</span>
+          <span aria-hidden>·</span>
           <span className="font-mono">
             {seed.repo}#{seed.number}
           </span>
           {(detail?.baseBranch ?? seed.baseBranch) && (
             <>
-              <span>·</span>
+              <span aria-hidden>·</span>
               <span className="min-w-0 truncate font-mono">
                 {detail?.baseBranch ?? seed.baseBranch} ←{" "}
                 {detail?.headBranch ?? seed.branch ?? "head"}
               </span>
             </>
           )}
-          <span>·</span>
-          <span>{detail?.createdAt ? timeAgo(detail.createdAt) : "cached"}</span>
+          <span aria-hidden>·</span>
+          <span className="tabular-nums">{detail?.createdAt ? timeAgo(detail.createdAt) : "cached"}</span>
         </div>
 
-        <section className="mt-8">
-          <div className="mb-3 flex items-center gap-1 text-xs text-muted-foreground">
-            <span>Description</span>
-            <ChevronDown className="size-3" />
-          </div>
+        <section className="mt-7">
+          <h2 className="mb-2 text-[13px] font-semibold tracking-tight text-foreground">Description</h2>
           {detail?.body ? (
             <Markdown>{detail.body}</Markdown>
           ) : (
-            <p className="text-sm text-muted-foreground">
+            <p className="text-[13px] text-muted-foreground">
               Live description is unavailable. Cached pull request metadata is
               still shown.
             </p>
           )}
         </section>
 
-        <section className="mt-12 border-t border-border/50 pt-7">
-          <h2 className="mb-5 text-sm font-medium text-foreground">Activity</h2>
-          <div
-            aria-label="Pull request activity"
-            className="relative before:absolute before:bottom-3 before:left-[13px] before:top-3 before:w-px before:bg-border"
-          >
+        <section className="mt-10 border-t border-border pt-5">
+          <h2 className="text-[13px] font-semibold tracking-tight text-foreground">Activity</h2>
+          <div aria-label="Pull request activity" className="mt-1 divide-y divide-border/70">
             {!detail ? (
-              <p className="pl-10 text-sm text-muted-foreground">
+              <p className="py-3 text-[13px] text-muted-foreground">
                 Activity loads with live details.
               </p>
             ) : timeline.length === 0 ? (
-              <p className="pl-10 text-sm text-muted-foreground">
+              <p className="py-3 text-[13px] text-muted-foreground">
                 No comments, reviews, or commits to show.
               </p>
             ) : (
@@ -262,7 +270,7 @@ export function PrDrawerOverview({
             (detail.truncated.comments ||
               detail.truncated.reviews ||
               detail.truncated.commits) && (
-              <p className="mt-4 text-xs text-muted-foreground">
+              <p className="mt-3 text-[12px] text-muted-foreground">
                 Showing the most recent bounded activity from {host.name}.
               </p>
             )}
@@ -271,122 +279,111 @@ export function PrDrawerOverview({
 
       <aside
         aria-label="Pull request metadata"
-        className="space-y-8 xl:sticky xl:top-7"
+        className="divide-y divide-border rounded-lg border border-border bg-card xl:sticky xl:top-6"
       >
-        <section>
-          <h2 className="mb-3 text-sm text-muted-foreground">Status</h2>
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <GitMerge
-              className={`size-4 ${
-                detail?.draft ?? seed.draft
-                  ? "text-muted-foreground"
-                  : detail?.state.toLowerCase() === "merged"
-                    ? "text-merged"
-                    : detail?.state.toLowerCase() === "closed"
-                      ? "text-destructive"
-                      : "text-success"
-              }`}
-            />
-            <span>
-              {detail?.draft ?? seed.draft
-                ? "Draft"
-                : reviewStateLabel(detail?.state ?? "open")}
-            </span>
-            <span className="text-muted-foreground">
-              · {reviewStateLabel(detail?.mergeable ?? seed.mergeable ?? "unknown")}
+        <section className="px-4 py-3.5">
+          <Legend>status</Legend>
+          <div className="flex items-center gap-2 text-[13px] text-foreground">
+            <IndicatorLamp tone={statusLamp} className={state === "merged" && !draft ? "bg-merged" : undefined} />
+            <span>{draft ? "Draft" : reviewStateLabel(detail?.state ?? "open")}</span>
+            <span className={mergeable === "conflicting" ? "text-destructive" : "text-muted-foreground"}>
+              · {reviewStateLabel(mergeable).toLowerCase()}
             </span>
           </div>
         </section>
 
-        <section>
-          <h2 className="mb-3 text-sm text-muted-foreground">Related to</h2>
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <CircleDot className="size-4 text-primary" />
-            {detail?.linearIdentifier ?? seed.linearIdentifier ?? "Not linked"}
-          </div>
-        </section>
-
-        <section>
-          <h2 className="mb-3 text-sm text-muted-foreground">Reviewers</h2>
-          {reviewers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No reviewers</p>
+        <section className="px-4 py-3.5">
+          <Legend>related to</Legend>
+          {detail?.linearIdentifier ?? seed.linearIdentifier ? (
+            <span className="font-mono text-[13px] text-foreground">
+              {detail?.linearIdentifier ?? seed.linearIdentifier}
+            </span>
           ) : (
-            <div className="space-y-2.5">
-              {reviewers.map((reviewer) => (
-                <div
-                  key={reviewer.login.toLowerCase()}
-                  className="flex items-center gap-2 text-sm"
-                >
-                  <Actor avatar={reviewer.avatar} login={reviewer.login} />
-                  <CheckCircle2 className="ml-auto size-4 text-success" />
-                </div>
-              ))}
-            </div>
+            <span className="text-[13px] text-muted-foreground">Not linked</span>
           )}
         </section>
 
-        <section>
-          <h2 className="mb-3 text-sm text-muted-foreground">Checks</h2>
-          <div className="mb-2 flex items-center gap-2 text-sm text-foreground">
-            {checks.length > 0 && passingChecks === checks.length ? (
-              <CheckCircle2 className="size-4 text-success" />
-            ) : (
-              <ShieldCheck className="size-4 text-muted-foreground" />
-            )}
-            {checks.length === 0
-              ? seed.ciStatus === "success"
-                ? "Cached checks passing"
-                : "No live checks"
-              : `${passingChecks}/${checks.length} passing`}
-          </div>
-          <div className="space-y-1.5">
-            {checks.slice(0, 6).map((check) => (
-              <div
-                key={check.name}
-                className="flex items-center gap-2 text-xs text-muted-foreground"
-              >
-                {check.conclusion?.toLowerCase() === "success" ? (
-                  <Check className="size-3 text-success" />
-                ) : (
-                  <XCircle className="size-3 text-warning" />
-                )}
-                <span className="truncate">{check.name}</span>
-              </div>
-            ))}
-            {detail?.truncated.checks && (
-              <span className="text-xs text-muted-foreground">
-                More checks on {host.name}
-              </span>
-            )}
-          </div>
+        <section className="px-4 py-3.5">
+          <Legend>reviewers</Legend>
+          {reviewers.length === 0 ? (
+            <p className="text-[13px] text-muted-foreground">No reviewers</p>
+          ) : (
+            <ul className="space-y-2">
+              {reviewers.map((reviewer) => (
+                <li
+                  key={reviewer.login.toLowerCase()}
+                  className="flex items-center gap-2 text-[13px]"
+                >
+                  <Actor avatar={reviewer.avatar} login={reviewer.login} size={5} />
+                  <span className="ml-auto flex shrink-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+                    <IndicatorLamp tone={reviewLamp(reviewer.state)} />
+                    {reviewStateLabel(reviewer.state).toLowerCase()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
-        <section>
-          <h2 className="mb-3 text-sm text-muted-foreground">
-            {detail?.changedFiles ?? seed.changedFiles ?? 0} files changed
-          </h2>
+        <section className="px-4 py-3.5">
+          <Legend>checks</Legend>
+          <div className="mb-2 flex items-center gap-2 text-[13px] text-foreground">
+            <IndicatorLamp
+              tone={
+                checks.length > 0
+                  ? passingChecks === checks.length ? "success" : checks.some((c) => checkLamp(c.conclusion) === "danger") ? "danger" : "off"
+                  : seed.ciStatus === "success" ? "success" : "off"
+              }
+            />
+            <span className="tabular-nums">
+              {checks.length === 0
+                ? seed.ciStatus === "success"
+                  ? "Cached checks passing"
+                  : "No live checks"
+                : `${passingChecks}/${checks.length} passing`}
+            </span>
+          </div>
+          <ul className="space-y-1.5">
+            {checks.slice(0, 6).map((check) => (
+              <li
+                key={check.name}
+                className="flex items-center gap-2 text-[12px] text-muted-foreground"
+              >
+                <IndicatorLamp tone={checkLamp(check.conclusion)} className="size-1.5" />
+                <span className="truncate">{check.name}</span>
+              </li>
+            ))}
+            {detail?.truncated.checks && (
+              <li className="text-[12px] text-muted-foreground">
+                More checks on {host.name}
+              </li>
+            )}
+          </ul>
+        </section>
+
+        <section className="px-4 py-3.5">
+          <Legend>{`${detail?.changedFiles ?? seed.changedFiles ?? 0} files changed`}</Legend>
           {files.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               File names load with live details.
             </p>
           ) : (
-            <div className="space-y-2">
+            <ul className="space-y-1.5">
               {files.slice(0, 12).map((file) => (
-                <div
+                <li
                   key={file.path}
-                  className="flex min-w-0 items-center gap-2 text-xs text-foreground"
+                  className="flex min-w-0 items-center gap-2 font-mono text-[12px] text-foreground"
                 >
-                  <FileCode2 className="size-3.5 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 truncate">{file.path}</span>
+                  <span className="min-w-0 truncate" title={file.path}>{file.path}</span>
                   <span className="ml-auto shrink-0 tabular-nums text-success">
                     +{file.additions}
                   </span>
                   <span className="shrink-0 tabular-nums text-destructive">
                     −{file.deletions}
                   </span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
         </section>
       </aside>

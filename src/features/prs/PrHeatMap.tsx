@@ -1,6 +1,6 @@
 import type { PrHeatWeek, PrHeatCell } from "./prActivity";
 
-const WEEKDAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+const WEEKDAY_LABELS = ["", "mon", "", "wed", "", "fri", ""];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const LEGEND_OPACITIES = [0, 0.2, 0.45, 0.7, 1];
 
@@ -15,12 +15,13 @@ function formatDate(date: string): string {
   return `${days[d.getUTCDay()] ?? ""} ${monthOf(date)} ${d.getUTCDate()}`;
 }
 
-/** A step of the theme primary mixed into the muted empty-cell color. */
+/** A step of the neutral ramp: foreground mixed into the muted empty-cell colour.
+ *  The key is reserved for now, so only today's cell carries it (as a ring). */
 function heatColor(opacity: number): string {
-  return `color-mix(in oklab, var(--primary) ${Math.round(opacity * 100)}%, var(--muted))`;
+  return `color-mix(in oklab, var(--foreground) ${Math.round(opacity * 70)}%, var(--muted))`;
 }
 
-/** Primary-tinted cell background scaled to the busiest day. */
+/** Cell background scaled to the busiest day. */
 function cellBg(count: number, maxCount: number): string | undefined {
   if (count === 0 || maxCount === 0) return undefined;
   const ratio = count / maxCount;
@@ -31,19 +32,21 @@ function cellBg(count: number, maxCount: number): string | undefined {
 /** A non-interactive GitHub-style contribution grid (contributions per day). */
 export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
   const maxCount = Math.max(0, ...weeks.flatMap((w) => w.cells.map((c) => c.count)));
+  const dated = weeks.flatMap((w) => w.cells).filter((c) => c.date);
+  const today = dated[dated.length - 1]?.date;
 
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-stretch gap-[3px]">
         {/* Weekday label column */}
-        <div className="flex w-3 shrink-0 flex-col gap-[3px]">
+        <div className="flex w-7 shrink-0 flex-col gap-[3px]">
           <span className="h-[14px]" aria-hidden />
-          {WEEKDAY_LETTERS.map((letter, i) => (
+          {WEEKDAY_LABELS.map((label, i) => (
             <span
               key={i}
-              className="flex flex-1 items-center justify-center text-[10px] leading-none text-muted-foreground"
+              className="flex flex-1 items-center text-[11px] leading-none text-muted-foreground"
             >
-              {letter}
+              {label}
             </span>
           ))}
         </div>
@@ -57,7 +60,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             const showMonth = thisMonth !== "" && (weekIdx === 0 || thisMonth !== prevMonth);
             return (
               <div key={weekIdx} className="flex min-w-0 flex-1 flex-col gap-[3px]">
-                <span className="h-[14px] truncate text-center text-[10px] leading-none text-muted-foreground">
+                <span className="h-[14px] overflow-visible whitespace-nowrap text-left text-[11px] leading-none text-muted-foreground">
                   {showMonth ? thisMonth : ""}
                 </span>
                 {week.cells.map((cell: PrHeatCell, dayIdx) => {
@@ -76,6 +79,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
                       className={[
                         "aspect-square w-full rounded-[2px]",
                         cell.count === 0 ? "bg-muted" : "",
+                        cell.date === today ? "prs-heat-today" : "",
                       ].join(" ")}
                       style={bg ? { backgroundColor: bg } : undefined}
                     />
@@ -89,7 +93,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
 
       {/* Legend */}
       <div className="flex items-center gap-1.5 pl-4">
-        <span className="text-[11px] text-muted-foreground">Less</span>
+        <span className="text-[11px] text-muted-foreground">less</span>
         {LEGEND_OPACITIES.map((opacity, i) => (
           <span
             key={i}
@@ -101,7 +105,7 @@ export function PrHeatMap({ weeks }: { weeks: PrHeatWeek[] }) {
             }
           />
         ))}
-        <span className="text-[11px] text-muted-foreground">More</span>
+        <span className="text-[11px] text-muted-foreground">more</span>
       </div>
     </div>
   );

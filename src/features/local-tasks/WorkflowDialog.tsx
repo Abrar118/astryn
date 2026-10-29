@@ -9,7 +9,7 @@ import type { LocalStatusCategory, LocalStatusInput, LocalTree } from "@/lib/com
 import { LocalDialog } from "./LocalDialog";
 
 /** Sober status colors (user data, shown as dots and chips only). */
-export const STATUS_COLORS = ["#8b8d98", "#a3a6b4", "#5b8bd9", "#3e9e9a", "#4b9e6a", "#d99a2b", "#d9773b", "#d05454", "#9479d1"];
+export const STATUS_COLORS = ["#858793", "#6f7a8c", "#5b8bd9", "#3a9894", "#479865", "#ac6721", "#c96a30", "#d05454", "#9479d1"];
 
 const CATEGORIES: { value: LocalStatusCategory; label: string }[] = [
   { value: "backlog", label: "Backlog" },
@@ -89,8 +89,8 @@ export function WorkflowDialog({ scope, tree, onClose }: { scope: WorkflowScope;
               <li key={row.id ?? `new-${i}`} className="flex items-center gap-2">
                 <Popover
                   buttonTitle="Color"
-                  buttonClassName="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  panelClassName="grid w-40 grid-cols-5 gap-1.5 rounded-md border border-border bg-popover p-2 shadow-2xl"
+                  buttonClassName="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input hover:bg-accent lt-focus"
+                  panelClassName="lt-overlay grid w-40 grid-cols-5 gap-1.5 rounded-lg border border-border bg-popover p-2"
                   button={<StatusIcon type={row.category} color={row.color} />}
                 >
                   {(close) =>
@@ -117,7 +117,7 @@ export function WorkflowDialog({ scope, tree, onClose }: { scope: WorkflowScope;
                   aria-label="Category"
                   value={row.category}
                   onChange={(e) => set(i, { category: e.target.value as LocalStatusCategory })}
-                  className="h-8 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-8 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-sm text-foreground lt-focus dark:bg-input/30"
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c.value} value={c.value}>
