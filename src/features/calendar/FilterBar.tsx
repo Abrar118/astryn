@@ -1,4 +1,4 @@
-import { useMemo, type ChangeEventHandler, type ReactNode } from "react";
+import { useId, useMemo, type ChangeEventHandler, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
 import { useTaskFilterOptions, useTaskUsers, useViewer } from "@/lib/taskQueries";
 import { ME, type TaskFilters } from "@/lib/tracker";
@@ -6,10 +6,12 @@ import type { User } from "@/lib/commands";
 import { AssigneeSelect } from "@/components/AssigneeSelect";
 
 function Select({
+  label,
   value,
   onChange,
   children,
 }: {
+  label: string;
   value: string;
   onChange: ChangeEventHandler<HTMLSelectElement>;
   children: ReactNode;
@@ -17,9 +19,10 @@ function Select({
   return (
     <div className="relative">
       <select
+        aria-label={label}
         value={value}
         onChange={onChange}
-        className="cursor-pointer appearance-none rounded-md border border-border bg-secondary/40 py-1.5 pl-2.5 pr-7 text-xs font-medium text-foreground transition-colors hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="dash-control h-7 cursor-pointer appearance-none rounded-md border border-border bg-secondary/40 pl-2.5 pr-7 text-xs font-medium text-foreground transition-colors hover:bg-accent"
       >
         {children}
       </select>
@@ -51,13 +54,14 @@ export function FilterBar({
   const { data } = useTaskFilterOptions();
   const { data: users } = useTaskUsers();
   const viewer = useViewer();
+  const colorById = useId();
   const choices = useMemo(
     () => assigneeChoices(users ?? [], viewer.viewerIds, viewer.name),
     [users, viewer.viewerIds, viewer.name],
   );
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <AssigneeSelect
         value={filters.assigneeId ?? null}
         onChange={(id) => onFilters({ ...filters, assigneeId: id ?? undefined })}
@@ -67,6 +71,7 @@ export function FilterBar({
       />
 
       <Select
+        label="Team"
         value={filters.teamId ?? "__all"}
         onChange={(e) =>
           onFilters({ ...filters, teamId: e.target.value === "__all" ? undefined : e.target.value })
@@ -81,6 +86,7 @@ export function FilterBar({
       </Select>
 
       <Select
+        label="Project"
         value={filters.projectId ?? "__all"}
         onChange={(e) =>
           onFilters({ ...filters, projectId: e.target.value === "__all" ? undefined : e.target.value })
@@ -94,20 +100,21 @@ export function FilterBar({
         ))}
       </Select>
 
-      <div className="ml-auto inline-flex items-center rounded-md border border-border bg-secondary/40 p-0.5 text-xs">
-        {(["state", "priority"] as const).map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => onColorBy(c)}
-            aria-pressed={colorBy === c}
-            className={`cursor-pointer rounded-[5px] px-2.5 py-1 font-medium capitalize transition-colors ${
-              colorBy === c ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {c}
-          </button>
-        ))}
+      <div className="ml-auto flex items-center gap-2">
+        <span id={colorById} className="text-[12px] text-muted-foreground">color by</span>
+        <div role="group" aria-labelledby={colorById} className="face-segment">
+          {(["state", "priority"] as const).map((c) => (
+            <button
+              key={c}
+              type="button"
+              onClick={() => onColorBy(c)}
+              aria-pressed={colorBy === c}
+              className="face-segment-item lowercase"
+            >
+              {c}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

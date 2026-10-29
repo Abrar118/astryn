@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import FullCalendar from "@fullcalendar/react";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import timeGridPlugin from "@fullcalendar/timegrid";
@@ -13,7 +14,9 @@ import { hiddenDaysFor, useWorkdays } from "@/lib/workweek";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { mountIssueMentionHoverCard } from "@/features/drawer/comments/IssueMentionPill";
 import type { MentionTarget } from "@/features/drawer/markdownComponents";
-import { eventAccent, tint } from "./eventStyle";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { eventAccent } from "./eventStyle";
 import { FilterBar } from "./FilterBar";
 import { UnscheduledRail } from "./UnscheduledRail";
 
@@ -35,8 +38,9 @@ function toMentionTarget(i: Task): MentionTarget {
 }
 
 /**
- * A calendar event chip: the soft tinted Linear/GCal pill plus the same rich
- * issue hover-card used by editor mention pills. The right-click menu is wired
+ * A calendar event chip: a matte plate with the task's state (or priority) lamp,
+ * plus the same rich issue hover-card used by editor mention pills. Overdue
+ * titles read in the destructive tone. The right-click menu is wired
  * separately on the FullCalendar element (see `eventDidMount`) because a React
  * `onContextMenu` inside FullCalendar's custom event content does not fire.
  */
@@ -77,18 +81,25 @@ function CalendarChip({
   return (
     <div
       ref={ref}
-      className={`flex items-start gap-1.5 overflow-hidden rounded-md px-1.5 py-1.5 text-[13px] font-semibold leading-snug ${
-        overdue ? "ring-1 ring-destructive/60" : ""
-      }`}
-      style={{ backgroundColor: tint(color, 0.2) }}
+      className="cal-chip flex items-start gap-1.5 overflow-hidden rounded-md px-1.5 py-1 text-[12px] font-medium leading-[1.35]"
       onMouseEnter={scheduleOpen}
       onMouseLeave={close}
     >
-      <span className="mt-[6px] size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-      <span className="line-clamp-2 text-foreground">{title}</span>
+      <span className="dash-lamp dash-lamp-lit mt-[4px]" style={{ backgroundColor: color }} />
+      <span className={cn("line-clamp-2", overdue ? "text-destructive" : "text-foreground")}>
+        {overdue && <span className="sr-only">Overdue: </span>}
+        {title}
+      </span>
     </div>
   );
 }
+
+type CalendarView = "dayGridMonth" | "timeGridWeek";
+
+const VIEWS: { value: CalendarView; label: string }[] = [
+  { value: "dayGridMonth", label: "Month" },
+  { value: "timeGridWeek", label: "Week" },
+];
 
 function currentDhakaMonth(today: string) {
   const [y, m] = today.split("-").map(Number);
@@ -102,6 +113,12 @@ function currentDhakaMonth(today: string) {
 export function CalendarPage() {
   const today = dhakaToday();
   const [range, setRange] = useState(() => currentDhakaMonth(today));
+  // The header is ours (FullCalendar's toolbar is off); datesSet keeps it in step.
+  const [view, setView] = useState<{ title: string; type: CalendarView; showsToday: boolean }>({
+    title: "",
+    type: "dayGridMonth",
+    showsToday: true,
+  });
   // Defaults to "my tasks" in every tracker; undefined assignee means "All assignees".
   const [filters, setFilters] = useState<TaskFilters>({ assigneeId: ME });
   const [colorBy, setColorBy] = useState<"state" | "priority">("state");
@@ -146,7 +163,7 @@ export function CalendarPage() {
     [scheduled, colorBy, today],
   );
 
-  // Soft tinted chip with the shared issue hover-card. (Right-click is wired via
+  // Matte lamp chip with the shared issue hover-card. (Right-click is wired via
   // eventDidMount below.)
   const renderEvent = (arg: EventContentArg) => {
     const { color, overdue } = arg.event.extendedProps as { color: string; overdue: boolean };
@@ -179,11 +196,45 @@ export function CalendarPage() {
     }
   };
 
+  const api = () => calendarRef.current?.getApi();
+  const unit = view.type === "dayGridMonth" ? "month" : "week";
+
   return (
-    <div className="flex h-full flex-col gap-3 p-4 pb-4">
-      <FilterBar filters={filters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
-      <div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
-        <div className="min-h-0 min-w-0 flex-1 p-3 pb-20">
+    <div className="calendar-surface flex h-full flex-col">
+      <header className="flex flex-col gap-3 border-b border-border px-4 pt-5 pb-3">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <h1 className="min-w-0 text-[20px] font-semibold tracking-tight text-foreground tabular-nums">
+            {view.title}
+          </h1>
+          <div className="flex items-center gap-0.5">
+            <Button variant="ghost" size="icon-sm" aria-label={`Previous ${unit}`} title={`Previous ${unit}`} onClick={() => api()?.prev()}>
+              <ChevronLeft />
+            </Button>
+            <Button variant="outline" size="sm" disabled={view.showsToday} onClick={() => api()?.today()}>
+              Today
+            </Button>
+            <Button variant="ghost" size="icon-sm" aria-label={`Next ${unit}`} title={`Next ${unit}`} onClick={() => api()?.next()}>
+              <ChevronRight />
+            </Button>
+          </div>
+          <div role="group" aria-label="Calendar view" className="face-segment ml-auto">
+            {VIEWS.map((v) => (
+              <button
+                key={v.value}
+                type="button"
+                aria-pressed={view.type === v.value}
+                onClick={() => api()?.changeView(v.value)}
+                className="face-segment-item"
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <FilterBar filters={filters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
+      </header>
+      <div className="flex min-h-0 flex-1">
+        <div className="min-h-0 min-w-0 flex-1 pb-20">
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -196,13 +247,19 @@ export function CalendarPage() {
             height="100%"
             dayMaxEvents={true}
             fixedWeekCount={false}
-            headerToolbar={{ left: "title", center: "", right: "prev,today,next dayGridMonth,timeGridWeek" }}
-            buttonText={{ today: "Today", month: "Month", week: "Week" }}
+            headerToolbar={false}
             events={events}
             eventContent={renderEvent}
             eventDidMount={onEventDidMount}
             eventWillUnmount={onEventWillUnmount}
-            datesSet={(arg: DatesSetArg) => setRange(rangeFromDates(arg.start, arg.end))}
+            datesSet={(arg: DatesSetArg) => {
+              setRange(rangeFromDates(arg.start, arg.end));
+              setView({
+                title: arg.view.title,
+                type: arg.view.type as CalendarView,
+                showsToday: today >= toDateStr(arg.view.currentStart) && today < toDateStr(arg.view.currentEnd),
+              });
+            }}
             eventClick={(arg: EventClickArg) => setParams({ issue: arg.event.id })}
             eventDrop={(arg: EventDropArg) => {
               if (!arg.event.start) return;

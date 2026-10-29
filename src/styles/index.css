@@ -395,13 +395,15 @@
   }
 }
 
-/* ── FullCalendar — Astryn dark, Linear-style ──────────────────────────── */
+/* ── FullCalendar: the month as a faceplate scale ──────────────────────────
+   Hairline grid on the faceplate, lowercase weekday legends, tabular day
+   numbers, and one needle in the key standing at the start of today. */
 .fc {
   --fc-border-color: var(--border);
   --fc-page-bg-color: transparent;
-  --fc-neutral-bg-color: var(--secondary);
+  --fc-neutral-bg-color: var(--muted);
   --fc-neutral-text-color: var(--muted-foreground);
-  --fc-today-bg-color: color-mix(in oklch, var(--primary) 7%, transparent);
+  --fc-today-bg-color: transparent;
   --fc-event-bg-color: transparent;
   --fc-event-border-color: transparent;
   --fc-event-text-color: var(--foreground);
@@ -410,31 +412,33 @@
   font-size: 0.8125rem;
 }
 
-/* Toolbar */
+/* Toolbar (screens that keep FullCalendar's own header) */
 .fc .fc-toolbar.fc-header-toolbar {
   margin-bottom: 0.75rem;
 }
 .fc .fc-toolbar-title {
-  font-size: 1.05rem;
+  font-size: 15px;
   font-weight: 600;
+  letter-spacing: -0.025em;
   color: var(--foreground);
 }
 
-/* Buttons — flat ghost, Linear-ish */
+/* Buttons: ghost keys with an input-tone stroke, like the shared outline button */
 .fc .fc-button {
+  height: 28px;
   background: transparent;
-  border: 1px solid var(--border);
+  border: 1px solid var(--input);
   color: var(--foreground);
   border-radius: var(--radius-md);
-  padding: 0.3rem 0.6rem;
-  font-size: 0.8125rem;
+  padding: 0 0.6rem;
+  font-size: 0.8rem;
   font-weight: 500;
-  text-transform: capitalize;
   box-shadow: none;
-  transition: background-color 150ms ease, border-color 150ms ease;
+  transition: background-color 150ms ease;
 }
 .fc .fc-button:hover {
-  background: var(--accent);
+  background: var(--muted);
+  color: var(--foreground);
 }
 .fc .fc-button:focus,
 .fc .fc-button:focus-visible {
@@ -443,52 +447,94 @@
   outline-offset: 1px;
 }
 .fc .fc-button:disabled {
-  opacity: 0.4;
+  background: transparent;
+  border-color: var(--input);
+  color: var(--foreground);
+  opacity: 0.5;
 }
 .fc .fc-button-primary:not(:disabled).fc-button-active {
   background: var(--accent);
-  border-color: var(--border);
+  border-color: var(--input);
   color: var(--foreground);
 }
 .fc .fc-button-group > .fc-button:not(:first-child) {
   margin-left: -1px;
 }
 
-/* Column headers (day names) */
+/* The grid meets the header and rail hairlines edge to edge. */
+.calendar-surface .fc-theme-standard .fc-scrollgrid {
+  border-top: 0;
+  border-left: 0;
+}
+.calendar-surface .fc-theme-standard td:last-child,
+.calendar-surface .fc-theme-standard th:last-child {
+  border-right: 0;
+}
+
+/* Column headers: lowercase weekday legends */
 .fc .fc-col-header-cell {
   background: transparent;
 }
 .fc .fc-col-header-cell-cushion {
   padding: 0.5rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 500;
+  font-size: 12px;
+  font-weight: 400;
   text-transform: lowercase;
   color: var(--muted-foreground);
 }
+.fc .fc-col-header-cell.fc-day-today .fc-col-header-cell-cushion {
+  font-weight: 600;
+  color: var(--foreground);
+}
 
-/* Day cells + day numbers */
+/* Day numbers read top-left, tabular; days outside the month drop to muted. */
+.fc .fc-daygrid-day-top {
+  flex-direction: row;
+}
 .fc .fc-daygrid-day-number {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
+  padding: 0.375rem 0.5rem 0.25rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
 }
 .fc .fc-day-other .fc-daygrid-day-number {
-  opacity: 0.45;
+  color: var(--muted-foreground);
 }
-.fc .fc-day-today {
-  background: var(--fc-today-bg-color);
+
+/* Today: the needle. A 2px rule in the key at the start of the day, capped
+   by an 8px circle, as on the Dashboard dial. Nothing else uses the key. */
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame {
+  position: relative;
 }
-.fc .fc-day-today .fc-daygrid-day-number {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.4rem;
-  height: 1.4rem;
-  margin: 0.15rem;
-  padding: 0;
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame::before,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame::before {
+  content: "";
+  display: block; /* FullCalendar's clearfix sets display: table on ::before */
+  position: absolute;
+  top: 4px;
+  bottom: 0;
+  left: -1px;
+  z-index: 4;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
+}
+.fc .fc-daygrid-day.fc-day-today > .fc-daygrid-day-frame::after,
+.fc .fc-timegrid-col.fc-day-today > .fc-timegrid-col-frame::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  left: -4px;
+  z-index: 4;
+  width: 8px;
+  height: 8px;
   border-radius: 9999px;
   background: var(--primary);
-  color: var(--primary-foreground);
+  pointer-events: none;
+}
+.fc .fc-day-today .fc-daygrid-day-number {
   font-weight: 600;
 }
 
@@ -502,10 +548,8 @@
 .fc .fc-event {
   cursor: pointer;
 }
-.fc .fc-event:hover {
-  filter: brightness(1.18);
-}
-.fc .fc-daygrid-event:focus-visible {
+.fc .fc-daygrid-event:focus-visible,
+.fc .fc-timegrid-event:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
   border-radius: var(--radius-md);
@@ -513,9 +557,9 @@
 
 /* "+N more" link + overflow popover */
 .fc .fc-daygrid-more-link {
-  font-size: 0.6875rem;
+  font-size: 12px;
   color: var(--muted-foreground);
-  padding: 1px 4px;
+  padding: 1px 6px;
   border-radius: var(--radius-sm);
 }
 .fc .fc-daygrid-more-link:hover {
@@ -529,15 +573,19 @@
   box-shadow: 0 8px 24px var(--overlay-shadow);
 }
 .fc .fc-popover-header {
-  background: var(--secondary);
+  background: transparent;
+  border-bottom: 1px solid var(--border);
   color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 /* Week (timeGrid) labels */
 .fc .fc-timegrid-slot-label-cushion,
 .fc .fc-timegrid-axis-cushion {
   color: var(--muted-foreground);
-  font-size: 0.6875rem;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 /* ── react-day-picker (DatePicker) — dark Linear-style theme ───────────────── */
 .rdp-root {
@@ -986,3 +1034,98 @@
 
 /* goey-toast hard-codes its timestamp gray (#777, 4.0:1); use the theme token for AA. */
 [data-theme] .gooey-timestamp { color: var(--muted-foreground); }
+
+/* ── Group 1: calendar & agenda ─────────────────────────────────────────────
+   Calendar, This Week and Dependencies on the instrument face: full-bleed
+   faceplates divided by hairlines, matte plates, lamps for state. */
+
+/* Segmented control: a row of keys in one input-tone bezel. */
+.face-segment {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+}
+
+.face-segment-item {
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.face-segment-item:hover {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.face-segment-item[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.face-segment-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+/* Calendar event chip: a matte plate one step above the faceplate. */
+.cal-chip {
+  white-space: normal; /* FullCalendar sets nowrap; titles may take two lines */
+  background: var(--muted);
+  transition: background-color 150ms ease;
+}
+
+.fc-event:hover .cal-chip {
+  background: var(--accent);
+}
+
+/* Unscheduled rail rows */
+.cal-rail-list > li + li {
+  border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.cal-rail-row {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 10px;
+  padding: 9px 16px;
+  cursor: grab;
+}
+
+.cal-rail-row:hover {
+  background: var(--accent);
+}
+
+.cal-rail-row:active {
+  cursor: grabbing;
+}
+
+.calendar-surface .fc-scroller {
+  scrollbar-color: color-mix(in oklab, var(--muted-foreground) 72%, transparent) var(--background);
+  scrollbar-width: thin;
+}
+
+/* The rail gives the grid room in a narrow split pane. */
+.calendar-surface {
+  container: calendar-pane / inline-size;
+}
+
+.cal-rail {
+  width: 16rem;
+}
+
+@container calendar-pane (max-width: 760px) {
+  .cal-rail {
+    width: 12.5rem;
+  }
+}
+
