@@ -6,7 +6,7 @@ import type { EventContentArg, EventDropArg, EventMountArg } from "@fullcalendar
 import { useUpdateTask } from "@/lib/taskQueries";
 import { toDateStr } from "@/lib/dates";
 import { hiddenDaysFor, useWorkdays } from "@/lib/workweek";
-import { eventAccent, tint } from "@/features/calendar/eventStyle";
+import { eventAccent } from "@/features/calendar/eventStyle";
 import type { ViewProps } from "./ListView";
 
 /** The list's dated tasks on a month grid; drag a chip to reschedule. Dateless tasks stay in the other views. */
@@ -36,12 +36,12 @@ export function CalendarView(props: ViewProps) {
   const renderEvent = (arg: EventContentArg) => {
     const { color, overdue } = arg.event.extendedProps as { color: string; overdue: boolean };
     return (
-      <div
-        className={`flex items-start gap-1.5 overflow-hidden rounded-md px-1.5 py-1 text-[13px] font-medium leading-snug ${overdue ? "ring-1 ring-destructive/60" : ""}`}
-        style={{ backgroundColor: tint(color, 0.2) }}
-      >
-        <span className="mt-[6px] size-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
-        <span className="line-clamp-2 text-foreground">{arg.event.title}</span>
+      <div className="lt-chip flex items-start gap-1.5 overflow-hidden rounded-md bg-muted px-1.5 py-1 text-[12px] font-medium leading-snug">
+        <span aria-hidden className="dash-lamp dash-lamp-lit mt-[4px]" style={{ backgroundColor: color }} />
+        <span className={`line-clamp-2 ${overdue ? "text-destructive" : "text-foreground"}`}>
+          {overdue && <span className="sr-only">Overdue: </span>}
+          {arg.event.title}
+        </span>
       </div>
     );
   };
@@ -55,7 +55,7 @@ export function CalendarView(props: ViewProps) {
   };
 
   return (
-    <div className="h-full p-4 pb-20">
+    <div className="lt-calendar h-full p-4 pb-24">
       <FullCalendar
         plugins={[dayGridPlugin, interactionPlugin]}
         initialView="dayGridMonth"

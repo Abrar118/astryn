@@ -45,7 +45,7 @@ export function QuickAdd({
         type="button"
         onClick={() => setOpen(true)}
         className={cn(
-          "flex w-full cursor-pointer items-center gap-2 rounded-md px-3 py-1.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          "lt-focus flex h-9 w-full cursor-pointer items-center gap-2 rounded-md px-3 text-left text-[13px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
           className,
         )}
       >
@@ -55,7 +55,7 @@ export function QuickAdd({
     );
   }
   return (
-    <div className={cn("flex items-center gap-2 px-3 py-1", className)}>
+    <div className={cn("flex h-9 items-center gap-2 px-3", className)}>
       <Plus className="size-3.5 shrink-0 text-muted-foreground" />
       <input
         ref={input}
@@ -78,7 +78,7 @@ export function QuickAdd({
         onBlur={() => {
           if (!title.trim()) setOpen(false);
         }}
-        className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+        className="h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50 dark:bg-input/30"
       />
     </div>
   );

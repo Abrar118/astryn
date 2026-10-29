@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState, type MouseEvent } from "react";
 import { useSearchParams } from "react-router-dom";
-import { CalendarDays, GanttChart, KanbanSquare, List as ListIcon, Plus, Table2, type LucideIcon } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useLocalTasks, useLocalTree } from "@/lib/localTaskQueries";
 import type { LocalSpace, LocalTask } from "@/lib/commands";
 import { dhakaToday } from "@/lib/dates";
-import { cn } from "@/lib/utils";
 import { useIssueMenu } from "@/features/issues/IssueContextMenu";
 import { isClosed, statusesForList, visibleTasks } from "./localTaskModel";
+import { LampMessage } from "./LocalFields";
 import { TaskSidebar } from "./TaskSidebar";
 import { WorkflowDialog, type WorkflowScope } from "./WorkflowDialog";
 import { SprintDialog } from "./SprintDialog";
@@ -19,12 +19,12 @@ import { TimelineView } from "./views/TimelineView";
 
 type LocalView = "list" | "board" | "table" | "calendar" | "timeline";
 
-const VIEWS: { id: LocalView; label: string; icon: LucideIcon }[] = [
-  { id: "list", label: "List", icon: ListIcon },
-  { id: "board", label: "Board", icon: KanbanSquare },
-  { id: "table", label: "Table", icon: Table2 },
-  { id: "calendar", label: "Calendar", icon: CalendarDays },
-  { id: "timeline", label: "Timeline", icon: GanttChart },
+const VIEWS: { id: LocalView; label: string }[] = [
+  { id: "list", label: "list" },
+  { id: "board", label: "board" },
+  { id: "table", label: "table" },
+  { id: "calendar", label: "calendar" },
+  { id: "timeline", label: "timeline" },
 ];
 
 const STORE_KEY = "astryn.local-tasks.view";
@@ -51,9 +51,6 @@ function isTyping(target: EventTarget | null): boolean {
   if (!el) return false;
   return ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.isContentEditable;
 }
-
-const TOGGLE =
-  "cursor-pointer rounded-md border border-border px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** The local-tasks workspace: spaces/lists sidebar, a list header with the view switcher, and the current view. */
 export function LocalTasksPage() {
@@ -114,17 +111,17 @@ export function LocalTasksPage() {
   });
 
   if (treeError) {
-    return <p className="p-6 text-sm text-destructive">Couldn't read your local tasks. Try reopening the tab.</p>;
+    return (
+      <div className="lt-surface h-full">
+        <LampMessage tone="danger" title="Couldn't read your local tasks" body="Try reopening the tab. Your tasks and backups are untouched." />
+      </div>
+    );
   }
   if (treeLoading || !tree) {
     return (
-      <div className="flex h-full">
-        <div className="w-60 shrink-0 border-r border-border bg-sidebar" />
-        <div className="flex-1 space-y-2 p-6">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-8 animate-pulse rounded-md bg-muted/40" />
-          ))}
-        </div>
+      <div className="lt-surface flex h-full">
+        <div className="lt-nav shrink-0 border-r border-sidebar-border bg-sidebar" />
+        <LampMessage tone="off" title="Reading local tasks…" />
       </div>
     );
   }
@@ -140,7 +137,7 @@ export function LocalTasksPage() {
   };
 
   return (
-    <div className="flex h-full min-h-0">
+    <div className="lt-surface flex h-full min-h-0">
       <TaskSidebar
         tree={tree}
         selectedListId={listId}
@@ -154,75 +151,74 @@ export function LocalTasksPage() {
       <main className="flex min-w-0 flex-1 flex-col">
         {list ? (
           <>
-            <header className="flex flex-wrap items-center gap-3 border-b border-border/60 px-4 py-3">
-              <h1 className="min-w-0 truncate text-lg font-semibold leading-tight tracking-tight text-foreground">
-                <span className="font-normal text-muted-foreground">{space?.name} / </span>
-                {list.name}
-              </h1>
-              <div role="tablist" aria-label="View" className="ml-auto inline-flex items-center rounded-md border border-border bg-secondary/40 p-0.5">
-                {VIEWS.map((v) => (
-                  <button
-                    key={v.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={stored.view === v.id}
-                    onClick={() => setStored((s) => ({ ...s, view: v.id }))}
-                    className={cn(
-                      "flex cursor-pointer items-center gap-1.5 rounded-[5px] px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      stored.view === v.id ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <v.icon className="size-3.5" />
-                    {v.label}
-                  </button>
-                ))}
+            <header className="border-b border-border px-4 pt-4 pb-2">
+              <div className="flex min-w-0 items-center gap-3">
+                <h1 className="min-w-0 flex-1 truncate text-[20px] font-semibold tracking-tight text-foreground">
+                  <span className="font-normal text-muted-foreground">{space?.name} / </span>
+                  {list.name}
+                </h1>
+                <Button onClick={newTask} title="New task (N)">
+                  <Plus /> New task
+                </Button>
               </div>
-            </header>
-            <div className="flex flex-wrap items-center gap-2 border-b border-border/60 px-4 py-2">
-              <select
-                aria-label="Sprint"
-                value={activeSprint ?? ""}
-                onChange={(e) => setSprintId(e.target.value || null)}
-                disabled={sprints.length === 0}
-                className="cursor-pointer rounded-md border border-border bg-secondary/40 py-1 pl-2.5 pr-7 text-xs font-medium text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <option value="">{sprints.length === 0 ? "No sprints" : "All sprints"}</option>
-                {sprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                aria-pressed={stored.mineOnly}
-                onClick={() => setStored((s) => ({ ...s, mineOnly: !s.mineOnly }))}
-                className={cn(TOGGLE, stored.mineOnly ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
-              >
-                Assigned to me
-              </button>
-              <button
-                type="button"
-                aria-pressed={stored.showClosed}
-                onClick={() => setStored((s) => ({ ...s, showClosed: !s.showClosed }))}
-                className={cn(TOGGLE, stored.showClosed ? "bg-accent text-foreground" : "text-muted-foreground hover:text-foreground")}
-              >
-                Show closed
-              </button>
-              <span className="text-xs tabular-nums text-muted-foreground">
-                {tasks.length} task{tasks.length === 1 ? "" : "s"}
-              </span>
-              <Button size="sm" className="ml-auto" onClick={newTask} title="New task (N)">
-                <Plus /> New task
-              </Button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
-              {tasksLoading ? (
-                <div className="space-y-2 p-4">
-                  {[0, 1, 2].map((i) => (
-                    <div key={i} className="h-8 animate-pulse rounded-md bg-muted/40" />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                <div role="tablist" aria-label="View" className="lt-band -ml-2">
+                  {VIEWS.map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={stored.view === v.id}
+                      onClick={() => setStored((s) => ({ ...s, view: v.id }))}
+                      className="lt-band-key lt-focus"
+                    >
+                      <span aria-hidden className="lt-band-lamp" />
+                      {v.label}
+                    </button>
                   ))}
                 </div>
+                <div className="lt-band">
+                  <select
+                    aria-label="Sprint"
+                    value={activeSprint ?? ""}
+                    onChange={(e) => setSprintId(e.target.value || null)}
+                    disabled={sprints.length === 0}
+                    className="lt-band-key lt-focus bg-transparent pr-1"
+                  >
+                    <option value="">{sprints.length === 0 ? "no sprints" : "all sprints"}</option>
+                    {sprints.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    aria-pressed={stored.mineOnly}
+                    onClick={() => setStored((s) => ({ ...s, mineOnly: !s.mineOnly }))}
+                    className="lt-band-key lt-focus"
+                  >
+                    <span aria-hidden className="lt-band-lamp" />
+                    assigned to me
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={stored.showClosed}
+                    onClick={() => setStored((s) => ({ ...s, showClosed: !s.showClosed }))}
+                    className="lt-band-key lt-focus"
+                  >
+                    <span aria-hidden className="lt-band-lamp" />
+                    show closed
+                  </button>
+                  <span className="pl-2 text-[12px] tabular-nums text-muted-foreground">
+                    {tasks.length} task{tasks.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+              </div>
+            </header>
+            <div className="drawer-scrollbar relative min-h-0 flex-1 overflow-y-auto">
+              {tasksLoading ? (
+                <LampMessage tone="off" title="Reading tasks…" />
               ) : stored.view === "list" ? (
                 <ListView {...viewProps} />
               ) : stored.view === "board" ? (
@@ -237,9 +233,13 @@ export function LocalTasksPage() {
             </div>
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-start gap-2 p-6">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground">No lists yet</h1>
-            <p className="text-sm text-muted-foreground">Add a list to a space in the sidebar (the + beside the space name).</p>
+          <div className="px-4 pt-4">
+            <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Tasks</h1>
+            <LampMessage
+              tone="off"
+              title="No lists yet"
+              body="Add a list to a space in the sidebar: the + beside the space name."
+            />
           </div>
         )}
       </main>

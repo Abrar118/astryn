@@ -16,20 +16,26 @@ import { useUpdateTask } from "@/lib/taskQueries";
 import { cn } from "@/lib/utils";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { groupByStatus, positionBefore, subtasksOf } from "../localTaskModel";
-import { TaskMeta } from "../LocalFields";
+import { DueText, RowAssignee, RowPriority, TaskMeta } from "../LocalFields";
 import { QuickAdd } from "../QuickAdd";
 import type { ViewProps } from "./ListView";
 
-const CARD = "rounded-[10px] border border-border bg-card px-3 py-2.5 text-left";
-
 function CardBody({ task, today, subtasks }: { task: LocalTask; today: string; subtasks: number }) {
+  const hasMeta = task.labels.length > 0 || subtasks > 0 || task.checklistTotal > 0 || !!task.cycleName;
   return (
     <>
-      <div className="mb-1 font-mono text-[11px] text-muted-foreground">{task.identifier}</div>
-      <div className="mb-2 line-clamp-3 text-[13px] font-medium leading-snug text-foreground">{task.title}</div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        <TaskMeta task={task} today={today} subtasks={subtasks} />
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-muted-foreground">{task.identifier}</span>
+        <RowPriority value={task.priority} />
       </div>
+      <div className="mt-1 line-clamp-3 text-[13px] font-medium leading-snug text-foreground">{task.title}</div>
+      {hasMeta && <TaskMeta task={task} subtasks={subtasks} className="mt-2 flex-wrap gap-y-1" />}
+      {(task.dueDate || task.assigneeId) && (
+        <div className="mt-2 flex items-center gap-2">
+          <DueText task={task} today={today} className="min-w-0 flex-1" />
+          <RowAssignee task={task} />
+        </div>
+      )}
     </>
   );
 }
@@ -57,11 +63,10 @@ function Card({ task, props, subtasks }: { task: LocalTask; props: ViewProps; su
       onClick={() => props.onOpen(task.id)}
       onContextMenu={(e) => props.onMenu(e, task.id)}
       style={{ touchAction: "none" }}
+      data-drop={(drop.isOver && !drag.isDragging) || undefined}
       className={cn(
-        CARD,
-        "cursor-grab select-none transition-colors hover:border-foreground/20 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "lt-card lt-focus cursor-grab select-none transition-colors active:cursor-grabbing",
         drag.isDragging && "opacity-40",
-        drop.isOver && !drag.isDragging && "border-t-2 border-t-primary",
       )}
     >
       <CardBody task={task} today={props.today} subtasks={subtasks} />
@@ -72,17 +77,13 @@ function Card({ task, props, subtasks }: { task: LocalTask; props: ViewProps; su
 function Column({ status, count, children }: { status: LocalStatus; count: number; children: React.ReactNode }) {
   const { setNodeRef, isOver } = useDroppable({ id: `col:${status.id}` });
   return (
-    <section
-      ref={setNodeRef}
-      aria-label={status.name}
-      className={cn("flex w-72 shrink-0 flex-col rounded-[14px] bg-sidebar/60 transition-colors", isOver && "bg-accent/40")}
-    >
-      <header className="flex items-center gap-2 px-3 py-2.5">
+    <section ref={setNodeRef} aria-label={status.name} data-over={isOver || undefined} className="lt-column transition-colors">
+      <header className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3">
         <StatusIcon type={status.category} color={status.color} />
-        <span className="text-[13px] font-semibold text-foreground">{status.name}</span>
-        <span className="text-xs tabular-nums text-muted-foreground">{count}</span>
+        <span className="text-[13px] font-semibold tracking-tight text-foreground">{status.name}</span>
+        <span className="text-[12px] tabular-nums text-muted-foreground">{count}</span>
       </header>
-      <div className="flex min-h-16 flex-col gap-2 overflow-y-auto px-2 pb-2">{children}</div>
+      <div className="flex min-h-16 flex-1 flex-col gap-2 overflow-y-auto p-2 pb-28">{children}</div>
     </section>
   );
 }
@@ -134,11 +135,12 @@ export function BoardView(props: ViewProps) {
       onDragCancel={() => setDragging(null)}
       onDragEnd={onDragEnd}
     >
-      <p id={hintId} className="px-4 pt-3 text-[11px] text-muted-foreground">
-        Drag a card to change its status. From the keyboard: Enter opens a card; Space picks it up, arrow keys move it,
-        Space drops it, Escape cancels.
+      <div className="flex h-full flex-col">
+      <p id={hintId} className="shrink-0 border-b border-border px-4 py-2 text-[12px] text-muted-foreground">
+        Drag a card to change its status. Keyboard: enter opens a card; space picks it up, arrows move it, space drops
+        it, escape cancels.
       </p>
-      <div className="flex h-full gap-3 overflow-x-auto p-4 pb-24" aria-describedby={hintId}>
+      <div className="drawer-scrollbar relative flex min-h-0 flex-1 overflow-x-auto" aria-describedby={hintId}>
         {groups.map((g, i) => (
           <Column key={g.status.id} status={g.status} count={g.tasks.length}>
             {g.tasks.map((t) => (
@@ -148,9 +150,10 @@ export function BoardView(props: ViewProps) {
           </Column>
         ))}
       </div>
+      </div>
       <DragOverlay dropAnimation={null}>
         {dragging ? (
-          <div className={cn(CARD, "w-68 cursor-grabbing shadow-2xl")}>
+          <div className="lt-card lt-lifted w-64 cursor-grabbing">
             <CardBody task={dragging} today={props.today} subtasks={0} />
           </div>
         ) : null}

@@ -986,3 +986,234 @@
 
 /* goey-toast hard-codes its timestamp gray (#777, 4.0:1); use the theme token for AA. */
 [data-theme] .gooey-timestamp { color: var(--muted-foreground); }
+
+/* ── Group 3: local tasks ──────────────────────────────────────────────────
+   The Tasks screen on the instrument face: the spaces column on the body
+   tone, the open list on the faceplate, round lamps for state and priority,
+   a band selector for the view, and the dashboard's needle at now on the
+   timeline. */
+.lt-surface {
+  container-type: inline-size;
+  container-name: lt-pane;
+  background: var(--background);
+}
+
+/* A real outline, so focus survives forced-colors (Windows high contrast). */
+.lt-focus {
+  outline: none;
+}
+
+.lt-focus:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+/* Spaces column: chrome on the body; the open list sits on the faceplate tone,
+   like the active tab. */
+.lt-nav {
+  width: 15rem;
+}
+
+.lt-nav-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  color: var(--muted-foreground);
+}
+
+.lt-nav-list:hover {
+  background: var(--sidebar-accent);
+  color: var(--foreground);
+}
+
+.lt-nav-list[aria-current="page"] {
+  background: var(--card);
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+@container lt-pane (max-width: 720px) {
+  .lt-nav {
+    width: 11.5rem;
+  }
+}
+
+/* Band selector: lowercase legends, each with a lamp; the key lights the
+   selected one. */
+.lt-band {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+
+.lt-band-key {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.lt-band-key:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.lt-band-key[aria-selected="true"],
+.lt-band-key[aria-checked="true"],
+.lt-band-key[aria-pressed="true"] {
+  color: var(--foreground);
+}
+
+.lt-band-key:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.lt-band-lamp {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 9999px;
+  border: 1px solid color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+}
+
+[aria-selected="true"] > .lt-band-lamp,
+[aria-checked="true"] > .lt-band-lamp {
+  border-color: transparent;
+  background: var(--primary);
+}
+
+/* A switch that is on lights its lamp in the foreground; the key stays for the
+   one selection. */
+[aria-pressed="true"] > .lt-band-lamp {
+  border-color: transparent;
+  background: var(--foreground);
+}
+
+/* List rows: one grid, so due dates, priority lamps and assignee line up. */
+/* Rows and cards are positioned so their screen-reader-only text stays inside
+   the scroll container instead of widening the page. */
+.lt-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 16px 18px minmax(0, 4.75rem) minmax(0, 1fr) auto 5.5rem 8px 1.25rem;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 36px;
+  padding-right: 16px;
+  border-bottom: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+}
+
+.lt-row:hover {
+  background: var(--accent);
+}
+
+@container lt-pane (max-width: 820px) {
+  .lt-row-meta {
+    display: none;
+  }
+}
+
+@container lt-pane (max-width: 560px) {
+  .lt-row {
+    grid-template-columns: 16px 18px minmax(0, 1fr) auto 8px;
+  }
+
+  .lt-row-id,
+  .lt-row-who,
+  .lt-row-meta {
+    display: none;
+  }
+}
+
+/* Board: columns are zones of one faceplate, divided by hairlines. */
+.lt-column {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 17.5rem;
+  border-right: 1px solid var(--border);
+}
+
+.lt-column[data-over="true"] {
+  background: var(--accent);
+}
+
+.lt-card {
+  position: relative;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card);
+  padding: 10px 12px;
+  text-align: left;
+}
+
+.lt-card:hover {
+  border-color: var(--input);
+}
+
+/* Where a dragged card will land: a key rule along the target's top edge. */
+.lt-card[data-drop="true"] {
+  box-shadow: inset 0 2px 0 var(--primary);
+}
+
+/* Transient overlays lift (menus, popovers, the dragged card, dialogs);
+   nothing at rest casts a shadow. */
+.lt-overlay {
+  box-shadow: 0 4px 16px var(--overlay-shadow);
+}
+
+.lt-lifted {
+  box-shadow: 0 8px 24px var(--overlay-shadow);
+}
+
+/* Timeline: the dashboard's needle, standing at today. */
+.lt-needle {
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--primary);
+  pointer-events: none;
+}
+
+.lt-needle::before {
+  content: "";
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.lt-bar {
+  border: 1px solid var(--input);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+}
+
+.lt-bar:hover {
+  background: var(--accent);
+}
+
+/* Calendar chips are neutral rows with a status lamp; no hover brightening. */
+.lt-calendar .fc .fc-event:hover {
+  filter: none;
+}
+
+.lt-calendar .fc .fc-event:hover .lt-chip {
+  background: var(--accent);
+}

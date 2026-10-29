@@ -67,8 +67,16 @@ describe("LocalTasksPage", () => {
     const todo = screen.getByRole("region", { name: "To do" });
     expect(within(todo).getByText("Task lt_1")).toBeTruthy();
     expect(screen.queryByText("Task lt_2")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Show closed" }));
+    fireEvent.click(screen.getByRole("button", { name: "show closed" }));
     expect(screen.getByText("Task lt_2")).toBeTruthy();
+  });
+
+  it("reads priority and an overdue date as text, not only as lamp color", () => {
+    state.tasks = [task("lt_1", { priority: 1, dueDate: "2000-01-03" })];
+    render(<LocalTasksPage />);
+    const todo = screen.getByRole("region", { name: "To do" });
+    expect(within(todo).getByText("Urgent priority")).toBeTruthy();
+    expect(within(todo).getByText(/Overdue,/)).toBeTruthy();
   });
 
   it("opens a task in the drawer", () => {
@@ -99,8 +107,8 @@ describe("LocalTasksPage", () => {
       },
     );
     render(<LocalTasksPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "Board" }));
-    expect(screen.getByText(/Space picks it up/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "board" }));
+    expect(screen.getByText(/space picks it up/)).toBeTruthy();
     const card = screen.getByText("Task lt_1").closest("[role='button']") as HTMLElement;
     fireEvent.keyDown(card, { key: "Enter", code: "Enter" });
     expect(setParams).toHaveBeenCalledWith({ issue: "lt_1" });
@@ -108,8 +116,8 @@ describe("LocalTasksPage", () => {
 
   it("switches views from the view switcher and remembers the choice", () => {
     render(<LocalTasksPage />);
-    fireEvent.click(screen.getByRole("tab", { name: "Table" }));
-    expect(screen.getByRole("columnheader", { name: /Task/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "table" }));
+    expect(screen.getByRole("columnheader", { name: /task/ })).toBeTruthy();
     expect(JSON.parse(localStorage.getItem("astryn.local-tasks.view") ?? "{}").view).toBe("table");
   });
 });
