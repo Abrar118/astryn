@@ -4,17 +4,19 @@ import { gooeyToast } from "goey-toast";
 import { Check, FileText, Link2, Pencil, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { DocLink, DocLinkInput, DocLinkKind, DocsSource } from "@/lib/commands";
+import { errorText, type DocLink, type DocLinkInput, type DocLinkKind, type DocsSource } from "@/lib/commands";
 import { useCreateDocLink, useDeleteDocLink, useDocLinks, useUpdateDocLink } from "@/lib/docLinkQueries";
 import { useDocsSources, useDocsTree } from "@/lib/queries";
 import { safeExternalUrl } from "@/lib/links";
 import { useWorkspace } from "@/lib/tabs";
 import type { TrackerId } from "@/lib/tracker";
 import { cn } from "@/lib/utils";
-import { docChoices, linkDetail, linkLabel, parseTags } from "./docLinks";
+import { docChoices, linkDetail, linkInputProblem, linkLabel, parseTags } from "./docLinks";
 import { SourceKindIcon } from "./SourceKindIcon";
 
 const FIELD = "text-sm md:text-sm";
+/** Focus target meaning the section's Add button. */
+const ADD = "\u0000add";
 const ROW_ACTION =
   "rounded p-1 text-muted-foreground opacity-0 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100";
 
@@ -129,7 +131,8 @@ function DocLinkForm({
 }: {
   link?: DocLink;
   sources: DocsSource[] | undefined;
-  onSubmit: (input: DocLinkInput) => void;
+  /** Resolves once saved (the parent then closes the form); rejects to keep it open. */
+  onSubmit: (input: DocLinkInput) => Promise<unknown>;
   onCancel: () => void;
 }) {
   const { setActiveView } = useWorkspace();
@@ -137,18 +140,28 @@ function DocLinkForm({
   const pickable = (sources ?? []).filter((s) => s.available || s.id === link?.sourceId);
   const [kind, setKind] = useState<DocLinkKind>(link?.kind ?? "url");
   const [url, setUrl] = useState(link?.url ?? "");
-  const [sourceId, setSourceId] = useState<string | null>(link?.sourceId ?? pickable[0]?.id ?? null);
+  const [chosenSource, setSourceId] = useState<string | null>(link?.sourceId ?? null);
+  // Until the user picks one, default to the first readable source (sources may still be loading).
+  const sourceId = chosenSource ?? pickable[0]?.id ?? null;
   const [path, setPath] = useState<string | null>(link?.docPath ?? null);
   const [docLabel, setDocLabel] = useState<string | null>(null);
   const [title, setTitle] = useState(link?.title ?? "");
   const [note, setNote] = useState(link?.note ?? "");
   const [tags, setTags] = useState(link?.tags.join(", ") ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const ready = kind === "url" ? url.trim() !== "" : !!sourceId && !!path;
   const submit = () => {
-    if (!ready) return;
+    if (!ready || saving) return;
     const common = { title: title.trim() || docLabel || null, note: note.trim() || null, tags: parseTags(tags) };
-    onSubmit(kind === "url" ? { kind, url: url.trim(), ...common } : { kind, sourceId, docPath: path, ...common });
+    const input: DocLinkInput = kind === "url" ? { kind, url: url.trim(), ...common } : { kind, sourceId, docPath: path, ...common };
+    const local = linkInputProblem(input);
+    setProblem(local);
+    if (local) return;
+    setSaving(true);
+    // On failure everything typed stays; the reason shows here (and as a toast).
+    onSubmit(input).catch((err) => (setSaving(false), setProblem(errorText(err))));
   };
 
   return (
@@ -188,7 +201,13 @@ function DocLinkForm({
         <Input autoFocus aria-label="URL" placeholder="https://…" maxLength={2048} value={url} onChange={(e) => setUrl(e.target.value)} className={FIELD} />
       ) : pickable.length === 0 && !sourceId ? (
         <div className="flex items-center gap-2 px-1">
-          <p className="flex-1 text-[13px] text-muted-foreground">{sources ? "No docs sources yet." : "Loading sources…"}</p>
+          <p className="flex-1 text-[13px] text-muted-foreground">
+            {!sources
+              ? "Loading sources…"
+              : sources.length === 0
+                ? "No docs sources yet."
+                : "Your docs sources can't be read right now. Turn their provider back on in Settings → Modules."}
+          </p>
           {sources && (
             <Button type="button" variant="ghost" size="xs" onClick={() => setActiveView("docs")}>
               Open Docs
@@ -221,11 +240,16 @@ function DocLinkForm({
         className="w-full resize-y rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm text-foreground outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 dark:bg-input/30"
       />
       <Input aria-label="Tags" placeholder="Tags, comma-separated" maxLength={900} value={tags} onChange={(e) => setTags(e.target.value)} className={FIELD} />
+      {problem && (
+        <p role="alert" className="px-1 text-[13px] text-destructive">
+          {problem}
+        </p>
+      )}
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" size="sm" disabled={!ready}>
+        <Button type="submit" size="sm" disabled={!ready || saving}>
           {link ? "Save" : "Add link"}
         </Button>
       </div>
@@ -258,7 +282,7 @@ function DocLinkRow({
     link.kind === "url" ? <Link2 className="size-4" /> : source ? <SourceKindIcon kind={source.kind} className="size-4" /> : <FileText className="size-4" />;
 
   return (
-    <li className={cn("group flex items-start gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-accent/50", pending && "opacity-60")}>
+    <li data-link-row={link.id} className={cn("group flex items-start gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-accent/50", pending && "opacity-60")}>
       <span aria-hidden className="mt-0.5 shrink-0 text-muted-foreground">
         {icon}
       </span>
@@ -316,13 +340,31 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
   const remove = useDeleteDocLink(tracker, taskId);
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
-  // When the add form closes, keyboard focus goes back to the Add button.
+  // Where keyboard focus goes once the next render lands: a row (by link id) or
+  // the Add button, so closing a form or removing a row never drops it to <body>.
+  const sectionRef = useRef<HTMLElement>(null);
   const addRef = useRef<HTMLButtonElement>(null);
-  const wasAdding = useRef(false);
+  const focusNext = useRef<string | null>(null);
+  const focusTarget = (target: string) =>
+    target === ADD
+      ? addRef.current
+      : sectionRef.current?.querySelector<HTMLButtonElement>(`[data-link-row="${CSS.escape(target)}"] button:not(:disabled)`);
   useEffect(() => {
-    if (wasAdding.current && !adding) addRef.current?.focus();
-    wasAdding.current = adding;
-  }, [adding]);
+    const el = focusNext.current && focusTarget(focusNext.current);
+    if (el) {
+      el.focus();
+      focusNext.current = null;
+    }
+  });
+  const closeAdd = () => ((focusNext.current = ADD), setAdding(false));
+  const closeEdit = (id: string) => ((focusNext.current = id), setEditing(null));
+  // The next row (or Add) is already on screen, so focus moves before the row goes.
+  const removeLink = (id: string) => {
+    const all = links ?? [];
+    const next = all[all.findIndex((l) => l.id === id) + 1];
+    focusTarget(next ? next.id : ADD)?.focus();
+    remove.mutate(id);
+  };
 
   const openDoc = (sourceId: string, path: string) => {
     openDocTab(sourceId, path);
@@ -330,7 +372,7 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
   };
 
   return (
-    <section aria-labelledby={headingId}>
+    <section ref={sectionRef} aria-labelledby={headingId}>
       <div className="mb-2 flex min-h-8 items-center gap-2">
         <h3 id={headingId} className="text-sm font-semibold text-foreground">
           Docs & links
@@ -351,8 +393,8 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
                 <DocLinkForm
                   link={l}
                   sources={sources}
-                  onCancel={() => setEditing(null)}
-                  onSubmit={(input) => (update.mutate({ id: l.id, input }), setEditing(null))}
+                  onCancel={() => closeEdit(l.id)}
+                  onSubmit={(input) => update.mutateAsync({ id: l.id, input }).then(() => closeEdit(l.id))}
                 />
               </li>
             ) : (
@@ -362,7 +404,7 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
                 sources={sources}
                 onOpenDoc={openDoc}
                 onEdit={() => (setAdding(false), setEditing(l.id))}
-                onRemove={() => remove.mutate(l.id)}
+                onRemove={() => removeLink(l.id)}
               />
             ),
           )}
@@ -372,7 +414,7 @@ export function DocLinksPanel({ tracker, taskId, onNavigate }: { tracker: Tracke
         <p className="text-[13px] text-muted-foreground">No docs or links yet. Attach a spec, a page from Docs, or any web link.</p>
       )}
       {adding && (
-        <DocLinkForm sources={sources} onCancel={() => setAdding(false)} onSubmit={(input) => (create.mutate(input), setAdding(false))} />
+        <DocLinkForm sources={sources} onCancel={closeAdd} onSubmit={(input) => create.mutateAsync(input).then(closeAdd)} />
       )}
     </section>
   );

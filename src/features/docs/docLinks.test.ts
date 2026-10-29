@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DocLink, DocNode, DocsSource } from "@/lib/commands";
-import { docChoices, linkDetail, linkLabel, parseTags } from "./docLinks";
+import { docChoices, linkDetail, linkInputProblem, linkLabel, parseTags } from "./docLinks";
 
 function link(over: Partial<DocLink>): DocLink {
   return {
@@ -94,5 +94,27 @@ describe("docChoices", () => {
   it("filters by name or trail, case-insensitively", () => {
     expect(docChoices(nodes, "GUIDE").map((c) => c.path)).toEqual(["guide/setup.md"]);
     expect(docChoices(nodes, "onboard").map((c) => c.path)).toEqual(["p1", "p1/p2"]);
+  });
+});
+
+describe("linkInputProblem", () => {
+  const web = (url: string, over = {}) => ({ kind: "url" as const, url, tags: [], ...over });
+
+  it("accepts what Rust accepts", () => {
+    expect(linkInputProblem(web("https://example.com/a"))).toBeNull();
+    expect(linkInputProblem(web("example.com/a"))).toBeNull(); // https:// is added
+    expect(linkInputProblem({ kind: "doc", sourceId: "s", docPath: "a.md", tags: ["x"] })).toBeNull();
+  });
+
+  it("refuses what Rust would refuse, before anything is sent", () => {
+    for (const url of ["hello world", "ftp://x.com", "javascript:alert(1)", "https://", `https://x.com/${"a".repeat(2048)}`]) {
+      expect(linkInputProblem(web(url)), url).toMatch(/web address/);
+    }
+    expect(linkInputProblem(web("https://x.com", { title: "two\nlines" }))).toMatch(/Title/);
+    expect(linkInputProblem(web("https://x.com", { title: "a".repeat(201) }))).toMatch(/Title/);
+    expect(linkInputProblem(web("https://x.com", { note: "a".repeat(4001) }))).toMatch(/Note/);
+    expect(linkInputProblem(web("https://x.com", { tags: Array.from({ length: 21 }, (_, i) => `t${i}`) }))).toMatch(/20 tags/);
+    expect(linkInputProblem(web("https://x.com", { tags: ["a".repeat(41)] }))).toMatch(/40 characters/);
+    expect(linkInputProblem(web("https://x.com", { tags: ["a\u0007"] }))).toMatch(/Tags/);
   });
 });

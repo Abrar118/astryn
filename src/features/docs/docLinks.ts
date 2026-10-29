@@ -1,4 +1,4 @@
-import type { DocLink, DocNode, DocsSource } from "@/lib/commands";
+import type { DocLink, DocLinkInput, DocNode, DocsSource } from "@/lib/commands";
 import { unavailableReason } from "./docSource";
 import { displayLabel } from "./docTree";
 
@@ -10,6 +10,48 @@ export function parseTags(text: string): string[] {
     if (tag && !out.some((t) => t.toLowerCase() === tag.toLowerCase())) out.push(tag);
   }
   return out;
+}
+
+// Mirrors the limits `validate_input` enforces in Rust (commands/doc_links.rs).
+const MAX_URL = 2048;
+const MAX_TITLE = 200;
+const MAX_NOTE = 4000;
+const MAX_TAGS = 20;
+const MAX_TAG = 40;
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/;
+// eslint-disable-next-line no-control-regex
+const CONTROL_BUT_LINES = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/;
+const length = (s: string) => [...s].length;
+
+/** Whether Rust will accept this web address (same rules as `normalize_attachment_url`). */
+function webUrlOk(raw: string): boolean {
+  const url = raw.trim();
+  if (!url || /\s/.test(url) || url.length > MAX_URL) return false;
+  const candidate = /^https?:\/\//.test(url) ? url : url.includes("://") ? null : `https://${url}`;
+  if (!candidate) return false;
+  try {
+    const u = new URL(candidate);
+    return (u.protocol === "http:" || u.protocol === "https:") && u.hostname !== "";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Why Rust would refuse this input, in the user's words, or `null` when it is
+ * fine. Checked before sending so a refusal never costs what was typed.
+ */
+export function linkInputProblem(input: DocLinkInput): string | null {
+  if (input.kind === "url" && !webUrlOk(input.url ?? "")) return "Enter a web address, like https://example.com.";
+  const title = input.title?.trim() ?? "";
+  if (length(title) > MAX_TITLE || CONTROL.test(title)) return `Title must be one line of up to ${MAX_TITLE} characters.`;
+  const note = input.note?.trim() ?? "";
+  if (length(note) > MAX_NOTE || CONTROL_BUT_LINES.test(note)) return `Note can be up to ${MAX_NOTE.toLocaleString("en-US")} characters.`;
+  if (input.tags.length > MAX_TAGS) return `Use up to ${MAX_TAGS} tags.`;
+  if (input.tags.some((t) => length(t) > MAX_TAG)) return `Tags can be up to ${MAX_TAG} characters each.`;
+  if (input.tags.some((t) => CONTROL.test(t))) return "Tags can't contain special characters.";
+  return null;
 }
 
 /** `host/path` of a web URL, without the scheme or a trailing slash. */
