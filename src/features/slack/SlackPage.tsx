@@ -20,6 +20,7 @@ export function SlackPage() {
         requestSettingsSection("slack");
         setActiveView("settings");
       }}
+      state={status?.state}
       subtitle={status?.state === "connected" ? status.workspaceName : null}
       catchup={catchup}
       sync={sync}

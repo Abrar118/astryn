@@ -80,7 +80,7 @@ describe("TeamsPage", () => {
     setup({ state: "connected", userName: "Ada" }, board);
     getTeamsChatMessages.mockResolvedValue(board.mentions);
     render(<TeamsPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Expand" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expand Nick Fury" }));
     await waitFor(() => expect(screen.getAllByText("Me can you check ENG-7?").length).toBe(2));
     expect(getTeamsChatMessages).toHaveBeenCalledWith("19:a@unq.gbl.spaces");
   });

@@ -1,31 +1,40 @@
 import { SetupState } from "@/components/SetupState";
-import type { ReactNode } from "react";
-import { AtSign, Hash, MessageCircle, MessagesSquare, RefreshCw, type LucideIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useId, type ReactNode } from "react";
 import type { ChatCatchup, ChatConversation } from "@/lib/commands";
+import { cn } from "@/lib/utils";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
+import { SyncHeader, syncLamp } from "@/components/SyncHeader";
 import type { ChatProvider, ChatSection } from "./provider";
 import { ChatConversationRow, ChatMentionRow, ChatThreadRow } from "./ChatRows";
 
 type SyncState = { isFetching: boolean; isError: boolean; refetch: () => unknown };
 
 /** Section copy; `dms` can be renamed per provider (Teams calls them "Chats"). */
-const SECTION_COPY: Record<ChatSection, { title: string; icon: LucideIcon; empty: string }> = {
-  mentions: { title: "Mentions", icon: AtSign, empty: "No unread mentions." },
-  dms: { title: "Direct messages", icon: MessageCircle, empty: "No unread DMs." },
-  threads: { title: "Threads", icon: MessagesSquare, empty: "No unread threads." },
-  channels: { title: "Channels", icon: Hash, empty: "No unread channels." },
+const SECTION_COPY: Record<ChatSection, { title: string; empty: string }> = {
+  mentions: { title: "Mentions", empty: "No unread mentions." },
+  dms: { title: "Direct messages", empty: "No unread DMs." },
+  threads: { title: "Threads", empty: "No unread threads." },
+  channels: { title: "Channels", empty: "No unread channels." },
 };
 
+/** A mention is the one section that asks for you; the rest are neutral counts. */
+function sectionLamp(section: ChatSection, count: number): Lamp {
+  if (count === 0) return "off";
+  return section === "mentions" ? "warning" : "neutral";
+}
+
 /**
- * The provider-neutral catch-up board: header with refresh and stale warning,
- * then the sections the provider supports, in signal order. A provider that is
- * not configured gets a quiet connect prompt instead.
+ * The provider-neutral catch-up board: header with the source lamp and refresh,
+ * then one faceplate: a reading per section (each jumps to its section), and
+ * the sections the provider supports as hairline zones, in signal order. A
+ * provider that is not configured gets the shared setup row instead.
  */
 export function CatchupBoard({
   provider,
   notConfigured,
   connectText,
   onConnect,
+  state,
   subtitle,
   catchup,
   sync,
@@ -36,12 +45,15 @@ export function CatchupBoard({
   notConfigured: boolean;
   connectText: string;
   onConnect: () => void;
+  /** The provider's connection state, read by the header lamp. */
+  state?: string;
   subtitle?: string | null;
   catchup?: ChatCatchup;
   sync: SyncState;
   sections: ChatSection[];
   sectionCopy?: Partial<Record<ChatSection, { title: string; empty: string }>>;
 }) {
+  const idBase = useId();
   if (notConfigured) {
     return (
       <SetupState
@@ -73,29 +85,65 @@ export function CatchupBoard({
     },
     channels: { count: channels.length, rows: channels.map((c) => <ChatConversationRow key={c.id} conv={c} provider={provider} />) },
   };
+  const copyOf = (s: ChatSection) => ({ ...SECTION_COPY[s], ...sectionCopy?.[s] });
+  const headingId = (s: ChatSection) => `${idBase}-${s}`;
+  const jumpTo = (s: ChatSection) => {
+    const heading = document.getElementById(headingId(s));
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    heading?.scrollIntoView({ block: "start", behavior: still ? "auto" : "smooth" });
+    heading?.focus({ preventScroll: true });
+  };
 
   return (
-    <main className="flex h-full flex-col overflow-y-auto">
-      <header className="sticky top-0 z-10 flex items-center justify-between gap-3 border-b border-border/60 bg-background px-6 py-3">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-base font-semibold text-foreground">{provider.name}</h1>
-          {subtitle && <span className="text-xs text-muted-foreground">{subtitle}</span>}
-          {sync.isError && <span className="text-xs text-warning">Sync failed — showing cached data.</span>}
-        </div>
-        <Button variant="ghost" size="sm" aria-label="Refresh" disabled={sync.isFetching} onClick={() => sync.refetch()}>
-          <RefreshCw className={`size-4 ${sync.isFetching ? "animate-spin" : ""}`} />
-        </Button>
-      </header>
-
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 px-8 pt-7 pb-28">
-        {sections.map((s) => {
-          const copy = { ...SECTION_COPY[s], ...sectionCopy?.[s] };
-          return (
-            <Section key={s} title={copy.title} count={body[s].count} icon={copy.icon} empty={copy.empty}>
-              {body[s].rows}
-            </Section>
-          );
+    <main className="flex h-full min-h-0 flex-col overflow-hidden bg-background">
+      <SyncHeader
+        title={provider.name}
+        status={syncLamp({
+          state,
+          syncFailed: sync.isError,
+          connectedDetail: subtitle ? `${provider.name.toLowerCase()} · ${subtitle}` : provider.name.toLowerCase(),
         })}
+        refreshing={sync.isFetching}
+        onRefresh={() => void sync.refetch()}
+      />
+
+      <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[920px] px-6 pt-5 pb-28">
+          <section aria-label="Catch-up" className="dash-panel dash-face">
+            <ul aria-label="Unread" className="dash-zone dash-readouts">
+              {sections.map((s) => {
+                const count = body[s].count;
+                const legend = copyOf(s).title.toLowerCase();
+                return (
+                  <li key={s} className="min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => jumpTo(s)}
+                      aria-label={`${count} ${legend}. Go to ${legend}`}
+                      className="dash-control dash-readout"
+                    >
+                      <span className={cn("dash-numeral text-[28px]", count ? "text-foreground" : "text-muted-foreground")}>
+                        {count}
+                      </span>
+                      <span className="flex items-center gap-1.5 whitespace-nowrap text-[12px] text-muted-foreground">
+                        <IndicatorLamp tone={sectionLamp(s, count)} />
+                        {legend}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+            {sections.map((s) => {
+              const copy = copyOf(s);
+              return (
+                <Section key={s} id={headingId(s)} title={copy.title} count={body[s].count} empty={copy.empty}>
+                  {body[s].rows}
+                </Section>
+              );
+            })}
+          </section>
+        </div>
       </div>
     </main>
   );
@@ -107,32 +155,29 @@ function convName(conversations: ChatConversation[], id: string): string {
 }
 
 function Section({
-  title, count, icon: Icon, empty, children,
+  id, title, count, empty, children,
 }: {
+  id: string;
   title: string;
   count: number;
-  icon: LucideIcon;
   empty: string;
   children: ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-2.5">
-      <header className="flex items-center gap-2.5 px-0.5">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-muted/50">
-          <Icon className="size-4 text-muted-foreground" />
-        </span>
-        <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>
-        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium tabular-nums text-muted-foreground">
-          {count}
-        </span>
+    <section aria-labelledby={id} className="dash-zone">
+      <header className="flex items-baseline gap-2 border-b border-border px-4 py-3">
+        <h2 id={id} tabIndex={-1} className="scroll-mt-4 text-[15px] font-semibold tracking-tight text-foreground outline-none">
+          {title}
+        </h2>
+        <span className="text-[13px] tabular-nums text-muted-foreground">{count}</span>
       </header>
       {count === 0 ? (
-        <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-card/40 px-5 py-4 text-sm text-muted-foreground">
-          <Icon className="size-4 shrink-0 opacity-50" />
-          <span>{empty}</span>
+        <div className="flex items-center gap-3 px-4 py-4">
+          <IndicatorLamp tone="off" />
+          <p className="text-[13px] text-muted-foreground">{empty}</p>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/60 bg-card">{children}</div>
+        <div className="divide-y divide-border/70">{children}</div>
       )}
     </section>
   );
