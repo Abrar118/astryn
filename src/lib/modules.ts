@@ -1,13 +1,12 @@
+import type { ComponentType } from "react";
+import { BitbucketIcon, ClickUpIcon, GitHubIcon, LinearIcon, TeamsIcon } from "@/components/BrandIcons";
 import { useQuery } from "@tanstack/react-query";
 import {
   BookText,
+  BrainCircuit,
   Calendar,
   CalendarRange,
-  FolderGit2,
-  FileStack,
-  GitBranch,
   GitPullRequest,
-  GitPullRequestArrow,
   Inbox,
   LayoutDashboard,
   Link2,
@@ -18,9 +17,6 @@ import {
   Network,
   NotebookPen,
   Settings as SettingsIcon,
-  Cpu,
-  SquareKanban,
-  type LucideIcon,
 } from "lucide-react";
 import { listModules, type Capability, type ModuleId, type ModulesView, type ScreenId } from "@/lib/commands";
 import type { Tab, ViewKind } from "@/lib/paneModel";
@@ -28,11 +24,14 @@ import { trackerOf, type TrackerId } from "@/lib/tracker";
 
 type NavView = Exclude<ViewKind, "issue">;
 
+/** Any icon a view or module shows: a Lucide glyph or a brand mark. */
+export type IconComponent = ComponentType<{ className?: string }>;
+
 /** A view's owner: a module, the app core, or "tracker" (shown while any tracker module is on). */
 export type ViewOwner = ModuleId | "core" | "tracker";
 
 /** The one view registry: label, icon and owner for every navigable view. */
-export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; module: ViewOwner }> = {
+export const VIEW_META: Record<NavView, { label: string; icon: IconComponent; module: ViewOwner }> = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard, module: "core" },
   calendar: { label: "Calendar", icon: Calendar, module: "tracker" },
   list: { label: "Issues", icon: List, module: "linear" },
@@ -40,10 +39,10 @@ export const VIEW_META: Record<NavView, { label: string; icon: LucideIcon; modul
   graph: { label: "Dependencies", icon: Network, module: "tracker" },
   inbox: { label: "Inbox", icon: Inbox, module: "linear" },
   tasks: { label: "Tasks", icon: ListTodo, module: "local-tasks" },
-  prs: { label: "Pull Requests", icon: GitPullRequest, module: "github" },
-  "bitbucket-prs": { label: "Bitbucket PRs", icon: GitPullRequestArrow, module: "bitbucket" },
+  prs: { label: "GitHub PRs", icon: GitHubIcon, module: "github" },
+  "bitbucket-prs": { label: "Bitbucket PRs", icon: BitbucketIcon, module: "bitbucket" },
   slack: { label: "Slack", icon: MessageSquare, module: "slack" },
-  teams: { label: "Teams", icon: MessagesSquare, module: "teams" },
+  teams: { label: "Teams", icon: TeamsIcon, module: "teams" },
   docs: { label: "Docs", icon: BookText, module: "docs" },
   reports: { label: "Reports", icon: NotebookPen, module: "reports" },
   settings: { label: "Settings", icon: SettingsIcon, module: "core" },
@@ -60,6 +59,38 @@ export function ownerActive(owner: ViewOwner, isActive: IsActive): boolean {
   if (owner === "core") return true;
   if (owner === "tracker") return trackerModulesActive(isActive);
   return isActive(owner);
+}
+
+/** Related screens share one dock button: its icon opens the first shown
+ *  member (the group's default) and an up-chevron opens the rest. */
+export type DockGroup = { id: string; label: string; icon: IconComponent; views: NavView[] };
+
+export const DOCK_GROUPS: DockGroup[] = [
+  { id: "linear", label: "Linear", icon: LinearIcon, views: ["list", "inbox"] },
+  { id: "planning", label: "Planning", icon: CalendarRange, views: ["this-week", "graph"] },
+  { id: "code", label: "Pull requests", icon: GitPullRequest, views: ["prs", "bitbucket-prs"] },
+  { id: "chat", label: "Chat", icon: MessagesSquare, views: ["slack", "teams"] },
+];
+
+/** Dock entries in nav order: a lone view, or a group with its shown members.
+ *  A group with a single shown member collapses to that view's own button. */
+export type DockEntry = { kind: "view"; view: NavView } | { kind: "group"; group: DockGroup; views: NavView[] };
+
+export function dockEntries(views: readonly NavView[]): DockEntry[] {
+  const entries: DockEntry[] = [];
+  const placed = new Set<string>();
+  for (const view of views) {
+    const group = DOCK_GROUPS.find((g) => g.views.includes(view));
+    if (!group) {
+      entries.push({ kind: "view", view });
+      continue;
+    }
+    if (placed.has(group.id)) continue;
+    placed.add(group.id);
+    const members = group.views.filter((v) => views.includes(v));
+    entries.push(members.length > 1 ? { kind: "group", group, views: members } : { kind: "view", view: members[0] });
+  }
+  return entries;
 }
 
 export function visibleViews(isActive: IsActive, disabledScreens: readonly ScreenId[] = []): NavView[] {
@@ -151,12 +182,12 @@ export function useModules(): {
  */
 export const MODULE_COPY: Record<
   ModuleId,
-  { name: string; icon: LucideIcon; description: string; removes: string[]; warning?: string }
+  { name: string; icon: IconComponent; description: string; removes: string[]; warning?: string }
 > = {
-  linear: { name: "Linear", icon: SquareKanban, description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
-  github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
+  linear: { name: "Linear", icon: LinearIcon, description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
+  github: { name: "GitHub", icon: GitHubIcon, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
   slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
-  llm: { name: "AI", icon: Cpu, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
+  llm: { name: "AI", icon: BrainCircuit, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
   docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories, ClickUp Docs and local folders, and doc links on tasks.", removes: ["documentation sources (your local files are kept)", "cached docs", "doc links on tasks"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },
@@ -167,9 +198,9 @@ export const MODULE_COPY: Record<
     removes: ["all local spaces, lists and tasks", "their workflows, sprints and labels"],
     warning: "These tasks exist only on this computer. A final backup is saved to the backups folder first.",
   },
-  bitbucket: { name: "Bitbucket", icon: FolderGit2, description: "Pull requests from Bitbucket Cloud.", removes: ["Bitbucket email and API token", "favorite repositories", "cached pull requests"] },
-  clickup: { name: "ClickUp", icon: FileStack, description: "ClickUp Docs as a documentation source.", removes: ["ClickUp token", "cached ClickUp Doc pages"] },
-  teams: { name: "Microsoft Teams", icon: MessagesSquare, description: "Unread chats and mentions from Teams.", removes: ["Teams sign-in", "app registration settings", "cached Teams messages"] },
+  bitbucket: { name: "Bitbucket", icon: BitbucketIcon, description: "Pull requests from Bitbucket Cloud.", removes: ["Bitbucket email and API token", "favorite repositories", "cached pull requests"] },
+  clickup: { name: "ClickUp", icon: ClickUpIcon, description: "ClickUp Docs as a documentation source.", removes: ["ClickUp token", "cached ClickUp Doc pages"] },
+  teams: { name: "Microsoft Teams", icon: TeamsIcon, description: "Unread chats and mentions from Teams.", removes: ["Teams sign-in", "app registration settings", "cached Teams messages"] },
 };
 
 /** What turns a missing capability on, phrased to follow "Needs ". */

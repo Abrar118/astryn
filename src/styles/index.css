@@ -1639,3 +1639,16 @@
 .issues-overlay {
   box-shadow: 0 8px 24px var(--overlay-shadow);
 }
+
+/* ── Brand marks ──────────────────────────────────────────────────────────
+   Integration logos keep their own brand color (the owner's choice); dark
+   finishes get a brighter variant so each mark holds 3:1 on body and faceplate. */
+.brand-linear { color: #5e6ad2; }
+.brand-github { color: var(--foreground); }
+.brand-bitbucket { color: #0052cc; }
+.brand-teams { color: #5059c9; }
+.brand-clickup { color: #7b68ee; }
+.dark .brand-linear { color: #8f98f3; }
+.dark .brand-bitbucket { color: #4c9aff; }
+.dark .brand-teams { color: #8d93f0; }
+.dark .brand-clickup { color: #a396f5; }

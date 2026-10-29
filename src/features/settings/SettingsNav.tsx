@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { LucideIcon } from "lucide-react";
+import type { IconComponent } from "@/lib/modules";
 import { getClickupStatus } from "@/lib/commands";
 import { useBitbucketStatus } from "@/lib/bitbucketQueries";
 import { ownerActive, useModules } from "@/lib/modules";
@@ -42,7 +42,7 @@ function ConnectionItem({ useStatus, label, ...props }: { useStatus: StatusHook 
 
 type ItemProps = {
   label: string;
-  icon: LucideIcon;
+  icon: IconComponent;
   selected: boolean;
   onSelect: () => void;
 };

@@ -1,17 +1,13 @@
+import type { IconComponent } from "@/lib/modules";
+import { BitbucketIcon, ClickUpIcon, GitHubIcon, LinearIcon, TeamsIcon } from "@/components/BrandIcons";
 import {
-  BookText,
   Blocks,
-  FolderGit2,
+  BookText,
+  BrainCircuit,
   Calendar,
-  FileStack,
-  GitBranch,
   ListTodo,
   MessageSquare,
-  MessagesSquare,
   Palette,
-  Cpu,
-  SquareKanban,
-  type LucideIcon,
 } from "lucide-react";
 import type { ModuleId } from "@/lib/commands";
 
@@ -31,7 +27,7 @@ export type SettingsSection =
 
 export type SettingsGroup = {
   label: string;
-  items: { id: SettingsSection; label: string; icon: LucideIcon; module: ModuleId | "core" }[];
+  items: { id: SettingsSection; label: string; icon: IconComponent; module: ModuleId | "core" }[];
 };
 
 /**
@@ -48,12 +44,12 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     label: "Connections",
     items: [
-      { id: "linear", label: "Linear", icon: SquareKanban, module: "linear" },
-      { id: "github", label: "GitHub", icon: GitBranch, module: "github" },
-      { id: "bitbucket", label: "Bitbucket", icon: FolderGit2, module: "bitbucket" },
+      { id: "linear", label: "Linear", icon: LinearIcon, module: "linear" },
+      { id: "github", label: "GitHub", icon: GitHubIcon, module: "github" },
+      { id: "bitbucket", label: "Bitbucket", icon: BitbucketIcon, module: "bitbucket" },
       { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
-      { id: "teams", label: "Teams", icon: MessagesSquare, module: "teams" },
-      { id: "clickup", label: "ClickUp", icon: FileStack, module: "clickup" },
+      { id: "teams", label: "Teams", icon: TeamsIcon, module: "teams" },
+      { id: "clickup", label: "ClickUp", icon: ClickUpIcon, module: "clickup" },
     ],
   },
   {
@@ -61,7 +57,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       { id: "local-tasks", label: "Local tasks", icon: ListTodo, module: "local-tasks" },
       { id: "documentation", label: "Documentation", icon: BookText, module: "docs" },
-      { id: "ai", label: "AI", icon: Cpu, module: "llm" },
+      { id: "ai", label: "AI", icon: BrainCircuit, module: "llm" },
     ],
   },
   {
