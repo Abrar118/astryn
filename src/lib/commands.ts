@@ -711,6 +711,47 @@ export const renameDocsSource = (sourceId: string, name: string): Promise<DocsSo
 export const removeDocsSource = (sourceId: string): Promise<void> =>
   invoke("remove_docs_source", { sourceId });
 
+// ── Per-task doc links (F9) ──────────────────────────────────────────────────
+
+/** `url`: a web link. `doc`: a document in a docs source, opened in the Docs page. */
+export type DocLinkKind = "url" | "doc";
+
+/** An app-owned link on one task, keyed by the owning tracker (its module id) and task id. */
+export type DocLink = {
+  id: string;
+  tracker: ModuleId;
+  taskId: string;
+  kind: DocLinkKind;
+  url: string | null;
+  sourceId: string | null;
+  docPath: string | null;
+  title: string | null;
+  note: string | null;
+  tags: string[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+/** A new or edited link. `url` for web links; `sourceId` + `docPath` for doc links. */
+export type DocLinkInput = {
+  kind: DocLinkKind;
+  url?: string | null;
+  sourceId?: string | null;
+  docPath?: string | null;
+  title?: string | null;
+  note?: string | null;
+  tags: string[];
+};
+
+export const listDocLinks = (tracker: ModuleId, taskId: string): Promise<DocLink[]> =>
+  invoke("list_doc_links", { tracker, taskId });
+export const createDocLink = (tracker: ModuleId, taskId: string, input: DocLinkInput): Promise<DocLink> =>
+  invoke("create_doc_link", { tracker, taskId, input });
+/** Replaces the link's target, title, note and tags. */
+export const updateDocLink = (id: string, input: DocLinkInput): Promise<DocLink> =>
+  invoke("update_doc_link", { id, input });
+export const deleteDocLink = (id: string): Promise<void> => invoke("delete_doc_link", { id });
+
 // ── Chat catch-up board (provider-neutral: Slack, Teams) ─────────────────────
 
 /** One unread conversation. `latestTs` is the provider's id for its newest unread message. */

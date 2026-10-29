@@ -434,7 +434,18 @@ function Comments({ d }: { d: Detail }) {
 }
 
 /** The ClickUp-style body of a local task, in the drawer or a full-page tab. */
-export function LocalTaskDetail({ id, mode, onClose }: { id: string; mode: "drawer" | "page"; onClose: () => void }) {
+export function LocalTaskDetail({
+  id,
+  mode,
+  onClose,
+  docLinks,
+}: {
+  id: string;
+  mode: "drawer" | "page";
+  onClose: () => void;
+  /** App-owned F9 doc links (built by `TaskDetail`), placed after Links. */
+  docLinks?: ReactNode;
+}) {
   const { data: d, isError } = useLocalTaskDetail(id);
   const { data: tree } = useLocalTree();
   const update = useUpdateTask();
@@ -611,6 +622,7 @@ export function LocalTaskDetail({ id, mode, onClose }: { id: string; mode: "draw
         <Checklist d={d} />
         <Dependencies d={d} onOpen={open} />
         <Links d={d} />
+        {docLinks && <div className="border-t border-border/60 px-6 py-4">{docLinks}</div>}
         <Comments d={d} />
         <p className="px-6 pt-2 text-[11px] text-muted-foreground">
           Created {timeAgo(d.createdAt)} · Updated {timeAgo(d.updatedAt)}
