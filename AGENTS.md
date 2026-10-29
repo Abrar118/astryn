@@ -15,8 +15,8 @@ backend.
   them, but don't architect in a way that blocks them.
 - Shipped/remaining work is tracked in `requirements.md` ("Implementation
   status" and §11 Milestones). Verify those claims against the tree,
-  manifests, migrations, and Git history; status prose can lag. Next up is
-  M6 (F9 per-issue doc links). Each milestone must build and run on its own
+  manifests, migrations, and Git history; status prose can lag. M0–M6 are
+  shipped (M6 = F9 per-task doc links). Each milestone must build and run on its own
   before the next starts.
 - Per-feature design specs and plans live in `docs/superpowers/specs/` and
   `docs/superpowers/plans/`.

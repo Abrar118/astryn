@@ -3,8 +3,8 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1) and Slack catch-up board (Phase 2, iteration 1)
 **Audience:** coding agents (Claude Code, Codex) — see `AGENTS.md` for repository working rules
 **Owner:** Abrar
-**Status (v0.4.0):** Phase 1 in progress — M0–M5 shipped, plus a dashboard, a documentation browser, and LLM-assisted report generators beyond the original plan; only F9 (per-issue doc links) remains. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
-**Last updated:** 2026-10-27
+**Status (v0.4.0):** Phase 1 milestones M0–M6 shipped (F9 per-task doc links landed 2026-10-29), plus a dashboard, a documentation browser, and LLM-assisted report generators beyond the original plan. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
+**Last updated:** 2026-10-29
 
 ---
 
@@ -18,6 +18,7 @@
 - **M3 — This Week agenda (F5 + F6).** See §9.
 - **M4 — GitHub PR workspace (F7).** Three actionable viewer queues (needs-my-review / mine / assigned), favorite-repository views, row actions, a read-only live PR detail drawer, the real GitHub contribution heatmap, classic-PAT auth, and an offline-first per-scope cache. The involved bucket remains a backend compatibility cache but is not exposed in the page UI.
 - **M5 — Dependency graph (F8).** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
+- **M6 — Doc links (F9).** A "Docs & links" section in the task drawer and tab for every tracker (Linear issues and local tasks): web links or documents from any docs source, with title, note and tags, stored locally in `doc_links` (migration 0040) and owned by the Docs module. See `docs/superpowers/specs/2026-10-29-f9-doc-links-design.md`.
 
 **Delivered beyond the original M0/M1 scope**
 
@@ -35,7 +36,7 @@
 - **Microsoft Teams chat provider (module spec 2, chat part).** A `teams` module (provides `chat`) with its own catch-up board for unread Teams chats and @mentions, rendered by the provider-neutral `features/chat/` board that Slack now also uses. Microsoft Graph via a device-code sign-in (§4 Microsoft Teams). Live verification against a real tenant is pending. See `docs/superpowers/specs/2026-10-28-teams-chat-provider-design.md`.
 - **Reports** — Daily Scrum and Weekly Review generators. Rust (`generators/facts.rs`) builds a deterministic fact sheet from the local cache (Linear issues + GitHub PRs); an optional OpenAI-compatible endpoint (`generators/llm.rs`, streamed) turns it into prose, with the fact sheet as the offline/no-endpoint fallback.
 
-**Not yet built:** F9 (per-issue doc links) — see §9 and §11. **Planned:** multiple color themes (§3 UI direction).
+**Planned:** multiple color themes (§3 UI direction).
 
 ---
 
@@ -209,7 +210,7 @@ Optional. The base URL and model name are app settings; the optional API key is 
 
 The local DB is a **cache + a small amount of app-owned data**. Linear is the source of truth for issues; the app owns doc links, sync cursors, and settings.
 
-This is the target schema, not a migration listing — `src-tauri/migrations/` is authoritative. `comments`, `activity`, and `doc_links` are **not created yet** (comments and activity are read live in the drawer; `doc_links` arrives with M6). Created tables not shown below: `pending_issue_deletes` (offline delete queue) and the documentation browser's `docs_sources`, `docs_files` (keyed by `source_id, path`), and `docs_sync_meta` (one row per source).
+This is the target schema, not a migration listing — `src-tauri/migrations/` is authoritative. `comments` and `activity` are **not created yet** (both are read live in the drawer). `doc_links` (M6, migration 0040) is keyed by `tracker` + `task_id` and has a `kind` (`url` | `doc`) with `source_id` / `doc_path` for documents in a docs source; see the F9 spec. Created tables not shown below: `pending_issue_deletes` (offline delete queue) and the documentation browser's `docs_sources`, `docs_files` (keyed by `source_id, path`), and `docs_sync_meta` (one row per source).
 
 ```sql
 -- Cached Linear issues
@@ -566,7 +567,7 @@ The original F5 (daily standup: Done / In-progress / Blocked buckets) and F6 (we
 - **Behavior:** React Flow graph. Parent→child as the primary tree; relations (blocks/blocked-by/related/duplicate) as styled edges. Node = issue card (identifier, title, state color). Click a node → F2 drawer. Start from a focused issue and expand neighbors, or render a whole project's tree.
 - **AC:** selecting an issue renders its parent/children and relations correctly; clicking a node opens its drawer; layout is readable for at least ~50 nodes.
 
-### F9 — Related docs & link storage `[REQ]`
+### F9 — Related docs & link storage `[REQ]` ✅ Done (M6)
 - **Data:** `doc_links` table (app-owned, local).
 - **Behavior:** in the drawer, an "Docs & links" section to add a URL with optional title, note, and tags; list/edit/delete. Local-first (survives offline). `[CHOICE]` optional "also push to Linear as an attachment" toggle via `attachmentCreate`.
 - **AC:** links persist across restarts; editing/deleting works; they're scoped to the correct issue.
@@ -608,7 +609,7 @@ src/                 # React frontend
 - **M3 — This Week agenda (replaces F5/F6 generators). ✅ Done.** Single in-app view of the viewer's issues by due date (Sunday-started week, `Asia/Dhaka`), with Overdue/weekday/Weekend groups, threaded sub-issues and related issues, and a new `relations` cache table. Markdown export and the `polish` seam are dropped. See `docs/superpowers/specs/2026-06-21-this-week-agenda-design.md`.
 - **M4 — GitHub PR workspace (F7). ✅ Done.** Three visible `@me` queues, favorite-repository scopes, default grouping, row actions, a cached-first read-only Linear-style Overview/Diff drawer with lazy in-app unified patches, status/CI/conflict/review badges, the real GitHub contribution heatmap + viewer metrics, and the optional Linear chip; classic-PAT auth; offline-first per-scope cache. See `docs/superpowers/specs/2026-07-26-github-pr-page-revamp-design.md` and `docs/superpowers/specs/2026-07-26-github-pr-linear-drawer-diff-design.md`.
 - **M5 — Dependency graph (F8). ✅ Done.** React Flow parent/child + relations graph with grouping and bulk actions; node click opens the issue detail.
-- **M6 — Doc links (F9).** Not started. **Next.**
+- **M6 — Doc links (F9). ✅ Done.** Per-task "Docs & links" for every tracker; web links and documents from GitHub, local-folder and ClickUp sources; local only (the optional Linear attachment push is not built). See `docs/superpowers/specs/2026-10-29-f9-doc-links-design.md`.
 - **Dashboard. ✅ Done.** See `docs/superpowers/specs/2026-07-26-app-dashboard-design.md`.
 - **Documentation browser. ✅ Done.** Multi-source GitHub markdown browser (`docs_sources` / `docs_files` / `docs_sync_meta`, migrations 0014 + 0016), lazy per-source sync, offline reads. See `docs/superpowers/specs/2026-06-24-docs-viewer-design.md`.
 - **Reports (Daily Scrum + Weekly Review). ✅ Done.** Deterministic fact sheet from the cache plus an optional streamed OpenAI-compatible LLM pass with a generation guard; `issues.completed_at` added in migration 0015.
