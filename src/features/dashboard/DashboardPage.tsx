@@ -1,25 +1,7 @@
-import { useEffect, useId, useState, type CSSProperties, type ReactNode } from "react";
-import {
-  AlertTriangle,
-  ArrowRight,
-  AtSign,
-  BookText,
-  CheckCircle2,
-  CircleDot,
-  Clock3,
-  GitMerge,
-  GitPullRequest,
-  Inbox,
-  Layers3,
-  MessageCircle,
-  MessageSquare,
-  MessagesSquare,
-  Radio,
-  type LucideIcon,
-} from "lucide-react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 import { dueLabel } from "@/features/issues/IssueRow";
-import { prStats } from "@/features/prs/prActivity";
 import { relativeTime } from "@/features/inbox/notifications";
 import {
   useDocsSources,
@@ -32,10 +14,9 @@ import {
   useSlackStatus,
 } from "@/lib/queries";
 import { useTasks, useViewer } from "@/lib/taskQueries";
-
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
-import { VIEW_META, trackerModulesActive, viewActive, visibleViews, useModules } from "@/lib/modules";
+import { trackerModulesActive, viewActive, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
 import { dhakaToday } from "@/lib/dates";
 import {
@@ -50,125 +31,246 @@ import {
   type WorkloadBucket,
 } from "./dashboard";
 
-type GlassCardProps = {
-  children: ReactNode;
-  className?: string;
-  ariaLabelledBy?: string;
+/** Indicator-lamp states: a lit lamp reports state, an unlit ring means "nothing to report". */
+type Lamp = "danger" | "warning" | "info" | "success" | "neutral" | "off";
+
+const LAMP_CLASS: Record<Lamp, string> = {
+  danger: "dash-lamp-lit bg-destructive",
+  warning: "dash-lamp-lit bg-warning",
+  info: "dash-lamp-lit bg-info",
+  success: "dash-lamp-lit bg-success",
+  neutral: "dash-lamp-lit bg-muted-foreground",
+  off: "border border-muted-foreground/70",
 };
 
-function GlassCard({ children, className, ariaLabelledBy }: GlassCardProps) {
-  return (
-    <section
-      aria-labelledby={ariaLabelledBy}
-      className={cn("dashboard-glass min-w-0 rounded-xl border", className)}
-    >
-      {children}
-    </section>
-  );
+function IndicatorLamp({ tone, className }: { tone: Lamp; className?: string }) {
+  return <span aria-hidden className={cn("dash-lamp", LAMP_CLASS[tone], className)} />;
 }
 
-function SectionHeading({
+function SectionTitle({
   id,
-  title,
-  description,
-  action,
+  children,
+  aside,
+  size = "md",
 }: {
   id: string;
-  title: string;
-  description?: string;
-  action?: ReactNode;
+  children: ReactNode;
+  aside?: ReactNode;
+  size?: "md" | "lg";
 }) {
   return (
-    <header className="flex min-w-0 items-start justify-between gap-3">
-      <div className="min-w-0">
-        <h2 id={id} className="text-[13px] font-semibold tracking-tight text-foreground">
-          {title}
-        </h2>
-        {description && (
-          <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{description}</p>
-        )}
-      </div>
-      {action}
+    <header className="flex min-w-0 items-baseline justify-between gap-3">
+      <h2
+        id={id}
+        className={cn("font-semibold tracking-tight text-foreground", size === "lg" ? "text-[15px]" : "text-[13px]")}
+      >
+        {children}
+      </h2>
+      {aside}
     </header>
   );
 }
 
-function CacheUnavailable({ children }: { children: ReactNode }) {
+// ── Source lamps: the panel's status row, one lamp per active source ─────────
+
+type SourceLamp = {
+  key: string;
+  name: string;
+  status: string;
+  detail: string;
+  tone: Lamp;
+  onOpen: () => void;
+};
+
+function SourceLamps({ sources }: { sources: SourceLamp[] }) {
+  if (sources.length === 0) return null;
   return (
-    <p className="mt-3 rounded-lg bg-warning/5 px-3 py-5 text-center text-xs text-warning ring-1 ring-warning/15">
-      {children}
-    </p>
+    <ul aria-label="Sources" className="flex flex-wrap items-center gap-x-1 gap-y-1">
+      {sources.map((s) => (
+        <li key={s.key}>
+          <button
+            type="button"
+            onClick={s.onOpen}
+            aria-label={`${s.name}: ${s.status}`}
+            title={`${s.status} · ${s.detail}`}
+            className="dash-control flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <IndicatorLamp tone={s.tone} />
+            <span className="lowercase">{s.name}</span>
+            {s.tone !== "success" && <span className="text-foreground lowercase">· {s.status}</span>}
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }
 
-const KPI_STYLES = {
-  danger: { icon: "bg-destructive/12 text-destructive ring-destructive/20" },
-  neutral: { icon: "bg-muted text-muted-foreground ring-border" },
-} as const;
+// ── Dial scale: the week read like a tuning dial, one needle at now ──────────
 
-function KpiCard({
-  label,
-  value,
-  description,
-  Icon,
-  tone,
-  loading,
-  actionLabel,
+function DayTicks() {
+  // One major tick at the day boundary and three minor ticks inside the day.
+  return (
+    <svg aria-hidden viewBox="0 0 100 12" preserveAspectRatio="none" className="dash-ticks h-3 w-full">
+      <line x1="0.5" y1="0" x2="0.5" y2="12" vectorEffect="non-scaling-stroke" className="dash-tick-major" />
+      {[25, 50, 75].map((x) => (
+        <line key={x} x1={x} y1="6" x2={x} y2="12" vectorEffect="non-scaling-stroke" className="dash-tick-minor" />
+      ))}
+    </svg>
+  );
+}
+
+function DialScale({
+  days,
+  overdue,
+  available,
   onOpen,
 }: {
-  label: string;
-  value: number | null;
-  description: string;
-  Icon: LucideIcon;
-  tone: keyof typeof KPI_STYLES;
-  loading: boolean;
-  actionLabel: string;
+  days: DueLoadDay[];
+  overdue: number | null;
+  available: boolean;
   onOpen: () => void;
 }) {
-  const style = KPI_STYLES[tone];
+  const total = days.reduce((sum, day) => sum + day.count, 0);
+  const longDay = (date: string) => new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC", weekday: "long", month: "long", day: "numeric",
+  }).format(new Date(`${date}T00:00:00Z`));
+  const shortDay = (date: string) => new Intl.DateTimeFormat("en-US", {
+    timeZone: "UTC", weekday: "short",
+  }).format(new Date(`${date}T00:00:00Z`)).toLowerCase();
+
   return (
-    <button
-      type="button"
-      aria-label={actionLabel}
-      onClick={onOpen}
-      className="dashboard-glass group relative min-w-0 cursor-pointer overflow-hidden rounded-xl border p-3.5 text-left transition-colors duration-150 hover:border-foreground/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/70"
-    >
-      <span className="relative flex items-start justify-between gap-3">
-        <span>
-          <span className="block text-[11px] font-medium text-muted-foreground">{label}</span>
-          <span className="mt-1.5 block text-[28px] font-semibold leading-none tabular-nums tracking-tight text-foreground">
-            {loading || value === null ? "—" : value}
+    <div className="dash-zone px-4 pt-4 pb-3">
+      <div className="dash-dial">
+        <button
+          type="button"
+          onClick={onOpen}
+          aria-label={overdue === null ? "Overdue: not cached. Open the agenda" : `Overdue: ${overdue}. Open the agenda`}
+          className="dash-control dash-dial-past"
+        >
+          <span className={cn("dash-numeral text-[32px]", overdue ? "text-destructive" : "text-muted-foreground")}>
+            {overdue ?? "—"}
           </span>
-        </span>
-        <span className={cn("flex size-8 items-center justify-center rounded-lg ring-1", style.icon)}>
-          <Icon className="size-4" />
-        </span>
-      </span>
-      <span className="relative mt-2.5 flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate text-[10.5px] text-muted-foreground">
-          {loading ? "Reading cache…" : description}
-        </span>
-        <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
-      </span>
-    </button>
+          <span className="flex h-2 items-center gap-0.5">
+            {Array.from({ length: Math.min(overdue ?? 0, 4) }, (_, i) => (
+              <IndicatorLamp key={i} tone="danger" className="size-1.5" />
+            ))}
+          </span>
+          <span className="text-[12px] text-muted-foreground">overdue</span>
+        </button>
+        <div role="group" aria-label="Due in the next 7 days" className="dash-dial-days">
+          <span aria-hidden className="dash-needle" />
+          {days.map((day, index) => (
+            <button
+              key={day.date}
+              type="button"
+              onClick={onOpen}
+              aria-label={`${index === 0 ? "Today, " : ""}${longDay(day.date)}: ${available ? day.count : "not cached"} due`}
+              className="dash-control dash-day"
+            >
+              <span className="dash-numeral h-6 text-[22px] text-foreground">
+                {available && day.count > 0 ? day.count : ""}
+              </span>
+              <span className="flex h-2 items-center gap-0.5">
+                {available && Array.from({ length: Math.min(day.count, 4) }, (_, i) => (
+                  <IndicatorLamp key={i} tone="neutral" className="size-1.5" />
+                ))}
+              </span>
+              <DayTicks />
+              <span className={cn(
+                "text-[12px] tabular-nums",
+                index === 0 ? "font-semibold text-foreground" : "text-muted-foreground",
+              )}>
+                <span className="dash-day-name">{index === 0 ? "today" : shortDay(day.date)}</span>{" "}
+                <span className="dash-day-date">{Number(day.date.slice(8))}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <p className="mt-2 text-right text-[12px] tabular-nums text-muted-foreground">
+        {available ? `${total} due in the next 7 days` : "Task cache unavailable"}
+      </p>
+    </div>
   );
 }
 
-const ATTENTION_ICON: Record<AttentionItem["source"], LucideIcon> = {
-  task: Layers3,
-  github: GitPullRequest,
-  slack: MessageSquare,
-  inbox: Inbox,
+// ── Readouts: live counts for the sources that are on ────────────────────────
+
+type Readout = {
+  key: string;
+  label: string;
+  value: number | null;
+  /** The source is on but not connected: offer setup instead of a number. */
+  setup?: boolean;
+  alarm?: boolean;
+  actionLabel: string;
+  onOpen: () => void;
 };
 
-const ATTENTION_TONE: Record<AttentionItem["tone"], string> = {
-  danger: "bg-destructive/12 text-destructive ring-destructive/20",
-  warning: "bg-warning/12 text-warning ring-warning/20",
-  info: "bg-info/12 text-info ring-info/20",
-  neutral: "bg-muted text-muted-foreground ring-border",
+function Readouts({ readouts }: { readouts: Readout[] }) {
+  if (readouts.length === 0) return null;
+  return (
+    <ul aria-label="Counts" className="dash-zone dash-readouts">
+      {readouts.map((r) => (
+        <li key={r.key} className="min-w-0">
+          <button
+            type="button"
+            onClick={r.onOpen}
+            aria-label={r.setup
+              ? `${r.label}: not connected. ${r.actionLabel}`
+              : `${r.label}: ${r.value ?? "not cached"}. ${r.actionLabel}`}
+            className="dash-control dash-readout"
+          >
+            {r.setup ? (
+              <span className="text-[14px] font-medium text-foreground underline decoration-muted-foreground underline-offset-4">set up</span>
+            ) : (
+              <span className={cn(
+                "dash-numeral text-[28px]",
+                r.alarm && r.value ? "text-destructive" : "text-foreground",
+              )}>
+                {r.value ?? "—"}
+              </span>
+            )}
+            <span className="flex items-center gap-1.5 text-[12px] lowercase text-muted-foreground">
+              <IndicatorLamp tone={r.setup ? "off" : r.alarm && r.value ? "danger" : r.value ? "neutral" : "off"} />
+              {r.label}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// ── Attention queue: the ranked list the whole face is built around ──────────
+
+const SOURCE_LABEL: Record<AttentionItem["source"], string> = {
+  task: "task",
+  github: "github",
+  slack: "slack",
+  inbox: "inbox",
 };
 
-function AttentionTable({
+const TONE_LAMP: Record<AttentionItem["tone"], Lamp> = {
+  danger: "danger",
+  warning: "warning",
+  info: "info",
+  neutral: "neutral",
+};
+
+function QueueMessage({ tone, title, body }: { tone: Lamp; title: string; body: string }) {
+  return (
+    <div className="flex items-start gap-3 px-4 py-6">
+      <IndicatorLamp tone={tone} className="mt-1.5" />
+      <div>
+        <p className="text-[13px] font-medium text-foreground">{title}</p>
+        <p className="mt-0.5 text-[12px] text-muted-foreground">{body}</p>
+      </div>
+    </div>
+  );
+}
+
+function AttentionQueue({
   items,
   onOpen,
   loading,
@@ -180,454 +282,207 @@ function AttentionTable({
   partial: boolean;
 }) {
   const headingId = useId();
+  const hintId = useId();
+  const [cursor, setCursor] = useState(0);
+  const rowRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const active = Math.min(cursor, Math.max(0, items.length - 1));
+
+  const move = (next: number) => {
+    const target = Math.max(0, Math.min(items.length - 1, next));
+    setCursor(target);
+    rowRefs.current[target]?.focus();
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    if (event.altKey || event.ctrlKey || event.metaKey) return;
+    const keys: Record<string, number> = {
+      j: active + 1, ArrowDown: active + 1, k: active - 1, ArrowUp: active - 1, Home: 0, End: items.length - 1,
+    };
+    if (!(event.key in keys)) return;
+    event.preventDefault();
+    move(keys[event.key]);
+  };
+
   return (
-    <GlassCard className="overflow-hidden" ariaLabelledBy={headingId}>
-      <div className="border-b border-border/60 px-4 py-3.5">
-        <SectionHeading
+    <section aria-labelledby={headingId} className="dash-zone">
+      <div className="border-b border-border px-4 py-3">
+        <SectionTitle
+          size="lg"
           id={headingId}
-          title="Needs your attention"
-          description="Ranked across tasks, GitHub, Slack, and Inbox"
-          action={(
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium tabular-nums text-primary ring-1 ring-primary/20">
-              {items.length}
+          aside={items.length > 0 ? (
+            <span id={hintId} className="text-[12px] text-muted-foreground">
+              j / k to move · enter to open
             </span>
+          ) : undefined}
+        >
+          Needs you{items.length > 0 && (
+            <span className="ml-2 font-normal tabular-nums text-muted-foreground">{items.length}</span>
           )}
-        />
+        </SectionTitle>
       </div>
       {items.length === 0 ? (
         loading ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground ring-1 ring-border">
-              <Clock3 className="size-5" />
-            </span>
-            <p className="text-sm font-medium text-foreground">
-              Reading cached attention…
-            </p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              Available provider data will appear as it loads.
-            </p>
-          </div>
+          <QueueMessage tone="off" title="Reading cached attention…" body="Available provider data will appear as it loads." />
         ) : partial ? (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-warning/10 text-warning ring-1 ring-warning/20">
-              <AlertTriangle className="size-5" />
-            </span>
-            <p className="text-sm font-medium text-foreground">
-              Some caches are unavailable
-            </p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              Available sources have no urgent items. Check Sources for details.
-            </p>
-          </div>
+          <QueueMessage
+            tone="warning"
+            title="Some caches are unavailable"
+            body="The sources that loaded have nothing urgent. The lamps above show which source failed."
+          />
         ) : (
-          <div className="flex min-h-48 flex-col items-center justify-center gap-2 px-6 py-10 text-center">
-            <span className="flex size-10 items-center justify-center rounded-xl bg-success/10 text-success ring-1 ring-success/20">
-              <CheckCircle2 className="size-5" />
-            </span>
-            <p className="text-sm font-medium text-foreground">Nothing urgent right now</p>
-            <p className="max-w-xs text-xs text-muted-foreground">
-              Available caches have no overdue work or unread requests.
-            </p>
-          </div>
+          <QueueMessage
+            tone="success"
+            title="Nothing urgent right now"
+            body="No overdue work, review requests, mentions or unread notifications."
+          />
         )
       ) : (
-        <div className="min-w-0 overflow-hidden">
-          <table aria-label="Needs your attention" className="w-full table-fixed border-collapse">
-            <thead className="sr-only">
-              <tr>
-                <th>Source</th>
-                <th>Item</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item) => {
-                const Icon = ATTENTION_ICON[item.source];
-                const actionName = item.source === "task"
-                  ? `Open ${item.context}`
-                  : `Open ${item.source} ${item.context}`;
-                return (
-                  <tr
-                    key={item.key}
-                    className="border-b border-border/45 last:border-b-0 hover:bg-foreground/[0.025]"
-                  >
-                    <td className="w-12 py-2.5 pl-4 pr-2 align-middle">
-                      <span className={cn(
-                        "flex size-7 items-center justify-center rounded-lg ring-1",
-                        ATTENTION_TONE[item.tone],
-                      )}>
-                        <Icon className="size-3.5" />
-                      </span>
-                    </td>
-                    <td className="min-w-0 py-2.5 pr-3 align-middle">
-                      <button
-                        type="button"
-                        aria-label={actionName}
-                        onClick={() => onOpen(item)}
-                        className="group/item block w-full cursor-pointer text-left focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground">
-                            {item.context}
-                          </span>
-                          <span className="truncate text-xs font-medium text-foreground group-hover/item:text-primary">
-                            {item.title}
-                          </span>
-                        </span>
-                      </button>
-                    </td>
-                    <td className="dashboard-attention-status w-32 py-2.5 pr-3 text-right align-middle">
-                      <span className="text-[10.5px] text-muted-foreground">{item.detail}</span>
-                    </td>
-                    <td className="w-9 py-2.5 pr-4 text-right align-middle">
-                      <button
-                        type="button"
-                        aria-label={`${actionName} action`}
-                        onClick={() => onOpen(item)}
-                        className="ml-auto flex size-7 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-foreground/[0.045] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                      >
-                        <ArrowRight className="size-3.5" />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <ul aria-label="Needs you" aria-describedby={hintId} onKeyDown={onKeyDown} className="dash-queue">
+          {items.map((item, index) => (
+            <li key={item.key}>
+              <button
+                ref={(el) => { rowRefs.current[index] = el; }}
+                type="button"
+                tabIndex={index === active ? 0 : -1}
+                onFocus={() => setCursor(index)}
+                onClick={() => onOpen(item)}
+                aria-label={item.source === "task" ? `Open ${item.context}` : `Open ${item.source} ${item.context}`}
+                className="dash-control dash-queue-row"
+              >
+                <IndicatorLamp tone={TONE_LAMP[item.tone]} />
+                <span className="dash-queue-source text-[12px] text-muted-foreground">{SOURCE_LABEL[item.source]}</span>
+                <span className="truncate font-mono text-[12px] text-muted-foreground">{item.context}</span>
+                <span className="truncate text-[14px] font-medium text-foreground">{item.title}</span>
+                <span className={cn(
+                  "dash-queue-detail text-right text-[12px]",
+                  item.tone === "danger" ? "text-destructive" : "text-muted-foreground",
+                )}>
+                  {item.detail}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
-    </GlassCard>
+    </section>
   );
 }
 
-function WorkloadChart({
-  buckets,
-  available,
-}: {
-  buckets: WorkloadBucket[];
-  available: boolean;
-}) {
-  const headingId = useId();
-  const total = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
-  const max = Math.max(1, ...buckets.map((bucket) => bucket.count));
-  return (
-    <GlassCard className="p-4" ariaLabelledBy={headingId}>
-      <SectionHeading
-        id={headingId}
-        title="Active workload"
-        description={`${total} viewer-assigned issue${total === 1 ? "" : "s"}`}
-      />
-      {!available ? (
-        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
-      ) : <div className="mt-4 space-y-3">
-        {buckets.map((bucket) => (
-          <div key={bucket.key}>
-            <div className="mb-1.5 flex items-center justify-between gap-2 text-[10.5px]">
-              <span className="text-muted-foreground">{bucket.label}</span>
-              <span className="font-medium tabular-nums text-foreground">{bucket.count}</span>
-            </div>
-            <div
-              role="img"
-              aria-label={`${bucket.label}: ${bucket.count}`}
-              className="h-1.5 overflow-hidden rounded-full bg-foreground/[0.055]"
-            >
-              <span
-                className="block h-full rounded-full transition-[width] duration-200"
-                style={{
-                  width: `${bucket.count === 0 ? 0 : Math.max(8, (bucket.count / max) * 100)}%`,
-                  backgroundColor: bucket.color,
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>}
-    </GlassCard>
-  );
-}
+// ── This week: the agenda below the fold ─────────────────────────────────────
 
-function DueLoadChart({
-  days,
-  available,
-}: {
-  days: DueLoadDay[];
-  available: boolean;
-}) {
-  const headingId = useId();
-  const total = days.reduce((sum, day) => sum + day.count, 0);
-  const max = Math.max(1, ...days.map((day) => day.count));
-  return (
-    <GlassCard className="p-4" ariaLabelledBy={headingId}>
-      <SectionHeading
-        id={headingId}
-        title="Due load"
-        description={`${total} issue${total === 1 ? "" : "s"} · next 7 days`}
-      />
-      {!available ? (
-        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
-      ) : <div className="mt-4 grid h-24 grid-cols-7 items-end gap-1.5">
-        {days.map((day, index) => (
-          <div key={day.date} className="flex h-full min-w-0 flex-col items-center justify-end gap-1.5">
-            <span className="text-[9px] font-medium tabular-nums text-foreground">
-              {day.count || ""}
-            </span>
-            <div
-              role="img"
-              aria-label={`${day.label}: ${day.count} due`}
-              className="flex h-14 w-full max-w-6 items-end overflow-hidden rounded-md bg-foreground/[0.045]"
-            >
-              <span
-                className={cn(
-                  "block w-full rounded-md transition-[height] duration-200",
-                  index === 0 ? "bg-primary" : "bg-primary/45",
-                )}
-                style={{ height: `${day.count === 0 ? 5 : Math.max(18, (day.count / max) * 100)}%` }}
-              />
-            </div>
-            <span className="truncate text-[9px] text-muted-foreground">{day.label}</span>
-          </div>
-        ))}
-      </div>}
-    </GlassCard>
-  );
-}
-
-function WeekCard({
+function WeekAgenda({
   issues,
+  workload,
   today,
   onOpenIssue,
   onOpenWeek,
   available,
 }: {
   issues: ReturnType<typeof weekPreview>;
+  workload: WorkloadBucket[];
   today: string;
   onOpenIssue: (id: string) => void;
   onOpenWeek: () => void;
   available: boolean;
 }) {
   const headingId = useId();
+  const plate = workload.map((b) => `${b.count} ${b.label.toLowerCase()}`).join(" · ");
   return (
-    <GlassCard className="p-4" ariaLabelledBy={headingId}>
-      <SectionHeading
-        id={headingId}
-        title="Today & this week"
-        description="Your nearest task deadlines"
-        action={(
+    <section aria-labelledby={headingId} className="dash-panel">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-border px-4 py-3">
+        <SectionTitle id={headingId}>This week</SectionTitle>
+        <div className="flex items-baseline gap-3">
+          {available && <span className="text-[12px] tabular-nums text-muted-foreground">{plate}</span>}
           <button
             type="button"
             onClick={onOpenWeek}
-            className="flex cursor-pointer items-center gap-1 text-[10.5px] text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="dash-control flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[12px] font-medium text-foreground underline-offset-4 hover:underline"
           >
-            Full agenda <ArrowRight className="size-3" />
+            Full agenda
+            <ChevronRight className="size-3.5 text-muted-foreground" />
           </button>
-        )}
-      />
+        </div>
+      </div>
       {!available ? (
-        <CacheUnavailable>Task cache unavailable.</CacheUnavailable>
-      ) : <div className="mt-3 divide-y divide-border/45">
-        {issues.length === 0 ? (
-          <p className="py-6 text-center text-xs text-muted-foreground">Nothing due this week.</p>
-        ) : issues.map((issue) => (
-          <button
-            key={issue.id}
-            type="button"
-            aria-label={`Open ${issue.identifier} from week preview`}
-            onClick={() => onOpenIssue(issue.id)}
-            className="flex w-full min-w-0 cursor-pointer items-center gap-2 py-2 text-left transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <span className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: issue.stateColor }} />
-            <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{issue.identifier}</span>
-            <span className="min-w-0 flex-1 truncate text-[11.5px] font-medium">{issue.title}</span>
-            {issue.dueDate && (
-              <span className={cn(
-                "shrink-0 text-[10px]",
-                issue.dueDate < today ? "text-destructive" : "text-muted-foreground",
-              )}>
-                {dueLabel(issue.dueDate, today)}
+        <QueueMessage tone="warning" title="Task cache unavailable" body="Your assigned tasks could not be read from the local cache." />
+      ) : issues.length === 0 ? (
+        <QueueMessage tone="success" title="Nothing else due this week" body="No assigned task is due between today and Saturday." />
+      ) : (
+        <ul className="dash-week-row-list">
+          {issues.map((issue) => (
+            <li key={issue.id}>
+              <button
+                type="button"
+                aria-label={`Open ${issue.identifier} from this week`}
+                onClick={() => onOpenIssue(issue.id)}
+                className="dash-control dash-week-row"
+              >
+                <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: issue.stateColor }} />
+                <span className="font-mono text-[12px] text-muted-foreground">{issue.identifier}</span>
+                <span className="truncate text-[13px] text-foreground">{issue.title}</span>
+                {issue.dueDate && (
+                  <span className={cn(
+                    "text-right text-[12px] tabular-nums",
+                    issue.dueDate < today ? "text-destructive" : "text-muted-foreground",
+                  )}>
+                    {dueLabel(issue.dueDate, today)}
+                  </span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+// ── Sources: provider health below the fold ──────────────────────────────────
+
+function SourcesPanel({ sources }: { sources: SourceLamp[] }) {
+  const headingId = useId();
+  if (sources.length === 0) return null;
+  return (
+    <section aria-labelledby={headingId} className="dash-panel">
+      <div className="border-b border-border px-4 py-3">
+        <SectionTitle id={headingId}>Sources</SectionTitle>
+      </div>
+      <ul className="dash-week-row-list">
+        {sources.map((s) => (
+          <li key={s.key}>
+            <button
+              type="button"
+              onClick={s.onOpen}
+              aria-label={`${s.name} ${s.status}: ${s.detail}`}
+              className="dash-control dash-source-row"
+            >
+              <IndicatorLamp tone={s.tone} />
+              <span className="text-[13px] font-medium text-foreground">{s.name}</span>
+              <span className="truncate text-[12px] text-muted-foreground">
+                {s.status}{s.detail ? ` · ${s.detail}` : ""}
               </span>
-            )}
-          </button>
+              <ChevronRight aria-hidden className="size-3.5 text-muted-foreground" />
+            </button>
+          </li>
         ))}
-      </div>}
-    </GlassCard>
+      </ul>
+    </section>
   );
 }
 
-function MetricLine({
-  Icon,
-  label,
-  value,
-  tint,
-}: {
-  Icon: LucideIcon;
-  label: string;
-  value: number | null;
-  tint?: string;
-}) {
-  return (
-    <div className="flex items-center gap-2.5 rounded-lg bg-foreground/[0.025] px-2.5 py-2 ring-1 ring-foreground/[0.055]">
-      <Icon className={cn("size-3.5 shrink-0", tint ?? "text-muted-foreground")} />
-      <span className="min-w-0 flex-1 truncate text-[10.5px] text-muted-foreground">{label}</span>
-      <span className="text-xs font-semibold tabular-nums text-foreground">
-        {value ?? "—"}
-      </span>
-    </div>
-  );
-}
-
-function PrHealthCard({
-  stats,
-  onOpen,
-  available,
-}: {
-  stats: ReturnType<typeof prStats>;
-  onOpen: () => void;
-  available: boolean;
-}) {
-  const headingId = useId();
-  return (
-    <GlassCard className="p-4" ariaLabelledBy={headingId}>
-      <SectionHeading
-        id={headingId}
-        title="Pull request health"
-        description="Distinct cached work across repositories"
-        action={(
-          <button
-            type="button"
-            onClick={onOpen}
-            className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Open pull request health"
-          >
-            <ArrowRight className="size-3.5" />
-          </button>
-        )}
-      />
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MetricLine Icon={GitPullRequest} label="Open" value={available ? stats.open : null} />
-        <MetricLine Icon={CircleDot} label="Needs review" value={available ? stats.needsReview : null} />
-        <MetricLine Icon={MessageCircle} label="Changes req." value={available ? stats.changesRequested : null} tint="text-warning" />
-        <MetricLine Icon={GitMerge} label="Conflicts" value={available ? stats.conflicts : null} tint="text-destructive" />
-      </div>
-    </GlassCard>
-  );
-}
-
-function CommunicationCard({
-  inbox,
-  mentions,
-  directMessages,
-  threads,
-  loading,
-  onOpen,
-}: {
-  /** `undefined` drops the Inbox line (screen off); `null` shows it as not cached. */
-  inbox: number | null | undefined;
-  mentions: number | null;
-  directMessages: number | null;
-  threads: number | null;
-  loading: boolean;
-  onOpen: () => void;
-}) {
-  const headingId = useId();
-  return (
-    <GlassCard className="p-4" ariaLabelledBy={headingId}>
-      <SectionHeading
-        id={headingId}
-        title="Communication"
-        description={loading ? "Reading cache…" : "Unread conversations and notifications"}
-        action={(
-          <button
-            type="button"
-            onClick={onOpen}
-            className="cursor-pointer text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-            aria-label="Open Slack"
-          >
-            <ArrowRight className="size-3.5" />
-          </button>
-        )}
-      />
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        {inbox !== undefined && <MetricLine Icon={Inbox} label="Inbox" value={inbox} />}
-        <MetricLine Icon={AtSign} label="Mentions" value={mentions} />
-        <MetricLine Icon={MessageSquare} label="Unread DMs" value={directMessages} />
-        <MetricLine Icon={MessagesSquare} label="Threads" value={threads} />
-      </div>
-    </GlassCard>
-  );
-}
-
-type SourceRowProps = {
-  Icon: LucideIcon;
-  name: string;
-  status: string;
-  detail: string;
-  tone: "ready" | "warning" | "muted";
-  onOpen: () => void;
-};
-
-function SourceRow({ Icon, name, status, detail, tone, onOpen }: SourceRowProps) {
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      aria-label={`${name} ${status}: ${detail}`}
-      className="group/source flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors hover:bg-foreground/[0.035] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-    >
-      <span className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-lg ring-1",
-        tone === "ready" && "bg-success/10 text-success ring-success/20",
-        tone === "warning" && "bg-warning/10 text-warning ring-warning/20",
-        tone === "muted" && "bg-muted/50 text-muted-foreground ring-border",
-      )}>
-        <Icon className="size-3.5" />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-2">
-          <span className="text-[11px] font-medium text-foreground">{name}</span>
-          <span className="text-[9.5px] text-muted-foreground">{status}</span>
-        </span>
-        <span className="block truncate text-[9.5px] text-muted-foreground/80">{detail}</span>
-      </span>
-      <ArrowRight className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover/source:text-foreground" />
-    </button>
-  );
-}
-
-const QUICK_VIEWS: ViewKind[] = ["calendar", "list", "this-week", "prs", "slack", "docs", "reports"];
-
-function QuickActions({ onOpen }: { onOpen: (view: ViewKind) => void }) {
-  const { isActive, disabledScreens } = useModules();
-  const actions = visibleViews(isActive, disabledScreens)
-    .filter((v) => QUICK_VIEWS.includes(v))
-    .map((view) => ({ view, label: VIEW_META[view].label, Icon: VIEW_META[view].icon }));
-  return (
-    <nav aria-label="Dashboard quick actions" className="dashboard-glass rounded-xl border p-2">
-      <div className="no-scrollbar flex min-w-0 items-center gap-1 overflow-x-auto">
-        <span className="hidden shrink-0 px-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground sm:block">
-          Jump to
-        </span>
-        {actions.map(({ view, label, Icon }) => (
-          <button
-            key={view}
-            type="button"
-            onClick={() => onOpen(view)}
-            className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10.5px] text-muted-foreground transition-colors hover:bg-foreground/[0.045] hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            <Icon className="size-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
+/** "Now", re-read on each minute boundary so Dhaka dates roll over on time. */
 function useDashboardNow(): Date {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(new Date()), 60_000);
-    return () => window.clearInterval(timer);
+    let interval: number | undefined;
+    const timeout = window.setTimeout(() => {
+      setNow(new Date());
+      interval = window.setInterval(() => setNow(new Date()), 60_000);
+    }, 60_000 - (Date.now() % 60_000));
+    return () => {
+      window.clearTimeout(timeout);
+      if (interval !== undefined) window.clearInterval(interval);
+    };
   }, []);
   return now;
 }
@@ -637,7 +492,6 @@ export function DashboardPage() {
   const [, setParams] = useSearchParams();
   const now = useDashboardNow();
   const today = dhakaToday(now);
-  const sourcesHeadingId = useId();
   const { isActive, disabledScreens } = useModules();
   const linearOn = isActive("linear");
   const active = {
@@ -669,35 +523,14 @@ export function DashboardPage() {
   const notifications = inboxOn ? notificationsQuery.data?.notifications ?? [] : [];
   const prs = githubQuery.data?.prs ?? [];
   const slack = slackQuery.data;
-  const metrics = dashboardMetrics({
-    issues,
-    prs,
-    notifications,
-    slack,
-    viewerIds,
-    today,
-    active,
-  });
-  const attention = attentionItems({
-    issues,
-    prs,
-    notifications,
-    slack,
-    viewerIds,
-    today,
-    active,
-  });
+  const input = { issues, prs, notifications, slack, viewerIds, today, active };
+  const metrics = dashboardMetrics(input);
+  const attention = attentionItems(input);
   const workload = workloadBuckets(issues, viewerIds);
   const dueDays = dueLoad(issues, viewerIds, today);
-  const preview = weekPreview(issues, viewerIds, today);
-  const pullRequestStats = prStats(prs.filter((pr) => pr.bucket !== "merged"));
-  const linearReadError = issuesQuery.isError || viewer.isError;
-  const githubReadError = githubStatusQuery.isError || githubQuery.isError;
-  const slackReadError = slackStatusQuery.isError || slackQuery.isError;
-  const docsReadError = docsStatusQuery.isError || docsSourcesQuery.isError;
+  // Overdue work already leads "Needs you"; the agenda lists what is still ahead.
+  const preview = weekPreview(issues, viewerIds, today, 50).filter((i) => !i.dueDate || i.dueDate >= today).slice(0, 5);
   const taskDataAvailable = issuesQuery.data !== undefined && viewerIds.length > 0;
-  const githubDataAvailable = githubQuery.data !== undefined;
-  const slackDataAvailable = slackQuery.data !== undefined;
   const attentionPartial = (
     (issuesQuery.isError && issuesQuery.data === undefined)
     || (viewer.isError && viewerIds.length === 0)
@@ -706,13 +539,6 @@ export function DashboardPage() {
     || (slackQuery.isError && slackQuery.data === undefined)
   );
 
-  const dms = slack?.conversations.filter(
-    (conversation) =>
-      (conversation.kind === "dm" || conversation.kind === "group_dm")
-      && conversation.unreadCount > 0,
-  ).length ?? 0;
-  const unreadThreads = slack?.threads.filter((thread) => thread.unreadReplies > 0).length ?? 0;
-
   const openAttention = (item: AttentionItem) => {
     if (item.target === "issue" && item.entityId) {
       setParams({ issue: item.entityId });
@@ -720,16 +546,11 @@ export function DashboardPage() {
     }
     setActiveView(item.target);
   };
+  const openProviderSettings = (section: "linear" | "github" | "slack") => {
+    requestSettingsSection(section);
+    setActiveView("settings");
+  };
 
-  const hour = Number(new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Asia/Dhaka",
-    hour: "2-digit",
-    hour12: false,
-  }).format(now));
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-  const title = viewer.name
-    ? `${greeting}, ${viewer.name}`
-    : "Your workspace";
   const dateLabel = new Intl.DateTimeFormat("en-US", {
     timeZone: "Asia/Dhaka",
     weekday: "long",
@@ -737,66 +558,16 @@ export function DashboardPage() {
     day: "numeric",
   }).format(now);
 
-  const githubSyncs = githubQuery.data?.meta
-    .map((meta) => meta.lastSyncedAt)
-    .filter((value): value is string => !!value)
-    .sort() ?? [];
-  const latestGithubSync = githubSyncs[githubSyncs.length - 1];
-  const docsSyncs = (docsSourcesQuery.data ?? [])
-    .map((source) => source.lastSyncedAt)
-    .filter((value): value is string => !!value)
-    .sort();
-  const latestDocsSync = docsSyncs[docsSyncs.length - 1];
-
-  const githubStatus = githubStatusQuery.data?.state === "connected"
-    ? { status: "Connected", detail: `@${githubStatusQuery.data.login}`, tone: "ready" as const }
-    : githubStatusQuery.data?.state === "unverified"
-      ? { status: "Cached", detail: "Connection not verified", tone: "warning" as const }
-      : { status: "Setup needed", detail: "Connect GitHub in Settings", tone: "muted" as const };
-  const slackStatus = slackStatusQuery.data?.state === "connected"
-    ? {
-        status: "Connected",
-        detail: slack?.lastSyncedAt
-          ? `Last sync · ${relativeTime(slack.lastSyncedAt)}`
-          : slackStatusQuery.data.workspaceName ?? "Workspace connected",
-        tone: "ready" as const,
-      }
-    : slackStatusQuery.data?.state === "unverified"
-      ? { status: "Cached", detail: "Connection not verified", tone: "warning" as const }
-      : { status: "Setup needed", detail: "Connect Slack in Settings", tone: "muted" as const };
-  const docsConnected = (docsStatusQuery.data?.sourceCount ?? 0) > 0;
-  const linearStatus = connectionStatusQuery.isError
-    ? { status: "Unavailable", detail: "Cached status could not be read", tone: "warning" as const }
-    : connectionStatusQuery.isLoading
-      ? { status: "Reading cache", detail: "Checking local connection", tone: "muted" as const }
-      : connectionStatusQuery.data?.state === "connected"
-        ? {
-            status: "Connected",
-            detail: connectionStatusQuery.data.name,
-            tone: "ready" as const,
-          }
-        : connectionStatusQuery.data?.state === "unverified"
-          ? {
-              status: "Cached",
-              detail: "Connection not verified",
-              tone: "warning" as const,
-            }
-          : {
-              status: "Setup needed",
-              detail: "Open Settings to connect",
-              tone: "muted" as const,
-            };
-
   if (noModulesActive(active)) {
     return (
       <main className="dashboard-surface h-full overflow-y-auto">
-        <div className="mx-auto flex w-full max-w-[1500px] flex-col items-start gap-2 px-4 pt-6">
-          <h1 className="text-lg font-semibold tracking-tight text-foreground">Your workspace</h1>
-          <p className="text-[12px] text-muted-foreground">No modules are on. Turn some on in Settings → Modules.</p>
+        <div className="mx-auto flex w-full max-w-[1200px] flex-col items-start gap-2 px-6 pt-8">
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">{dateLabel}</h1>
+          <p className="text-[13px] text-muted-foreground">No modules are on. Turn some on in Settings → Modules.</p>
           <button
             type="button"
             onClick={() => setActiveView("settings")}
-            className="mt-1 cursor-pointer rounded-md bg-primary px-3 py-1.5 text-[12px] font-medium text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="dash-control mt-1 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
           >
             Open Settings
           </button>
@@ -805,246 +576,177 @@ export function DashboardPage() {
     );
   }
 
-  // The KPI row has as many columns as visible tiles, so a hidden tile leaves no blank slot.
-  const kpiShown = { overdue: active.tracker, reviews: active.github, inbox: inboxOn, mentions: active.slack };
-  const kpiCols = Object.values(kpiShown).filter(Boolean).length;
+  const newest = (values: (string | null | undefined)[]) =>
+    values.filter((v): v is string => !!v).sort().pop();
+  const latestGithubSync = newest(githubQuery.data?.meta.map((m) => m.lastSyncedAt) ?? []);
+  const latestDocsSync = newest((docsSourcesQuery.data ?? []).map((s) => s.lastSyncedAt));
+  const githubConfigured = githubStatusQuery.data !== undefined && githubStatusQuery.data.state !== "not_configured";
+  const slackConfigured = slackStatusQuery.data !== undefined && slackStatusQuery.data.state !== "not_configured";
+  const docsConnected = (docsStatusQuery.data?.sourceCount ?? 0) > 0;
 
-  const openProviderSettings = (section: "github" | "slack") => {
-    requestSettingsSection(section);
-    setActiveView("settings");
+  type Status = Pick<SourceLamp, "status" | "detail" | "tone">;
+  const providerStatus = (
+    q: { isError: boolean; isLoading: boolean },
+    readError: boolean,
+    state: string | undefined,
+    connected: Status,
+    setupDetail: string,
+  ): Status => {
+    if (readError) return { status: "Unavailable", detail: "Cached data could not be read", tone: "warning" };
+    if (q.isLoading) return { status: "Reading cache", detail: "Checking local connection", tone: "off" };
+    if (state === "connected") return connected;
+    if (state === "unverified") return { status: "Cached", detail: "Connection not verified", tone: "warning" };
+    return { status: "Set up", detail: setupDetail, tone: "off" };
   };
 
+  const sources: SourceLamp[] = [];
+  if (linearOn) {
+    sources.push({
+      key: "linear",
+      name: "Linear",
+      ...providerStatus(
+        connectionStatusQuery,
+        connectionStatusQuery.isError || issuesQuery.isError || viewer.isError,
+        connectionStatusQuery.data?.state,
+        { status: "Connected", detail: connectionStatusQuery.data?.state === "connected" ? connectionStatusQuery.data.name : "", tone: "success" },
+        "Open Settings to connect",
+      ),
+      onOpen: () => setActiveView(connectionStatusQuery.data?.state === "not_configured" ? "settings" : issuesView),
+    });
+  }
+  if (active.github) {
+    sources.push({
+      key: "github",
+      name: "GitHub",
+      ...providerStatus(
+        githubStatusQuery,
+        githubStatusQuery.isError || githubQuery.isError,
+        githubStatusQuery.data?.state,
+        {
+          status: "Connected",
+          detail: latestGithubSync
+            ? `Last sync ${relativeTime(latestGithubSync)}`
+            : githubStatusQuery.data?.state === "connected" ? `@${githubStatusQuery.data.login}` : "",
+          tone: "success",
+        },
+        "Connect GitHub in Settings",
+      ),
+      onOpen: () => (githubConfigured ? setActiveView("prs") : openProviderSettings("github")),
+    });
+  }
+  if (active.slack) {
+    sources.push({
+      key: "slack",
+      name: "Slack",
+      ...providerStatus(
+        slackStatusQuery,
+        slackStatusQuery.isError || slackQuery.isError,
+        slackStatusQuery.data?.state,
+        {
+          status: "Connected",
+          detail: slack?.lastSyncedAt
+            ? `Last sync ${relativeTime(slack.lastSyncedAt)}`
+            : slackStatusQuery.data?.state === "connected" ? slackStatusQuery.data.workspaceName ?? "Workspace connected" : "",
+          tone: "success",
+        },
+        "Connect Slack in Settings",
+      ),
+      onOpen: () => (slackConfigured ? setActiveView("slack") : openProviderSettings("slack")),
+    });
+  }
+  if (docsOn) {
+    const docsError = docsStatusQuery.isError || docsSourcesQuery.isError;
+    sources.push({
+      key: "docs",
+      name: "Docs",
+      ...(docsError
+        ? { status: "Unavailable", detail: "Cached data could not be read", tone: "warning" as const }
+        : docsStatusQuery.isLoading
+          ? { status: "Reading cache", detail: "Checking local sources", tone: "off" as const }
+          : docsConnected
+            ? {
+                status: "Connected",
+                detail: latestDocsSync
+                  ? `Last sync ${relativeTime(latestDocsSync)}`
+                  : `${docsStatusQuery.data?.sourceCount ?? 0} source${docsStatusQuery.data?.sourceCount === 1 ? "" : "s"}`,
+                tone: "success" as const,
+              }
+            : { status: "Set up", detail: "Add a docs source in Settings", tone: "off" as const }),
+      onOpen: () => setActiveView(docsConnected ? "docs" : "settings"),
+    });
+  }
+
+  const readouts: Readout[] = [];
+  if (active.github) {
+    readouts.push({
+      key: "reviews",
+      label: "Reviews",
+      value: githubQuery.data ? metrics.reviews : null,
+      setup: githubStatusQuery.data?.state === "not_configured",
+      actionLabel: "Open pull requests",
+      onOpen: () => (githubConfigured ? setActiveView("prs") : openProviderSettings("github")),
+    });
+  }
+  if (inboxOn) {
+    readouts.push({
+      key: "inbox",
+      label: "Inbox",
+      value: notificationsQuery.data ? metrics.inbox : null,
+      setup: connectionStatusQuery.data?.state === "not_configured",
+      actionLabel: "Open inbox",
+      onOpen: () => (connectionStatusQuery.data?.state === "not_configured"
+        ? openProviderSettings("linear")
+        : setActiveView("inbox")),
+    });
+  }
+  if (active.slack) {
+    readouts.push({
+      key: "mentions",
+      label: "Mentions",
+      value: slackQuery.data ? metrics.mentions : null,
+      setup: slackStatusQuery.data?.state === "not_configured",
+      actionLabel: "Open Slack",
+      onOpen: () => (slackConfigured ? setActiveView("slack") : openProviderSettings("slack")),
+    });
+  }
+
+  const anyLoading = issuesQuery.isLoading || viewer.isLoading || notificationsQuery.isLoading
+    || githubQuery.isLoading || slackQuery.isLoading;
+
   return (
-    <main className="dashboard-surface h-full overflow-y-auto">
-      <div className="relative mx-auto flex w-full max-w-[1500px] flex-col gap-4 px-4 pt-4 pb-28">
-        <header className="dashboard-header flex flex-col gap-3">
-          <div className="min-w-0">
-            <div className="mb-1 flex items-center gap-2">
-              <span className="flex size-6 items-center justify-center rounded-md bg-primary/10 text-primary ring-1 ring-primary/20">
-                <Radio className="size-3.5" />
-              </span>
-              <span className="rounded-full bg-muted px-2 py-0.5 text-[9.5px] font-medium text-muted-foreground ring-1 ring-border">
-                Local cache · offline ready
-              </span>
-            </div>
-            <h1 className="truncate text-lg font-semibold tracking-tight text-foreground">{title}</h1>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">{dateLabel} · Asia/Dhaka</p>
-          </div>
+    <main className="dashboard-surface drawer-scrollbar h-full overflow-y-auto">
+      <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-6 pt-6 pb-28">
+        <header className="dash-head">
+          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">{dateLabel}</h1>
+          <SourceLamps sources={sources} />
         </header>
 
-        <div className="dashboard-kpi-grid grid min-w-0 gap-3" style={{ "--kpi-cols": kpiCols } as CSSProperties}>
-          {kpiShown.overdue && <KpiCard
-            label="Overdue"
-            value={taskDataAvailable ? metrics.overdue : null}
-            description={
-              issuesQuery.isError && issuesQuery.data === undefined
-                ? "Task cache unavailable"
-                : viewerIds.length > 0
-                  ? "Active tasks assigned to you"
-                  : "Connect a tracker to calculate"
-            }
-            Icon={AlertTriangle}
-            tone="danger"
-            loading={issuesQuery.isLoading || viewer.isLoading}
-            actionLabel="Open overdue issues"
-            onOpen={() => setActiveView(weekView)}
-          />}
-          {kpiShown.reviews && <KpiCard
-            label="Reviews"
-            value={githubDataAvailable ? metrics.reviews : null}
-            description={
-              githubQuery.isError && !githubQuery.data
-                ? "GitHub cache unavailable"
-                : "Pull requests awaiting you"
-            }
-            Icon={GitPullRequest}
-            tone="neutral"
-            loading={githubQuery.isLoading}
-            actionLabel="Open pull requests"
-            onOpen={() => setActiveView("prs")}
-          />}
-          {kpiShown.inbox && <KpiCard
-            label="Inbox"
-            value={notificationsQuery.data ? metrics.inbox : null}
-            description={
-              notificationsQuery.data
-                ? "Unread Linear notifications"
-                : "Open Inbox to read"
-            }
-            Icon={Inbox}
-            tone="neutral"
-            loading={notificationsQuery.isLoading}
-            actionLabel="Open inbox"
-            onOpen={() => setActiveView("inbox")}
-          />}
-          {kpiShown.mentions && <KpiCard
-            label="Mentions"
-            value={slackDataAvailable ? metrics.mentions : null}
-            description={
-              slackQuery.isError && !slackQuery.data
-                ? "Slack cache unavailable"
-                : slackQuery.data
-                  ? "Unread Slack mentions"
-                  : "No Slack cache yet"
-            }
-            Icon={AtSign}
-            tone="neutral"
-            loading={slackQuery.isLoading}
-            actionLabel="Open Slack mentions"
-            onOpen={() => setActiveView("slack")}
-          />}
-        </div>
-
-        <div className="dashboard-main-grid grid min-w-0 gap-4">
-          <AttentionTable
-            items={attention}
-            onOpen={openAttention}
-            loading={
-              issuesQuery.isLoading
-              || viewer.isLoading
-              || notificationsQuery.isLoading
-              || githubQuery.isLoading
-              || slackQuery.isLoading
-            }
-            partial={attentionPartial}
-          />
+        <section aria-label="Overview" className="dash-panel dash-face">
           {active.tracker && (
-            <div className="dashboard-side-grid grid min-w-0 gap-4">
-              <WorkloadChart buckets={workload} available={taskDataAvailable} />
-              <DueLoadChart days={dueDays} available={taskDataAvailable} />
-            </div>
+            <DialScale
+              days={dueDays}
+              overdue={taskDataAvailable ? metrics.overdue : null}
+              available={taskDataAvailable}
+              onOpen={() => setActiveView(weekView)}
+            />
           )}
-        </div>
+          <Readouts readouts={readouts} />
+          <AttentionQueue items={attention} onOpen={openAttention} loading={anyLoading} partial={attentionPartial} />
+        </section>
 
-        <div className="dashboard-lower-grid grid min-w-0 gap-4">
+        <div className="dash-lower">
           {active.tracker && (
-            <WeekCard
+            <WeekAgenda
               issues={preview}
+              workload={workload}
               today={today}
               onOpenIssue={(id) => setParams({ issue: id })}
               onOpenWeek={() => setActiveView(weekView)}
               available={taskDataAvailable}
             />
           )}
-          {active.github && (
-            <PrHealthCard
-              stats={pullRequestStats}
-              onOpen={() => setActiveView("prs")}
-              available={githubDataAvailable}
-            />
-          )}
-          {(inboxOn || active.slack) && (
-            <CommunicationCard
-              inbox={!inboxOn ? undefined : notificationsQuery.data ? metrics.inbox : null}
-              mentions={slackDataAvailable ? metrics.mentions : null}
-              directMessages={slackDataAvailable ? dms : null}
-              threads={slackDataAvailable ? unreadThreads : null}
-              loading={slackQuery.isLoading}
-              onOpen={() => setActiveView(active.slack ? "slack" : "inbox")}
-            />
-          )}
-          <GlassCard className="p-4" ariaLabelledBy={sourcesHeadingId}>
-            <SectionHeading
-              id={sourcesHeadingId}
-              title="Sources"
-              description="Cached provider availability and freshness"
-            />
-            <div className="dashboard-source-grid mt-2 grid gap-0.5">
-              {linearOn && <SourceRow
-                Icon={Layers3}
-                name="Linear"
-                status={linearReadError ? "Unavailable" : linearStatus.status}
-                detail={linearReadError ? "Cached data could not be read" : linearStatus.detail}
-                tone={linearReadError ? "warning" : linearStatus.tone}
-                onOpen={() => setActiveView(
-                  connectionStatusQuery.data?.state === "not_configured"
-                    ? "settings"
-                    : issuesView,
-                )}
-              />}
-              {active.github && <SourceRow
-                Icon={GitPullRequest}
-                name="GitHub"
-                status={
-                  githubReadError
-                    ? "Unavailable"
-                    : githubStatusQuery.isLoading
-                      ? "Reading cache"
-                      : githubStatus.status
-                }
-                detail={latestGithubSync
-                  ? `Last sync · ${relativeTime(latestGithubSync)}`
-                  : githubStatusQuery.isLoading
-                    ? "Checking local connection"
-                    : githubStatus.detail}
-                tone={
-                  githubReadError
-                    ? "warning"
-                    : githubStatusQuery.isLoading
-                      ? "muted"
-                      : githubStatus.tone
-                }
-                onOpen={() => (githubStatusQuery.data?.state === "not_configured" ? openProviderSettings("github") : setActiveView("prs"))}
-              />}
-              {active.slack && <SourceRow
-                Icon={MessageSquare}
-                name="Slack"
-                status={
-                  slackReadError
-                    ? "Unavailable"
-                    : slackStatusQuery.isLoading
-                      ? "Reading cache"
-                      : slackStatus.status
-                }
-                detail={
-                  slackStatusQuery.isLoading
-                    ? "Checking local connection"
-                    : slackStatus.detail
-                }
-                tone={
-                  slackReadError
-                    ? "warning"
-                    : slackStatusQuery.isLoading
-                      ? "muted"
-                      : slackStatus.tone
-                }
-                onOpen={() => (slackStatusQuery.data?.state === "not_configured" ? openProviderSettings("slack") : setActiveView("slack"))}
-              />}
-              {docsOn && <SourceRow
-                Icon={BookText}
-                name="Docs"
-                status={
-                  docsReadError
-                    ? "Unavailable"
-                    : docsStatusQuery.isLoading
-                      ? "Reading cache"
-                      : docsConnected
-                        ? "Connected"
-                        : "Setup needed"
-                }
-                detail={latestDocsSync
-                  ? `Last sync · ${relativeTime(latestDocsSync)}`
-                  : docsStatusQuery.isLoading
-                    ? "Checking local sources"
-                    : docsConnected
-                      ? `${docsStatusQuery.data?.sourceCount ?? 0} source${docsStatusQuery.data?.sourceCount === 1 ? "" : "s"}`
-                      : "Add a repository in Settings"}
-                tone={
-                  docsReadError
-                    ? "warning"
-                    : docsStatusQuery.isLoading
-                      ? "muted"
-                      : docsConnected
-                        ? "ready"
-                        : "muted"
-                }
-                onOpen={() => setActiveView(docsConnected ? "docs" : "settings")}
-              />}
-            </div>
-          </GlassCard>
+          <SourcesPanel sources={sources} />
         </div>
-
-        <QuickActions onOpen={setActiveView} />
       </div>
     </main>
   );

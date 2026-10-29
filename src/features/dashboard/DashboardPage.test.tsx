@@ -257,6 +257,7 @@ vi.mock("react-router-dom", () => ({
 import { DashboardPage } from "./DashboardPage";
 
 function setPopulatedFixtures() {
+  queryState.connectionStatus = { data: { state: "connected", name: "Abrar" }, isLoading: false, isError: false };
   queryState.issues = { data: [issue()], isLoading: false, isError: false };
   queryState.me = {
     data: { viewerId: "viewer", viewerName: "Abrar" },
@@ -291,6 +292,8 @@ afterEach(() => {
   cleanup();
 });
 
+const readout = (label: string) => screen.queryByRole("button", { name: new RegExp(`^${label}:`) });
+
 describe("DashboardPage module gating", () => {
   it("shows the quiet empty state when no source module is on", () => {
     moduleOn.current = () => false;
@@ -298,66 +301,62 @@ describe("DashboardPage module gating", () => {
     expect(screen.getByText(/No modules are on/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
     expect(setActiveView).toHaveBeenCalledWith("settings");
-    expect(screen.queryByText("Overdue")).toBeNull();
+    expect(readout("Overdue")).toBeNull();
   });
 
-  it("drops the Inbox tile, items and count while the Inbox screen is off", () => {
+  it("drops the Inbox readout and items while the Inbox screen is off", () => {
     screensOff.current = ["inbox"];
     render(<DashboardPage />);
-    expect(screen.queryByRole("button", { name: "Open inbox" })).toBeNull();
-    expect(screen.queryByText("Inbox")).toBeNull();
-    expect(screen.getByText("Communication")).toBeTruthy();
+    expect(readout("Inbox")).toBeNull();
+    expect(readout("Mentions")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /^Open inbox/ })).toBeNull();
     expect(useNotificationsCall).toHaveBeenCalledWith({ enabled: false });
   });
 
-  it("hides the Communication card when neither Inbox nor Slack is shown", () => {
+  it("shows one readout per active source and nothing for sources that are off", () => {
+    const labels = () => within(screen.getByRole("list", { name: "Counts" }))
+      .getAllByRole("button").map((b) => b.getAttribute("aria-label")?.split(":")[0]);
+    const { unmount } = render(<DashboardPage />);
+    expect(labels()).toEqual(["Reviews", "Inbox", "Mentions"]);
+    unmount();
     screensOff.current = ["inbox"];
     moduleOn.current = (id) => id !== "slack";
     render(<DashboardPage />);
-    expect(screen.queryByText("Communication")).toBeNull();
-  });
-
-  it("sizes the KPI row to the visible tiles so none leaves a blank slot", () => {
-    const cols = () => (document.querySelector(".dashboard-kpi-grid") as HTMLElement).style.getPropertyValue("--kpi-cols");
-    const { unmount } = render(<DashboardPage />);
-    expect(cols()).toBe("4");
-    unmount();
-    screensOff.current = ["inbox"];
-    const second = render(<DashboardPage />);
-    expect(cols()).toBe("3");
-    second.unmount();
-    moduleOn.current = (id) => id === "github";
-    render(<DashboardPage />);
-    expect(cols()).toBe("1");
+    expect(labels()).toEqual(["Reviews"]);
   });
 
   it("links Overdue to the first shown of This Week, Issues, Calendar", () => {
     screensOff.current = ["this-week"];
     const { unmount } = render(<DashboardPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Open overdue issues" }));
+    fireEvent.click(readout("Overdue")!);
     expect(setActiveView).toHaveBeenLastCalledWith("list");
     unmount();
     screensOff.current = ["this-week", "list"];
     render(<DashboardPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Open overdue issues" }));
+    fireEvent.click(readout("Overdue")!);
     expect(setActiveView).toHaveBeenLastCalledWith("calendar");
   });
 
-  it("drops the cards of modules that are off", () => {
+  it("drops the readouts, dial and agenda of modules that are off", () => {
     moduleOn.current = (id) => id === "github";
     render(<DashboardPage />);
-    expect(screen.getByText("Reviews")).toBeTruthy();
-    for (const label of ["Overdue", "Inbox", "Mentions"]) expect(screen.queryByText(label)).toBeNull();
+    expect(readout("Reviews")).toBeTruthy();
+    for (const label of ["Overdue", "Inbox", "Mentions"]) expect(readout(label)).toBeNull();
+    expect(screen.queryByRole("group", { name: "Due in the next 7 days" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "This week" })).toBeNull();
   });
 });
 
 describe("DashboardPage", () => {
-  it("renders cached metrics and the attention queue", () => {
+  it("renders the date, counts and the attention queue", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T06:00:00Z"));
     render(<DashboardPage />);
-    expect(screen.getByRole("heading", { name: /Abrar/i })).toBeTruthy();
-    expect(screen.getByText("Overdue")).toBeTruthy();
-    expect(screen.getAllByText("GAM-101").length).toBeGreaterThan(0);
-    expect(screen.getByRole("table", { name: "Needs your attention" })).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Sunday, July 26" })).toBeTruthy();
+    expect(within(readout("Overdue")!).getByText("1")).toBeTruthy();
+    const queue = screen.getByRole("list", { name: "Needs you" });
+    expect(within(queue).getAllByText("GAM-101").length).toBeGreaterThan(0);
+    expect(within(queue).getByText("Overdue since Jul 20")).toBeTruthy();
   });
 
   it("observes notifications without starting their live provider request", () => {
@@ -372,16 +371,42 @@ describe("DashboardPage", () => {
       isError: false,
     };
     render(<DashboardPage />);
-    const inboxCard = screen.getByRole("button", { name: "Open inbox" });
-    expect(within(inboxCard).getByText("—")).toBeTruthy();
-    expect(within(inboxCard).getByText("Open Inbox to read")).toBeTruthy();
+    const inbox = screen.getByRole("button", { name: "Inbox: not cached. Open inbox" });
+    expect(within(inbox).getByText("—")).toBeTruthy();
   });
 
-  it("uses pane container layouts instead of viewport breakpoint grids", () => {
+  it("offers setup instead of a zero when GitHub or Slack is not connected", () => {
+    const github = queryState.githubStatus;
+    const slackStatus = queryState.slackStatus;
+    queryState.githubStatus = { data: { state: "not_configured" }, isLoading: false, isError: false } as never;
+    queryState.slackStatus = { data: { state: "not_configured" }, isLoading: false, isError: false } as never;
+    try {
+      render(<DashboardPage />);
+      const reviews = screen.getByRole("button", { name: "Reviews: not connected. Open pull requests" });
+      expect(within(reviews).getByText("set up")).toBeTruthy();
+      expect(screen.getByRole("button", { name: /^Mentions: not connected/ })).toBeTruthy();
+      fireEvent.click(reviews);
+      expect(setActiveView).toHaveBeenCalledWith("settings");
+    } finally {
+      queryState.githubStatus = github;
+      queryState.slackStatus = slackStatus;
+    }
+  });
+
+  it("asks to set up Linear instead of showing an empty Inbox count", () => {
+    queryState.connectionStatus = { data: { state: "not_configured" }, isLoading: false, isError: false };
     render(<DashboardPage />);
-    expect(document.querySelector(".dashboard-kpi-grid")).toBeTruthy();
-    expect(document.querySelector(".dashboard-main-grid")).toBeTruthy();
-    expect(document.querySelector(".dashboard-lower-grid")).toBeTruthy();
+    const inbox = screen.getByRole("button", { name: "Inbox: not connected. Open inbox" });
+    expect(within(inbox).getByText("set up")).toBeTruthy();
+    fireEvent.click(inbox);
+    expect(setActiveView).toHaveBeenCalledWith("settings");
+  });
+
+  it("draws the week as a dial with one stop per day", () => {
+    render(<DashboardPage />);
+    const dial = screen.getByRole("group", { name: "Due in the next 7 days" });
+    expect(within(dial).getAllByRole("button")).toHaveLength(7);
+    expect(within(dial).getByRole("button", { name: /^Today, / })).toBeTruthy();
   });
 
   it("recalculates Dhaka date metrics after midnight while mounted", () => {
@@ -394,13 +419,12 @@ describe("DashboardPage", () => {
     };
 
     render(<DashboardPage />);
-    const overdueCard = screen.getByRole("button", { name: "Open overdue issues" });
-    expect(within(overdueCard).getByText("0")).toBeTruthy();
+    expect(within(readout("Overdue")!).getByText("0")).toBeTruthy();
 
     act(() => {
       vi.advanceTimersByTime(60_000);
     });
-    expect(within(overdueCard).getByText("1")).toBeTruthy();
+    expect(within(readout("Overdue")!).getByText("1")).toBeTruthy();
     expect(screen.getByText(/Monday, July 27/)).toBeTruthy();
   });
 
@@ -423,8 +447,7 @@ describe("DashboardPage", () => {
     };
 
     render(<DashboardPage />);
-    const overdueCard = screen.getByRole("button", { name: "Open overdue issues" });
-    expect(within(overdueCard).getByText("—")).toBeTruthy();
+    expect(within(readout("Overdue")!).getByText("—")).toBeTruthy();
     expect(screen.getByText("Some caches are unavailable")).toBeTruthy();
     expect(screen.queryByText("Nothing urgent right now")).toBeNull();
   });
@@ -449,17 +472,43 @@ describe("DashboardPage", () => {
     expect(setParams).toHaveBeenCalledWith({ issue: "issue-101" });
   });
 
-  it("navigates from the reviews card to pull requests", () => {
+  it("gives the queue one tab stop and moves through it with j / k", () => {
     render(<DashboardPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Open pull requests" }));
+    const rows = within(screen.getByRole("list", { name: "Needs you" })).getAllByRole("button");
+    expect(rows.length).toBeGreaterThan(1);
+    expect(rows.filter((r) => r.tabIndex === 0)).toHaveLength(1);
+    rows[0].focus();
+    fireEvent.keyDown(rows[0], { key: "j" });
+    expect(document.activeElement).toBe(rows[1]);
+    expect(rows[1].tabIndex).toBe(0);
+    fireEvent.keyDown(rows[1], { key: "k" });
+    expect(document.activeElement).toBe(rows[0]);
+  });
+
+  it("keeps overdue work out of the week agenda", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-26T06:00:00Z"));
+    queryState.issues = {
+      data: [issue(), issue({ id: "issue-102", identifier: "GAM-102", dueDate: "2026-07-28" })],
+      isLoading: false,
+      isError: false,
+    };
+    render(<DashboardPage />);
+    expect(screen.getByRole("button", { name: "Open GAM-102 from this week" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open GAM-101 from this week" })).toBeNull();
+  });
+
+  it("navigates from the reviews readout to pull requests", () => {
+    render(<DashboardPage />);
+    fireEvent.click(readout("Reviews")!);
     expect(setActiveView).toHaveBeenCalledWith("prs");
   });
 
-  it("keeps cached Linear content visible while Slack is loading", () => {
+  it("keeps cached task content visible while Slack is loading", () => {
     queryState.slackCatchup = { data: undefined, isLoading: true, isError: false };
     render(<DashboardPage />);
     expect(screen.getAllByText("GAM-101").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Reading cache…").length).toBeGreaterThan(0);
+    expect(within(readout("Mentions")!).getByText("—")).toBeTruthy();
   });
 
   it("renders a calm empty attention state", () => {
