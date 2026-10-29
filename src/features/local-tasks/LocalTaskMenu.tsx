@@ -11,11 +11,12 @@ import { dhakaToday } from "@/lib/dates";
 import { useWorkspace } from "@/lib/tabs";
 import { cn } from "@/lib/utils";
 import { statusesForList } from "./localTaskModel";
+import { PriorityLamp } from "./LocalFields";
 
 type Sub = "status" | "priority" | "due" | null;
 
 const ITEM =
-  "flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground hover:bg-accent focus-visible:bg-accent focus-visible:outline-none";
+  "lt-focus flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-foreground hover:bg-accent focus-visible:bg-accent";
 
 /** Right-click menu for a local task (status, priority, due date, assignee, open, delete). */
 export function LocalTaskMenu({ task, x, y, onClose }: { task: LocalTask; x: number; y: number; onClose: () => void }) {
@@ -78,7 +79,7 @@ export function LocalTaskMenu({ task, x, y, onClose }: { task: LocalTask; x: num
       ref={ref}
       role="menu"
       aria-label={`${task.identifier} actions`}
-      className="fixed z-50 w-60 rounded-lg border border-border bg-popover p-1 shadow-2xl"
+      className="lt-overlay fixed z-50 w-60 rounded-lg border border-border bg-popover p-1"
       style={{ left, top }}
     >
       <button type="button" className={ITEM} onClick={() => (setParams({ issue: task.id }), onClose())}>
@@ -104,7 +105,7 @@ export function LocalTaskMenu({ task, x, y, onClose }: { task: LocalTask; x: num
       {sub === "priority" &&
         PRIORITIES.map((p) => (
           <button key={p.value} type="button" className={cn(ITEM, "pl-7")} onClick={() => patch({ priority: p.value })}>
-            <span aria-hidden className="size-2.5 rounded-full" style={{ backgroundColor: p.color }} />
+            <PriorityLamp value={p.value} />
             <span className="flex-1">{p.label}</span>
             {p.value === task.priority && <Check className="size-3.5 text-primary" />}
           </button>

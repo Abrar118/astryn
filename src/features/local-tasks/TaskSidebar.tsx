@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FolderClosed, List, MoreHorizontal, Plus } from "lucide-react";
+import { MoreHorizontal, Plus } from "lucide-react";
 import { Popover, PopoverItem } from "@/components/Popover";
 import {
   useCreateLocalList,
@@ -10,7 +10,6 @@ import {
   useUpdateLocalList,
 } from "@/lib/localTaskQueries";
 import type { LocalList, LocalSpace, LocalTree } from "@/lib/commands";
-import { cn } from "@/lib/utils";
 import { suggestKey } from "./localTaskModel";
 import { Caret } from "./LocalFields";
 
@@ -44,7 +43,7 @@ function InlineName({
         }
       }}
       onBlur={() => (value.trim() && value.trim() !== initial ? onSave(value.trim()) : onCancel())}
-      className="h-7 w-full rounded-md border border-input bg-transparent px-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+      className="h-7 w-full rounded-md border border-input bg-transparent px-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-[3px] focus:ring-ring/50 dark:bg-input/30"
     />
   );
 }
@@ -59,7 +58,7 @@ function ConfirmDelete({ label, warning, onDelete }: { label: string; warning: s
         type="button"
         autoFocus
         onClick={onDelete}
-        className="w-full cursor-pointer rounded-md bg-destructive/15 px-2 py-1 text-xs font-medium text-destructive hover:bg-destructive/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="lt-focus w-full cursor-pointer rounded-md bg-destructive/15 px-2 py-1 text-[12px] font-medium text-destructive hover:bg-destructive/25"
       >
         Delete permanently
       </button>
@@ -70,8 +69,8 @@ function ConfirmDelete({ label, warning, onDelete }: { label: string; warning: s
 }
 
 const MENU_BUTTON =
-  "flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group-hover:opacity-100 group-focus-within:opacity-100";
-const MENU_PANEL = "w-56 rounded-md border border-border bg-popover p-1 shadow-2xl";
+  "lt-focus flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-sidebar-accent hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100";
+const MENU_PANEL = "lt-overlay w-56 rounded-lg border border-border bg-popover p-1";
 
 export type SidebarActions = {
   onWorkflow: (scope: { kind: "space" | "list"; id: string; name: string }) => void;
@@ -118,14 +117,13 @@ function ListItem({
         type="button"
         aria-current={active ? "page" : undefined}
         onClick={onSelect}
-        className={cn(
-          "flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md py-1 pl-6 pr-2 text-left text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-          active ? "bg-primary/20 text-foreground" : "text-muted-foreground hover:bg-accent hover:text-foreground",
-        )}
+        className="lt-nav-list lt-focus h-8 min-w-0 flex-1 cursor-pointer rounded-md pl-[26px] pr-2 text-left text-[13px] transition-colors"
       >
-        <List className={cn("size-3.5 shrink-0", active && "text-primary")} />
         <span className="truncate">{list.name}</span>
-        <span className="ml-auto font-mono text-[11px] text-muted-foreground">{count > 0 ? count : ""}</span>
+        <span className="text-[12px] font-normal tabular-nums text-muted-foreground">
+          {count > 0 ? count : ""}
+          {count > 0 && <span className="sr-only"> open</span>}
+        </span>
       </button>
       <Popover align="end" buttonTitle={`${list.name} options`} buttonClassName={MENU_BUTTON} panelClassName={MENU_PANEL} button={<MoreHorizontal className="size-3.5" />}>
         {(close) => (
@@ -170,19 +168,20 @@ export function TaskSidebar({
   const takenKeys = tree.lists.map((l) => l.key);
 
   return (
-    <nav aria-label="Spaces and lists" className="flex h-full w-60 shrink-0 flex-col border-r border-border bg-sidebar">
-      <div className="flex items-center justify-between px-3 pb-1 pt-3">
-        <span className="text-[11px] font-medium text-muted-foreground">Spaces</span>
+    <nav aria-label="Spaces and lists" className="lt-nav flex h-full shrink-0 flex-col border-r border-sidebar-border bg-sidebar">
+      <div className="flex h-11 items-center justify-between pl-4 pr-2">
+        <span className="text-[12px] font-medium text-muted-foreground">spaces</span>
         <button
           type="button"
           aria-label="New space"
+          title="New space"
           onClick={() => setAdding("space")}
-          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="lt-focus flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
         >
           <Plus className="size-3.5" />
         </button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-24">
+      <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto px-2 pb-28">
         {adding === "space" && (
           <div className="px-1 py-1">
             <InlineName
@@ -221,10 +220,9 @@ export function TaskSidebar({
                         return next;
                       })
                     }
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1 py-1 text-left text-[13px] font-semibold text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="lt-focus flex h-8 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-[13px] font-semibold tracking-tight text-foreground hover:bg-sidebar-accent"
                   >
                     <Caret open={open} />
-                    <FolderClosed className="size-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate">{space.name}</span>
                   </button>
                   <button
@@ -282,7 +280,7 @@ export function TaskSidebar({
                     <button
                       type="button"
                       onClick={() => setAdding(space.id)}
-                      className="cursor-pointer rounded-md py-1 pl-6 text-left text-[12px] text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      className="lt-focus h-8 cursor-pointer rounded-md pl-[26px] text-left text-[12px] text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
                     >
                       Add a list
                     </button>

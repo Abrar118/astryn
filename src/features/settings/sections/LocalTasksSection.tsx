@@ -4,6 +4,7 @@ import { gooeyToast } from "goey-toast";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { errorText, exportLocalTasksBackup, importLinearToLocal, restoreLocalTasksBackup } from "@/lib/commands";
 import { invalidateLocal, useLocalBackup, useLocalTree } from "@/lib/localTaskQueries";
 import { useFilterOptions } from "@/lib/queries";
@@ -55,8 +56,13 @@ function BackupCard() {
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-muted-foreground">Latest automatic</dt>
-        <dd className="text-foreground">
-          {backup.isLoading ? "Checking…" : backup.data?.latest ?? "None yet — saved once you have tasks"}
+        <dd className="flex items-center gap-2 text-foreground">
+          <IndicatorLamp tone={backup.data?.latest ? "success" : backup.isError ? "warning" : "off"} />
+          {backup.isLoading
+            ? "Checking…"
+            : backup.isError
+              ? "Couldn't read the backups folder"
+              : backup.data?.latest ?? "None yet — saved once you have tasks"}
         </dd>
         <dt className="text-muted-foreground">Folder</dt>
         <dd className="min-w-0 break-all font-mono text-xs text-foreground">{backup.data?.folder ?? "—"}</dd>
