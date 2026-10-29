@@ -291,11 +291,11 @@ function DocLinkRow({
           type="button"
           onClick={open}
           disabled={pending || !!blocked}
-          className="block max-w-full cursor-pointer truncate text-left text-sm text-primary hover:underline focus-visible:underline focus-visible:outline-none disabled:cursor-default disabled:text-foreground disabled:no-underline"
+          className="dash-control block max-w-full cursor-pointer truncate rounded-sm text-left text-sm text-foreground underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground disabled:cursor-default disabled:no-underline"
         >
           {label}
         </button>
-        <p className="truncate text-[11px] text-muted-foreground">
+        <p className="truncate text-[12px] text-muted-foreground">
           {text}
           {blocked && <span> · {blocked}</span>}
         </p>

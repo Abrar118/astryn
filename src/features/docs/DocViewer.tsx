@@ -55,12 +55,16 @@ function DocMilkdown({ markdown }: { markdown: string }) {
 /** Render one doc's markdown read-only, with a react-markdown fallback. */
 export function DocViewer({ markdown }: { markdown: string }) {
   const fallback = useMemo(
-    () => <ReadOnlyDescription markdown={markdown} onOpenLink={openExternal} />,
+    () => (
+      <div className="docs-reader">
+        <ReadOnlyDescription markdown={markdown} onOpenLink={openExternal} />
+      </div>
+    ),
     [markdown],
   );
   return (
     <EditorErrorBoundary key={markdown} fallback={fallback}>
-      <article className="astryn-prose prose prose-sm prose-invert max-w-none px-10 py-8 prose-headings:font-semibold prose-a:text-primary">
+      <article className="astryn-prose docs-reader">
         <MilkdownProvider key={markdown}>
           <DocMilkdown markdown={markdown} />
         </MilkdownProvider>

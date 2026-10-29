@@ -1122,3 +1122,24 @@
   border-radius: 1px;
   background: var(--primary);
 }
+
+/* Docs reader: one centred reading column on the faceplate panel. */
+.docs-reader {
+  max-width: 720px;
+  margin-inline: auto;
+  padding: 32px 40px 112px;
+}
+
+/* Links read as text with a muted rule, not in the key (the key is for now, selection and focus). */
+.docs-reader a,
+.docs-reader .milkdown .ProseMirror a {
+  color: var(--foreground);
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 3px;
+}
+
+.docs-reader a:hover,
+.docs-reader .milkdown .ProseMirror a:hover {
+  text-decoration-color: var(--foreground);
+}
