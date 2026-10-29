@@ -24,12 +24,12 @@ Astryn is a modular hub, not a client for one service. Every integration, includ
 
 - Open all day beside the tools it aggregates; used in short check-ins and longer planning sessions.
 - Work-week logic runs on Asia/Dhaka time with a Sunday week start; the owner also tracks Germany (Europe/Berlin) time for collaborators.
-- Current integrations: Linear (tracker), GitHub (PRs, contribution heatmap, docs source), local folders (docs source: Markdown, text, PDF), ClickUp (Docs as a docs source), Slack (read-only catch-up), any OpenAI-compatible LLM endpoint (report prose).
+- Current integrations: Linear (tracker), Local tasks (a second, local-only tracker alongside or instead of Linear), GitHub (PRs, contribution heatmap, docs source), Bitbucket Cloud (PRs), local folders (docs source: Markdown, text, PDF), ClickUp (Docs as a docs source), Slack (read-only catch-up), Microsoft Teams (read-only chat catch-up), any OpenAI-compatible LLM endpoint (report prose).
 
 ## Capabilities and Constraints
 
-- Shipped surfaces: Dashboard, Calendar, Issues (list/board), issue drawer and full-page issue view, This Week agenda, dependency graph, PR workspace, Slack catch-up, Docs browser, Reports, Inbox, Settings, command palette, two-pane split view.
-- Module system is the planned direction and not yet built. Today Linear is hard-wired as the tracker and integrations are always present; undecided: module boundaries, how tracker-agnostic surfaces (calendar, agenda, graph) consume a tracker module, and per-module settings and data lifecycle when a module is disabled.
+- Shipped surfaces: Dashboard, Calendar, Issues (list/board), issue drawer and full-page issue view (with per-task Docs & links), This Week agenda, dependency graph, PR workspace (GitHub) and Bitbucket PRs, Slack and Teams catch-up boards, Local tasks (list, board, table, calendar, timeline), Docs browser, Reports, Inbox, Settings, first-run module picker, command palette, two-pane split view.
+- Module system is built. Every integration and feature is a module the owner turns on or off in Settings → Modules (enforced in the Rust core); disabling keeps tokens and cache, and "Remove module data" deletes them. Calendar, This Week, Dependencies, the issue drawer, Dashboard and Reports read one tracker-neutral task model that merges every active tracker. Linear's Issues, This Week, Dependencies and Inbox screens can also be switched off one by one.
 - All external requests run in the Rust core; the UI only calls typed local commands. Secrets live in the OS keychain.
 - Offline-first: cached screens must stay useful without network; edits are optimistic with visible rollback.
 - Where a surface represents Linear data (issues, drawer, comments, states), its UX should feel familiar to Linear users. Elsewhere, Linear's look is a reference, not a requirement; better UX wins.
