@@ -177,7 +177,7 @@ pub async fn remove_module_data_logic(
         }
         ModuleId::Docs => {
             let mut tx = pool.begin().await.map_err(db_err)?;
-            for t in ["docs_files", "docs_sync_meta", "docs_sources"] {
+            for t in ["docs_files", "docs_sync_meta", "docs_sources", "doc_links"] {
                 sqlx::query(&format!("DELETE FROM {t}"))
                     .execute(&mut *tx)
                     .await
