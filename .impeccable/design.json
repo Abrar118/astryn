@@ -1,966 +1,1146 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-27T09:36:25.300Z",
+  "generatedAt": "2026-10-29T09:02:26.494Z",
   "title": "Design System: Astryn",
   "extensions": {
     "colorMeta": {
       "graphite-background": {
         "role": "neutral",
-        "displayName": "Graphite Background",
-        "canonical": "oklch(0.205 0.004 255)",
+        "displayName": "Graphite Faceplate Canvas",
+        "canonical": "oklch(0.228 0.004 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.003 255)",
-          "oklch(0.37 0.004 255)",
-          "oklch(0.48 0.004 255)",
-          "oklch(0.6 0.004 255)",
-          "oklch(0.72 0.004 255)",
-          "oklch(0.84 0.003 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.004 260)",
+          "oklch(0.6 0.004 260)",
+          "oklch(0.72 0.003 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-sidebar": {
         "role": "neutral",
-        "displayName": "Graphite Sidebar",
-        "canonical": "oklch(0.18 0.004 255)",
+        "displayName": "Graphite Body",
+        "canonical": "oklch(0.172 0.004 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.003 255)",
-          "oklch(0.37 0.004 255)",
-          "oklch(0.48 0.004 255)",
-          "oklch(0.6 0.004 255)",
-          "oklch(0.72 0.004 255)",
-          "oklch(0.84 0.003 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.004 260)",
+          "oklch(0.6 0.004 260)",
+          "oklch(0.72 0.003 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-card": {
         "role": "neutral",
-        "displayName": "Graphite Card",
-        "canonical": "oklch(0.228 0.004 255)",
+        "displayName": "Graphite Faceplate Panel",
+        "canonical": "oklch(0.252 0.004 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.003 255)",
-          "oklch(0.37 0.004 255)",
-          "oklch(0.48 0.004 255)",
-          "oklch(0.6 0.004 255)",
-          "oklch(0.72 0.004 255)",
-          "oklch(0.84 0.003 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.004 260)",
+          "oklch(0.6 0.004 260)",
+          "oklch(0.72 0.003 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-popover": {
         "role": "neutral",
         "displayName": "Graphite Popover",
-        "canonical": "oklch(0.245 0.005 255)",
+        "canonical": "oklch(0.272 0.005 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.003 255)",
-          "oklch(0.37 0.005 255)",
-          "oklch(0.48 0.005 255)",
-          "oklch(0.6 0.005 255)",
-          "oklch(0.72 0.005 255)",
-          "oklch(0.84 0.003 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.005 260)",
+          "oklch(0.6 0.005 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
+        ]
+      },
+      "graphite-muted": {
+        "role": "neutral",
+        "displayName": "Graphite Muted Fill",
+        "canonical": "oklch(0.29 0.005 260)",
+        "tonalRamp": [
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.005 260)",
+          "oklch(0.6 0.005 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-accent": {
         "role": "neutral",
         "displayName": "Graphite Hover Fill",
-        "canonical": "oklch(0.285 0.006 255)",
+        "canonical": "oklch(0.31 0.006 260)",
         "tonalRamp": [
-          "oklch(0.15 0.002 255)",
-          "oklch(0.26 0.004 255)",
-          "oklch(0.37 0.006 255)",
-          "oklch(0.48 0.006 255)",
-          "oklch(0.6 0.006 255)",
-          "oklch(0.72 0.006 255)",
-          "oklch(0.84 0.004 255)",
-          "oklch(0.95 0.002 255)"
+          "oklch(0.15 0.002 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.004 260)",
+          "oklch(0.48 0.006 260)",
+          "oklch(0.6 0.006 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.002 260)"
+        ]
+      },
+      "graphite-sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Graphite Body Hover",
+        "canonical": "oklch(0.255 0.005 260)",
+        "tonalRamp": [
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.005 260)",
+          "oklch(0.6 0.005 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-border": {
         "role": "neutral",
-        "displayName": "Graphite Hairline Border",
-        "canonical": "oklch(0.305 0.005 255)",
+        "displayName": "Graphite Faceplate Hairline",
+        "canonical": "oklch(0.33 0.005 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.003 255)",
-          "oklch(0.37 0.005 255)",
-          "oklch(0.48 0.005 255)",
-          "oklch(0.6 0.005 255)",
-          "oklch(0.72 0.005 255)",
-          "oklch(0.84 0.003 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.005 260)",
+          "oklch(0.6 0.005 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
+        ]
+      },
+      "graphite-sidebar-border": {
+        "role": "neutral",
+        "displayName": "Graphite Body Hairline",
+        "canonical": "oklch(0.27 0.005 260)",
+        "tonalRamp": [
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.003 260)",
+          "oklch(0.48 0.005 260)",
+          "oklch(0.6 0.005 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-input": {
         "role": "neutral",
-        "displayName": "Graphite Input Stroke",
-        "canonical": "oklch(0.535 0.006 255)",
+        "displayName": "Graphite Field Stroke",
+        "canonical": "oklch(0.57 0.006 260)",
         "tonalRamp": [
-          "oklch(0.15 0.002 255)",
-          "oklch(0.26 0.004 255)",
-          "oklch(0.37 0.006 255)",
-          "oklch(0.48 0.006 255)",
-          "oklch(0.6 0.006 255)",
-          "oklch(0.72 0.006 255)",
-          "oklch(0.84 0.004 255)",
-          "oklch(0.95 0.002 255)"
+          "oklch(0.15 0.002 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.004 260)",
+          "oklch(0.48 0.006 260)",
+          "oklch(0.6 0.006 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.002 260)"
         ]
       },
       "graphite-foreground": {
         "role": "neutral",
         "displayName": "Graphite Foreground",
-        "canonical": "oklch(0.93 0.003 255)",
+        "canonical": "oklch(0.94 0.003 260)",
         "tonalRamp": [
-          "oklch(0.15 0.001 255)",
-          "oklch(0.26 0.002 255)",
-          "oklch(0.37 0.003 255)",
-          "oklch(0.48 0.003 255)",
-          "oklch(0.6 0.003 255)",
-          "oklch(0.72 0.003 255)",
-          "oklch(0.84 0.002 255)",
-          "oklch(0.95 0.001 255)"
+          "oklch(0.15 0.001 260)",
+          "oklch(0.26 0.001 260)",
+          "oklch(0.37 0.002 260)",
+          "oklch(0.48 0.003 260)",
+          "oklch(0.6 0.003 260)",
+          "oklch(0.72 0.002 260)",
+          "oklch(0.84 0.001 260)",
+          "oklch(0.95 0.001 260)"
         ]
       },
       "graphite-muted-foreground": {
         "role": "neutral",
         "displayName": "Graphite Muted Foreground",
-        "canonical": "oklch(0.735 0.006 255)",
+        "canonical": "oklch(0.77 0.006 260)",
         "tonalRamp": [
-          "oklch(0.15 0.002 255)",
-          "oklch(0.26 0.004 255)",
-          "oklch(0.37 0.006 255)",
-          "oklch(0.48 0.006 255)",
-          "oklch(0.6 0.006 255)",
-          "oklch(0.72 0.006 255)",
-          "oklch(0.84 0.004 255)",
-          "oklch(0.95 0.002 255)"
+          "oklch(0.15 0.002 260)",
+          "oklch(0.26 0.002 260)",
+          "oklch(0.37 0.004 260)",
+          "oklch(0.48 0.006 260)",
+          "oklch(0.6 0.006 260)",
+          "oklch(0.72 0.004 260)",
+          "oklch(0.84 0.002 260)",
+          "oklch(0.95 0.002 260)"
         ]
       },
       "graphite-primary": {
         "role": "primary",
-        "displayName": "Graphite Steel Blue",
-        "canonical": "oklch(0.74 0.075 245)",
+        "displayName": "Graphite Signal Yellow",
+        "canonical": "oklch(0.86 0.14 95)",
         "tonalRamp": [
-          "oklch(0.15 0.019 245)",
-          "oklch(0.26 0.048 245)",
-          "oklch(0.37 0.075 245)",
-          "oklch(0.48 0.075 245)",
-          "oklch(0.6 0.075 245)",
-          "oklch(0.72 0.075 245)",
-          "oklch(0.84 0.048 245)",
-          "oklch(0.95 0.019 245)"
+          "oklch(0.15 0.035 95)",
+          "oklch(0.26 0.056 95)",
+          "oklch(0.37 0.095 95)",
+          "oklch(0.48 0.133 95)",
+          "oklch(0.6 0.140 95)",
+          "oklch(0.72 0.098 95)",
+          "oklch(0.84 0.056 95)",
+          "oklch(0.95 0.035 95)"
         ]
       },
       "graphite-primary-foreground": {
-        "role": "neutral",
-        "displayName": "Graphite On-Accent",
-        "canonical": "oklch(0.2 0.012 250)",
+        "role": "primary",
+        "displayName": "Graphite Key Foreground",
+        "canonical": "oklch(0.21 0.02 95)",
         "tonalRamp": [
-          "oklch(0.15 0.003 250)",
-          "oklch(0.26 0.008 250)",
-          "oklch(0.37 0.012 250)",
-          "oklch(0.48 0.012 250)",
-          "oklch(0.6 0.012 250)",
-          "oklch(0.72 0.012 250)",
-          "oklch(0.84 0.008 250)",
-          "oklch(0.95 0.003 250)"
+          "oklch(0.15 0.005 95)",
+          "oklch(0.26 0.008 95)",
+          "oklch(0.37 0.014 95)",
+          "oklch(0.48 0.019 95)",
+          "oklch(0.6 0.020 95)",
+          "oklch(0.72 0.014 95)",
+          "oklch(0.84 0.008 95)",
+          "oklch(0.95 0.005 95)"
         ]
       },
       "graphite-destructive": {
         "role": "secondary",
         "displayName": "Graphite Destructive",
-        "canonical": "oklch(0.72 0.13 25)",
+        "canonical": "oklch(0.74 0.14 27)",
         "tonalRamp": [
-          "oklch(0.15 0.033 25)",
-          "oklch(0.26 0.083 25)",
-          "oklch(0.37 0.130 25)",
-          "oklch(0.48 0.130 25)",
-          "oklch(0.6 0.130 25)",
-          "oklch(0.72 0.130 25)",
-          "oklch(0.84 0.083 25)",
-          "oklch(0.95 0.033 25)"
+          "oklch(0.15 0.035 27)",
+          "oklch(0.26 0.056 27)",
+          "oklch(0.37 0.095 27)",
+          "oklch(0.48 0.133 27)",
+          "oklch(0.6 0.140 27)",
+          "oklch(0.72 0.098 27)",
+          "oklch(0.84 0.056 27)",
+          "oklch(0.95 0.035 27)"
         ]
       },
       "graphite-success": {
         "role": "secondary",
         "displayName": "Graphite Success",
-        "canonical": "oklch(0.76 0.1 155)",
+        "canonical": "oklch(0.79 0.11 150)",
         "tonalRamp": [
-          "oklch(0.15 0.025 155)",
-          "oklch(0.26 0.064 155)",
-          "oklch(0.37 0.100 155)",
-          "oklch(0.48 0.100 155)",
-          "oklch(0.6 0.100 155)",
-          "oklch(0.72 0.100 155)",
-          "oklch(0.84 0.064 155)",
-          "oklch(0.95 0.025 155)"
+          "oklch(0.15 0.028 150)",
+          "oklch(0.26 0.044 150)",
+          "oklch(0.37 0.074 150)",
+          "oklch(0.48 0.104 150)",
+          "oklch(0.6 0.110 150)",
+          "oklch(0.72 0.077 150)",
+          "oklch(0.84 0.044 150)",
+          "oklch(0.95 0.028 150)"
         ]
       },
       "graphite-warning": {
         "role": "secondary",
-        "displayName": "Graphite Warning",
-        "canonical": "oklch(0.8 0.1 80)",
+        "displayName": "Graphite Warning Orange",
+        "canonical": "oklch(0.79 0.12 60)",
         "tonalRamp": [
-          "oklch(0.15 0.025 80)",
-          "oklch(0.26 0.064 80)",
-          "oklch(0.37 0.100 80)",
-          "oklch(0.48 0.100 80)",
-          "oklch(0.6 0.100 80)",
-          "oklch(0.72 0.100 80)",
-          "oklch(0.84 0.064 80)",
-          "oklch(0.95 0.025 80)"
+          "oklch(0.15 0.030 60)",
+          "oklch(0.26 0.048 60)",
+          "oklch(0.37 0.081 60)",
+          "oklch(0.48 0.114 60)",
+          "oklch(0.6 0.120 60)",
+          "oklch(0.72 0.084 60)",
+          "oklch(0.84 0.048 60)",
+          "oklch(0.95 0.030 60)"
         ]
       },
       "graphite-info": {
         "role": "secondary",
         "displayName": "Graphite Info",
-        "canonical": "oklch(0.76 0.065 230)",
+        "canonical": "oklch(0.79 0.07 235)",
         "tonalRamp": [
-          "oklch(0.15 0.016 230)",
-          "oklch(0.26 0.042 230)",
-          "oklch(0.37 0.065 230)",
-          "oklch(0.48 0.065 230)",
-          "oklch(0.6 0.065 230)",
-          "oklch(0.72 0.065 230)",
-          "oklch(0.84 0.042 230)",
-          "oklch(0.95 0.016 230)"
+          "oklch(0.15 0.018 235)",
+          "oklch(0.26 0.028 235)",
+          "oklch(0.37 0.047 235)",
+          "oklch(0.48 0.067 235)",
+          "oklch(0.6 0.070 235)",
+          "oklch(0.72 0.049 235)",
+          "oklch(0.84 0.028 235)",
+          "oklch(0.95 0.018 235)"
         ]
       },
       "graphite-merged": {
         "role": "secondary",
         "displayName": "Graphite Merged",
-        "canonical": "oklch(0.75 0.08 300)",
+        "canonical": "oklch(0.78 0.09 300)",
         "tonalRamp": [
-          "oklch(0.15 0.020 300)",
-          "oklch(0.26 0.051 300)",
-          "oklch(0.37 0.080 300)",
-          "oklch(0.48 0.080 300)",
-          "oklch(0.6 0.080 300)",
-          "oklch(0.72 0.080 300)",
-          "oklch(0.84 0.051 300)",
-          "oklch(0.95 0.020 300)"
+          "oklch(0.15 0.022 300)",
+          "oklch(0.26 0.036 300)",
+          "oklch(0.37 0.061 300)",
+          "oklch(0.48 0.085 300)",
+          "oklch(0.6 0.090 300)",
+          "oklch(0.72 0.063 300)",
+          "oklch(0.84 0.036 300)",
+          "oklch(0.95 0.022 300)"
         ]
       },
       "charcoal-background": {
         "role": "neutral",
-        "displayName": "Charcoal Background",
-        "canonical": "oklch(0.21 0.006 65)",
+        "displayName": "Charcoal Faceplate Canvas",
+        "canonical": "oklch(0.225 0.017 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.004 65)",
-          "oklch(0.37 0.006 65)",
-          "oklch(0.48 0.006 65)",
-          "oklch(0.6 0.006 65)",
-          "oklch(0.72 0.006 65)",
-          "oklch(0.84 0.004 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.011 55)",
+          "oklch(0.48 0.016 55)",
+          "oklch(0.6 0.017 55)",
+          "oklch(0.72 0.012 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-sidebar": {
         "role": "neutral",
-        "displayName": "Charcoal Sidebar",
-        "canonical": "oklch(0.185 0.006 65)",
+        "displayName": "Charcoal Body",
+        "canonical": "oklch(0.17 0.015 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.004 65)",
-          "oklch(0.37 0.006 65)",
-          "oklch(0.48 0.006 65)",
-          "oklch(0.6 0.006 65)",
-          "oklch(0.72 0.006 65)",
-          "oklch(0.84 0.004 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.006 55)",
+          "oklch(0.37 0.010 55)",
+          "oklch(0.48 0.014 55)",
+          "oklch(0.6 0.015 55)",
+          "oklch(0.72 0.011 55)",
+          "oklch(0.84 0.006 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-card": {
         "role": "neutral",
-        "displayName": "Charcoal Card",
-        "canonical": "oklch(0.233 0.006 65)",
+        "displayName": "Charcoal Faceplate Panel",
+        "canonical": "oklch(0.25 0.017 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.004 65)",
-          "oklch(0.37 0.006 65)",
-          "oklch(0.48 0.006 65)",
-          "oklch(0.6 0.006 65)",
-          "oklch(0.72 0.006 65)",
-          "oklch(0.84 0.004 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.011 55)",
+          "oklch(0.48 0.016 55)",
+          "oklch(0.6 0.017 55)",
+          "oklch(0.72 0.012 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-popover": {
         "role": "neutral",
         "displayName": "Charcoal Popover",
-        "canonical": "oklch(0.25 0.007 65)",
+        "canonical": "oklch(0.27 0.018 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.004 65)",
-          "oklch(0.37 0.007 65)",
-          "oklch(0.48 0.007 65)",
-          "oklch(0.6 0.007 65)",
-          "oklch(0.72 0.007 65)",
-          "oklch(0.84 0.004 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.012 55)",
+          "oklch(0.48 0.017 55)",
+          "oklch(0.6 0.018 55)",
+          "oklch(0.72 0.013 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
+        ]
+      },
+      "charcoal-muted": {
+        "role": "neutral",
+        "displayName": "Charcoal Muted Fill",
+        "canonical": "oklch(0.29 0.018 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.012 55)",
+          "oklch(0.48 0.017 55)",
+          "oklch(0.6 0.018 55)",
+          "oklch(0.72 0.013 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-accent": {
         "role": "neutral",
         "displayName": "Charcoal Hover Fill",
-        "canonical": "oklch(0.29 0.008 65)",
+        "canonical": "oklch(0.31 0.019 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.005 65)",
-          "oklch(0.37 0.008 65)",
-          "oklch(0.48 0.008 65)",
-          "oklch(0.6 0.008 65)",
-          "oklch(0.72 0.008 65)",
-          "oklch(0.84 0.005 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.005 55)",
+          "oklch(0.26 0.008 55)",
+          "oklch(0.37 0.013 55)",
+          "oklch(0.48 0.018 55)",
+          "oklch(0.6 0.019 55)",
+          "oklch(0.72 0.013 55)",
+          "oklch(0.84 0.008 55)",
+          "oklch(0.95 0.005 55)"
+        ]
+      },
+      "charcoal-sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Charcoal Body Hover",
+        "canonical": "oklch(0.255 0.017 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.011 55)",
+          "oklch(0.48 0.016 55)",
+          "oklch(0.6 0.017 55)",
+          "oklch(0.72 0.012 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-border": {
         "role": "neutral",
-        "displayName": "Charcoal Hairline Border",
-        "canonical": "oklch(0.31 0.007 65)",
+        "displayName": "Charcoal Faceplate Hairline",
+        "canonical": "oklch(0.335 0.018 55)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.004 65)",
-          "oklch(0.37 0.007 65)",
-          "oklch(0.48 0.007 65)",
-          "oklch(0.6 0.007 65)",
-          "oklch(0.72 0.007 65)",
-          "oklch(0.84 0.004 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.012 55)",
+          "oklch(0.48 0.017 55)",
+          "oklch(0.6 0.018 55)",
+          "oklch(0.72 0.013 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
+        ]
+      },
+      "charcoal-sidebar-border": {
+        "role": "neutral",
+        "displayName": "Charcoal Body Hairline",
+        "canonical": "oklch(0.275 0.017 55)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 55)",
+          "oklch(0.26 0.007 55)",
+          "oklch(0.37 0.011 55)",
+          "oklch(0.48 0.016 55)",
+          "oklch(0.6 0.017 55)",
+          "oklch(0.72 0.012 55)",
+          "oklch(0.84 0.007 55)",
+          "oklch(0.95 0.004 55)"
         ]
       },
       "charcoal-input": {
         "role": "neutral",
-        "displayName": "Charcoal Input Stroke",
-        "canonical": "oklch(0.54 0.008 65)",
+        "displayName": "Charcoal Field Stroke",
+        "canonical": "oklch(0.57 0.02 60)",
         "tonalRamp": [
-          "oklch(0.15 0.002 65)",
-          "oklch(0.26 0.005 65)",
-          "oklch(0.37 0.008 65)",
-          "oklch(0.48 0.008 65)",
-          "oklch(0.6 0.008 65)",
-          "oklch(0.72 0.008 65)",
-          "oklch(0.84 0.005 65)",
-          "oklch(0.95 0.002 65)"
+          "oklch(0.15 0.005 60)",
+          "oklch(0.26 0.008 60)",
+          "oklch(0.37 0.014 60)",
+          "oklch(0.48 0.019 60)",
+          "oklch(0.6 0.020 60)",
+          "oklch(0.72 0.014 60)",
+          "oklch(0.84 0.008 60)",
+          "oklch(0.95 0.005 60)"
         ]
       },
       "charcoal-foreground": {
         "role": "neutral",
         "displayName": "Charcoal Foreground",
-        "canonical": "oklch(0.92 0.007 80)",
+        "canonical": "oklch(0.93 0.014 75)",
         "tonalRamp": [
-          "oklch(0.15 0.002 80)",
-          "oklch(0.26 0.004 80)",
-          "oklch(0.37 0.007 80)",
-          "oklch(0.48 0.007 80)",
-          "oklch(0.6 0.007 80)",
-          "oklch(0.72 0.007 80)",
-          "oklch(0.84 0.004 80)",
-          "oklch(0.95 0.002 80)"
+          "oklch(0.15 0.004 75)",
+          "oklch(0.26 0.006 75)",
+          "oklch(0.37 0.009 75)",
+          "oklch(0.48 0.013 75)",
+          "oklch(0.6 0.014 75)",
+          "oklch(0.72 0.010 75)",
+          "oklch(0.84 0.006 75)",
+          "oklch(0.95 0.004 75)"
         ]
       },
       "charcoal-muted-foreground": {
         "role": "neutral",
         "displayName": "Charcoal Muted Foreground",
-        "canonical": "oklch(0.74 0.01 75)",
+        "canonical": "oklch(0.78 0.022 70)",
         "tonalRamp": [
-          "oklch(0.15 0.003 75)",
-          "oklch(0.26 0.006 75)",
-          "oklch(0.37 0.010 75)",
-          "oklch(0.48 0.010 75)",
-          "oklch(0.6 0.010 75)",
-          "oklch(0.72 0.010 75)",
-          "oklch(0.84 0.006 75)",
-          "oklch(0.95 0.003 75)"
+          "oklch(0.15 0.005 70)",
+          "oklch(0.26 0.009 70)",
+          "oklch(0.37 0.015 70)",
+          "oklch(0.48 0.021 70)",
+          "oklch(0.6 0.022 70)",
+          "oklch(0.72 0.015 70)",
+          "oklch(0.84 0.009 70)",
+          "oklch(0.95 0.005 70)"
         ]
       },
       "charcoal-primary": {
         "role": "primary",
-        "displayName": "Charcoal Sage",
-        "canonical": "oklch(0.76 0.055 170)",
+        "displayName": "Charcoal Signal Yellow",
+        "canonical": "oklch(0.85 0.135 92)",
         "tonalRamp": [
-          "oklch(0.15 0.014 170)",
-          "oklch(0.26 0.035 170)",
-          "oklch(0.37 0.055 170)",
-          "oklch(0.48 0.055 170)",
-          "oklch(0.6 0.055 170)",
-          "oklch(0.72 0.055 170)",
-          "oklch(0.84 0.035 170)",
-          "oklch(0.95 0.014 170)"
+          "oklch(0.15 0.034 92)",
+          "oklch(0.26 0.054 92)",
+          "oklch(0.37 0.091 92)",
+          "oklch(0.48 0.128 92)",
+          "oklch(0.6 0.135 92)",
+          "oklch(0.72 0.095 92)",
+          "oklch(0.84 0.054 92)",
+          "oklch(0.95 0.034 92)"
         ]
       },
       "charcoal-primary-foreground": {
-        "role": "neutral",
-        "displayName": "Charcoal On-Accent",
-        "canonical": "oklch(0.2 0.012 170)",
+        "role": "primary",
+        "displayName": "Charcoal Key Foreground",
+        "canonical": "oklch(0.21 0.02 92)",
         "tonalRamp": [
-          "oklch(0.15 0.003 170)",
-          "oklch(0.26 0.008 170)",
-          "oklch(0.37 0.012 170)",
-          "oklch(0.48 0.012 170)",
-          "oklch(0.6 0.012 170)",
-          "oklch(0.72 0.012 170)",
-          "oklch(0.84 0.008 170)",
-          "oklch(0.95 0.003 170)"
+          "oklch(0.15 0.005 92)",
+          "oklch(0.26 0.008 92)",
+          "oklch(0.37 0.014 92)",
+          "oklch(0.48 0.019 92)",
+          "oklch(0.6 0.020 92)",
+          "oklch(0.72 0.014 92)",
+          "oklch(0.84 0.008 92)",
+          "oklch(0.95 0.005 92)"
         ]
       },
       "charcoal-destructive": {
         "role": "secondary",
         "displayName": "Charcoal Destructive",
-        "canonical": "oklch(0.73 0.12 30)",
+        "canonical": "oklch(0.74 0.13 28)",
         "tonalRamp": [
-          "oklch(0.15 0.030 30)",
-          "oklch(0.26 0.077 30)",
-          "oklch(0.37 0.120 30)",
-          "oklch(0.48 0.120 30)",
-          "oklch(0.6 0.120 30)",
-          "oklch(0.72 0.120 30)",
-          "oklch(0.84 0.077 30)",
-          "oklch(0.95 0.030 30)"
+          "oklch(0.15 0.033 28)",
+          "oklch(0.26 0.052 28)",
+          "oklch(0.37 0.088 28)",
+          "oklch(0.48 0.123 28)",
+          "oklch(0.6 0.130 28)",
+          "oklch(0.72 0.091 28)",
+          "oklch(0.84 0.052 28)",
+          "oklch(0.95 0.033 28)"
         ]
       },
       "charcoal-success": {
         "role": "secondary",
         "displayName": "Charcoal Success",
-        "canonical": "oklch(0.77 0.11 140)",
+        "canonical": "oklch(0.79 0.11 148)",
         "tonalRamp": [
-          "oklch(0.15 0.028 140)",
-          "oklch(0.26 0.070 140)",
-          "oklch(0.37 0.110 140)",
-          "oklch(0.48 0.110 140)",
-          "oklch(0.6 0.110 140)",
-          "oklch(0.72 0.110 140)",
-          "oklch(0.84 0.070 140)",
-          "oklch(0.95 0.028 140)"
+          "oklch(0.15 0.028 148)",
+          "oklch(0.26 0.044 148)",
+          "oklch(0.37 0.074 148)",
+          "oklch(0.48 0.104 148)",
+          "oklch(0.6 0.110 148)",
+          "oklch(0.72 0.077 148)",
+          "oklch(0.84 0.044 148)",
+          "oklch(0.95 0.028 148)"
         ]
       },
       "charcoal-warning": {
         "role": "secondary",
-        "displayName": "Charcoal Warning",
-        "canonical": "oklch(0.81 0.1 78)",
+        "displayName": "Charcoal Warning Orange",
+        "canonical": "oklch(0.79 0.12 60)",
         "tonalRamp": [
-          "oklch(0.15 0.025 78)",
-          "oklch(0.26 0.064 78)",
-          "oklch(0.37 0.100 78)",
-          "oklch(0.48 0.100 78)",
-          "oklch(0.6 0.100 78)",
-          "oklch(0.72 0.100 78)",
-          "oklch(0.84 0.064 78)",
-          "oklch(0.95 0.025 78)"
+          "oklch(0.15 0.030 60)",
+          "oklch(0.26 0.048 60)",
+          "oklch(0.37 0.081 60)",
+          "oklch(0.48 0.114 60)",
+          "oklch(0.6 0.120 60)",
+          "oklch(0.72 0.084 60)",
+          "oklch(0.84 0.048 60)",
+          "oklch(0.95 0.030 60)"
         ]
       },
       "charcoal-info": {
         "role": "secondary",
         "displayName": "Charcoal Info",
-        "canonical": "oklch(0.77 0.06 235)",
+        "canonical": "oklch(0.79 0.065 235)",
         "tonalRamp": [
-          "oklch(0.15 0.015 235)",
-          "oklch(0.26 0.038 235)",
-          "oklch(0.37 0.060 235)",
-          "oklch(0.48 0.060 235)",
-          "oklch(0.6 0.060 235)",
-          "oklch(0.72 0.060 235)",
-          "oklch(0.84 0.038 235)",
-          "oklch(0.95 0.015 235)"
+          "oklch(0.15 0.016 235)",
+          "oklch(0.26 0.026 235)",
+          "oklch(0.37 0.044 235)",
+          "oklch(0.48 0.062 235)",
+          "oklch(0.6 0.065 235)",
+          "oklch(0.72 0.046 235)",
+          "oklch(0.84 0.026 235)",
+          "oklch(0.95 0.016 235)"
         ]
       },
       "charcoal-merged": {
         "role": "secondary",
         "displayName": "Charcoal Merged",
-        "canonical": "oklch(0.76 0.075 310)",
+        "canonical": "oklch(0.78 0.085 305)",
         "tonalRamp": [
-          "oklch(0.15 0.019 310)",
-          "oklch(0.26 0.048 310)",
-          "oklch(0.37 0.075 310)",
-          "oklch(0.48 0.075 310)",
-          "oklch(0.6 0.075 310)",
-          "oklch(0.72 0.075 310)",
-          "oklch(0.84 0.048 310)",
-          "oklch(0.95 0.019 310)"
+          "oklch(0.15 0.021 305)",
+          "oklch(0.26 0.034 305)",
+          "oklch(0.37 0.057 305)",
+          "oklch(0.48 0.081 305)",
+          "oklch(0.6 0.085 305)",
+          "oklch(0.72 0.060 305)",
+          "oklch(0.84 0.034 305)",
+          "oklch(0.95 0.021 305)"
         ]
       },
       "paper-background": {
         "role": "neutral",
-        "displayName": "Paper Background",
-        "canonical": "oklch(0.982 0.003 85)",
+        "displayName": "Paper Faceplate Canvas",
+        "canonical": "oklch(0.972 0.008 80)",
         "tonalRamp": [
-          "oklch(0.15 0.001 85)",
-          "oklch(0.26 0.002 85)",
-          "oklch(0.37 0.003 85)",
-          "oklch(0.48 0.003 85)",
-          "oklch(0.6 0.003 85)",
-          "oklch(0.72 0.003 85)",
-          "oklch(0.84 0.002 85)",
-          "oklch(0.95 0.001 85)"
+          "oklch(0.15 0.002 80)",
+          "oklch(0.26 0.003 80)",
+          "oklch(0.37 0.005 80)",
+          "oklch(0.48 0.008 80)",
+          "oklch(0.6 0.008 80)",
+          "oklch(0.72 0.006 80)",
+          "oklch(0.84 0.003 80)",
+          "oklch(0.95 0.002 80)"
         ]
       },
       "paper-sidebar": {
         "role": "neutral",
-        "displayName": "Paper Sidebar",
-        "canonical": "oklch(0.962 0.004 85)",
+        "displayName": "Paper Body",
+        "canonical": "oklch(0.9 0.016 75)",
         "tonalRamp": [
-          "oklch(0.15 0.001 85)",
-          "oklch(0.26 0.003 85)",
-          "oklch(0.37 0.004 85)",
-          "oklch(0.48 0.004 85)",
-          "oklch(0.6 0.004 85)",
-          "oklch(0.72 0.004 85)",
-          "oklch(0.84 0.003 85)",
-          "oklch(0.95 0.001 85)"
+          "oklch(0.15 0.004 75)",
+          "oklch(0.26 0.006 75)",
+          "oklch(0.37 0.011 75)",
+          "oklch(0.48 0.015 75)",
+          "oklch(0.6 0.016 75)",
+          "oklch(0.72 0.011 75)",
+          "oklch(0.84 0.006 75)",
+          "oklch(0.95 0.004 75)"
         ]
       },
       "paper-card": {
         "role": "neutral",
-        "displayName": "Paper Card",
-        "canonical": "oklch(0.995 0.002 85)",
+        "displayName": "Paper Faceplate Panel",
+        "canonical": "oklch(0.991 0.005 80)",
         "tonalRamp": [
-          "oklch(0.15 0.001 85)",
-          "oklch(0.26 0.001 85)",
-          "oklch(0.37 0.002 85)",
-          "oklch(0.48 0.002 85)",
-          "oklch(0.6 0.002 85)",
-          "oklch(0.72 0.002 85)",
-          "oklch(0.84 0.001 85)",
-          "oklch(0.95 0.001 85)"
+          "oklch(0.15 0.001 80)",
+          "oklch(0.26 0.002 80)",
+          "oklch(0.37 0.003 80)",
+          "oklch(0.48 0.005 80)",
+          "oklch(0.6 0.005 80)",
+          "oklch(0.72 0.004 80)",
+          "oklch(0.84 0.002 80)",
+          "oklch(0.95 0.001 80)"
         ]
       },
       "paper-popover": {
         "role": "neutral",
         "displayName": "Paper Popover",
-        "canonical": "oklch(0.998 0.001 85)",
+        "canonical": "oklch(0.997 0.003 80)",
         "tonalRamp": [
-          "oklch(0.15 0.000 85)",
-          "oklch(0.26 0.001 85)",
-          "oklch(0.37 0.001 85)",
-          "oklch(0.48 0.001 85)",
-          "oklch(0.6 0.001 85)",
-          "oklch(0.72 0.001 85)",
-          "oklch(0.84 0.001 85)",
-          "oklch(0.95 0.000 85)"
+          "oklch(0.15 0.001 80)",
+          "oklch(0.26 0.001 80)",
+          "oklch(0.37 0.002 80)",
+          "oklch(0.48 0.003 80)",
+          "oklch(0.6 0.003 80)",
+          "oklch(0.72 0.002 80)",
+          "oklch(0.84 0.001 80)",
+          "oklch(0.95 0.001 80)"
+        ]
+      },
+      "paper-muted": {
+        "role": "neutral",
+        "displayName": "Paper Muted Fill",
+        "canonical": "oklch(0.94 0.011 80)",
+        "tonalRamp": [
+          "oklch(0.15 0.003 80)",
+          "oklch(0.26 0.004 80)",
+          "oklch(0.37 0.007 80)",
+          "oklch(0.48 0.010 80)",
+          "oklch(0.6 0.011 80)",
+          "oklch(0.72 0.008 80)",
+          "oklch(0.84 0.004 80)",
+          "oklch(0.95 0.003 80)"
         ]
       },
       "paper-accent": {
         "role": "neutral",
         "displayName": "Paper Hover Fill",
-        "canonical": "oklch(0.935 0.005 85)",
+        "canonical": "oklch(0.925 0.013 80)",
         "tonalRamp": [
-          "oklch(0.15 0.001 85)",
-          "oklch(0.26 0.003 85)",
-          "oklch(0.37 0.005 85)",
-          "oklch(0.48 0.005 85)",
-          "oklch(0.6 0.005 85)",
-          "oklch(0.72 0.005 85)",
-          "oklch(0.84 0.003 85)",
-          "oklch(0.95 0.001 85)"
+          "oklch(0.15 0.003 80)",
+          "oklch(0.26 0.005 80)",
+          "oklch(0.37 0.009 80)",
+          "oklch(0.48 0.012 80)",
+          "oklch(0.6 0.013 80)",
+          "oklch(0.72 0.009 80)",
+          "oklch(0.84 0.005 80)",
+          "oklch(0.95 0.003 80)"
+        ]
+      },
+      "paper-sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Paper Body Hover",
+        "canonical": "oklch(0.87 0.018 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 75)",
+          "oklch(0.26 0.007 75)",
+          "oklch(0.37 0.012 75)",
+          "oklch(0.48 0.017 75)",
+          "oklch(0.6 0.018 75)",
+          "oklch(0.72 0.013 75)",
+          "oklch(0.84 0.007 75)",
+          "oklch(0.95 0.004 75)"
         ]
       },
       "paper-border": {
         "role": "neutral",
-        "displayName": "Paper Hairline Border",
-        "canonical": "oklch(0.895 0.005 85)",
+        "displayName": "Paper Faceplate Hairline",
+        "canonical": "oklch(0.865 0.013 80)",
         "tonalRamp": [
-          "oklch(0.15 0.001 85)",
-          "oklch(0.26 0.003 85)",
-          "oklch(0.37 0.005 85)",
-          "oklch(0.48 0.005 85)",
-          "oklch(0.6 0.005 85)",
-          "oklch(0.72 0.005 85)",
-          "oklch(0.84 0.003 85)",
-          "oklch(0.95 0.001 85)"
+          "oklch(0.15 0.003 80)",
+          "oklch(0.26 0.005 80)",
+          "oklch(0.37 0.009 80)",
+          "oklch(0.48 0.012 80)",
+          "oklch(0.6 0.013 80)",
+          "oklch(0.72 0.009 80)",
+          "oklch(0.84 0.005 80)",
+          "oklch(0.95 0.003 80)"
+        ]
+      },
+      "paper-sidebar-border": {
+        "role": "neutral",
+        "displayName": "Paper Body Hairline",
+        "canonical": "oklch(0.845 0.018 75)",
+        "tonalRamp": [
+          "oklch(0.15 0.004 75)",
+          "oklch(0.26 0.007 75)",
+          "oklch(0.37 0.012 75)",
+          "oklch(0.48 0.017 75)",
+          "oklch(0.6 0.018 75)",
+          "oklch(0.72 0.013 75)",
+          "oklch(0.84 0.007 75)",
+          "oklch(0.95 0.004 75)"
         ]
       },
       "paper-input": {
         "role": "neutral",
-        "displayName": "Paper Input Stroke",
-        "canonical": "oklch(0.63 0.006 85)",
+        "displayName": "Paper Field Stroke",
+        "canonical": "oklch(0.6 0.008 85)",
         "tonalRamp": [
           "oklch(0.15 0.002 85)",
-          "oklch(0.26 0.004 85)",
-          "oklch(0.37 0.006 85)",
-          "oklch(0.48 0.006 85)",
-          "oklch(0.6 0.006 85)",
+          "oklch(0.26 0.003 85)",
+          "oklch(0.37 0.005 85)",
+          "oklch(0.48 0.008 85)",
+          "oklch(0.6 0.008 85)",
           "oklch(0.72 0.006 85)",
-          "oklch(0.84 0.004 85)",
+          "oklch(0.84 0.003 85)",
           "oklch(0.95 0.002 85)"
         ]
       },
       "paper-foreground": {
         "role": "neutral",
         "displayName": "Paper Foreground",
-        "canonical": "oklch(0.24 0.006 70)",
+        "canonical": "oklch(0.22 0.008 70)",
         "tonalRamp": [
           "oklch(0.15 0.002 70)",
-          "oklch(0.26 0.004 70)",
-          "oklch(0.37 0.006 70)",
-          "oklch(0.48 0.006 70)",
-          "oklch(0.6 0.006 70)",
+          "oklch(0.26 0.003 70)",
+          "oklch(0.37 0.005 70)",
+          "oklch(0.48 0.008 70)",
+          "oklch(0.6 0.008 70)",
           "oklch(0.72 0.006 70)",
-          "oklch(0.84 0.004 70)",
+          "oklch(0.84 0.003 70)",
           "oklch(0.95 0.002 70)"
         ]
       },
       "paper-muted-foreground": {
         "role": "neutral",
         "displayName": "Paper Muted Foreground",
-        "canonical": "oklch(0.47 0.008 70)",
+        "canonical": "oklch(0.45 0.01 70)",
         "tonalRamp": [
-          "oklch(0.15 0.002 70)",
-          "oklch(0.26 0.005 70)",
-          "oklch(0.37 0.008 70)",
-          "oklch(0.48 0.008 70)",
-          "oklch(0.6 0.008 70)",
-          "oklch(0.72 0.008 70)",
-          "oklch(0.84 0.005 70)",
-          "oklch(0.95 0.002 70)"
+          "oklch(0.15 0.003 70)",
+          "oklch(0.26 0.004 70)",
+          "oklch(0.37 0.007 70)",
+          "oklch(0.48 0.009 70)",
+          "oklch(0.6 0.010 70)",
+          "oklch(0.72 0.007 70)",
+          "oklch(0.84 0.004 70)",
+          "oklch(0.95 0.003 70)"
         ]
       },
       "paper-primary": {
         "role": "primary",
-        "displayName": "Paper Ink Blue",
-        "canonical": "oklch(0.47 0.1 258)",
+        "displayName": "Paper Deep Ochre",
+        "canonical": "oklch(0.5 0.105 78)",
         "tonalRamp": [
-          "oklch(0.15 0.025 258)",
-          "oklch(0.26 0.064 258)",
-          "oklch(0.37 0.100 258)",
-          "oklch(0.48 0.100 258)",
-          "oklch(0.6 0.100 258)",
-          "oklch(0.72 0.100 258)",
-          "oklch(0.84 0.064 258)",
-          "oklch(0.95 0.025 258)"
+          "oklch(0.15 0.026 78)",
+          "oklch(0.26 0.042 78)",
+          "oklch(0.37 0.071 78)",
+          "oklch(0.48 0.100 78)",
+          "oklch(0.6 0.105 78)",
+          "oklch(0.72 0.074 78)",
+          "oklch(0.84 0.042 78)",
+          "oklch(0.95 0.026 78)"
         ]
       },
       "paper-primary-foreground": {
-        "role": "neutral",
-        "displayName": "Paper On-Accent",
-        "canonical": "oklch(0.985 0.003 258)",
+        "role": "primary",
+        "displayName": "Paper Key Foreground",
+        "canonical": "oklch(0.99 0.004 85)",
         "tonalRamp": [
-          "oklch(0.15 0.001 258)",
-          "oklch(0.26 0.002 258)",
-          "oklch(0.37 0.003 258)",
-          "oklch(0.48 0.003 258)",
-          "oklch(0.6 0.003 258)",
-          "oklch(0.72 0.003 258)",
-          "oklch(0.84 0.002 258)",
-          "oklch(0.95 0.001 258)"
+          "oklch(0.15 0.001 85)",
+          "oklch(0.26 0.002 85)",
+          "oklch(0.37 0.003 85)",
+          "oklch(0.48 0.004 85)",
+          "oklch(0.6 0.004 85)",
+          "oklch(0.72 0.003 85)",
+          "oklch(0.84 0.002 85)",
+          "oklch(0.95 0.001 85)"
         ]
       },
       "paper-destructive": {
         "role": "secondary",
         "displayName": "Paper Destructive",
-        "canonical": "oklch(0.52 0.15 28)",
+        "canonical": "oklch(0.5 0.16 27)",
         "tonalRamp": [
-          "oklch(0.15 0.037 28)",
-          "oklch(0.26 0.096 28)",
-          "oklch(0.37 0.150 28)",
-          "oklch(0.48 0.150 28)",
-          "oklch(0.6 0.150 28)",
-          "oklch(0.72 0.150 28)",
-          "oklch(0.84 0.096 28)",
-          "oklch(0.95 0.037 28)"
+          "oklch(0.15 0.040 27)",
+          "oklch(0.26 0.064 27)",
+          "oklch(0.37 0.108 27)",
+          "oklch(0.48 0.152 27)",
+          "oklch(0.6 0.160 27)",
+          "oklch(0.72 0.112 27)",
+          "oklch(0.84 0.064 27)",
+          "oklch(0.95 0.040 27)"
         ]
       },
       "paper-success": {
         "role": "secondary",
         "displayName": "Paper Success",
-        "canonical": "oklch(0.5 0.1 150)",
+        "canonical": "oklch(0.48 0.1 150)",
         "tonalRamp": [
           "oklch(0.15 0.025 150)",
-          "oklch(0.26 0.064 150)",
-          "oklch(0.37 0.100 150)",
-          "oklch(0.48 0.100 150)",
+          "oklch(0.26 0.040 150)",
+          "oklch(0.37 0.068 150)",
+          "oklch(0.48 0.095 150)",
           "oklch(0.6 0.100 150)",
-          "oklch(0.72 0.100 150)",
-          "oklch(0.84 0.064 150)",
+          "oklch(0.72 0.070 150)",
+          "oklch(0.84 0.040 150)",
           "oklch(0.95 0.025 150)"
         ]
       },
       "paper-warning": {
         "role": "secondary",
-        "displayName": "Paper Warning",
-        "canonical": "oklch(0.53 0.1 65)",
+        "displayName": "Paper Warning Orange",
+        "canonical": "oklch(0.5 0.12 52)",
         "tonalRamp": [
-          "oklch(0.15 0.025 65)",
-          "oklch(0.26 0.064 65)",
-          "oklch(0.37 0.100 65)",
-          "oklch(0.48 0.100 65)",
-          "oklch(0.6 0.100 65)",
-          "oklch(0.72 0.100 65)",
-          "oklch(0.84 0.064 65)",
-          "oklch(0.95 0.025 65)"
+          "oklch(0.15 0.030 52)",
+          "oklch(0.26 0.048 52)",
+          "oklch(0.37 0.081 52)",
+          "oklch(0.48 0.114 52)",
+          "oklch(0.6 0.120 52)",
+          "oklch(0.72 0.084 52)",
+          "oklch(0.84 0.048 52)",
+          "oklch(0.95 0.030 52)"
         ]
       },
       "paper-info": {
         "role": "secondary",
         "displayName": "Paper Info",
-        "canonical": "oklch(0.5 0.085 240)",
+        "canonical": "oklch(0.48 0.09 240)",
         "tonalRamp": [
-          "oklch(0.15 0.021 240)",
-          "oklch(0.26 0.054 240)",
-          "oklch(0.37 0.085 240)",
+          "oklch(0.15 0.022 240)",
+          "oklch(0.26 0.036 240)",
+          "oklch(0.37 0.061 240)",
           "oklch(0.48 0.085 240)",
-          "oklch(0.6 0.085 240)",
-          "oklch(0.72 0.085 240)",
-          "oklch(0.84 0.054 240)",
-          "oklch(0.95 0.021 240)"
+          "oklch(0.6 0.090 240)",
+          "oklch(0.72 0.063 240)",
+          "oklch(0.84 0.036 240)",
+          "oklch(0.95 0.022 240)"
         ]
       },
       "paper-merged": {
         "role": "secondary",
         "displayName": "Paper Merged",
-        "canonical": "oklch(0.5 0.11 305)",
+        "canonical": "oklch(0.48 0.11 305)",
         "tonalRamp": [
           "oklch(0.15 0.028 305)",
-          "oklch(0.26 0.070 305)",
-          "oklch(0.37 0.110 305)",
-          "oklch(0.48 0.110 305)",
+          "oklch(0.26 0.044 305)",
+          "oklch(0.37 0.074 305)",
+          "oklch(0.48 0.104 305)",
           "oklch(0.6 0.110 305)",
-          "oklch(0.72 0.110 305)",
-          "oklch(0.84 0.070 305)",
+          "oklch(0.72 0.077 305)",
+          "oklch(0.84 0.044 305)",
           "oklch(0.95 0.028 305)"
         ]
       },
       "stone-background": {
         "role": "neutral",
-        "displayName": "Stone Background",
-        "canonical": "oklch(0.972 0.003 240)",
+        "displayName": "Stone Faceplate Canvas",
+        "canonical": "oklch(0.967 0.008 250)",
         "tonalRamp": [
-          "oklch(0.15 0.001 240)",
-          "oklch(0.26 0.002 240)",
-          "oklch(0.37 0.003 240)",
-          "oklch(0.48 0.003 240)",
-          "oklch(0.6 0.003 240)",
-          "oklch(0.72 0.003 240)",
-          "oklch(0.84 0.002 240)",
-          "oklch(0.95 0.001 240)"
+          "oklch(0.15 0.002 250)",
+          "oklch(0.26 0.003 250)",
+          "oklch(0.37 0.005 250)",
+          "oklch(0.48 0.008 250)",
+          "oklch(0.6 0.008 250)",
+          "oklch(0.72 0.006 250)",
+          "oklch(0.84 0.003 250)",
+          "oklch(0.95 0.002 250)"
         ]
       },
       "stone-sidebar": {
         "role": "neutral",
-        "displayName": "Stone Sidebar",
-        "canonical": "oklch(0.95 0.004 240)",
+        "displayName": "Stone Body",
+        "canonical": "oklch(0.9 0.009 250)",
         "tonalRamp": [
-          "oklch(0.15 0.001 240)",
-          "oklch(0.26 0.003 240)",
-          "oklch(0.37 0.004 240)",
-          "oklch(0.48 0.004 240)",
-          "oklch(0.6 0.004 240)",
-          "oklch(0.72 0.004 240)",
-          "oklch(0.84 0.003 240)",
-          "oklch(0.95 0.001 240)"
+          "oklch(0.15 0.002 250)",
+          "oklch(0.26 0.004 250)",
+          "oklch(0.37 0.006 250)",
+          "oklch(0.48 0.009 250)",
+          "oklch(0.6 0.009 250)",
+          "oklch(0.72 0.006 250)",
+          "oklch(0.84 0.004 250)",
+          "oklch(0.95 0.002 250)"
         ]
       },
       "stone-card": {
         "role": "neutral",
-        "displayName": "Stone Card",
-        "canonical": "oklch(0.99 0.002 240)",
+        "displayName": "Stone Faceplate Panel",
+        "canonical": "oklch(0.99 0.004 250)",
         "tonalRamp": [
-          "oklch(0.15 0.001 240)",
-          "oklch(0.26 0.001 240)",
-          "oklch(0.37 0.002 240)",
-          "oklch(0.48 0.002 240)",
-          "oklch(0.6 0.002 240)",
-          "oklch(0.72 0.002 240)",
-          "oklch(0.84 0.001 240)",
-          "oklch(0.95 0.001 240)"
+          "oklch(0.15 0.001 250)",
+          "oklch(0.26 0.002 250)",
+          "oklch(0.37 0.003 250)",
+          "oklch(0.48 0.004 250)",
+          "oklch(0.6 0.004 250)",
+          "oklch(0.72 0.003 250)",
+          "oklch(0.84 0.002 250)",
+          "oklch(0.95 0.001 250)"
         ]
       },
       "stone-popover": {
         "role": "neutral",
         "displayName": "Stone Popover",
-        "canonical": "oklch(0.995 0.001 240)",
+        "canonical": "oklch(0.996 0.002 250)",
         "tonalRamp": [
-          "oklch(0.15 0.000 240)",
-          "oklch(0.26 0.001 240)",
-          "oklch(0.37 0.001 240)",
-          "oklch(0.48 0.001 240)",
-          "oklch(0.6 0.001 240)",
-          "oklch(0.72 0.001 240)",
-          "oklch(0.84 0.001 240)",
-          "oklch(0.95 0.000 240)"
+          "oklch(0.15 0.001 250)",
+          "oklch(0.26 0.001 250)",
+          "oklch(0.37 0.001 250)",
+          "oklch(0.48 0.002 250)",
+          "oklch(0.6 0.002 250)",
+          "oklch(0.72 0.001 250)",
+          "oklch(0.84 0.001 250)",
+          "oklch(0.95 0.001 250)"
+        ]
+      },
+      "stone-muted": {
+        "role": "neutral",
+        "displayName": "Stone Muted Fill",
+        "canonical": "oklch(0.932 0.012 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.003 250)",
+          "oklch(0.26 0.005 250)",
+          "oklch(0.37 0.008 250)",
+          "oklch(0.48 0.011 250)",
+          "oklch(0.6 0.012 250)",
+          "oklch(0.72 0.008 250)",
+          "oklch(0.84 0.005 250)",
+          "oklch(0.95 0.003 250)"
         ]
       },
       "stone-accent": {
         "role": "neutral",
         "displayName": "Stone Hover Fill",
-        "canonical": "oklch(0.925 0.006 240)",
+        "canonical": "oklch(0.915 0.014 250)",
         "tonalRamp": [
-          "oklch(0.15 0.002 240)",
-          "oklch(0.26 0.004 240)",
-          "oklch(0.37 0.006 240)",
-          "oklch(0.48 0.006 240)",
-          "oklch(0.6 0.006 240)",
-          "oklch(0.72 0.006 240)",
-          "oklch(0.84 0.004 240)",
-          "oklch(0.95 0.002 240)"
+          "oklch(0.15 0.004 250)",
+          "oklch(0.26 0.006 250)",
+          "oklch(0.37 0.009 250)",
+          "oklch(0.48 0.013 250)",
+          "oklch(0.6 0.014 250)",
+          "oklch(0.72 0.010 250)",
+          "oklch(0.84 0.006 250)",
+          "oklch(0.95 0.004 250)"
+        ]
+      },
+      "stone-sidebar-accent": {
+        "role": "neutral",
+        "displayName": "Stone Body Hover",
+        "canonical": "oklch(0.87 0.01 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.003 250)",
+          "oklch(0.26 0.004 250)",
+          "oklch(0.37 0.007 250)",
+          "oklch(0.48 0.009 250)",
+          "oklch(0.6 0.010 250)",
+          "oklch(0.72 0.007 250)",
+          "oklch(0.84 0.004 250)",
+          "oklch(0.95 0.003 250)"
         ]
       },
       "stone-border": {
         "role": "neutral",
-        "displayName": "Stone Hairline Border",
-        "canonical": "oklch(0.885 0.006 240)",
+        "displayName": "Stone Faceplate Hairline",
+        "canonical": "oklch(0.86 0.014 250)",
         "tonalRamp": [
-          "oklch(0.15 0.002 240)",
-          "oklch(0.26 0.004 240)",
-          "oklch(0.37 0.006 240)",
-          "oklch(0.48 0.006 240)",
-          "oklch(0.6 0.006 240)",
-          "oklch(0.72 0.006 240)",
-          "oklch(0.84 0.004 240)",
-          "oklch(0.95 0.002 240)"
+          "oklch(0.15 0.004 250)",
+          "oklch(0.26 0.006 250)",
+          "oklch(0.37 0.009 250)",
+          "oklch(0.48 0.013 250)",
+          "oklch(0.6 0.014 250)",
+          "oklch(0.72 0.010 250)",
+          "oklch(0.84 0.006 250)",
+          "oklch(0.95 0.004 250)"
+        ]
+      },
+      "stone-sidebar-border": {
+        "role": "neutral",
+        "displayName": "Stone Body Hairline",
+        "canonical": "oklch(0.845 0.01 250)",
+        "tonalRamp": [
+          "oklch(0.15 0.003 250)",
+          "oklch(0.26 0.004 250)",
+          "oklch(0.37 0.007 250)",
+          "oklch(0.48 0.009 250)",
+          "oklch(0.6 0.010 250)",
+          "oklch(0.72 0.007 250)",
+          "oklch(0.84 0.004 250)",
+          "oklch(0.95 0.003 250)"
         ]
       },
       "stone-input": {
         "role": "neutral",
-        "displayName": "Stone Input Stroke",
-        "canonical": "oklch(0.62 0.007 240)",
+        "displayName": "Stone Field Stroke",
+        "canonical": "oklch(0.6 0.009 250)",
         "tonalRamp": [
-          "oklch(0.15 0.002 240)",
-          "oklch(0.26 0.004 240)",
-          "oklch(0.37 0.007 240)",
-          "oklch(0.48 0.007 240)",
-          "oklch(0.6 0.007 240)",
-          "oklch(0.72 0.007 240)",
-          "oklch(0.84 0.004 240)",
-          "oklch(0.95 0.002 240)"
+          "oklch(0.15 0.002 250)",
+          "oklch(0.26 0.004 250)",
+          "oklch(0.37 0.006 250)",
+          "oklch(0.48 0.009 250)",
+          "oklch(0.6 0.009 250)",
+          "oklch(0.72 0.006 250)",
+          "oklch(0.84 0.004 250)",
+          "oklch(0.95 0.002 250)"
         ]
       },
       "stone-foreground": {
         "role": "neutral",
         "displayName": "Stone Foreground",
-        "canonical": "oklch(0.23 0.008 250)",
+        "canonical": "oklch(0.21 0.01 255)",
         "tonalRamp": [
-          "oklch(0.15 0.002 250)",
-          "oklch(0.26 0.005 250)",
-          "oklch(0.37 0.008 250)",
-          "oklch(0.48 0.008 250)",
-          "oklch(0.6 0.008 250)",
-          "oklch(0.72 0.008 250)",
-          "oklch(0.84 0.005 250)",
-          "oklch(0.95 0.002 250)"
+          "oklch(0.15 0.003 255)",
+          "oklch(0.26 0.004 255)",
+          "oklch(0.37 0.007 255)",
+          "oklch(0.48 0.009 255)",
+          "oklch(0.6 0.010 255)",
+          "oklch(0.72 0.007 255)",
+          "oklch(0.84 0.004 255)",
+          "oklch(0.95 0.003 255)"
         ]
       },
       "stone-muted-foreground": {
         "role": "neutral",
         "displayName": "Stone Muted Foreground",
-        "canonical": "oklch(0.465 0.01 250)",
+        "canonical": "oklch(0.45 0.012 255)",
         "tonalRamp": [
-          "oklch(0.15 0.003 250)",
-          "oklch(0.26 0.006 250)",
-          "oklch(0.37 0.010 250)",
-          "oklch(0.48 0.010 250)",
-          "oklch(0.6 0.010 250)",
-          "oklch(0.72 0.010 250)",
-          "oklch(0.84 0.006 250)",
-          "oklch(0.95 0.003 250)"
+          "oklch(0.15 0.003 255)",
+          "oklch(0.26 0.005 255)",
+          "oklch(0.37 0.008 255)",
+          "oklch(0.48 0.011 255)",
+          "oklch(0.6 0.012 255)",
+          "oklch(0.72 0.008 255)",
+          "oklch(0.84 0.005 255)",
+          "oklch(0.95 0.003 255)"
         ]
       },
       "stone-primary": {
         "role": "primary",
-        "displayName": "Stone Petrol",
-        "canonical": "oklch(0.46 0.07 215)",
+        "displayName": "Stone Deep Ochre",
+        "canonical": "oklch(0.5 0.105 80)",
         "tonalRamp": [
-          "oklch(0.15 0.018 215)",
-          "oklch(0.26 0.045 215)",
-          "oklch(0.37 0.070 215)",
-          "oklch(0.48 0.070 215)",
-          "oklch(0.6 0.070 215)",
-          "oklch(0.72 0.070 215)",
-          "oklch(0.84 0.045 215)",
-          "oklch(0.95 0.018 215)"
+          "oklch(0.15 0.026 80)",
+          "oklch(0.26 0.042 80)",
+          "oklch(0.37 0.071 80)",
+          "oklch(0.48 0.100 80)",
+          "oklch(0.6 0.105 80)",
+          "oklch(0.72 0.074 80)",
+          "oklch(0.84 0.042 80)",
+          "oklch(0.95 0.026 80)"
         ]
       },
       "stone-primary-foreground": {
-        "role": "neutral",
-        "displayName": "Stone On-Accent",
-        "canonical": "oklch(0.985 0.003 215)",
+        "role": "primary",
+        "displayName": "Stone Key Foreground",
+        "canonical": "oklch(0.99 0.004 85)",
         "tonalRamp": [
-          "oklch(0.15 0.001 215)",
-          "oklch(0.26 0.002 215)",
-          "oklch(0.37 0.003 215)",
-          "oklch(0.48 0.003 215)",
-          "oklch(0.6 0.003 215)",
-          "oklch(0.72 0.003 215)",
-          "oklch(0.84 0.002 215)",
-          "oklch(0.95 0.001 215)"
+          "oklch(0.15 0.001 85)",
+          "oklch(0.26 0.002 85)",
+          "oklch(0.37 0.003 85)",
+          "oklch(0.48 0.004 85)",
+          "oklch(0.6 0.004 85)",
+          "oklch(0.72 0.003 85)",
+          "oklch(0.84 0.002 85)",
+          "oklch(0.95 0.001 85)"
         ]
       },
       "stone-destructive": {
         "role": "secondary",
         "displayName": "Stone Destructive",
-        "canonical": "oklch(0.52 0.15 25)",
+        "canonical": "oklch(0.5 0.16 25)",
         "tonalRamp": [
-          "oklch(0.15 0.037 25)",
-          "oklch(0.26 0.096 25)",
-          "oklch(0.37 0.150 25)",
-          "oklch(0.48 0.150 25)",
-          "oklch(0.6 0.150 25)",
-          "oklch(0.72 0.150 25)",
-          "oklch(0.84 0.096 25)",
-          "oklch(0.95 0.037 25)"
+          "oklch(0.15 0.040 25)",
+          "oklch(0.26 0.064 25)",
+          "oklch(0.37 0.108 25)",
+          "oklch(0.48 0.152 25)",
+          "oklch(0.6 0.160 25)",
+          "oklch(0.72 0.112 25)",
+          "oklch(0.84 0.064 25)",
+          "oklch(0.95 0.040 25)"
         ]
       },
       "stone-success": {
         "role": "secondary",
         "displayName": "Stone Success",
-        "canonical": "oklch(0.5 0.1 150)",
+        "canonical": "oklch(0.48 0.1 150)",
         "tonalRamp": [
           "oklch(0.15 0.025 150)",
-          "oklch(0.26 0.064 150)",
-          "oklch(0.37 0.100 150)",
-          "oklch(0.48 0.100 150)",
+          "oklch(0.26 0.040 150)",
+          "oklch(0.37 0.068 150)",
+          "oklch(0.48 0.095 150)",
           "oklch(0.6 0.100 150)",
-          "oklch(0.72 0.100 150)",
-          "oklch(0.84 0.064 150)",
+          "oklch(0.72 0.070 150)",
+          "oklch(0.84 0.040 150)",
           "oklch(0.95 0.025 150)"
         ]
       },
       "stone-warning": {
         "role": "secondary",
-        "displayName": "Stone Warning",
-        "canonical": "oklch(0.53 0.1 62)",
+        "displayName": "Stone Warning Orange",
+        "canonical": "oklch(0.5 0.12 52)",
         "tonalRamp": [
-          "oklch(0.15 0.025 62)",
-          "oklch(0.26 0.064 62)",
-          "oklch(0.37 0.100 62)",
-          "oklch(0.48 0.100 62)",
-          "oklch(0.6 0.100 62)",
-          "oklch(0.72 0.100 62)",
-          "oklch(0.84 0.064 62)",
-          "oklch(0.95 0.025 62)"
+          "oklch(0.15 0.030 52)",
+          "oklch(0.26 0.048 52)",
+          "oklch(0.37 0.081 52)",
+          "oklch(0.48 0.114 52)",
+          "oklch(0.6 0.120 52)",
+          "oklch(0.72 0.084 52)",
+          "oklch(0.84 0.048 52)",
+          "oklch(0.95 0.030 52)"
         ]
       },
       "stone-info": {
         "role": "secondary",
         "displayName": "Stone Info",
-        "canonical": "oklch(0.5 0.08 245)",
+        "canonical": "oklch(0.48 0.09 245)",
         "tonalRamp": [
-          "oklch(0.15 0.020 245)",
-          "oklch(0.26 0.051 245)",
-          "oklch(0.37 0.080 245)",
-          "oklch(0.48 0.080 245)",
-          "oklch(0.6 0.080 245)",
-          "oklch(0.72 0.080 245)",
-          "oklch(0.84 0.051 245)",
-          "oklch(0.95 0.020 245)"
+          "oklch(0.15 0.022 245)",
+          "oklch(0.26 0.036 245)",
+          "oklch(0.37 0.061 245)",
+          "oklch(0.48 0.085 245)",
+          "oklch(0.6 0.090 245)",
+          "oklch(0.72 0.063 245)",
+          "oklch(0.84 0.036 245)",
+          "oklch(0.95 0.022 245)"
         ]
       },
       "stone-merged": {
         "role": "secondary",
         "displayName": "Stone Merged",
-        "canonical": "oklch(0.5 0.11 305)",
+        "canonical": "oklch(0.48 0.11 305)",
         "tonalRamp": [
           "oklch(0.15 0.028 305)",
-          "oklch(0.26 0.070 305)",
-          "oklch(0.37 0.110 305)",
-          "oklch(0.48 0.110 305)",
+          "oklch(0.26 0.044 305)",
+          "oklch(0.37 0.074 305)",
+          "oklch(0.48 0.104 305)",
           "oklch(0.6 0.110 305)",
-          "oklch(0.72 0.110 305)",
-          "oklch(0.84 0.070 305)",
+          "oklch(0.72 0.077 305)",
+          "oklch(0.84 0.044 305)",
           "oklch(0.95 0.028 305)"
         ]
       }
@@ -968,15 +1148,27 @@
     "typographyMeta": {
       "headline": {
         "displayName": "Headline",
-        "purpose": "Page titles."
-      },
-      "metric": {
-        "displayName": "Metric",
-        "purpose": "Dashboard KPI values only."
+        "purpose": "Page heading; the Dhaka date on the Dashboard."
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Panel and card headings."
+        "purpose": "Primary section headings such as Needs you."
+      },
+      "title-sm": {
+        "displayName": "Title Small",
+        "purpose": "Secondary panel headings."
+      },
+      "numeral-lg": {
+        "displayName": "Numeral Large",
+        "purpose": "The overdue reading on the dial."
+      },
+      "numeral-md": {
+        "displayName": "Numeral Medium",
+        "purpose": "Readout counts."
+      },
+      "numeral-sm": {
+        "displayName": "Numeral Small",
+        "purpose": "Per-day due counts on the dial."
       },
       "body": {
         "displayName": "Body",
@@ -984,171 +1176,178 @@
       },
       "body-prose": {
         "displayName": "Body Prose",
-        "purpose": "Issue descriptions, comments, rendered markdown; scales with the editor font-size setting."
+        "purpose": "Issue descriptions, comments, rendered markdown."
+      },
+      "control-label": {
+        "displayName": "Control Label",
+        "purpose": "Lowercase legends under readings, lamps and dial days."
       },
       "label": {
         "displayName": "Label",
-        "purpose": "Pills, badges, timestamps, tooltips. The 11px functional-text floor."
+        "purpose": "Pills, badges and tooltips on not-yet-redesigned screens; the 11px floor."
       },
       "mono": {
         "displayName": "Mono",
-        "purpose": "Identifiers, clocks, diff counts."
+        "purpose": "Issue identifiers."
       }
     },
-    "themes": [
-      {
-        "id": "graphite",
-        "scheme": "dark",
-        "accent": "Steel Blue",
-        "default": true
-      },
-      {
-        "id": "charcoal",
-        "scheme": "dark",
-        "accent": "Sage"
-      },
-      {
-        "id": "paper",
-        "scheme": "light",
-        "accent": "Ink Blue"
-      },
-      {
-        "id": "stone",
-        "scheme": "light",
-        "accent": "Petrol"
-      }
-    ],
-    "themeSelection": "Fixed theme or \"auto\" (Match system) with a chosen dark and light theme. Applied as data-theme on <html> plus the .dark class and color-scheme for dark themes; persisted under localStorage key astryn.theme. Default { mode: graphite, dark: graphite, light: paper }. Source: src/lib/theme.ts, src/styles/themes.css.",
     "shadows": [
       {
-        "name": "overlay-shadow-dark",
-        "value": "oklch(0 0 0 / 40%)",
-        "purpose": "Overlay shadow color on Graphite and Charcoal."
-      },
-      {
-        "name": "overlay-shadow-light",
-        "value": "oklch(0.25 0.01 250 / 14%)",
-        "purpose": "Overlay shadow color on Paper and Stone."
-      },
-      {
-        "name": "overlay-sm",
+        "name": "overlay-small",
         "value": "0 2px 10px var(--overlay-shadow)",
         "purpose": "Inline editor tooltip."
       },
       {
-        "name": "overlay-md",
+        "name": "overlay-medium",
         "value": "0 4px 16px var(--overlay-shadow)",
         "purpose": "Slash-command menu."
       },
       {
-        "name": "overlay-lg",
+        "name": "overlay-large",
         "value": "0 8px 24px var(--overlay-shadow)",
         "purpose": "Calendar overflow popover."
+      },
+      {
+        "name": "lamp-bezel",
+        "value": "inset 0 0 0 1px color-mix(in oklab, black 22%, transparent)",
+        "purpose": "Hairline bezel inside a lit indicator lamp; not elevation."
       }
     ],
     "motion": [
       {
-        "name": "color-transition",
-        "value": "150ms ease",
-        "purpose": "Hover background, border and color changes; tooltip fades."
+        "name": "needle-rise",
+        "value": "600ms cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Dial needle rises from 15% height on mount; removed under prefers-reduced-motion."
       },
       {
-        "name": "reduced-motion",
-        "value": "0.01ms",
-        "purpose": "Dashboard collapses transitions and animations under prefers-reduced-motion."
+        "name": "state-transition",
+        "value": "150ms",
+        "purpose": "Color and opacity transitions on hover for tabs, dock and buttons."
       }
     ],
     "breakpoints": [
       {
-        "name": "dashboard-pane-2col",
-        "value": "520px (container query)"
+        "name": "dashboard-narrow",
+        "value": "460px (container)"
       },
       {
-        "name": "dashboard-pane-wide",
-        "value": "900px (container query)"
+        "name": "dashboard-compact",
+        "value": "640px (container)"
+      },
+      {
+        "name": "dashboard-wide",
+        "value": "900px (container)"
       }
-    ]
+    ],
+    "focus": {
+      "value": "outline: 2px solid var(--ring); outline-offset: -2px",
+      "purpose": "Dashboard controls; survives forced-colors mode."
+    },
+    "selection": {
+      "background": "color-mix(in oklab, var(--primary) 32%, transparent)",
+      "color": "var(--foreground)",
+      "caret": "var(--primary)"
+    }
   },
   "components": [
+    {
+      "name": "Indicator Lamp",
+      "kind": "custom",
+      "refersTo": "lamp-lit",
+      "description": "Round state lamp: lit in a state token, or an unlit ring when there is nothing to report.",
+      "html": "<span class=\"ds-lamp-row\"><span class=\"ds-lamp ds-lamp-danger\"></span>overdue</span><span class=\"ds-lamp-row\"><span class=\"ds-lamp ds-lamp-success\"></span>linear</span><span class=\"ds-lamp-row\"><span class=\"ds-lamp ds-lamp-off\"></span>github · set up</span>",
+      "css": ".ds-lamp-row{display:inline-flex;align-items:center;gap:6px;margin-right:12px;font:400 12px 'Geist Variable',sans-serif;color:var(--muted-foreground)}.ds-lamp{display:inline-block;width:8px;height:8px;border-radius:9999px}.ds-lamp-danger{background:var(--destructive);box-shadow:inset 0 0 0 1px color-mix(in oklab,black 22%,transparent)}.ds-lamp-success{background:var(--success);box-shadow:inset 0 0 0 1px color-mix(in oklab,black 22%,transparent)}.ds-lamp-off{border:1px solid color-mix(in oklab,var(--muted-foreground) 70%,transparent)}"
+    },
+    {
+      "name": "Dial Scale",
+      "kind": "custom",
+      "refersTo": "dial-needle",
+      "description": "The week as a tuning dial: overdue reading, day columns with ticks, one key-colored needle at now.",
+      "html": "<div class=\"ds-dial\"><button class=\"ds-dial-past\"><span class=\"ds-num ds-num-lg ds-alarm\">2</span><span class=\"ds-leg\">overdue</span></button><div class=\"ds-days\"><span class=\"ds-needle\"></span><button class=\"ds-day\"><span class=\"ds-num ds-num-sm\">3</span><span class=\"ds-tick\"></span><span class=\"ds-leg ds-today\">today 29</span></button><button class=\"ds-day\"><span class=\"ds-num ds-num-sm\">1</span><span class=\"ds-tick\"></span><span class=\"ds-leg\">fri 30</span></button><button class=\"ds-day\"><span class=\"ds-num ds-num-sm\"></span><span class=\"ds-tick\"></span><span class=\"ds-leg\">sat 31</span></button></div></div>",
+      "css": ".ds-dial{display:grid;grid-template-columns:minmax(84px,auto) minmax(0,1fr);background:var(--card);padding:16px 16px 12px;border-radius:10px;border:1px solid var(--border)}.ds-dial button{all:unset;cursor:pointer;display:flex;flex-direction:column;gap:5px;border-radius:6px}.ds-dial-past{padding:6px 16px 2px 4px}.ds-day{padding:6px 4px 2px 10px}.ds-dial button:hover{background:var(--accent)}.ds-dial button:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}.ds-days{position:relative;display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}.ds-needle{position:absolute;top:4px;bottom:0;left:0;width:2px;border-radius:1px;background:var(--primary);transform-origin:bottom;animation:ds-needle 600ms cubic-bezier(0.16,1,0.3,1) both}.ds-needle::before{content:'';position:absolute;top:-3px;left:-3px;width:8px;height:8px;border-radius:9999px;background:var(--primary)}@keyframes ds-needle{from{transform:scaleY(0.15)}}@media (prefers-reduced-motion:reduce){.ds-needle{animation:none}}.ds-num{display:block;font-family:'Geist Variable',sans-serif;font-weight:300;font-variant-numeric:tabular-nums;line-height:1;letter-spacing:-0.02em;color:var(--foreground)}.ds-num-lg{font-size:32px}.ds-num-sm{font-size:22px;height:24px}.ds-alarm{color:var(--destructive)}.ds-tick{height:12px;border-left:1px solid var(--muted-foreground)}.ds-leg{font:400 12px 'Geist Variable',sans-serif;color:var(--muted-foreground)}.ds-today{font-weight:600;color:var(--foreground)}"
+    },
+    {
+      "name": "Readout",
+      "kind": "custom",
+      "refersTo": "readout",
+      "description": "Live count for an active source: light tabular numeral over a lowercase lamp legend; 'set up' when not connected.",
+      "html": "<div class=\"ds-readouts\"><button class=\"ds-readout\"><span class=\"ds-rnum\">4</span><span class=\"ds-rleg\"><span class=\"ds-rlamp\"></span>reviews</span></button><button class=\"ds-readout\"><span class=\"ds-setup\">set up</span><span class=\"ds-rleg\"><span class=\"ds-rlamp ds-rlamp-off\"></span>mentions</span></button></div>",
+      "css": ".ds-readouts{display:flex;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}.ds-readout{all:unset;cursor:pointer;flex:1 1 132px;display:flex;flex-direction:column;gap:8px;padding:14px 20px 12px}.ds-readout+.ds-readout{border-left:1px solid var(--border)}.ds-readout:hover{background:var(--accent)}.ds-readout:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}.ds-rnum{font:300 28px/1 'Geist Variable',sans-serif;font-variant-numeric:tabular-nums;letter-spacing:-0.02em;color:var(--foreground)}.ds-setup{font:500 14px 'Geist Variable',sans-serif;color:var(--foreground);text-decoration:underline;text-decoration-color:var(--muted-foreground);text-underline-offset:4px}.ds-rleg{display:flex;align-items:center;gap:6px;font:400 12px 'Geist Variable',sans-serif;text-transform:lowercase;color:var(--muted-foreground)}.ds-rlamp{width:8px;height:8px;border-radius:9999px;background:var(--muted-foreground);box-shadow:inset 0 0 0 1px color-mix(in oklab,black 22%,transparent)}.ds-rlamp-off{background:none;box-shadow:none;border:1px solid color-mix(in oklab,var(--muted-foreground) 70%,transparent)}"
+    },
+    {
+      "name": "Attention Queue Row",
+      "kind": "custom",
+      "refersTo": "queue-row",
+      "description": "Ranked queue row: lamp, source, mono identifier, title, due detail; hairline-separated, keyboard navigable.",
+      "html": "<ul class=\"ds-queue\"><li><button class=\"ds-qrow\"><span class=\"ds-qlamp\"></span><span class=\"ds-qsrc\">task</span><span class=\"ds-qid\">ENG-142</span><span class=\"ds-qtitle\">Fix sync retry backoff</span><span class=\"ds-qdue\">Overdue since Oct 1</span></button></li><li><button class=\"ds-qrow\"><span class=\"ds-qlamp ds-qlamp-info\"></span><span class=\"ds-qsrc\">github</span><span class=\"ds-qid\">#88</span><span class=\"ds-qtitle\">Review the dock hairline</span><span class=\"ds-qdet\">review requested</span></button></li></ul>",
+      "css": ".ds-queue{list-style:none;margin:0;padding:0;background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}.ds-queue li+li{border-top:1px solid color-mix(in oklab,var(--border) 70%,transparent)}.ds-qrow{all:unset;cursor:pointer;box-sizing:border-box;width:100%;display:grid;grid-template-columns:8px 3.25rem minmax(0,7.5rem) minmax(0,1fr) auto;align-items:center;column-gap:12px;padding:12px 16px;font-family:'Geist Variable',sans-serif}.ds-qrow:hover{background:var(--accent)}.ds-qrow:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}.ds-qlamp{width:8px;height:8px;border-radius:9999px;background:var(--destructive);box-shadow:inset 0 0 0 1px color-mix(in oklab,black 22%,transparent)}.ds-qlamp-info{background:var(--info)}.ds-qsrc,.ds-qdet{font-size:12px;color:var(--muted-foreground)}.ds-qid{font:12px ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;color:var(--muted-foreground)}.ds-qtitle{font-size:14px;font-weight:500;color:var(--foreground);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-qdue{font-size:12px;color:var(--destructive);text-align:right}.ds-qdet{text-align:right}"
+    },
     {
       "name": "Primary Button",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Accent-filled action; used sparingly.",
-      "html": "<button class=\"ds-btn-primary\">Save key</button>",
-      "css": ".ds-btn-primary{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--primary);color:var(--primary-foreground);font:500 14px \"Geist Variable\",sans-serif;cursor:pointer;transition:background-color 150ms ease}.ds-btn-primary:hover{background:color-mix(in oklch,var(--primary) 80%,transparent)}.ds-btn-primary:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklch,var(--ring) 50%,transparent)}.ds-btn-primary:active{transform:translateY(1px)}"
+      "description": "Key-filled action; rare, one per view.",
+      "html": "<button class=\"ds-btn-primary\">Open Settings</button>",
+      "css": ".ds-btn-primary{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:var(--primary);color:var(--primary-foreground);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:opacity .15s}.ds-btn-primary:hover{opacity:.9}.ds-btn-primary:focus-visible{outline:2px solid var(--ring);outline-offset:2px}.ds-btn-primary:active{transform:translateY(1px)}"
     },
     {
-      "name": "Ghost Icon Button",
+      "name": "Ghost Button",
       "kind": "button",
       "refersTo": "button-ghost",
-      "description": "The default in-app action: a monochrome icon that brightens on hover.",
-      "html": "<button class=\"ds-btn-ghost\" aria-label=\"New tab\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\"><path d=\"M12 5v14M5 12h14\"/></svg></button>",
-      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;justify-content:center;padding:4px;border:none;border-radius:8px;background:transparent;color:var(--muted-foreground);cursor:pointer;transition:background-color 150ms ease,color 150ms ease}.ds-btn-ghost:hover{background:var(--accent);color:var(--foreground)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ring);outline-offset:1px}"
+      "description": "Default in-app action; transparent until hovered.",
+      "html": "<button class=\"ds-btn-ghost\">Full agenda</button>",
+      "css": ".ds-btn-ghost{height:32px;padding:0 10px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--foreground);font:500 14px 'Geist Variable',sans-serif;cursor:pointer;transition:background .15s}.ds-btn-ghost:hover{background:var(--accent)}.ds-btn-ghost:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
     },
     {
-      "name": "Text Input",
+      "name": "Input",
       "kind": "input",
       "refersTo": "input",
-      "description": "Compact field with an input-token stroke.",
-      "html": "<input class=\"ds-input\" placeholder=\"Search repositories\" />",
-      "css": ".ds-input{height:32px;width:240px;padding:4px 10px;border:1px solid var(--input);border-radius:10px;background:transparent;color:var(--foreground);font:400 14px \"Geist Variable\",sans-serif;outline:none;transition:border-color 150ms ease,box-shadow 150ms ease}.ds-input::placeholder{color:var(--muted-foreground)}.ds-input:focus-visible{border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklch,var(--ring) 50%,transparent)}"
+      "description": "Text field with an input-token stroke and a key-colored caret.",
+      "html": "<input class=\"ds-input\" placeholder=\"Search issues\" />",
+      "css": ".ds-input{height:32px;padding:4px 10px;border:1px solid var(--input);border-radius:10px;background:transparent;color:var(--foreground);caret-color:var(--primary);font:400 14px 'Geist Variable',sans-serif}.ds-input::placeholder{color:var(--muted-foreground)}.ds-input:focus-visible{outline:none;border-color:var(--ring);box-shadow:0 0 0 3px color-mix(in oklab,var(--ring) 50%,transparent)}"
     },
     {
-      "name": "Pill",
-      "kind": "chip",
-      "refersTo": "pill",
-      "description": "Neutral metadata chip; the label variant carries a Linear-colored dot.",
-      "html": "<span class=\"ds-pill\"><span class=\"ds-pill-dot\" style=\"background:#bb87fc\"></span>Frontend</span>",
-      "css": ".ds-pill{display:inline-flex;align-items:center;gap:4px;padding:2px 6px;border:1px solid var(--border);border-radius:8px;color:var(--muted-foreground);font:400 11px \"Geist Variable\",sans-serif}.ds-pill-dot{width:6px;height:6px;border-radius:9999px}"
-    },
-    {
-      "name": "State Badge",
-      "kind": "chip",
-      "refersTo": "pill",
-      "description": "Review/CI state: state-token text over a 10% fill and 30% border.",
-      "html": "<span class=\"ds-badge ds-badge-ok\">Approved</span> <span class=\"ds-badge ds-badge-warn\">Changes requested</span>",
-      "css": ".ds-badge{display:inline-block;padding:2px 6px;border:1px solid;border-radius:8px;font:500 11px \"Geist Variable\",sans-serif}.ds-badge-ok{color:var(--success);background:color-mix(in oklch,var(--success) 10%,transparent);border-color:color-mix(in oklch,var(--success) 30%,transparent)}.ds-badge-warn{color:var(--warning);background:color-mix(in oklch,var(--warning) 10%,transparent);border-color:color-mix(in oklch,var(--warning) 30%,transparent)}"
-    },
-    {
-      "name": "KPI Card",
-      "kind": "card",
-      "refersTo": "card",
-      "description": "Matte dashboard tile: card on background, hairline, no shadow.",
-      "html": "<button class=\"ds-kpi\"><span class=\"ds-kpi-label\">Reviews</span><span class=\"ds-kpi-value\">4</span><span class=\"ds-kpi-meta\">2 waiting over 3 days</span></button>",
-      "css": ".ds-kpi{display:flex;flex-direction:column;width:220px;padding:14px;border:1px solid var(--border);border-radius:14px;background:var(--card);text-align:left;cursor:pointer;transition:border-color 150ms ease}.ds-kpi:hover{border-color:color-mix(in oklch,var(--foreground) 20%,transparent)}.ds-kpi:focus-visible{outline:none;box-shadow:0 0 0 2px color-mix(in oklch,var(--ring) 70%,transparent)}.ds-kpi-label{font:500 11px \"Geist Variable\",sans-serif;color:var(--muted-foreground)}.ds-kpi-value{margin-top:6px;font:600 28px/1 \"Geist Variable\",sans-serif;letter-spacing:-0.025em;font-variant-numeric:tabular-nums;color:var(--foreground)}.ds-kpi-meta{margin-top:12px;font:400 11px \"Geist Variable\",sans-serif;color:var(--muted-foreground)}"
+      "name": "Tab Strip",
+      "kind": "nav",
+      "refersTo": "tab-strip",
+      "description": "Pane tabs on the body tone; the active tab sits on the faceplate color.",
+      "html": "<div class=\"ds-tabs\"><button class=\"ds-tab\">Settings</button><button class=\"ds-tab ds-tab-active\">Dashboard</button><button class=\"ds-tab\">ENG-142</button></div>",
+      "css": ".ds-tabs{display:flex;gap:4px;padding:6px 8px;background:var(--sidebar);border-bottom:1px solid var(--border)}.ds-tab{border:0;border-radius:8px;padding:4px 10px;background:transparent;color:var(--muted-foreground);font:400 12px 'Geist Variable',sans-serif;cursor:pointer;transition:background .15s,color .15s}.ds-tab:hover{background:var(--sidebar-accent);color:var(--foreground)}.ds-tab-active,.ds-tab-active:hover{background:var(--card);color:var(--foreground)}.ds-tab:focus-visible{outline:2px solid var(--ring);outline-offset:-2px}"
     },
     {
       "name": "Dock",
       "kind": "nav",
       "refersTo": "dock",
-      "description": "Floating bottom navigation; monochrome icons, accent only on the active view.",
-      "html": "<nav class=\"ds-dock\"><button class=\"ds-dock-btn ds-active\" aria-label=\"Dashboard\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\" rx=\"1\"/></svg></button><button class=\"ds-dock-btn\" aria-label=\"Calendar\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg></button><button class=\"ds-dock-btn\" aria-label=\"Pull Requests\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"18\" cy=\"18\" r=\"3\"/><circle cx=\"6\" cy=\"6\" r=\"3\"/><path d=\"M13 6h3a2 2 0 0 1 2 2v7M6 9v12\"/></svg></button></nav>",
-      "css": ".ds-dock{display:inline-flex;gap:4px;padding:6px;border:1px solid var(--border);border-radius:18px;background:var(--sidebar);box-shadow:0 25px 50px -12px var(--overlay-shadow)}.ds-dock-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:none;border-radius:14px;background:transparent;color:var(--muted-foreground);cursor:pointer;transition:background-color 150ms ease,color 150ms ease}.ds-dock-btn:hover{background:var(--accent);color:var(--foreground)}.ds-dock-btn:focus-visible{outline:2px solid var(--ring);outline-offset:1px}.ds-dock-btn.ds-active{background:color-mix(in oklch,var(--primary) 20%,transparent);color:var(--primary)}"
-    },
-    {
-      "name": "Pane Tab",
-      "kind": "nav",
-      "refersTo": "tab-active",
-      "description": "Tab strip item; the active tab sits on card, the focused pane gets a 2px accent bar.",
-      "html": "<div class=\"ds-tabs\"><span class=\"ds-tab-bar\"></span><span class=\"ds-tab ds-tab-on\">Dashboard</span><span class=\"ds-tab\">Pull Requests</span></div>",
-      "css": ".ds-tabs{display:flex;align-items:center;gap:4px;padding:6px 8px;border-bottom:1px solid var(--border);background:var(--background)}.ds-tab-bar{width:2px;height:16px;border-radius:9999px;background:var(--primary)}.ds-tab{padding:4px 10px;border-radius:8px;font:400 12px \"Geist Variable\",sans-serif;color:var(--muted-foreground);cursor:pointer;transition:background-color 150ms ease,color 150ms ease}.ds-tab:hover{background:color-mix(in oklch,var(--accent) 50%,transparent);color:var(--foreground)}.ds-tab-on{background:var(--card);color:var(--foreground)}"
+      "description": "Bottom-centred navigation on the body tone with a body hairline and no shadow; the active item takes the key.",
+      "html": "<nav class=\"ds-dock\"><button class=\"ds-dock-btn ds-dock-active\" aria-label=\"Dashboard\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"3\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"5\" rx=\"1\"/><rect x=\"14\" y=\"12\" width=\"7\" height=\"9\" rx=\"1\"/><rect x=\"3\" y=\"16\" width=\"7\" height=\"5\" rx=\"1\"/></svg></button><button class=\"ds-dock-btn\" aria-label=\"Calendar\"><svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"3\" y=\"4\" width=\"18\" height=\"18\" rx=\"2\"/><path d=\"M16 2v4M8 2v4M3 10h18\"/></svg></button></nav>",
+      "css": ".ds-dock{display:inline-flex;gap:4px;padding:6px;border:1px solid var(--sidebar-border);border-radius:18px;background:var(--sidebar)}.ds-dock-btn{display:flex;align-items:center;justify-content:center;width:44px;height:44px;border:0;border-radius:14px;background:transparent;color:var(--muted-foreground);cursor:pointer;transition:background .15s,color .15s}.ds-dock-btn:hover{background:var(--accent);color:var(--foreground)}.ds-dock-active,.ds-dock-active:hover{background:color-mix(in oklab,var(--primary) 20%,transparent);color:var(--primary)}.ds-dock-btn:focus-visible{outline:2px solid var(--ring);outline-offset:2px}"
     }
   ],
   "narrative": {
-    "northStar": "The Matte Workbench",
-    "overview": "Astryn is an all-day instrument for one engineer: dense but calm, read in short check-ins and long planning sessions. The surface is matte. Depth comes from small lightness steps between tinted neutrals (sidebar, background, card, popover), hairline borders, and nothing else at rest. Each theme carries exactly one low-chroma accent, used for selection, focus and the active place in the app.\n\nColor is a signal channel, not decoration. Hue appears only when it reports state (success, warning, destructive, info, merged) or when it is data from Linear (workflow-state and label colors). Navigation, tabs, dock and section icons are monochrome; a screen with nothing wrong is almost colorless.\n\nThe system ships as four interchangeable themes that share one token contract: Graphite (dark, steel-blue accent, the default), Charcoal (dark, warm neutrals, sage accent), Paper (light, warm neutrals, ink-blue accent) and Stone (light, cool neutrals, petrol accent). The owner picks a fixed theme or \"Match system\" with a chosen dark and light pair. Gradients, glows, glass and backdrop blur, and neon or purple-to-blue washes are confirmed rejections (PRODUCT.md brand commitments).",
+    "northStar": "The Instrument Face",
+    "overview": "Astryn is built like one well-made appliance from the Rams-era Braun lineage: a darker matte body holding a lighter faceplate, and on that faceplate only what the owner needs to read. The body (tab strip and dock) and the faceplate (content, panels) differ by lightness alone, in the same hue. Hairlines divide the faceplate into zones; nothing at rest casts a shadow.\n\nColor is a signal channel. One functional key, a signal yellow on the dark finishes and a deep ochre on the light ones, marks \"now\", selection and focus, and it is the same key in all four finishes. Every other hue reports state (success, warning, destructive, info, merged) or is data passed through from Linear. State is shown on round indicator lamps: a lit lamp reports something, an unlit ring means there is nothing to report. A screen with nothing wrong is almost colorless.\n\nThe system ships as four finishes of the same appliance sharing one token contract: Graphite (black finish, cool body, the default), Charcoal (brown-black, warm body), Paper (white lacquer faceplate in a warm grey body) and Stone (cool white faceplate in a brushed-aluminium body). The Dashboard is the first surface composed in this world. The other screens already inherit its tokens (the shared key, orange warning, body-tone chrome, flat dock) but keep their earlier composition until each is redesigned; do not read their card grids or 11px pills as the new world's composition. Gradients, glows, glass, backdrop blur and neon or purple-to-blue washes are confirmed rejections (PRODUCT.md brand commitments).",
     "keyCharacteristics": [
-      "Four themes, one token contract; every component reads roles, never theme names.",
-      "Tinted neutrals stepped by lightness for depth; hairline borders; no gradients.",
-      "One low-chroma accent per theme, reserved for selection, focus and \"you are here\".",
+      "Two-tone matte shell: darker body for chrome, lighter faceplate for content, stepped by lightness only.",
+      "One shared signal-yellow key per finish, reserved for now, selection and focus.",
       "Hue means state; Linear workflow and label colors pass through as data.",
-      "Geist at small, dense sizes; mono for identifiers, clocks and diff counts."
+      "Round indicator lamps for state: lit vs unlit ring.",
+      "Lowercase small-sans control labels; light-weight tabular display numerals.",
+      "One faceplate divided into zones by hairlines; no shadows at rest."
     ],
     "rules": [
       {
+        "name": "The One Key Rule",
+        "body": "The yellow/ochre key appears only for \"now\", selection and focus (and the primary action it implies). It is the same key in every finish; never add a second accent hue or a per-finish accent.",
+        "section": "colors"
+      },
+      {
         "name": "The Color Means State Rule",
-        "body": "A hue may appear only to report state (the five state tokens), to mark selection/focus (primary), or to render Linear-provided workflow-state and label colors. Never color an icon, tab or section by category.",
+        "body": "A hue may appear only to report state (the five state tokens), to mark now/selection/focus (the key), or to render Linear-provided workflow-state and label colors. Never color an icon, tab or section by category.",
+        "section": "colors"
+      },
+      {
+        "name": "The Orange Warning Rule",
+        "body": "Warning stays orange (hue 52 to 60), clear of the key's hue (78 to 95), so a warning is never mistaken for \"now\".",
         "section": "colors"
       },
       {
@@ -1158,46 +1357,62 @@
       },
       {
         "name": "The One Contract Rule",
-        "body": "Every theme defines the identical token set. Components reference roles (`bg-card`, `text-success`), never literal colors; a new theme is a new `[data-theme]` block and nothing else.",
+        "body": "Every finish defines the identical token set. Components reference roles (`bg-card`, `bg-sidebar`, `text-success`), never literal colors; a new finish is a new `[data-theme]` block and nothing else.",
         "section": "colors"
       },
       {
         "name": "The Contrast Floor Rule",
-        "body": "Text and state tokens hold at least 4.5:1 against both background and card in every theme; primary-foreground holds at least 4.5:1 on primary. A new or edited token must pass before it ships.",
+        "body": "Text and state tokens hold at least 4.5:1 against background, card, body and muted in every finish; primary-foreground holds 4.5:1 on primary. A new or edited token must pass before it ships.",
         "section": "colors"
       },
       {
         "name": "The 11px Floor Rule",
-        "body": "No functional text renders below 11px. Weight and color, not shrinking, create the quiet tier.",
+        "body": "No functional text renders below 11px; redesigned surfaces hold 12px. Weight and color, not shrinking, create the quiet tier.",
         "section": "typography"
       },
       {
-        "name": "The Float-Only Shadow Rule",
-        "body": "If it sits in the layout, it has no shadow. Only overlays and the dock lift.",
+        "name": "The Light Numeral Rule",
+        "body": "A reading is a light (300), tabular numeral at 22, 28 or 32px. Never bold a number to make it important; color it destructive if it is an alarm.",
+        "section": "typography"
+      },
+      {
+        "name": "The Lowercase Legend Rule",
+        "body": "Control legends (labels under a reading, lamp names, day names) are lowercase small sans. Headings and titles stay sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The No Shadow At Rest Rule",
+        "body": "If it is part of the layout, including the dock and tab strip, it has no shadow. Only transient overlays lift.",
         "section": "elevation"
       },
       {
         "name": "The No Glass Rule",
-        "body": "No backdrop blur, translucency-as-material, gradients or glows on any surface, in any theme.",
+        "body": "No backdrop blur, translucency-as-material, gradients or glows on any surface, in any finish.",
         "section": "elevation"
       }
     ],
     "dos": [
-      "**Do** reference role tokens (`background`, `card`, `primary`, `success`...) so every component works in all four themes unchanged.",
-      "**Do** keep icons in navigation, tabs, dock and section headers monochrome (muted-foreground, foreground on hover, primary only when active).",
-      "**Do** map priority as Urgent = destructive, High = warning, Medium = info, Low/None = muted-foreground.",
-      "**Do** render Linear workflow-state and label colors exactly as the API supplies them.",
-      "**Do** build state badges as state-token text over a 10% fill and 30% border of the same token.",
-      "**Do** check any new or edited token for 4.5:1 text contrast on background and card, and 3:1 for input strokes and the focus ring, in every theme.",
-      "**Do** take overlay shadows from `--overlay-shadow`, never a hard-coded black."
+      "Do reference role tokens (`background`, `card`, `sidebar`, `primary`, `success`...) so every component works in all four finishes unchanged.",
+      "Do put chrome on the body tone (`bg-sidebar`, `sidebar-accent`, `sidebar-border`) and content on the faceplate (`background`, `card`).",
+      "Do reserve the key for now, selection and focus; one needle, one active item.",
+      "Do report state with round lamps: lit in a state token, or an unlit ring when there is nothing to report.",
+      "Do set readings as light (300) tabular numerals at 22, 28 or 32px, with lowercase 12px legends.",
+      "Do divide a faceplate into zones with hairlines rather than stacking separate cards.",
+      "Do show \"set up\" instead of a number for a source that is on but not connected.",
+      "Do map priority as Urgent = destructive, High = warning, Medium = info, Low/None = muted-foreground.",
+      "Do render Linear workflow-state and label colors exactly as the API supplies them.",
+      "Do draw focus as a solid outline in the ring color so it survives forced-colors mode.",
+      "Do check any new or edited token for 4.5:1 text contrast on background, card, body and muted, and 3:1 for input strokes and the focus ring, in every finish."
     ],
     "donts": [
-      "**Don't** use gradients, glows, glass, backdrop blur, neon accents or purple-to-blue washes.",
-      "**Don't** color an icon, tab or section to tell categories apart.",
-      "**Don't** add a second accent hue to a theme; reach for a state token or for neutrals.",
-      "**Don't** put shadows on resting cards, panels or rows.",
-      "**Don't** set functional text below 11px.",
-      "**Don't** hard-code a hex or a theme name inside a component."
+      "Don't use gradients, glows, glass, backdrop blur, neon accents or purple-to-blue washes.",
+      "Don't add a second accent hue or a per-finish accent; reach for a state token or for neutrals.",
+      "Don't let warning drift toward yellow; it stays orange.",
+      "Don't put shadows on resting panels, rows, the tab strip or the dock.",
+      "Don't color an icon, tab or section to tell categories apart.",
+      "Don't show a zero for a source that is not configured.",
+      "Don't set functional text below 11px, or below 12px on redesigned surfaces.",
+      "Don't hard-code a hex or a finish name inside a component."
     ]
   }
 }
