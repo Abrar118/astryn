@@ -89,8 +89,8 @@ export function WorkflowDialog({ scope, tree, onClose }: { scope: WorkflowScope;
               <li key={row.id ?? `new-${i}`} className="flex items-center gap-2">
                 <Popover
                   buttonTitle="Color"
-                  buttonClassName="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  panelClassName="grid w-40 grid-cols-5 gap-1.5 rounded-md border border-border bg-popover p-2 shadow-2xl"
+                  buttonClassName="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-lg border border-input hover:bg-accent lt-focus"
+                  panelClassName="lt-overlay grid w-40 grid-cols-5 gap-1.5 rounded-lg border border-border bg-popover p-2"
                   button={<StatusIcon type={row.category} color={row.color} />}
                 >
                   {(close) =>
@@ -117,7 +117,7 @@ export function WorkflowDialog({ scope, tree, onClose }: { scope: WorkflowScope;
                   aria-label="Category"
                   value={row.category}
                   onChange={(e) => set(i, { category: e.target.value as LocalStatusCategory })}
-                  className="h-8 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="h-8 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-sm text-foreground lt-focus dark:bg-input/30"
                 >
                   {CATEGORIES.map((c) => (
                     <option key={c.value} value={c.value}>
