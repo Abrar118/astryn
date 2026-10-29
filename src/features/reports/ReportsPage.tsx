@@ -80,20 +80,23 @@ export function ReportsPage() {
             ? { tone: "success", label: `Draft · ${slot.result.model}` }
             : { tone: "neutral", label: "Facts (no AI pass)" };
 
+  const outline = kind === "daily"
+    ? ["done since your last workday", "in progress", "blocked", "pull request activity"]
+    : ["completed this week", "carried over", "new work", "pull request activity"];
+
   return (
     <main className="drawer-scrollbar h-full overflow-y-auto">
-      {/* pb-28 keeps the last block clear of the floating dock */}
-      <div className="flex max-w-[860px] flex-col gap-4 px-4 pt-4 pb-28">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Reports</h1>
-          <p className="text-[13px] text-muted-foreground">
-            Standup-ready updates from your tasks and GitHub PRs.
-          </p>
-        </header>
-
-        <section aria-label="Report" className="dash-panel dash-face overflow-hidden">
-          <div className="dash-zone flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div role="tablist" aria-label="Report type" className="flex w-fit gap-0.5 rounded-lg bg-sidebar p-0.5">
+      {/* A reading column, centred like a document; pb-28 clears the floating dock. */}
+      <div className="mx-auto flex w-full max-w-[760px] flex-col gap-5 px-6 pt-8 pb-28">
+        <header className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+          <div className="min-w-0">
+            <h1 className="text-[20px] font-semibold tracking-tight text-foreground">Reports</h1>
+            <p className="mt-1 text-[13px] text-muted-foreground">
+              Standup-ready updates from your tasks and pull requests.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <div role="tablist" aria-label="Report type" className="flex gap-0.5 rounded-lg border border-border bg-sidebar p-0.5">
               {KINDS.map(({ kind: k, label }) => (
                 <button
                   key={k}
@@ -126,42 +129,51 @@ export function ReportsPage() {
               )}
             </Button>
           </div>
+        </header>
 
-          <dl className="dash-zone flex flex-wrap items-center gap-x-6 gap-y-1.5 px-4 py-2.5 text-[12px]">
-            <div className="flex items-baseline gap-1.5">
-              <dt className="text-muted-foreground">{kind === "daily" ? "covers work since" : "week of"}</dt>
-              <dd className="text-foreground">{win.sinceLabel} · Asia/Dhaka</dd>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <dt className="text-muted-foreground">ai endpoint</dt>
-              <dd className="flex items-center gap-1.5 text-foreground">
-                <IndicatorLamp tone={llmCfg ? "neutral" : "off"} />
-                {llmCfg === undefined ? (
-                  "checking…"
-                ) : llmCfg ? (
-                  llmCfg.model
-                ) : (
-                  <span>
-                    none —{" "}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        requestSettingsSection("ai");
-                        setActiveView("settings");
-                      }}
-                      className="dash-control rounded-sm underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground"
-                    >
-                      configure one
-                    </button>{" "}
-                    for prose, or generate plain facts
-                  </span>
-                )}
-              </dd>
-            </div>
-          </dl>
+        <dl className="flex flex-wrap items-center gap-x-6 gap-y-1.5 border-y border-border py-2.5 text-[12px]">
+          <div className="flex items-baseline gap-1.5">
+            <dt className="text-muted-foreground">{kind === "daily" ? "covers work since" : "week of"}</dt>
+            <dd className="text-foreground">{win.sinceLabel} · Asia/Dhaka</dd>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <dt className="text-muted-foreground">ai endpoint</dt>
+            <dd className="flex items-center gap-1.5 text-foreground">
+              <IndicatorLamp tone={llmCfg ? "success" : "off"} />
+              {llmCfg === undefined ? (
+                "checking…"
+              ) : llmCfg ? (
+                llmCfg.model
+              ) : (
+                <span>
+                  none —{" "}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      requestSettingsSection("ai");
+                      setActiveView("settings");
+                    }}
+                    className="dash-control rounded-sm underline decoration-muted-foreground underline-offset-4 hover:decoration-foreground"
+                  >
+                    configure one
+                  </button>{" "}
+                  for prose, or generate plain facts
+                </span>
+              )}
+            </dd>
+          </div>
+        </dl>
 
-          <div className="dash-zone flex items-center justify-between gap-3 px-4 py-2">
-            <span role="status" className="flex items-center gap-2 text-[12px] text-foreground">
+        {slot.result?.llmError && (
+          <p className="flex items-start gap-2 rounded-lg border border-warning/40 px-4 py-3 text-[12px] text-foreground">
+            <IndicatorLamp tone="warning" className="mt-1" />
+            <span>AI pass failed — this is the deterministic fact sheet. {slot.result.llmError}</span>
+          </p>
+        )}
+
+        <article aria-label="Report" className="dash-panel overflow-hidden">
+          <div className="flex items-center justify-between gap-3 border-b border-border px-6 py-2.5">
+            <span role="status" className="flex items-center gap-2 text-[12px] text-muted-foreground">
               <IndicatorLamp tone={status.tone} />
               {status.label}
             </span>
@@ -179,11 +191,22 @@ export function ReportsPage() {
           </div>
 
           {slot.phase === "idle" ? (
-            <p className="dash-zone px-4 py-5 text-[13px] text-muted-foreground">
-              {kind === "daily"
-                ? "Done / in-progress / blocked since your last workday, plus PR activity — written up as a scrum update."
-                : "Completed, carried-over and new work for this week — written up as a weekly review."}
-            </p>
+            <div className="px-6 py-6">
+              <p className="text-[14px] text-foreground">
+                {kind === "daily" ? "Your scrum update will cover:" : "Your weekly review will cover:"}
+              </p>
+              <ul className="mt-3 flex flex-col gap-2">
+                {outline.map((line) => (
+                  <li key={line} className="flex items-center gap-2.5 text-[14px] text-muted-foreground">
+                    <IndicatorLamp tone="off" />
+                    {line}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-5 text-[12px] text-muted-foreground">
+                Generate to draft it from your cached tasks and pull requests. You can edit the draft before copying.
+              </p>
+            </div>
           ) : (
             <textarea
               ref={outputRef}
@@ -193,29 +216,22 @@ export function ReportsPage() {
               spellCheck={false}
               aria-label="Generated report (editable)"
               placeholder={streaming ? "" : "Nothing generated yet."}
-              className="dash-zone block min-h-[380px] w-full resize-y bg-transparent px-4 py-3 text-[14px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
+              className="block min-h-[420px] w-full resize-y bg-transparent px-6 py-5 text-[15px] leading-[1.65] text-foreground outline-none placeholder:text-muted-foreground focus-visible:shadow-[inset_0_0_0_2px_var(--ring)]"
             />
           )}
+        </article>
 
-          {slot.result?.llmError && (
-            <p className="dash-zone flex items-start gap-2 px-4 py-3 text-[12px] text-foreground">
-              <IndicatorLamp tone="warning" className="mt-1" />
-              <span>AI pass failed — this is the deterministic fact sheet. {slot.result.llmError}</span>
-            </p>
-          )}
-
-          {slot.result?.llmText && (
-            <details className="dash-zone group px-4 py-2.5">
-              <summary className="dash-control flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-[12px] text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
-                <ChevronRight aria-hidden className="size-3.5 transition-transform group-open:rotate-90" />
-                Source facts
-              </summary>
-              <pre className="mt-2 whitespace-pre-wrap pb-1 font-mono text-[12px] leading-relaxed text-muted-foreground">
-                {slot.result.factSheet}
-              </pre>
-            </details>
-          )}
-        </section>
+        {slot.result?.llmText && (
+          <details className="group">
+            <summary className="dash-control flex w-fit cursor-pointer list-none items-center gap-1 rounded-sm text-[12px] text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+              <ChevronRight aria-hidden className="size-3.5 transition-transform group-open:rotate-90" />
+              Source facts
+            </summary>
+            <pre className="mt-2 whitespace-pre-wrap rounded-lg border border-border px-4 py-3 font-mono text-[12px] leading-relaxed text-muted-foreground">
+              {slot.result.factSheet}
+            </pre>
+          </details>
+        )}
       </div>
     </main>
   );
