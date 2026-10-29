@@ -372,7 +372,11 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "get_doc_content"
         | "add_local_docs_source"
         | "get_doc_pdf"
-        | "add_clickup_docs_source" => Some(ModuleId::Docs),
+        | "add_clickup_docs_source"
+        | "list_doc_links"
+        | "create_doc_link"
+        | "update_doc_link"
+        | "delete_doc_link" => Some(ModuleId::Docs),
         "set_clickup_token" | "clear_clickup_token" | "test_clickup_connection" => {
             Some(ModuleId::Clickup)
         }
@@ -469,6 +473,7 @@ mod tests {
             ("slack.rs", include_str!("../commands/slack.rs")),
             ("teams.rs", include_str!("../commands/teams.rs")),
             ("docs.rs", include_str!("../commands/docs.rs")),
+            ("doc_links.rs", include_str!("../commands/doc_links.rs")),
             ("clickup.rs", include_str!("../commands/clickup.rs")),
             ("reports.rs", include_str!("../commands/reports.rs")),
             ("local_tasks.rs", include_str!("../commands/local_tasks.rs")),

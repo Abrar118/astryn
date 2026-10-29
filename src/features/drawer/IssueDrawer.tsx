@@ -370,7 +370,20 @@ function eventIcon(event: ActivityItem): ReactNode {
   }
 }
 
-export function IssueDetail({ id, result, mode, onClose }: { id: string; result: IssueDetailResult; mode: "drawer" | "page"; onClose: () => void }) {
+export function IssueDetail({
+  id,
+  result,
+  mode,
+  onClose,
+  docLinks,
+}: {
+  id: string;
+  result: IssueDetailResult;
+  mode: "drawer" | "page";
+  onClose: () => void;
+  /** App-owned F9 doc links (built by `TaskDetail`), placed after Resources. */
+  docLinks?: ReactNode;
+}) {
   const [, setParams] = useSearchParams();
   const update = useUpdateTask();
   const del = useDeleteTask();
@@ -801,6 +814,8 @@ export function IssueDetail({ id, result, mode, onClose }: { id: string; result:
               </div>
             </DrawerSection>
           )}
+
+          {docLinks && <div className="mt-8">{docLinks}</div>}
 
           {live && (
             <DrawerSection title="Activity" className="border-t border-border pt-6">

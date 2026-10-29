@@ -23,6 +23,7 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 
 pub mod bitbucket;
 pub mod clickup;
+pub mod doc_links;
 pub mod docs;
 pub mod github;
 pub mod local_tasks;
@@ -130,6 +131,12 @@ pub enum CmdError {
     InvalidClickUpLink,
     #[error("That folder can't be read.")]
     DocsFolderUnavailable,
+    #[error("Check the link and try again.")]
+    InvalidDocLink,
+    #[error("That link no longer exists.")]
+    DocLinkNotFound,
+    #[error("That link is already on this task.")]
+    DuplicateDocLink,
     #[error("GitHub rejected the request.")]
     GitHubApi,
     #[error("No Slack token is configured.")]
