@@ -27,7 +27,7 @@ export type SettingsSection =
 
 export type SettingsGroup = {
   label: string;
-  items: { id: SettingsSection; label: string; icon: IconComponent; module: ModuleId | "core" }[];
+  items: { id: SettingsSection; label: string; icon: IconComponent; module: ModuleId | "core"; tint?: string }[];
 };
 
 /**
@@ -39,7 +39,7 @@ export type SettingsGroup = {
 export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     label: "Modules",
-    items: [{ id: "modules", label: "Modules", icon: Blocks, module: "core" }],
+    items: [{ id: "modules", label: "Modules", icon: Blocks, module: "core", tint: "tint-blue" }],
   },
   {
     label: "Connections",
@@ -47,7 +47,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
       { id: "linear", label: "Linear", icon: LinearIcon, module: "linear" },
       { id: "github", label: "GitHub", icon: GitHubIcon, module: "github" },
       { id: "bitbucket", label: "Bitbucket", icon: BitbucketIcon, module: "bitbucket" },
-      { id: "slack", label: "Slack", icon: MessageSquare, module: "slack" },
+      { id: "slack", label: "Slack", icon: MessageSquare, module: "slack", tint: "tint-pink" },
       { id: "teams", label: "Teams", icon: TeamsIcon, module: "teams" },
       { id: "clickup", label: "ClickUp", icon: ClickUpIcon, module: "clickup" },
     ],
@@ -55,16 +55,16 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
   {
     label: "Workspace",
     items: [
-      { id: "local-tasks", label: "Local tasks", icon: ListTodo, module: "local-tasks" },
-      { id: "documentation", label: "Documentation", icon: BookText, module: "docs" },
-      { id: "ai", label: "AI", icon: BrainCircuit, module: "llm" },
+      { id: "local-tasks", label: "Local tasks", icon: ListTodo, module: "local-tasks", tint: "tint-green" },
+      { id: "documentation", label: "Documentation", icon: BookText, module: "docs", tint: "tint-amber" },
+      { id: "ai", label: "AI", icon: BrainCircuit, module: "llm", tint: "tint-violet" },
     ],
   },
   {
     label: "Preferences",
     items: [
-      { id: "appearance", label: "Appearance", icon: Palette, module: "core" },
-      { id: "calendar", label: "Calendar", icon: Calendar, module: "core" },
+      { id: "appearance", label: "Appearance", icon: Palette, module: "core", tint: "tint-pink" },
+      { id: "calendar", label: "Calendar", icon: Calendar, module: "core", tint: "tint-red" },
     ],
   },
 ];

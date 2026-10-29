@@ -48,6 +48,24 @@ export const VIEW_META: Record<NavView, { label: string; icon: IconComponent; mo
   settings: { label: "Settings", icon: SettingsIcon, module: "core" },
 };
 
+/** Icon color per screen (brand marks carry their own and ignore this). */
+export const VIEW_TINT: Record<NavView, string> = {
+  dashboard: "tint-blue",
+  calendar: "tint-red",
+  list: "tint-indigo",
+  "this-week": "tint-orange",
+  graph: "tint-teal",
+  inbox: "tint-cyan",
+  tasks: "tint-green",
+  prs: "",
+  "bitbucket-prs": "",
+  slack: "tint-pink",
+  teams: "",
+  docs: "tint-amber",
+  reports: "tint-violet",
+  settings: "tint-slate",
+};
+
 export const NAV_VIEWS = Object.keys(VIEW_META) as NavView[];
 
 /** Screens the owner can switch off on top of their module. Calendar, Dashboard and Settings always stay on. */
@@ -63,13 +81,13 @@ export function ownerActive(owner: ViewOwner, isActive: IsActive): boolean {
 
 /** Related screens share one dock button: its icon opens the first shown
  *  member (the group's default) and an up-chevron opens the rest. */
-export type DockGroup = { id: string; label: string; icon: IconComponent; views: NavView[] };
+export type DockGroup = { id: string; label: string; icon: IconComponent; tint: string; views: NavView[] };
 
 export const DOCK_GROUPS: DockGroup[] = [
-  { id: "linear", label: "Linear", icon: LinearIcon, views: ["list", "inbox"] },
-  { id: "planning", label: "Planning", icon: CalendarRange, views: ["this-week", "graph"] },
-  { id: "code", label: "Pull requests", icon: GitPullRequest, views: ["prs", "bitbucket-prs"] },
-  { id: "chat", label: "Chat", icon: MessagesSquare, views: ["slack", "teams"] },
+  { id: "linear", label: "Linear", icon: LinearIcon, tint: "", views: ["list", "inbox"] },
+  { id: "planning", label: "Planning", icon: CalendarRange, tint: "tint-orange", views: ["this-week", "graph"] },
+  { id: "code", label: "Pull requests", icon: GitPullRequest, tint: "tint-violet", views: ["prs", "bitbucket-prs"] },
+  { id: "chat", label: "Chat", icon: MessagesSquare, tint: "tint-pink", views: ["slack", "teams"] },
 ];
 
 /** Dock entries in nav order: a lone view, or a group with its shown members.

@@ -43,11 +43,12 @@ function ConnectionItem({ useStatus, label, ...props }: { useStatus: StatusHook 
 type ItemProps = {
   label: string;
   icon: IconComponent;
+  tint?: string;
   selected: boolean;
   onSelect: () => void;
 };
 
-function NavItem({ label, icon: Icon, selected, onSelect, title, children }: ItemProps & { title?: string; children?: ReactNode }) {
+function NavItem({ label, icon: Icon, tint, selected, onSelect, title, children }: ItemProps & { title?: string; children?: ReactNode }) {
   return (
     <button
       type="button"
@@ -59,7 +60,7 @@ function NavItem({ label, icon: Icon, selected, onSelect, title, children }: Ite
         selected ? "bg-accent font-medium text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
       )}
     >
-      <Icon aria-hidden className={cn("size-4 shrink-0", selected ? "text-primary" : "text-muted-foreground")} />
+      <Icon aria-hidden className={cn("size-4 shrink-0", tint || (selected ? "text-primary" : "text-muted-foreground"))} />
       <span className="truncate">{label}</span>
       {children}
     </button>
@@ -95,6 +96,7 @@ export function SettingsNav({
             const props = {
               label: item.label,
               icon: item.icon,
+              tint: item.tint,
               selected: item.id === active,
               onSelect: () => onSelect(item.id),
             };

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { ChevronUp, Plus, RefreshCw } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
-import { VIEW_META, dockEntries, visibleViews, useModules, type DockGroup } from "@/lib/modules";
+import { VIEW_META, VIEW_TINT, dockEntries, visibleViews, useModules, type DockGroup } from "@/lib/modules";
 
 type NavView = Exclude<ViewKind, "issue">;
 
@@ -111,7 +111,7 @@ function DockGroupButton({
             current ? "text-primary" : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
           }`}
         >
-          <GroupIcon className="size-5" />
+          <GroupIcon className={`size-5 ${group.tint}`} />
           <Tooltip>
             {group.label} · {VIEW_META[current ?? defaultView].label}
           </Tooltip>
@@ -156,7 +156,7 @@ function DockGroupButton({
                 onContextMenu={(e) => onContextMenu(view, e)}
                 className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-accent focus-visible:bg-accent"
               >
-                <Icon className="size-4 text-muted-foreground" />
+                <Icon className={`size-4 ${VIEW_TINT[view]}`} />
                 <span className="flex-1">{label}</span>
                 {i === 0 && <span className="text-[11px] text-muted-foreground">default</span>}
                 {selected && <span aria-hidden className="dash-lamp dash-lamp-lit size-1.5 bg-primary" />}
@@ -232,13 +232,13 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
                 onClick={() => setActiveView(view)}
                 onContextMenu={(e) => openContextMenu(view, e)}
               >
-                <Icon className="size-5" />
+                <Icon className={`size-5 ${VIEW_TINT[view]}`} />
               </DockButton>
             );
           })}
           <div className="mx-1 h-6 w-px bg-sidebar-border" />
           <DockButton label={isSyncing ? "Syncing…" : "Refresh"} active={false} onClick={refresh}>
-            <RefreshCw className={`size-5 ${isSyncing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`size-5 tint-green ${isSyncing ? "animate-spin" : ""}`} />
           </DockButton>
         </div>
       </div>

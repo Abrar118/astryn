@@ -1652,3 +1652,29 @@
 .dark .brand-bitbucket { color: #4c9aff; }
 .dark .brand-teams { color: #8d93f0; }
 .dark .brand-clickup { color: #a396f5; }
+
+/* ── Icon tints ───────────────────────────────────────────────────────────
+   The owner wants every dock and Settings icon in color: one hue per screen,
+   with a light-finish / dark-finish pair that holds 3:1 on body and faceplate. */
+.tint-blue { color: #2563eb; }
+.tint-violet { color: #7c3aed; }
+.tint-green { color: #15803d; }
+.tint-orange { color: #c2410c; }
+.tint-teal { color: #0f766e; }
+.tint-pink { color: #be185d; }
+.tint-amber { color: #a16207; }
+.tint-red { color: #b91c1c; }
+.tint-slate { color: #475569; }
+.tint-indigo { color: #4338ca; }
+.tint-cyan { color: #0e7490; }
+.dark .tint-blue { color: #60a5fa; }
+.dark .tint-violet { color: #a78bfa; }
+.dark .tint-green { color: #4ade80; }
+.dark .tint-orange { color: #fb923c; }
+.dark .tint-teal { color: #2dd4bf; }
+.dark .tint-pink { color: #f472b6; }
+.dark .tint-amber { color: #facc15; }
+.dark .tint-red { color: #f87171; }
+.dark .tint-slate { color: #94a3b8; }
+.dark .tint-indigo { color: #818cf8; }
+.dark .tint-cyan { color: #22d3ee; }
