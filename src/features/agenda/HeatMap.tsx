@@ -1,119 +1,123 @@
+import { useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
 import type { HeatWeek, HeatCell } from "./agendaStats";
 
-const WEEKDAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
-
-/** Derive a human-readable weekday name from a YYYY-MM-DD string. */
-function weekdayName(date: string): string {
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const d = new Date(`${date}T00:00:00Z`);
-  return days[d.getUTCDay()] ?? "Day";
-}
+/** Weekday legends for the rows (Sunday first); only every other row is labelled. */
+const WEEKDAY_LEGENDS = ["", "mon", "", "wed", "", "fri", ""];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Format "Mon Jun 21" from a YYYY-MM-DD string. */
 function formatDate(date: string): string {
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const d = new Date(`${date}T00:00:00Z`);
-  return `${weekdayName(date)} ${months[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
+  return `${WEEKDAYS[d.getUTCDay()] ?? "Day"} ${MONTHS[d.getUTCMonth()] ?? ""} ${d.getUTCDate()}`;
 }
 
-/** A heat step: `strength` (0–1) of the theme primary mixed into the empty-cell muted tone. */
+function monthOf(week: HeatWeek | undefined): number {
+  return new Date(`${week?.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth();
+}
+
+/** A heat step: a single neutral ramp from the empty-cell tone up toward the foreground. */
 function heatColor(strength: number): string {
-  return `color-mix(in oklab, var(--primary) ${Math.round(strength * 100)}%, var(--muted))`;
+  return `color-mix(in oklab, var(--foreground) ${Math.round(strength * 100)}%, var(--muted))`;
 }
 
-/** Compute a primary-based background color for a given count and maxCount. */
+/** Five steps by share of the busiest day: 1–20%, 21–40%, 41–60%, 61–80%, 81–100%. */
 function cellBg(count: number, maxCount: number): string | undefined {
   if (count === 0 || maxCount === 0) return undefined;
-  // 5 buckets: 1-20%, 21-40%, 41-60%, 61-80%, 81-100%
   const ratio = count / maxCount;
-  const opacity = ratio <= 0.2 ? 0.2 : ratio <= 0.4 ? 0.4 : ratio <= 0.6 ? 0.6 : ratio <= 0.8 ? 0.8 : 1;
-  return heatColor(opacity);
+  const step = ratio <= 0.2 ? 0.2 : ratio <= 0.4 ? 0.36 : ratio <= 0.6 ? 0.52 : ratio <= 0.8 ? 0.68 : 0.84;
+  return heatColor(step);
 }
 
-const LEGEND_OPACITIES = [0, 0.2, 0.45, 0.7, 1];
+const LEGEND_STEPS = [0, 0.2, 0.36, 0.52, 0.68, 0.84];
 
 interface HeatMapProps {
   weeks: HeatWeek[];
   currentOffset: number;
   onSelectWeek: (offset: number) => void;
+  /** Id of the heading that names the map. */
+  labelledBy?: string;
 }
 
-export function HeatMap({ weeks, currentOffset, onSelectWeek }: HeatMapProps) {
+/**
+ * A year of due dates, one column per week. Each week column is one button;
+ * only the selected week sits in the tab order, and ← / → (the screen's week
+ * keys) move the selection, so focus follows it here.
+ */
+export function HeatMap({ weeks, currentOffset, onSelectWeek, labelledBy }: HeatMapProps) {
   const allCounts = weeks.flatMap((w) => w.cells.map((c) => c.count));
   const maxCount = Math.max(0, ...allCounts);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const selectedRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (rootRef.current?.contains(document.activeElement)) selectedRef.current?.focus();
+  }, [currentOffset]);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-stretch gap-[3px]">
-        {/* Weekday label column — flex rows align to the square cells beside them */}
-        <div className="flex w-3 shrink-0 flex-col gap-[3px]">
-          <span className="h-[14px]" aria-hidden />
-          {WEEKDAY_LETTERS.map((letter, i) => (
-            <span
-              key={i}
-              className="flex flex-1 items-center justify-center text-[9px] leading-none text-muted-foreground"
-            >
-              {letter}
+    <div ref={rootRef} className="flex max-w-[960px] flex-col gap-2.5">
+      <div className="flex items-stretch gap-1.5">
+        {/* Weekday legends: flex rows align to the square cells beside them */}
+        <div aria-hidden className="flex w-7 shrink-0 flex-col gap-[3px]">
+          <span className="h-4" />
+          {WEEKDAY_LEGENDS.map((legend, i) => (
+            <span key={i} className="flex min-h-0 flex-1 items-center text-[11px] leading-none text-muted-foreground">
+              {legend}
             </span>
           ))}
         </div>
 
-        {/* Week columns — each flexes to fill the row, cells stay square */}
-        <div className="flex min-w-0 flex-1 gap-[3px]">
+        <div role="group" aria-labelledby={labelledBy} className="flex min-w-0 flex-1 gap-[3px]">
           {weeks.map((week, weekIdx) => {
             const isSelected = week.offset === currentOffset;
-            const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-            const thisMonth = months[new Date(`${week.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "";
-            const prevMonth = weekIdx === 0 ? null : (months[new Date(`${weeks[weekIdx - 1]?.cells[0]?.date ?? ""}T00:00:00Z`).getUTCMonth()] ?? "");
-            const showMonth = weekIdx === 0 || thisMonth !== prevMonth;
+            const month = monthOf(week);
+            const showMonth = weekIdx > 0 && month !== monthOf(weeks[weekIdx - 1]) && weekIdx < weeks.length - 2;
+            const due = week.cells.reduce((n, c) => n + c.count, 0);
+            const first = week.cells[0]?.date ?? "";
             return (
-              <div
+              <button
                 key={week.offset}
-                className={[
-                  "flex min-w-0 flex-1 flex-col gap-[3px] rounded-sm transition-all duration-100",
-                  isSelected ? "ring-1 ring-ring" : "",
-                ].join(" ")}
+                ref={isSelected ? selectedRef : undefined}
+                type="button"
+                tabIndex={isSelected ? 0 : -1}
+                aria-pressed={isSelected}
+                aria-label={`Week of ${formatDate(first).slice(4)}: ${due} due`}
+                onClick={() => onSelectWeek(week.offset)}
+                className="heat-week group flex min-w-0 flex-1 cursor-pointer flex-col gap-[3px] rounded-[3px] outline-none"
               >
-                {/* Month label — only on first column or when month changes */}
-                <span className="h-[14px] truncate text-center text-[9px] leading-none text-muted-foreground">
-                  {showMonth ? thisMonth : ""}
+                {/* Month legend where a month begins; it may run past its narrow column */}
+                <span aria-hidden className="h-4 overflow-visible whitespace-nowrap text-left text-[11px] leading-none text-muted-foreground">
+                  {showMonth ? MONTHS[month] : ""}
                 </span>
                 {week.cells.map((cell: HeatCell, dayIdx) => {
                   const bg = cellBg(cell.count, maxCount);
-                  const label = `${weekdayName(cell.date)} ${formatDate(cell.date).slice(4)}: ${cell.count} issue${cell.count !== 1 ? "s" : ""}`;
                   return (
-                    <button
+                    <span
                       key={dayIdx}
-                      type="button"
-                      aria-label={label}
-                      title={label}
-                      onClick={() => onSelectWeek(cell.offset)}
-                      className={[
-                        "aspect-square w-full cursor-pointer rounded-[2px] outline-none transition-opacity duration-100",
-                        "focus-visible:ring-1 focus-visible:ring-ring",
-                        cell.count === 0 ? "bg-muted" : "",
-                      ].join(" ")}
+                      title={`${formatDate(cell.date)}: ${cell.count} due`}
+                      className={cn("heat-cell aspect-square w-full rounded-[2px]", cell.count === 0 && "bg-muted")}
                       style={bg ? { backgroundColor: bg } : undefined}
                     />
                   );
                 })}
-              </div>
+              </button>
             );
           })}
         </div>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-1.5 pl-4">
-        <span className="text-[10px] text-muted-foreground">Less</span>
-        {LEGEND_OPACITIES.map((opacity, i) => (
+      <div aria-hidden className="flex items-center gap-1.5 pl-[34px]">
+        <span className="mr-0.5 text-[11px] text-muted-foreground">less</span>
+        {LEGEND_STEPS.map((step) => (
           <span
-            key={i}
-            className="h-2.5 w-2.5 rounded-[2px]"
-            style={{ backgroundColor: opacity === 0 ? "var(--muted)" : heatColor(opacity) }}
+            key={step}
+            className="size-2.5 rounded-[2px]"
+            style={{ backgroundColor: step === 0 ? "var(--muted)" : heatColor(step) }}
           />
         ))}
-        <span className="text-[10px] text-muted-foreground">More</span>
+        <span className="ml-0.5 text-[11px] text-muted-foreground">more</span>
       </div>
     </div>
   );

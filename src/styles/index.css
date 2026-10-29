@@ -1129,3 +1129,46 @@
   }
 }
 
+/* This Week: readouts across the overview, as on the Dashboard face. */
+.week-readouts {
+  display: flex;
+  flex-wrap: wrap;
+  overflow: hidden; /* clips the hairlines that fall on the outer edge */
+}
+
+/* Each readout draws its left and top hairline; on a wrapped row the ones
+   at the edge are clipped, so rows and columns stay divided cleanly. */
+.week-readout {
+  display: flex;
+  flex: 1 1 100px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px 20px 12px;
+  box-shadow: -1px 0 0 var(--border), 0 -1px 0 var(--border);
+}
+
+/* Activity map: the selected week carries a pointer in the key beneath it. */
+.heat-week {
+  position: relative;
+}
+
+.heat-week:hover .heat-cell {
+  box-shadow: inset 0 0 0 1px var(--muted-foreground);
+}
+
+.heat-week[aria-pressed="true"]::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: -6px;
+  left: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--primary);
+}
+
+.heat-week:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
