@@ -180,8 +180,8 @@ components:
     backgroundColor: "{colors.graphite-primary}"
     width: "2px"
   button-primary:
-    backgroundColor: "{colors.graphite-primary}"
-    textColor: "{colors.graphite-primary-foreground}"
+    backgroundColor: "{colors.graphite-foreground}"
+    textColor: "{colors.graphite-background}"
     typography: "{typography.body}"
     rounded: "{rounded.lg}"
     padding: "0 10px"
@@ -355,10 +355,17 @@ The ranked list the face is built around: lamp, lowercase source, mono identifie
 
 ### Buttons
 - **Shape:** 10px radius; 32px default height (24/28/36px for xs/sm/lg).
-- **Primary:** key fill with primary-foreground text; hover drops the fill to 80-90%.
+- **Primary:** a neutral key: foreground fill with background-colored text; hover drops the fill to 85%. Primary actions never take the signal key, which stays reserved for now, selection and focus.
+- **Link:** foreground text with a muted underline that brightens on hover.
 - **Ghost / Outline:** transparent or input-tinted; hover fills with muted or accent.
 - **Destructive:** destructive text on a 10% (20% on dark) destructive fill, never a solid red block.
 - **Focus:** shared buttons switch the border to ring with a 3px ring at 50%; Dashboard controls use a 2px solid outline in the ring color (see Navigation and Focus).
+
+### Setup state
+A screen whose source is not connected shows its 20px page title and one faceplate row: an unlit lamp, "Not connected" with the reason, and a neutral key that fixes it (`components/SetupState.tsx`). Never a centered icon tile with a bold title and a filled button.
+
+### Labels
+Category and column labels are lowercase legends (11–12px, medium, muted), never uppercase with tracking; calendar weekday headers included.
 
 ### Inputs / Fields
 - **Style:** 32px tall, 10px radius, 1px input-token stroke, transparent fill (30% input tint on dark finishes), 14px text, caret in the key.

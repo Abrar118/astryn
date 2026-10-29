@@ -1,3 +1,4 @@
+import { SetupState } from "@/components/SetupState";
 import type { ReactNode } from "react";
 import { AtSign, Hash, MessageCircle, MessagesSquare, RefreshCw, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,6 @@ const SECTION_COPY: Record<ChatSection, { title: string; icon: LucideIcon; empty
 export function CatchupBoard({
   provider,
   notConfigured,
-  icon: ProviderIcon,
   connectText,
   onConnect,
   subtitle,
@@ -34,7 +34,6 @@ export function CatchupBoard({
 }: {
   provider: ChatProvider;
   notConfigured: boolean;
-  icon: LucideIcon;
   connectText: string;
   onConnect: () => void;
   subtitle?: string | null;
@@ -45,16 +44,12 @@ export function CatchupBoard({
 }) {
   if (notConfigured) {
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
-        <span className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
-          <ProviderIcon className="size-7 text-muted-foreground" />
-        </span>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-base font-semibold text-foreground">{provider.name}</h1>
-          <p className="max-w-xs text-sm text-muted-foreground">{connectText}</p>
-        </div>
-        <Button onClick={onConnect}>Connect {provider.name}</Button>
-      </main>
+      <SetupState
+        title={provider.name}
+        message={connectText}
+        action={`Connect ${provider.name}`}
+        onAction={onConnect}
+      />
     );
   }
 
@@ -137,7 +132,7 @@ function Section({
           <span>{empty}</span>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">{children}</div>
+        <div className="overflow-hidden rounded-xl border border-border/60 bg-card">{children}</div>
       )}
     </section>
   );

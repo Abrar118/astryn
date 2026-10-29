@@ -1,3 +1,4 @@
+import { SetupState } from "@/components/SetupState";
 import {
   lazy,
   Suspense,
@@ -56,18 +57,7 @@ function DocsEmptyState({
   action: string;
   onAction: () => void;
 }) {
-  return (
-    <main className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
-      <span className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
-        <BookText className="size-7 text-muted-foreground" />
-      </span>
-      <div className="flex flex-col gap-1">
-        <h1 className="text-base font-semibold text-foreground">Docs</h1>
-        <p className="max-w-xs text-sm text-muted-foreground">{message}</p>
-      </div>
-      <Button onClick={onAction}>{action}</Button>
-    </main>
-  );
+  return <SetupState title="Docs" message={message} action={action} onAction={onAction} />;
 }
 
 /** Header title that doubles as the source picker. */
@@ -398,7 +388,7 @@ export function DocsPage({
               className="flex shrink-0 flex-col overflow-hidden border-r border-border/60 bg-sidebar/40"
             >
               <div className="flex shrink-0 items-center justify-between px-3.5 pb-1.5 pt-3">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                <span className="text-[10px] font-semibold lowercaser text-muted-foreground/80">
                   Contents
                 </span>
                 {(active?.fileCount ?? 0) > 0 && (

@@ -152,7 +152,7 @@ export function CommentComposer({
             title="Send (⌘↵)"
             disabled={submitting}
             onClick={submit}
-            className="flex size-7 items-center justify-center rounded-md bg-primary text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex size-7 items-center justify-center rounded-md bg-foreground text-background transition-opacity hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArrowUp className="size-4" />
           </button>

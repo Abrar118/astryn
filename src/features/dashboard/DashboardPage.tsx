@@ -18,6 +18,7 @@ import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { requestSettingsSection } from "@/features/settings/settingsSection";
 import { trackerModulesActive, viewActive, useModules } from "@/lib/modules";
 import { cn } from "@/lib/utils";
+import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
 import { dhakaToday } from "@/lib/dates";
 import {
   attentionItems,
@@ -30,22 +31,6 @@ import {
   type DueLoadDay,
   type WorkloadBucket,
 } from "./dashboard";
-
-/** Indicator-lamp states: a lit lamp reports state, an unlit ring means "nothing to report". */
-type Lamp = "danger" | "warning" | "info" | "success" | "neutral" | "off";
-
-const LAMP_CLASS: Record<Lamp, string> = {
-  danger: "dash-lamp-lit bg-destructive",
-  warning: "dash-lamp-lit bg-warning",
-  info: "dash-lamp-lit bg-info",
-  success: "dash-lamp-lit bg-success",
-  neutral: "dash-lamp-lit bg-muted-foreground",
-  off: "border border-muted-foreground/70",
-};
-
-function IndicatorLamp({ tone, className }: { tone: Lamp; className?: string }) {
-  return <span aria-hidden className={cn("dash-lamp", LAMP_CLASS[tone], className)} />;
-}
 
 function SectionTitle({
   id,
@@ -567,7 +552,7 @@ export function DashboardPage() {
           <button
             type="button"
             onClick={() => setActiveView("settings")}
-            className="dash-control mt-1 rounded-md bg-primary px-3 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90"
+            className="dash-control mt-1 rounded-md bg-foreground px-3 py-1.5 text-[13px] font-medium text-background transition-opacity hover:opacity-90"
           >
             Open Settings
           </button>

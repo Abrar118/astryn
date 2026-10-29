@@ -72,7 +72,7 @@ export function UnscheduledRail({
           <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">
             {issues.length}
           </span>
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground [writing-mode:vertical-rl]">
+          <span className="text-xs font-semibold lowercase text-muted-foreground [writing-mode:vertical-rl]">
             Unscheduled
           </span>
         </button>
@@ -88,7 +88,7 @@ export function UnscheduledRail({
     >
       <div className="flex items-center justify-between px-3 py-3">
         <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <span className="text-xs font-semibold lowercase text-muted-foreground">
             Unscheduled
           </span>
           <span className="rounded-full bg-secondary px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground">

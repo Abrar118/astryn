@@ -271,7 +271,7 @@ function ResourceActionsMenu({
             type="button"
             onClick={save}
             disabled={!title.trim()}
-            className="flex-1 cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            className="flex-1 cursor-pointer rounded-md bg-foreground px-2 py-1.5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Save
           </button>
@@ -1125,7 +1125,7 @@ function RailCard({ title, children, action }: { title: string; children: ReactN
   return (
     <div className="rounded-xl border border-border bg-card">
       <div className="flex items-center px-3 py-2">
-        <button type="button" onClick={() => setOpen((o) => !o)} className="flex flex-1 items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="flex flex-1 items-center gap-1.5 text-xs font-medium lowercase text-muted-foreground">
           {title}
           <ChevronDown className={`size-3.5 transition-transform ${open ? "" : "-rotate-90"}`} />
         </button>

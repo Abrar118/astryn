@@ -23,7 +23,7 @@ function StatsCard({ counts, total }: { counts: AgendaCounts; total: number }) {
   return (
     <div className="flex flex-col gap-2 lg:w-60 lg:shrink-0">
       <div className="flex items-baseline justify-between">
-        <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+        <p className="text-[11px] font-medium lowercasest text-muted-foreground">
           This week
         </p>
         <p className="text-[11px] text-muted-foreground">
@@ -38,7 +38,7 @@ function StatsCard({ counts, total }: { counts: AgendaCounts; total: number }) {
         >
           <div className="flex items-center gap-1.5">
             <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: t.color }} />
-            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+            <span className="text-[10px] font-medium lowercase text-muted-foreground">
               {t.label}
             </span>
           </div>
@@ -222,7 +222,7 @@ export function AgendaView() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
             <div className="flex min-w-0 flex-1 flex-col">
               <div className="mb-2 flex items-baseline justify-between">
-                <p className="text-[11px] font-medium uppercase tracking-widest text-muted-foreground">
+                <p className="text-[11px] font-medium lowercasest text-muted-foreground">
                   Activity
                 </p>
                 <p className="text-[11px] text-muted-foreground">Last 12 months · click a column to jump</p>

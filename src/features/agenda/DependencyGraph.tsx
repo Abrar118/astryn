@@ -219,7 +219,7 @@ type GroupNodeData = { label: string; count: number };
 function GroupNode({ data }: { data: GroupNodeData }) {
   return (
     <div className="pointer-events-none h-full w-full rounded-xl border border-border/70 bg-muted/10">
-      <div className="px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+      <div className="px-2.5 py-1 text-[10px] font-medium lowercase text-muted-foreground">
         {data.label} <span className="text-muted-foreground/50">· {data.count}</span>
       </div>
     </div>

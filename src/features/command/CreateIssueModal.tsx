@@ -438,7 +438,7 @@ export function CreateIssueModal({ seed = null, onClose }: { seed?: CreateSeed |
             type="button"
             onClick={submit}
             disabled={!title.trim() || !teamId || create.isPending}
-            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {create.isPending ? "Creating…" : "Create issue"}
           </button>

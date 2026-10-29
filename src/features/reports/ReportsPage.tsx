@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { gooeyToast } from "goey-toast";
-import { Copy, Loader2, NotebookPen, RefreshCw, Sparkles } from "lucide-react";
+import { Copy, Loader2, NotebookPen, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { errorText, getLlmConfig, type ReportKind } from "@/lib/commands";
@@ -121,7 +121,7 @@ export function ReportsPage() {
               </>
             ) : (
               <>
-                <Sparkles className="size-4" /> Generate
+                Generate
               </>
             )}
           </Button>

@@ -9,7 +9,7 @@ import {
   MessageSquare,
   MessagesSquare,
   Palette,
-  Sparkles,
+  Cpu,
   SquareKanban,
   type LucideIcon,
 } from "lucide-react";
@@ -61,7 +61,7 @@ export const SETTINGS_GROUPS: SettingsGroup[] = [
     items: [
       { id: "local-tasks", label: "Local tasks", icon: ListTodo, module: "local-tasks" },
       { id: "documentation", label: "Documentation", icon: BookText, module: "docs" },
-      { id: "ai", label: "AI", icon: Sparkles, module: "llm" },
+      { id: "ai", label: "AI", icon: Cpu, module: "llm" },
     ],
   },
   {

@@ -1,3 +1,4 @@
+import { SetupState } from "@/components/SetupState";
 import { useState } from "react";
 import {
   Eye,
@@ -90,12 +91,12 @@ function ActivityCard({
 }) {
   const heatmap = contributions !== undefined;
   return (
-    <section className="rounded-xl border border-border/60 bg-card px-4 py-3 shadow-sm">
+    <section className="rounded-xl border border-border/60 bg-card px-4 py-3">
       <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
         {heatmap && (
           <div className="min-w-0 flex-1">
             <div className="mb-2 flex items-baseline justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+              <p className="text-[10px] font-semibold lowercase text-muted-foreground">
                 Activity
               </p>
               <p className="text-[11px] text-muted-foreground">
@@ -185,25 +186,15 @@ function PrWorkspace({ host }: { host: CodeHostApi }) {
 
   if (status?.state === "not_configured") {
     return (
-      <main className="flex h-full flex-col items-center justify-center gap-4 p-10 text-center">
-        <span className="flex size-14 items-center justify-center rounded-2xl bg-muted/50">
-          <GitPullRequest className="size-7 text-muted-foreground" />
-        </span>
-        <div className="flex flex-col gap-1">
-          <h1 className="text-base font-semibold text-foreground">{host.title}</h1>
-          <p className="max-w-xs text-sm text-muted-foreground">
-            Link your {host.name} account to see your pull requests.
-          </p>
-        </div>
-        <Button
-          onClick={() => {
-            requestSettingsSection(host.settingsSection);
-            setActiveView("settings");
-          }}
-        >
-          Connect {host.name}
-        </Button>
-      </main>
+      <SetupState
+        title={host.title}
+        message={`Link your ${host.name} account to see your pull requests.`}
+        action={`Connect ${host.name}`}
+        onAction={() => {
+          requestSettingsSection(host.settingsSection);
+          setActiveView("settings");
+        }}
+      />
     );
   }
 

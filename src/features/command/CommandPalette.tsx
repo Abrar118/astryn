@@ -369,7 +369,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
             return (
               <div key={it.kind === "cmd" ? `c-${it.cmd.key}` : `i-${it.issue.id}`}>
                 {heading && (
-                  <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  <div className="px-2.5 pb-1 pt-2 text-[11px] font-medium lowercase text-muted-foreground">
                     {heading}
                   </div>
                 )}

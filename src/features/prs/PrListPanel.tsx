@@ -53,7 +53,7 @@ export function PrListPanel({
 }) {
   const groups = groupByRepo ? groupedByRepository(prs) : null;
   return (
-    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm">
+    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border/60 bg-card">
       <header className="flex shrink-0 items-center gap-2.5 border-b border-border/50 bg-muted/10 px-4 py-3">
         <GitPullRequest className="size-4 text-primary" />
         <h2 className="text-sm font-semibold tracking-tight text-foreground">{title}</h2>

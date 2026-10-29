@@ -134,7 +134,7 @@ export function PrSidebar({
       </nav>
 
       <div className="mt-5 flex items-center justify-center px-1 lg:justify-between">
-        <span className="hidden text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground lg:block">
+        <span className="hidden text-[10px] font-semibold lowercase text-muted-foreground lg:block">
           Favorite repositories
         </span>
         <button

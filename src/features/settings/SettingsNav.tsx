@@ -22,7 +22,7 @@ export function SettingsNav({
       <span className="px-2 text-sm font-semibold tracking-tight text-foreground">Settings</span>
       {visibleGroups.map((group) => (
         <div key={group.label} className="flex flex-col gap-0.5">
-          <span className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+          <span className="px-2 pb-1 text-[10px] font-semibold lowercaser text-muted-foreground/80">
             {group.label}
           </span>
           {group.items.map((item) => {

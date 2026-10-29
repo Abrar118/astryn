@@ -460,10 +460,9 @@
 }
 .fc .fc-col-header-cell-cushion {
   padding: 0.5rem 0.5rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: lowercase;
   color: var(--muted-foreground);
 }
 
@@ -563,7 +562,7 @@
   color: var(--muted-foreground);
   font-weight: 500;
   font-size: 0.6875rem;
-  text-transform: uppercase;
+  text-transform: lowercase;
 }
 .rdp-day_button {
   color: var(--foreground);

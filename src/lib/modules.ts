@@ -18,7 +18,7 @@ import {
   Network,
   NotebookPen,
   Settings as SettingsIcon,
-  Sparkles,
+  Cpu,
   SquareKanban,
   type LucideIcon,
 } from "lucide-react";
@@ -156,7 +156,7 @@ export const MODULE_COPY: Record<
   linear: { name: "Linear", icon: SquareKanban, description: "Issues, calendar, dependencies and inbox.", removes: ["Linear API key", "cached issues"] },
   github: { name: "GitHub", icon: GitBranch, description: "Pull requests and repository documentation.", removes: ["GitHub token", "favorite repositories", "cached pull requests", "cached docs files"] },
   slack: { name: "Slack", icon: MessageSquare, description: "Messages and mentions from your workspace.", removes: ["Slack token and cookie", "cached Slack messages"] },
-  llm: { name: "AI", icon: Sparkles, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
+  llm: { name: "AI", icon: Cpu, description: "Summaries and polish for reports.", removes: ["AI endpoint URL", "model name", "API key"] },
   docs: { name: "Docs", icon: BookText, description: "Docs from GitHub repositories, ClickUp Docs and local folders, and doc links on tasks.", removes: ["documentation sources (your local files are kept)", "cached docs", "doc links on tasks"] },
   reports: { name: "Reports", icon: NotebookPen, description: "Daily scrum and weekly review.", removes: [] },
   "link-previews": { name: "Link previews", icon: Link2, description: "Rich previews for pasted links.", removes: [] },

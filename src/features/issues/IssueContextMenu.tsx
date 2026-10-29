@@ -306,7 +306,7 @@ function AddLinkSubmenu({ issueId, flip, onClose }: { issueId: string; flip: boo
           type="button"
           onClick={submit}
           disabled={!url.trim()}
-          className="w-full cursor-pointer rounded-md bg-primary px-2 py-1.5 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+          className="w-full cursor-pointer rounded-md bg-foreground px-2 py-1.5 text-[13px] font-medium text-background transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
         >
           Add link
         </button>
