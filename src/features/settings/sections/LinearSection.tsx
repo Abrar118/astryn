@@ -4,7 +4,7 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { ConnectionReadout, SettingsPanel } from "../SettingsPanel";
 import {
   clearLinearKey,
   errorText,
@@ -94,43 +94,54 @@ export function LinearSection() {
   return (
     <>
       <SectionHeader title="Linear" description="The workspace Astryn reads issues from." />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {status === undefined
-            ? "Checking…"
-            : status.state === "connected"
-              ? `Connected as ${status.name}`
-              : status.state === "unverified"
-                ? "Key saved — not verified"
-                : "Not connected"}
-        </p>
-        <form className="flex flex-col gap-3" onSubmit={handleSave}>
+      <SettingsPanel label="Linear connection">
+        <ConnectionReadout
+          state={status?.state}
+          text={
+            status === undefined
+              ? "Checking…"
+              : status.state === "connected"
+                ? `Connected as ${status.name}`
+                : status.state === "unverified"
+                  ? "Key saved — not verified"
+                  : "Not connected"
+          }
+          detail={status?.state === "not_configured" ? "Paste a personal API key below." : undefined}
+          actions={
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => testMut.mutate()}>
+                Test connection
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => resyncMut.mutate()}>
+                Resync workspace
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => clearMut.mutate()}>
+                Clear key
+              </Button>
+            </>
+          }
+        />
+        <form className="dash-zone flex flex-col gap-2 px-4 py-4" onSubmit={handleSave}>
           <Label htmlFor="linear-key">Linear personal API key</Label>
-          <Input
-            id="linear-key"
-            type="password"
-            autoComplete="off"
-            placeholder="lin_api_…"
-            value={keyInput}
-            onChange={(e) => setKeyInput(e.currentTarget.value)}
-            disabled={busy}
-          />
           <div className="flex gap-2">
+            <Input
+              id="linear-key"
+              type="password"
+              autoComplete="off"
+              placeholder="lin_api_…"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.currentTarget.value)}
+              disabled={busy}
+            />
             <Button type="submit" disabled={busy}>
               Save
             </Button>
-            <Button type="button" variant="secondary" disabled={busy} onClick={() => testMut.mutate()}>
-              Test connection
-            </Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => clearMut.mutate()}>
-              Clear key
-            </Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => resyncMut.mutate()}>
-              Resync workspace
-            </Button>
           </div>
+          <p className="text-[12px] text-muted-foreground">
+            Stored in the system keychain and never shown again.
+          </p>
         </form>
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

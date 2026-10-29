@@ -4,7 +4,7 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { ConnectionReadout, SettingsPanel } from "../SettingsPanel";
 import {
   clearClickupToken,
   errorText,
@@ -69,42 +69,49 @@ export function ClickupSection() {
   return (
     <>
       <SectionHeader title="ClickUp" description="Lets the Docs page read ClickUp Docs." />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {status === undefined
-            ? "Checking…"
-            : status.state === "connected"
-              ? `Connected as ${status.username}`
-              : status.state === "unverified"
-                ? "Token saved — not verified"
-                : "Not connected"}
-        </p>
-        <form className="flex flex-col gap-3" onSubmit={handleSave}>
+      <SettingsPanel label="ClickUp connection">
+        <ConnectionReadout
+          state={status?.state}
+          text={
+            status === undefined
+              ? "Checking…"
+              : status.state === "connected"
+                ? `Connected as ${status.username}`
+                : status.state === "unverified"
+                  ? "Token saved — not verified"
+                  : "Not connected"
+          }
+          actions={
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => testMut.mutate()}>
+                Test connection
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => clearMut.mutate()}>
+                Clear token
+              </Button>
+            </>
+          }
+        />
+        <form className="dash-zone flex flex-col gap-2 px-4 py-4" onSubmit={handleSave}>
           <Label htmlFor="clickup-token">ClickUp personal API token</Label>
-          <Input
-            id="clickup-token"
-            type="password"
-            autoComplete="off"
-            placeholder="pk_…"
-            value={tokenInput}
-            onChange={(e) => setTokenInput(e.currentTarget.value)}
-            disabled={busy}
-          />
-          <p className="text-xs text-muted-foreground">
+          <div className="flex gap-2">
+            <Input
+              id="clickup-token"
+              type="password"
+              autoComplete="off"
+              placeholder="pk_…"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <Button type="submit" disabled={busy}>Save ClickUp token</Button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
             Create one in ClickUp under Settings → Apps → API Token. It is stored in your system
             keychain and only used to read the Docs you add.
           </p>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={busy}>Save ClickUp token</Button>
-            <Button type="button" variant="secondary" disabled={busy} onClick={() => testMut.mutate()}>
-              Test connection
-            </Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => clearMut.mutate()}>
-              Clear token
-            </Button>
-          </div>
         </form>
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

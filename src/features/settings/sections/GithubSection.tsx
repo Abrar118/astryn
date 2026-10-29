@@ -4,7 +4,7 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { ConnectionReadout, SettingsPanel } from "../SettingsPanel";
 import {
   clearGithubToken,
   errorText,
@@ -72,42 +72,49 @@ export function GithubSection() {
         title="GitHub"
         description="Powers pull requests, contributions and the documentation viewer."
       />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {ghStatus === undefined
-            ? "Checking…"
-            : ghStatus.state === "connected"
-              ? `Connected as ${ghStatus.login}`
-              : ghStatus.state === "unverified"
-                ? "Token saved — not verified"
-                : "Not connected"}
-        </p>
-        <form className="flex flex-col gap-3" onSubmit={handleGhSave}>
+      <SettingsPanel label="GitHub connection">
+        <ConnectionReadout
+          state={ghStatus?.state}
+          text={
+            ghStatus === undefined
+              ? "Checking…"
+              : ghStatus.state === "connected"
+                ? `Connected as ${ghStatus.login}`
+                : ghStatus.state === "unverified"
+                  ? "Token saved — not verified"
+                  : "Not connected"
+          }
+          actions={
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={ghBusy} onClick={() => ghTestMut.mutate()}>
+                Test connection
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={ghBusy} onClick={() => ghClearMut.mutate()}>
+                Clear token
+              </Button>
+            </>
+          }
+        />
+        <form className="dash-zone flex flex-col gap-2 px-4 py-4" onSubmit={handleGhSave}>
           <Label htmlFor="github-token">GitHub personal access token (classic)</Label>
-          <Input
-            id="github-token"
-            type="password"
-            autoComplete="off"
-            placeholder="ghp_…"
-            value={ghInput}
-            onChange={(e) => setGhInput(e.currentTarget.value)}
-            disabled={ghBusy}
-          />
-          <p className="text-xs text-muted-foreground">
+          <div className="flex gap-2">
+            <Input
+              id="github-token"
+              type="password"
+              autoComplete="off"
+              placeholder="ghp_…"
+              value={ghInput}
+              onChange={(e) => setGhInput(e.currentTarget.value)}
+              disabled={ghBusy}
+            />
+            <Button type="submit" disabled={ghBusy}>Save GitHub token</Button>
+          </div>
+          <p className="text-[12px] text-muted-foreground">
             Needs <code>repo</code> scope. Add <code>read:org</code> only if org/team membership is
             required. Classic tokens grant broad repo access; for SSO orgs, authorize the token.
           </p>
-          <div className="flex gap-2">
-            <Button type="submit" disabled={ghBusy}>Save GitHub token</Button>
-            <Button type="button" variant="secondary" disabled={ghBusy} onClick={() => ghTestMut.mutate()}>
-              Test connection
-            </Button>
-            <Button type="button" variant="ghost" disabled={ghBusy} onClick={() => ghClearMut.mutate()}>
-              Clear token
-            </Button>
-          </div>
         </form>
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

@@ -4,7 +4,7 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { ConnectionReadout, SettingsPanel } from "../SettingsPanel";
 import {
   clearBitbucketCredentials,
   errorText,
@@ -73,54 +73,65 @@ export function BitbucketSection() {
   return (
     <>
       <SectionHeader title="Bitbucket" description="Powers Bitbucket Cloud pull requests." />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {status === undefined
-            ? "Checking…"
-            : status.state === "connected"
-              ? `Connected as ${status.login}`
-              : status.state === "unverified"
-                ? "Credentials saved — not verified"
-                : "Not connected"}
-        </p>
-        <form className="flex flex-col gap-3" onSubmit={handleSave}>
-          <Label htmlFor="bitbucket-email">Atlassian account email</Label>
-          <Input
-            id="bitbucket-email"
-            type="text"
-            autoComplete="off"
-            placeholder="you@company.com"
-            value={email}
-            onChange={(e) => setEmail(e.currentTarget.value)}
-            disabled={busy}
-          />
-          <Label htmlFor="bitbucket-token">API token</Label>
-          <Input
-            id="bitbucket-token"
-            type="password"
-            autoComplete="off"
-            placeholder="ATATT…"
-            value={token}
-            onChange={(e) => setToken(e.currentTarget.value)}
-            disabled={busy}
-          />
-          <p className="text-xs text-muted-foreground">
+      <SettingsPanel label="Bitbucket connection">
+        <ConnectionReadout
+          state={status?.state}
+          text={
+            status === undefined
+              ? "Checking…"
+              : status.state === "connected"
+                ? `Connected as ${status.login}`
+                : status.state === "unverified"
+                  ? "Credentials saved — not verified"
+                  : "Not connected"
+          }
+          actions={
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={busy} onClick={() => testMut.mutate()}>
+                Test connection
+              </Button>
+              <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={() => clearMut.mutate()}>
+                Clear credentials
+              </Button>
+            </>
+          }
+        />
+        <form className="dash-zone grid gap-x-3 gap-y-3 px-4 py-4 sm:grid-cols-2" onSubmit={handleSave}>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bitbucket-email">Atlassian account email</Label>
+            <Input
+              id="bitbucket-email"
+              type="text"
+              autoComplete="off"
+              placeholder="you@company.com"
+              value={email}
+              onChange={(e) => setEmail(e.currentTarget.value)}
+              disabled={busy}
+            />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="bitbucket-token">API token</Label>
+            <Input
+              id="bitbucket-token"
+              type="password"
+              autoComplete="off"
+              placeholder="ATATT…"
+              value={token}
+              onChange={(e) => setToken(e.currentTarget.value)}
+              disabled={busy}
+            />
+          </div>
+          <p className="text-[12px] text-muted-foreground sm:col-span-2">
             Create an Atlassian API token with the Bitbucket scopes <code>read:user</code>,{" "}
             <code>read:workspace</code>, <code>read:repository</code> and{" "}
             <code>read:pullrequest</code>. A legacy app password also works: enter your Bitbucket
             username instead of the email.
           </p>
-          <div className="flex gap-2">
+          <div className="sm:col-span-2">
             <Button type="submit" disabled={busy}>Save Bitbucket credentials</Button>
-            <Button type="button" variant="secondary" disabled={busy} onClick={() => testMut.mutate()}>
-              Test connection
-            </Button>
-            <Button type="button" variant="ghost" disabled={busy} onClick={() => clearMut.mutate()}>
-              Clear credentials
-            </Button>
           </div>
         </form>
-      </Card>
+      </SettingsPanel>
     </>
   );
 }

@@ -4,7 +4,8 @@ import { gooeyToast } from "goey-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card } from "@/components/ui/card";
+import { IndicatorLamp } from "@/components/IndicatorLamp";
+import { ConnectionReadout, SettingsPanel, SettingsZone } from "../SettingsPanel";
 import {
   clearSlackToken,
   detectSlackCredentials,
@@ -79,45 +80,66 @@ export function SlackSection() {
   return (
     <>
       <SectionHeader title="Slack" description="Read-only catch-up on your Slack conversations." />
-      <Card className="flex flex-col gap-4 p-6">
-        <p className="text-sm text-muted-foreground">
-          {slackStatus === undefined
-            ? "Checking…"
-            : slackStatus.state === "connected"
-              ? `Connected as ${slackStatus.userName}${slackStatus.workspaceName ? ` · ${slackStatus.workspaceName}` : ""}`
-              : slackStatus.state === "unverified"
-                ? "Credentials saved — not verified"
-                : "Not connected"}
-        </p>
-        <div className="flex flex-col gap-3">
-          <Button type="button" disabled={slackBusy} onClick={() => slackDetectMut.mutate()}>
-            Detect from Slack app
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Reads your signed-in Slack desktop app. macOS may ask to allow keychain access once. Uses your Slack session (xoxc/xoxd) — against Slack's API terms and possibly your employer's policy; read-only.
+      <SettingsPanel label="Slack connection">
+        <ConnectionReadout
+          state={slackStatus?.state}
+          text={
+            slackStatus === undefined
+              ? "Checking…"
+              : slackStatus.state === "connected"
+                ? `Connected as ${slackStatus.userName}`
+                : slackStatus.state === "unverified"
+                  ? "Credentials saved — not verified"
+                  : "Not connected"
+          }
+          detail={slackStatus?.state === "connected" ? slackStatus.workspaceName ?? undefined : undefined}
+          actions={
+            <>
+              <Button type="button" variant="outline" size="sm" disabled={slackBusy} onClick={() => slackTestMut.mutate()}>Test connection</Button>
+              <Button type="button" variant="ghost" size="sm" disabled={slackBusy} onClick={() => slackClearMut.mutate()}>Clear credentials</Button>
+            </>
+          }
+        />
+        <SettingsZone
+          title="Detect from the desktop app"
+          hint="Reads your signed-in Slack desktop app. macOS may ask to allow keychain access once."
+          aside={
+            <Button type="button" disabled={slackBusy} onClick={() => slackDetectMut.mutate()}>
+              Detect from Slack app
+            </Button>
+          }
+        >
+          <p className="flex items-start gap-2 text-[12px] text-muted-foreground">
+            <IndicatorLamp tone="warning" className="mt-1" />
+            Uses your Slack session (xoxc/xoxd) — against Slack's API terms and possibly your employer's policy; read-only.
           </p>
+        </SettingsZone>
+        <div className="dash-zone flex flex-col gap-3 px-4 py-3">
           <button
             type="button"
-            className="w-fit text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            aria-expanded={slackManualOpen}
+            className="dash-control w-fit rounded-sm text-[12px] text-muted-foreground underline decoration-muted-foreground underline-offset-4 hover:text-foreground"
             onClick={() => setSlackManualOpen((o) => !o)}
           >
             {slackManualOpen ? "Hide manual entry" : "Enter manually"}
           </button>
           {slackManualOpen && (
-            <form className="flex flex-col gap-3" onSubmit={handleSlackSave}>
-              <Label htmlFor="slack-token">xoxc token</Label>
-              <Input id="slack-token" type="password" autoComplete="off" placeholder="xoxc-…" value={slackInput} onChange={(e) => setSlackInput(e.currentTarget.value)} disabled={slackBusy} />
-              <Label htmlFor="slack-cookie">xoxd cookie</Label>
-              <Input id="slack-cookie" type="password" autoComplete="off" placeholder="xoxd-…" value={slackCookieInput} onChange={(e) => setSlackCookieInput(e.currentTarget.value)} disabled={slackBusy} />
-              <div className="flex gap-2">
+            <form className="grid gap-x-3 gap-y-2 sm:grid-cols-2" onSubmit={handleSlackSave}>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="slack-token">xoxc token</Label>
+                <Input id="slack-token" type="password" autoComplete="off" placeholder="xoxc-…" value={slackInput} onChange={(e) => setSlackInput(e.currentTarget.value)} disabled={slackBusy} />
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="slack-cookie">xoxd cookie</Label>
+                <Input id="slack-cookie" type="password" autoComplete="off" placeholder="xoxd-…" value={slackCookieInput} onChange={(e) => setSlackCookieInput(e.currentTarget.value)} disabled={slackBusy} />
+              </div>
+              <div className="sm:col-span-2">
                 <Button type="submit" disabled={slackBusy}>Save credentials</Button>
-                <Button type="button" variant="secondary" disabled={slackBusy} onClick={() => slackTestMut.mutate()}>Test connection</Button>
-                <Button type="button" variant="ghost" disabled={slackBusy} onClick={() => slackClearMut.mutate()}>Clear credentials</Button>
               </div>
             </form>
           )}
         </div>
-      </Card>
+      </SettingsPanel>
     </>
   );
 }
