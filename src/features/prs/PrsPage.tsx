@@ -117,7 +117,7 @@ function ReadoutZone({
           ))}
         </ul>
         {heatmap && (
-          <div className="min-w-0 flex-1 border-t border-border px-4 pt-3 pb-3 @5xl:border-t-0 @5xl:border-l">
+          <div className="hidden min-w-0 flex-1 border-t border-border px-4 pt-3 pb-3 @3xl:block @5xl:border-t-0 @5xl:border-l">
             <div className="max-w-[760px]">
             <div className="mb-2 flex items-baseline justify-between gap-3">
               <h2 className="text-[13px] font-semibold tracking-tight text-foreground">Activity</h2>
