@@ -3,7 +3,7 @@
 **Product:** Astryn — a local-first Linear power client (Phase 1) and Slack catch-up board (Phase 2, iteration 1)
 **Audience:** coding agents (Claude Code, Codex) — see `AGENTS.md` for repository working rules
 **Owner:** Abrar
-**Status (v0.4.0):** Phase 1 milestones M0–M6 shipped (F9 per-task doc links landed 2026-10-29), plus a dashboard, a documentation browser, and LLM-assisted report generators beyond the original plan. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
+**Status (v5.0.1):** Phase 1 milestones M0–M6 shipped (F9 per-task doc links landed 2026-10-29), plus a dashboard, a documentation browser, and LLM-assisted report generators beyond the original plan. Phase 2 iteration 1 (Slack catch-up board) is also shipped.
 **Last updated:** 2026-10-29
 
 ---
