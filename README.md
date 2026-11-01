@@ -1,6 +1,6 @@
 # Astryn
 
-[![Version](https://img.shields.io/badge/release-v0.4.0-E8794B?style=flat-square)](https://github.com/Abrar118/astryn)
+[![Version](https://img.shields.io/badge/release-v5.0.1-E8794B?style=flat-square)](https://github.com/Abrar118/astryn)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
