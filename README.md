@@ -1,6 +1,6 @@
 # Astryn
 
-[![Version](https://img.shields.io/badge/release-v5.0.1-E8794B?style=flat-square)](https://github.com/Abrar118/astryn)
+[![Version](https://img.shields.io/badge/release-v5.0.1-E8794B?style=flat-square)](https://github.com/Abrar118/astryn/releases/latest)
 [![Tauri](https://img.shields.io/badge/Tauri-2-24C8DB?style=flat-square&logo=tauri&logoColor=white)](https://tauri.app/)
 [![React](https://img.shields.io/badge/React-19-149ECA?style=flat-square&logo=react&logoColor=white)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -8,16 +8,49 @@
 
 **A local-first desktop command center for your work, built for planning instead of managing browser tabs.**
 
-Astryn started as a power client for Linear and has grown into a single fast desktop workspace for the surfaces a day actually touches: **Linear** issues on a real calendar, **GitHub** pull requests, a **Slack** catch-up board, a **documentation** browser, and **generated standup and weekly reports**. Everything is cache-backed, credentials live in the OS keychain, and the whole workspace tabs and splits into two independent panes.
+Astryn started as a power client for Linear and has grown into a single fast desktop workspace for the surfaces a day actually touches: **Linear** issues and **local tasks** on one calendar, **GitHub** and **Bitbucket** pull requests, **Slack** and **Microsoft Teams** catch-up boards, a **documentation** browser, and **generated standup and weekly reports**. Every integration is an optional module, cached data stays readable offline, credentials live in the OS keychain, and the whole workspace tabs and splits into two independent panes.
 
-> Astryn is an independent project and is not affiliated with or endorsed by Linear, GitHub, or Slack.
+> Astryn is an independent project and is not affiliated with or endorsed by Linear, GitHub, Atlassian, Slack, Microsoft, or ClickUp.
+
+![The Astryn dashboard: a week-ahead load scale above a ranked queue of overdue tasks, pull requests and mentions](docs/screenshots/dashboard.png)
+
+## Screenshots
+
+| | |
+| --- | --- |
+| ![This Week board with a column per day and an overdue column](docs/screenshots/this-week.png) **This Week:** drag a card to another day to reschedule it | ![Month calendar with tasks on their due dates and an unscheduled rail](docs/screenshots/calendar.png) **Calendar:** month and week views with an unscheduled rail |
+| ![Local tasks board with custom status columns](docs/screenshots/tasks-board.png) **Local tasks:** spaces, lists, custom workflows and five views | ![Issues list grouped by status](docs/screenshots/issues.png) **Issues:** Linear issues grouped and filtered your way |
+| ![A document and an issue open side by side in two panes](docs/screenshots/split.png) **Split view:** two independent panes, here a doc beside an issue | ![Dependency graph of issues joined by blocks, related and sub-issue edges](docs/screenshots/dependencies.png) **Dependencies:** blockers and sub-issues as a graph |
+| ![Pull request workspace with review queues and a contribution heatmap](docs/screenshots/pull-requests.png) **Pull requests:** review queues, CI and conflict status | ![Slack catch-up board listing mentions, direct messages, threads and channels](docs/screenshots/slack.png) **Chat catch-up:** unread mentions, messages and threads |
+| ![Reports screen showing a generated daily scrum](docs/screenshots/reports.png) **Reports:** daily scrum and weekly review drafts | ![The dashboard in the light Paper finish](docs/screenshots/dashboard-light.png) **Finishes:** two dark and two light |
+
+Screenshots show fictional sample data.
+
+## Install
+
+Download the installer from the [latest release](https://github.com/Abrar118/astryn/releases/latest).
+
+- **Windows (x64):** run `Astryn_5.0.1_x64-setup.exe`. It installs per-user and needs no admin rights. The installer is unsigned, so Windows SmartScreen may warn when you run it.
+- **macOS and Linux:** v5.0.1 has no prebuilt installer yet. [Build from source](#building-installers) on the target OS.
+
+On first run, a picker lets you choose which modules and screens to turn on.
 
 ## Features
 
 ### Dashboard
 
-- **Landing view** that opens on launch with metric tiles, an **attention list** of the issues most worth looking at right now, workload buckets, a due-date load chart, and a preview of the week ahead.
-- **Connection cards** for each integration — an unconfigured service links straight to its Settings pane instead of failing silently.
+- **Landing view** that opens on launch with at-a-glance readouts, a ranked **attention queue** across your active sources, a due-date load scale, and an agenda for the week.
+- **Source status panel** — shows the state of each integration, and Linear, GitHub and Slack link straight to their Settings panes.
+- **Reads the cache only** — the Dashboard never starts provider syncs of its own.
+
+### Local tasks
+
+- **A tracker that doesn't need Linear** — tasks live in SQLite as the source of truth, and can run alongside Linear or on their own.
+- **Spaces → lists → tasks** with subtasks, custom workflows per space (with per-list overrides), sprints, labels, checklists, dependencies, comments, and links.
+- **List, Board, Table, Calendar, and Timeline views.**
+- **Combined planning** — tasks assigned to you with a due date appear in This Week next to Linear issues. The Calendar, Dependencies, Reports, and Dashboard screens also merge every active tracker.
+- **Backups** — daily automatic JSON backups (14 kept), plus manual export and restore.
+- **One-way Linear import** — copy a Linear team's issues into local tasks.
 
 ### Calendar & scheduling
 
@@ -45,10 +78,12 @@ Astryn started as a power client for Linear and has grown into a single fast des
 
 ### Planning & overview
 
-- **"This Week" overview** — your issues grouped by due date for the current Sunday-started week (`Asia/Dhaka`): an **Overdue** group, one section per weekday, and a **Weekend** group, with threaded sub-issues and related issues, sticky day headers, an activity heatmap, and status/priority breakdowns.
+- **"This Week" board** — your tasks from every active tracker, laid out by due date for the Sunday-started week (`Asia/Dhaka`): an **Overdue** column plus a column per day. Drag a card to another day to reschedule it, or use **Shift + ← / →** on the keyboard. Readouts summarize the week, and a fold-out 12-month activity heatmap jumps to any week.
 - **Dependency graph** — a React Flow visualization of parent/child hierarchy and issue relations (blocks / blocked-by / related / duplicate) as styled edges, with grouping and bulk actions; click a node to open its detail.
 
-### GitHub pull requests
+### Pull requests
+
+#### GitHub
 
 - **Master-detail PR workspace** with three `@me` queues — **My open PRs**, **Assigned to me**, and **Needs my review** — resolved server-side and deduped per queue.
 - **Favorite repositories as scopes** — star a repo to get a scope containing all of its open PRs, backed by a searchable catalog of every repository you can reach. Group-by-repository is on by default and remembered.
@@ -58,20 +93,35 @@ Astryn started as a power client for Linear and has grown into a single fast des
 - **Linear chip** — a PR whose branch or title carries an issue identifier (e.g. `ENG-123`) links straight to that issue's tab in Astryn.
 - **Classic PAT** stored in the OS keychain; degrades to a quiet "Connect GitHub" prompt when no token is set. Offline-first per-bucket cache with background sync.
 
-### Slack catch-up
+#### Bitbucket Cloud
+
+- **Its own PR workspace** with **My PRs**, **Needs My Review** (derived from favorite repositories), and favorite-repository scopes.
+- **Cached-first Overview and Diff drawer**, shared with the GitHub workspace.
+- **Atlassian API token and account email** stored in the OS keychain. Not yet verified against a live Bitbucket account.
+
+### Chat catch-up
+
+#### Slack
 
 - **Catch-up board** of what you missed: unread **conversations** (channels, DMs, and group DMs) with unread and unread-thread counts, a **mentions** feed, and a **threads** list, each flagged when it mentions you.
 - **Inline reader** for a conversation's messages without leaving the app.
 - **Linear cross-links** — a Slack message carrying an issue identifier resolves to that issue and opens it in Astryn.
 - **Deep links** back into Slack proper, resolving to both the desktop app (`slack://`) and web URL.
-- **Credential auto-detection** from a local Slack install, or paste them manually; stored in the OS keychain with an explicit connected / unverified / not-configured status.
+- **Credential auto-detection** from a local Slack install where supported, or paste them manually; stored in the OS keychain with an explicit connected / unverified / not-configured status.
+
+#### Microsoft Teams
+
+- **Catch-up board** for unread Teams chats and @mentions, on the same board as Slack.
+- **Device-code sign-in** through Microsoft Graph, using your own app registration's client ID. Not yet verified against a live tenant.
 
 ### Documentation browser
 
-- **Multiple documentation repositories** — add any GitHub repo by URL or `owner/repo[/tree/branch]`, rename it, or remove it along with its cache.
-- **Browsable file tree with a Markdown reader**, synced and cached locally so it opens offline; each source tracks its own file count and last-synced time.
-- **Source switcher** in the page header, remembered as the default for new tabs — and because a doc is a tab, two split panes can read two different repos side by side.
-- **Reuses your GitHub token**, so no extra credential is needed.
+- **Three source types** that can be used together:
+  - **GitHub repositories** — add any repo by URL or `owner/repo[/tree/branch]`. Files are cached for offline reading, and your GitHub token is reused.
+  - **Local folders** — Markdown, plain text, and PDF files read in place, never copied, and rescanned on demand. PDFs render as real pages.
+  - **ClickUp Docs** — pages cached for offline reading, with a ClickUp token in the OS keychain. Not yet verified against a live ClickUp account.
+- **Source switcher** in the page header, remembered as the default for new tabs — and because a doc is a tab, two split panes can read two different sources side by side.
+- **Per-task "Docs & links"** — attach web links or documents from any source to a Linear issue or local task, with a title, note, and tags. Links are stored locally.
 
 ### Reports
 
@@ -86,50 +136,57 @@ Astryn started as a power client for Linear and has grown into a single fast des
 
 ### Workspace & navigation
 
-- **Browser-style tabs** across eleven views — dashboard, calendar, issues, this week, dependencies, inbox, pull requests, Slack, docs, reports, settings — plus pinned issue and document tabs; layout persists across reloads.
+- **Browser-style tabs** across fourteen views — dashboard, calendar, issues, this week, dependencies, inbox, tasks, GitHub PRs, Bitbucket PRs, Slack, Teams, docs, reports, settings — plus pinned issue and document tabs; layout persists across reloads.
 - **Two-pane split view** — split the workspace into two independent tab groups with a resizable divider (pointer and keyboard), pane swapping, and drag-to-split.
 - **Three ways to fill the right pane**: drag a tab across, right-click a tab to split, or pick an issue from the issue context menu / command palette.
 - **Drag-and-drop on @dnd-kit** for both tabs (reorder, move across panes, drag-to-split) and board cards — pointer **and** keyboard accessible.
 - **Command palette** (`⌘/Ctrl + K`) for issue search, creation, go-to navigation across every view, resync actions, and opening a selected issue directly in the right split.
 - **Keyboard shortcuts**: `⌘/Ctrl + T` new tab, `⌘/Ctrl + W` close tab, `⌘/Ctrl + [` back, `⌘/Ctrl + R` resync, `⌘/Ctrl + Shift + R` full resync, and `C` to create an issue.
-- **Appearance controls** — independent app zoom, icon scale, and editor text scale.
+- **Appearance controls** — four finishes (Graphite and Charcoal dark, Paper and Stone light), plus independent app zoom, icon scale, and editor text scale.
+- **Modules and screen switches** — turn any integration or feature on or off in Settings → Modules, or switch off Issues, This Week, Dependencies, and Inbox one by one. Disabling keeps tokens and cache; "Remove module data" deletes them.
 
 ### Foundation
 
 - **Local-first data layer** backed by SQLite for fast cache reads and resilient, persisted workspace state.
-- **Secure authentication** — Linear, GitHub, Slack, and LLM credentials stored in the operating-system keychain, never in the webview or SQLite.
+- **Secure authentication** — provider and LLM credentials stored in the operating-system keychain, never in SQLite or returned to the webview.
 - **All external API calls run in Rust**, exposed to the renderer as typed Tauri commands; the webview never receives a token.
 - **Optimistic updates and background sync** with rollback handling, and all sync / error / rate-limit feedback through `goey-toast`.
 
-> **Roadmap (not yet built):** per-issue reference links — attaching specific documents and URLs to an individual issue. The documentation browser above is repository-wide, not per-issue. See [`requirements.md`](requirements.md) for the full plan.
-
 ## Premise
 
-Linear is the source of truth for issues; Astryn is the focused desktop workspace around it and the services it touches. The Rust core owns credentials, API access, synchronization, and SQLite persistence. The React renderer consumes typed Tauri commands and never receives API secrets.
+Remote providers such as Linear remain the source of truth for their data, and Astryn is the focused desktop workspace around them. Local tasks are the exception: they exist only in Astryn's SQLite database, which is why they have backups. The Rust core owns credentials, API access, synchronization, and SQLite persistence. The React renderer consumes typed Tauri commands and never receives API secrets.
 
-This boundary keeps the local cache authoritative for the interface while preserving each remote service as its own canonical system.
+This boundary lets the interface read from the local cache while each remote service stays its own canonical system.
 
 ## Architecture
 
 | Layer | Responsibility |
 | --- | --- |
 | Tauri 2 | Desktop shell, command boundary, packaging |
-| Rust | Linear, GitHub, Slack & LLM access, keychain integration, sync, SQLite |
-| React 19 + TypeScript | Workspace, calendar, issue editing, command palette |
+| Rust | Provider and LLM access, keychain integration, sync, SQLite |
+| React 19 + TypeScript | Workspace, calendar, task editing, command palette |
 | TanStack Query | Renderer-side server-state coordination and optimistic updates |
-| SQLite | Local issue / PR / Slack / docs cache, sync state, and app-owned metadata |
+| SQLite | Offline provider cache, sync state, app-owned metadata, and local tasks |
 
 All outbound requests run in Rust. Tokens are stored through the OS keychain and are not written to local storage, SQLite, or frontend environment files.
 
 ## Requirements
 
+To build from source:
+
 - Node.js 20 or newer
 - Rust stable toolchain
 - [Tauri 2 platform prerequisites](https://v2.tauri.app/start/prerequisites/) for your operating system
-- A Linear personal API key (added in the app's Settings on first run)
-- *(Optional)* a GitHub **classic** personal access token (`repo` scope) for the pull-request dashboard and the documentation browser
-- *(Optional)* Slack credentials for the catch-up board — auto-detected from a local Slack install where possible
-- *(Optional)* any OpenAI-compatible LLM endpoint, hosted or local, for the report prose pass
+
+Each integration is optional, and only needs its credentials if you turn it on. Add them in Settings:
+
+- **Linear:** a personal API key
+- **GitHub:** a **classic** personal access token (`repo` scope), for pull requests and documentation repositories
+- **Bitbucket Cloud:** an Atlassian API token with the Bitbucket scopes `read:user`, `read:workspace`, `read:repository`, and `read:pullrequest`, plus your account email
+- **Slack:** credentials auto-detected from a local Slack install where possible, or pasted manually
+- **Microsoft Teams:** your own Microsoft app registration's client ID, and optionally a tenant
+- **ClickUp:** an API token
+- **AI:** any OpenAI-compatible LLM endpoint, hosted or local, for the report prose pass
 
 ## Development
 
@@ -149,7 +206,7 @@ Astryn packages to native installers for each platform via Tauri.
 npm run tauri build
 ```
 
-Output lands in `src-tauri/target/release/bundle/`. The window's `targets` is set to `all`, so each OS produces its native formats:
+Output lands in `src-tauri/target/release/bundle/`. The bundle `targets` is set to `all`, so each OS produces its native formats:
 
 - **macOS** — `.app` and `.dmg`
 - **Windows** — `.msi` and NSIS `.exe` (requires WebView2 + the MSVC toolchain)
@@ -169,7 +226,7 @@ cargo fmt   --manifest-path src-tauri/Cargo.toml -- --check # Rust formatting
 
 ## Current scope
 
-Astryn targets a single-user workflow and currently delivers the dashboard, calendar, issue workspace, detail editing, activity timeline, the "This Week" overview, the dependency graph, the GitHub pull-request workspace, the Slack catch-up board, the documentation browser, the daily and weekly report generators, the inbox, the command palette, and the two-pane split workspace. Planned directions include per-issue reference links and additional activity sources.
+Astryn targets a single-user workflow and currently delivers the dashboard, local tasks, calendar, issue workspace, detail editing, activity timeline, the "This Week" board, the dependency graph, the GitHub and Bitbucket pull-request workspaces, the Slack and Teams catch-up boards, the documentation browser with per-task doc links, the daily and weekly report generators, the inbox, the command palette, and the two-pane split workspace. See [`requirements.md`](requirements.md) for the full plan.
 
 ## License
 
