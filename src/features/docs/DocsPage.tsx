@@ -17,6 +17,9 @@ import {
   RefreshCw,
   Search,
   Settings2,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
@@ -53,6 +56,9 @@ const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 288; // matches the old w-72
 const SIDEBAR_STEP = 16;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.1;
 
 /** Centered empty state for the "no sources" case. */
 function DocsEmptyState({
@@ -251,6 +257,10 @@ export function DocsPage({
   const resizeCleanup = useRef<(() => void) | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const [collapsed, setCollapsed] = useState(false);
+  // Zoom of the document pane only (CSS zoom), not the rest of the app.
+  const [zoom, setZoom] = useState(1);
+  const stepZoom = (delta: number) =>
+    setZoom((z) => Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + delta)) * 100) / 100);
   const clampWidth = (px: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px));
 
   // Tear down an in-flight drag if the page unmounts mid-resize.
@@ -385,6 +395,36 @@ export function DocsPage({
             </span>
           )}
         </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom out document"
+          title="Zoom out document"
+          disabled={zoom <= ZOOM_MIN}
+          onClick={() => stepZoom(-ZOOM_STEP)}
+        >
+          <ZoomOut className="size-4" />
+        </Button>
+        <button
+          type="button"
+          aria-label="Reset document zoom"
+          title="Reset document zoom"
+          onClick={() => setZoom(1)}
+          className="h-7 min-w-10 cursor-pointer rounded-md px-1 text-[12px] tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom in document"
+          title="Zoom in document"
+          disabled={zoom >= ZOOM_MAX}
+          onClick={() => stepZoom(ZOOM_STEP)}
+        >
+          <ZoomIn className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -395,6 +435,7 @@ export function DocsPage({
         >
           <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
         </Button>
+        </div>
       </header>
 
       {notice ? (
@@ -434,6 +475,17 @@ export function DocsPage({
                     placeholder="Search docs…"
                     className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
+                  {search && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      title="Clear search"
+                      onClick={() => setSearch("")}
+                      className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
                 </div>
               )}
               {indexing && (
@@ -489,7 +541,9 @@ export function DocsPage({
             </div>
           </>
         )}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto bg-card">{reader}</div>
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto bg-card">
+          <div style={zoom === 1 ? undefined : { zoom }}>{reader}</div>
+        </div>
       </div>
       )}
     </main>

@@ -73,6 +73,18 @@ describe("Dock groups", () => {
     expect(document.activeElement).toBe(chevron);
   });
 
+  it("hides the menu bar beside Refresh, leaves a handle, and remembers it", () => {
+    localStorage.clear();
+    const { unmount } = render(<Dock isSyncing={false} refresh={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Hide menu bar" }));
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    unmount();
+    render(<Dock isSyncing={false} refresh={() => {}} />); // still hidden after a reload
+    fireEvent.click(screen.getByRole("button", { name: "Show menu bar" }));
+    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    localStorage.clear();
+  });
+
   it("keeps the group's icon on the screen you are on", () => {
     activeView.current = "inbox";
     render(<Dock isSyncing={false} refresh={() => {}} />);

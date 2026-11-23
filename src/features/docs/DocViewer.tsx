@@ -16,6 +16,7 @@ import {
   ReadOnlyDescription,
 } from "@/features/drawer/DescriptionEditor";
 import { applyDescriptionConfig } from "@/features/drawer/milkdownEditor";
+import { descriptionCodeBlockView } from "@/features/drawer/milkdownCodeBlock";
 import { headingAt, lineOffset, pickHeading } from "./docFocus";
 
 /** Open http(s) links in the system browser; ignore in-doc relative anchors. */
@@ -47,7 +48,8 @@ function DocMilkdown({ markdown }: { markdown: string }) {
         })
         .use(commonmark as MilkdownPlugin[])
         .use(gfm as MilkdownPlugin[])
-        .use(history),
+        .use(history)
+        .use(descriptionCodeBlockView),
     [markdown],
   );
   return <Milkdown />;

@@ -293,9 +293,36 @@ describe("DocsPage search", () => {
     expect(screen.getByTestId("doc").getAttribute("data-line")).toBe("3"); // opens at the match
   });
 
+  it("clears the search box from the cross button", () => {
+    render(<DocsPage />);
+    const box = screen.getByLabelText("Search docs") as HTMLInputElement;
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    fireEvent.change(box, { target: { value: "vacation" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(box.value).toBe("");
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  });
+
   it("says so when nothing matches", async () => {
     render(<DocsPage />);
     fireEvent.change(screen.getByLabelText("Search docs"), { target: { value: "zzz" } });
     expect(await screen.findByText("No matches.")).toBeTruthy();
+  });
+});
+
+describe("DocsPage zoom", () => {
+  it("zooms only the document pane, within limits, and resets", () => {
+    state.content[`${CORE.id}:README.md`] = "# Hi";
+    render(<DocsPage />);
+    const pane = screen.getByTestId("doc").parentElement as HTMLElement;
+    expect(pane.style.zoom).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in document" }));
+    expect(pane.style.zoom).toBe("1.1");
+    expect(screen.getByRole("button", { name: "Reset document zoom" }).textContent).toBe("110%");
+    fireEvent.click(screen.getByRole("button", { name: "Reset document zoom" }));
+    expect(pane.style.zoom).toBe("");
+    for (let i = 0; i < 20; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom out document" }));
+    expect(pane.style.zoom).toBe("0.5");
+    expect((screen.getByRole("button", { name: "Zoom out document" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });
