@@ -20,20 +20,27 @@ const SOURCE: DocsSource = {
 };
 
 const reindex = vi.hoisted(() => vi.fn());
+const setSemantic = vi.hoisted(() => vi.fn());
+const semantic = vi.hoisted(() => ({ current: { enabled: true, modelPresent: true, model: "bge-base-en-v1.5" } }));
 vi.mock("@/lib/commands", async (orig) => ({
   ...(await orig<typeof import("@/lib/commands")>()),
   reindexDocs: reindex,
+  setSemanticSearch: setSemantic,
 }));
 vi.mock("@/lib/queries", () => ({
   useDocsSources: () => ({ data: [SOURCE] }),
   useDocsStatus: () => ({ data: { tokenPresent: true, clickupTokenPresent: false, sourceCount: 1 } }),
-  useDocsIndexStatus: () => ({ data: [{ sourceId: SOURCE.id, files: 2, chunks: 5, indexedAt: "now" }] }),
+  useDocsIndexStatus: () => ({ data: [{ sourceId: SOURCE.id, files: 2, chunks: 5, embedded: 3, indexedAt: "now" }] }),
+  useSemanticSearch: () => ({ data: semantic.current }),
 }));
 vi.mock("@/lib/modules", () => ({ useModules: () => ({ isActive: () => true }) }));
 
 import { DocsSection } from "./DocsSection";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  semantic.current = { enabled: true, modelPresent: true, model: "bge-base-en-v1.5" };
+});
 
 function renderSection() {
   render(
@@ -47,6 +54,28 @@ describe("DocsSection search index", () => {
   it("shows how many sections are searchable per source", () => {
     renderSection();
     expect(screen.getByText(/5 searchable sections/)).toBeTruthy();
+  });
+
+  it("says whether a source is keyword-only or hybrid", () => {
+    renderSection();
+    expect(screen.getByText(/hybrid \(3\/5\)/)).toBeTruthy();
+    cleanup();
+    semantic.current = { enabled: false, modelPresent: true, model: "bge-base-en-v1.5" };
+    renderSection();
+    expect(screen.getByText(/5 searchable sections · keyword/)).toBeTruthy();
+  });
+
+  it("switches semantic search off", async () => {
+    setSemantic.mockResolvedValue({ enabled: false, modelPresent: true, model: "bge-base-en-v1.5" });
+    renderSection();
+    fireEvent.click(screen.getByRole("switch", { name: "Semantic search" }));
+    await waitFor(() => expect(setSemantic).toHaveBeenCalledWith(false));
+  });
+
+  it("explains how to install a missing model", () => {
+    semantic.current = { enabled: true, modelPresent: false, model: "bge-base-en-v1.5" };
+    renderSection();
+    expect(screen.getByText(/npm run fetch-model/)).toBeTruthy();
   });
 
   it("updates the search index on request", async () => {

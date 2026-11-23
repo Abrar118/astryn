@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "fetch-model": "node scripts/fetch-search-model.mjs",
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {

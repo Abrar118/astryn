@@ -8,6 +8,7 @@ use sha1::{Digest, Sha1};
 use sqlx::SqlitePool;
 
 use super::chunker;
+use super::embedder::MODEL_NAME;
 use crate::commands::CmdError;
 use crate::db::docs::{DocsSource, DocsSourceKind};
 use crate::local_docs::{self, DocFormat};
@@ -44,15 +45,20 @@ pub struct SourceIndexStatus {
     pub source_id: String,
     pub files: i64,
     pub chunks: i64,
+    /// Chunks that also have a meaning vector (semantic search).
+    pub embedded: i64,
     pub indexed_at: String,
 }
 
 pub async fn index_status(pool: &SqlitePool) -> Result<Vec<SourceIndexStatus>, sqlx::Error> {
     sqlx::query_as(
         "SELECT f.source_id, COUNT(*) AS files, MAX(f.indexed_at) AS indexed_at,
-                (SELECT COUNT(*) FROM doc_chunks c WHERE c.source_id = f.source_id) AS chunks
+                (SELECT COUNT(*) FROM doc_chunks c WHERE c.source_id = f.source_id) AS chunks,
+                (SELECT COUNT(*) FROM doc_chunks c WHERE c.source_id = f.source_id
+                   AND c.embedding_model = ?1) AS embedded
          FROM doc_indexed_files f GROUP BY f.source_id",
     )
+    .bind(MODEL_NAME)
     .fetch_all(pool)
     .await
 }
@@ -121,18 +127,43 @@ async fn load_files(pool: &SqlitePool, source: &DocsSource) -> Result<Vec<Source
         .collect())
 }
 
-pub async fn index_source(pool: &SqlitePool, source: &DocsSource) -> Result<IndexStats, CmdError> {
+/// `progress(done, total)` is called after each file.
+pub async fn index_source(
+    pool: &SqlitePool,
+    source: &DocsSource,
+    progress: &mut impl FnMut(usize, usize),
+) -> Result<IndexStats, CmdError> {
     let files = load_files(pool, source).await?;
-    index_files(pool, &source.id, &files)
+    index_files_with(pool, &source.id, &files, progress)
         .await
         .map_err(|_| CmdError::Internal)
 }
 
-async fn source_exists(tx: &mut sqlx::SqliteConnection, id: &str) -> Result<bool, sqlx::Error> {
-    sqlx::query_scalar("SELECT EXISTS(SELECT 1 FROM docs_sources WHERE id = ?1)")
+/// The kind of a source, or `None` once it has been removed.
+async fn source_kind(
+    tx: &mut sqlx::SqliteConnection,
+    id: &str,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("SELECT kind FROM docs_sources WHERE id = ?1")
         .bind(id)
-        .fetch_one(tx)
+        .fetch_optional(tx)
         .await
+}
+
+/// Whether a cached file (GitHub/ClickUp) is still in the cache.
+async fn cached_file_exists(
+    tx: &mut sqlx::SqliteConnection,
+    source_id: &str,
+    path: &str,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM docs_files
+         WHERE source_id = ?1 AND path = ?2 AND content IS NOT NULL)",
+    )
+    .bind(source_id)
+    .bind(path)
+    .fetch_one(tx)
+    .await
 }
 
 async fn delete_file(
@@ -154,12 +185,24 @@ async fn delete_file(
 }
 
 /// Bring one source's chunks in line with `files`. Each file is written in its
-/// own transaction. Writes nothing for a source that no longer exists (a run
-/// that finishes after the source was removed must not leave orphan rows).
+/// own transaction. Writes nothing for a source that no longer exists, and
+/// nothing for a GitHub/ClickUp file that left the cache since the run read it:
+/// a run that finishes after a source was removed or its credential wiped must
+/// not bring that content back into the index.
+#[cfg(test)]
 pub async fn index_files(
     pool: &SqlitePool,
     source_id: &str,
     files: &[SourceFile],
+) -> Result<IndexStats, sqlx::Error> {
+    index_files_with(pool, source_id, files, &mut |_, _| {}).await
+}
+
+pub async fn index_files_with(
+    pool: &SqlitePool,
+    source_id: &str,
+    files: &[SourceFile],
+    progress: &mut impl FnMut(usize, usize),
 ) -> Result<IndexStats, sqlx::Error> {
     let known: HashMap<String, String> =
         sqlx::query_as("SELECT path, content_hash FROM doc_indexed_files WHERE source_id = ?1")
@@ -169,15 +212,19 @@ pub async fn index_files(
             .into_iter()
             .collect();
     let mut stats = IndexStats::default();
-    for f in files {
+    for (i, f) in files.iter().enumerate() {
+        progress(i + 1, files.len());
         let h = hash(&f.text);
         if known.get(&f.path) == Some(&h) {
             stats.skipped += 1;
             continue;
         }
         let mut tx = pool.begin().await?;
-        if !source_exists(&mut tx, source_id).await? {
-            return Ok(stats);
+        match source_kind(&mut tx, source_id).await?.as_deref() {
+            None => return Ok(stats),
+            Some("local") => {}
+            Some(_) if cached_file_exists(&mut tx, source_id, &f.path).await? => {}
+            Some(_) => continue,
         }
         delete_file(&mut tx, source_id, &f.path).await?;
         for c in chunker::chunk(&f.text, f.markdown) {
@@ -324,7 +371,46 @@ mod tests {
             location: Some(folder.path().to_string_lossy().into()),
             ..source
         };
-        let s = index_source(&pool, &source).await.unwrap();
+        let s = index_source(&pool, &source, &mut |_, _| {}).await.unwrap();
         assert_eq!(s.indexed, 2);
+    }
+
+    #[tokio::test]
+    async fn indexing_that_loses_a_race_with_a_cache_wipe_writes_nothing() {
+        let (_d, pool) = pool_with_source().await;
+        sqlx::query(
+            "INSERT INTO docs_sources (id, kind, name, owner, repo, branch, position, created_at)
+             VALUES ('g', 'github', 'G', 'o', 'r', 'main', 1, 'now')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "INSERT INTO docs_files (source_id, path, name, kind, parent_path, sha, content, synced_at)
+             VALUES ('g', 'secret.md', 'secret.md', 'blob', '', 'x', '# Secret\nprivate roadmap', 'now')",
+        )
+        .execute(&pool)
+        .await
+        .unwrap();
+        let source = crate::db::docs::load_docs_source(&pool, "g")
+            .await
+            .unwrap()
+            .unwrap();
+
+        // The run has read the cached files; then the GitHub token is removed
+        // (wiping the cache) before the run writes its chunks.
+        let files = load_files(&pool, &source).await.unwrap();
+        crate::db::github::wipe_github_cache(&pool).await.unwrap();
+        index_files(&pool, "g", &files).await.unwrap();
+
+        let chunks: i64 =
+            sqlx::query_scalar("SELECT COUNT(*) FROM doc_chunks WHERE source_id = 'g'")
+                .fetch_one(&pool)
+                .await
+                .unwrap();
+        assert_eq!(
+            chunks, 0,
+            "wiped content must not come back through the index"
+        );
     }
 }

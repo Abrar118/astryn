@@ -75,6 +75,8 @@ vi.mock("@/lib/queries", () => ({
     return { isError: false, isFetching: false, refetch: vi.fn() };
   },
 }));
+const progress = vi.hoisted(() => ({ current: null as null | { phase: "reading" | "embedding"; done: number; total: number } }));
+vi.mock("./useDocsProgress", () => ({ useDocsProgress: () => progress.current }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView }) }));
 vi.mock("./DocViewer", async (orig) => ({
   ...(await orig<typeof import("./DocViewer")>()),
@@ -267,6 +269,16 @@ describe("DocsPage local folders", () => {
 });
 
 describe("DocsPage search", () => {
+  it("shows how far indexing has got while it runs", () => {
+    progress.current = { phase: "reading", done: 5, total: 20 };
+    render(<DocsPage />);
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+    cleanup();
+    progress.current = null;
+    render(<DocsPage />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
   it("replaces the tree with matches and opens the clicked file", async () => {
     state.hits = [
       { sourceId: CORE.id, path: "policy.md", title: "policy", headingPath: "Leave", startLine: 3, snippet: "vacation days", more: 1 },

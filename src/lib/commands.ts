@@ -723,7 +723,10 @@ export type DocHit = {
   more: number;
 };
 
-export const searchDocs = (query: string, sourceId?: string, limit?: number): Promise<DocHit[]> =>
+/** `hybrid` when meaning-based search contributed, `keyword` when only words were matched. */
+export type DocSearchResult = { mode: "keyword" | "hybrid"; hits: DocHit[] };
+
+export const searchDocs = (query: string, sourceId?: string, limit?: number): Promise<DocSearchResult> =>
   invoke("search_docs", { query, sourceId: sourceId ?? null, limit: limit ?? null });
 
 export type IndexStats = { indexed: number; skipped: number; removed: number };
@@ -732,9 +735,23 @@ export type IndexStats = { indexed: number; skipped: number; removed: number };
 export const reindexDocs = (sourceId?: string): Promise<IndexStats> =>
   invoke("reindex_docs", { sourceId: sourceId ?? null });
 
-export type SourceIndexStatus = { sourceId: string; files: number; chunks: number; indexedAt: string };
+export type SourceIndexStatus = {
+  sourceId: string;
+  files: number;
+  chunks: number;
+  /** Sections that also have a meaning vector. */
+  embedded: number;
+  indexedAt: string;
+};
 
 export const docsIndexStatus = (): Promise<SourceIndexStatus[]> => invoke("docs_index_status");
+
+export type SemanticStatus = { enabled: boolean; modelPresent: boolean; model: string };
+
+export const getSemanticSearch = (): Promise<SemanticStatus> => invoke("get_semantic_search");
+
+export const setSemanticSearch = (enabled: boolean): Promise<SemanticStatus> =>
+  invoke("set_semantic_search", { enabled });
 
 // ── Per-task doc links (F9) ──────────────────────────────────────────────────
 

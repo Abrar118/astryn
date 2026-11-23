@@ -63,6 +63,7 @@ vi.mock("@/lib/queries", () => ({
   useDocsSources: () => ({ data: queries.docsSources }),
   useDocsStatus: () => ({ data: queries.docsStatus }),
   useDocsIndexStatus: () => ({ data: [] }),
+  useSemanticSearch: () => ({ data: undefined }),
 }));
 vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
 

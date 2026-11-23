@@ -145,6 +145,9 @@ pub fn run() {
             let clickup =
                 clickup::ClickUpClient::new().expect("failed to build ClickUp HTTP client");
 
+            app.manage(doc_search::engine::Engine::bge(
+                doc_search::engine::resolve_model_dir(app.path().resource_dir().ok()),
+            ));
             app.manage(AppState {
                 pool,
                 modules: std::sync::RwLock::new(module_state),
@@ -251,6 +254,8 @@ pub fn run() {
             commands::doc_search::search_docs,
             commands::doc_search::reindex_docs,
             commands::doc_search::docs_index_status,
+            commands::doc_search::get_semantic_search,
+            commands::doc_search::set_semantic_search,
             commands::doc_links::list_doc_links,
             commands::doc_links::create_doc_link,
             commands::doc_links::update_doc_link,

@@ -42,6 +42,8 @@ import { DocsTree } from "./DocsTree";
 import { DocViewer, PlainTextViewer } from "./DocViewer";
 import { clearDocFocus, requestDocFocus, usePendingDocFocus } from "./docFocus";
 import { DocSearchResults } from "./DocSearchResults";
+import { DocsProgressBar } from "./DocsProgressBar";
+import { useDocsProgress } from "./useDocsProgress";
 import { useDebouncedValue } from "./useDebouncedValue";
 
 // pdf.js is large; load it only when a PDF is opened.
@@ -229,6 +231,7 @@ export function DocsPage({
   // Keyword search within the active source; results replace the tree while typing.
   const [search, setSearch] = useState("");
   const searching = search.trim().length > 0;
+  const indexing = useDocsProgress();
   const results = useDocsSearch(useDebouncedValue(activeId && available ? search : "", 200), activeId ?? undefined);
 
   // A search hit asked for this doc at a given line (from here or the palette).
@@ -431,6 +434,11 @@ export function DocsPage({
                     placeholder="Search docs…"
                     className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   />
+                </div>
+              )}
+              {indexing && (
+                <div className="shrink-0 px-4 pb-2">
+                  <DocsProgressBar progress={indexing} />
                 </div>
               )}
               <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-28">

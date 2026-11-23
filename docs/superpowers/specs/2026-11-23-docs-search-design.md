@@ -13,6 +13,8 @@ and the command palette. Local-first, no external daemon.
 - **Vectors:** stored as `BLOB` in SQLite, scanned in Rust (no `sqlite-vec`). Cached in memory only while the model is loaded.
 - **Model lifecycle:** model loads on first search/index, unloads after 5 idle minutes (drop it; a timer task checks `last_used`). Loading takes ~1 s; keyword results return immediately while it loads.
 - **Model files stay inside the project.** They live in `src-tauri/models/bge-base-en-v1.5/` (`config.json`, `tokenizer.json`, `model.safetensors`, ~440 MB), are **gitignored**, and are fetched once by `npm run fetch-model` (`scripts/fetch-search-model.mjs`, from Hugging Face). `tauri.conf.json` lists the folder under `bundle.resources`, so the installer ships it and the app reads it from the resource dir. The app never downloads anything at runtime and writes nothing outside the project/app data. Model missing → keyword only.
+- **Where it runs:** on the Apple GPU (Metal) when there is one, checked with a trial run at load, else on the CPU. On the CPU, embedding uses a bounded pool of half the cores (at least one), so the UI and other apps stay responsive. CUDA is not built (it needs the CUDA toolkit); other platforms use the bounded CPU path.
+- **Pinned model:** `fetch-model` downloads one fixed upstream revision and checks each file's SHA-256 (also for files already on disk).
 - **Installer size** grows by ~440 MB (accepted).
 
 ## Data (migration `0045_docs_search.sql`)
@@ -63,7 +65,7 @@ Delete `doc_chunks` + `doc_indexed_files` rows in the same transaction as: `remo
 ## Phases (each builds and runs on its own)
 
 1. **Keyword:** migration, chunker, indexer, FTS search, commands, Docs page + palette UI, cleanup.
-2. **Semantic:** embedder (fastembed, idle unload, download), vector cache, RRF, status/Reindex UI.
+2. **Semantic:** embedder (candle BGE, idle unload, bundled model), vector cache, RRF, background embedding with progress, toggle/status UI.
 
 ## Tests
 
@@ -74,3 +76,5 @@ Chunker (headings, fenced code, `start_line`, size limits); FTS query sanitizing
 - candle is slower than ONNX on CPU; first full index may take minutes. Query latency of 1–2 s is accepted. Unmeasured; Linux office laptop untested until tried there.
 - BGE-base quality on real company docs is unmeasured; Qwen3 is the planned upgrade.
 - `npm run fetch-model` needs internet once per checkout/CI build.
+- No similarity cut-off: a semantic query always returns the nearest sections, even weak ones. Add a threshold once real scores are seen.
+- The first search after the model unloaded waits for the load (keyword results are not returned early); the palette still debounces at 200 ms.

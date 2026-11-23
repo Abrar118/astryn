@@ -493,12 +493,14 @@ fn now_iso() -> String {
 
 #[tauri::command]
 pub async fn sync_docs(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     source_id: String,
 ) -> Result<DocsSyncResult, CmdError> {
     state.require(crate::modules::ModuleId::Docs)?;
     let result = sync_source(&state, &source_id).await?;
-    super::doc_search::index_after_sync(&state.pool, &source_id).await;
+    super::doc_search::index_after_sync(&app, &state.pool, &source_id).await;
+    super::doc_search::spawn_embedding(&app);
     Ok(result)
 }
 
@@ -610,6 +612,7 @@ pub async fn add_local_docs_source(
     state.require(crate::modules::ModuleId::Docs)?;
     use tauri_plugin_dialog::DialogExt;
     // blocking_pick_folder() must not run on the main thread.
+    let handle = app.clone();
     let picked =
         tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
             .await
@@ -621,7 +624,8 @@ pub async fn add_local_docs_source(
         .into_path()
         .map_err(|_| CmdError::DocsFolderUnavailable)?;
     let source = add_local_docs_source_logic(&state.pool, folder, now_iso()).await?;
-    super::doc_search::index_after_sync(&state.pool, &source.id).await;
+    super::doc_search::index_after_sync(&handle, &state.pool, &source.id).await;
+    super::doc_search::spawn_embedding(&handle);
     Ok(Some(source))
 }
 

@@ -22,6 +22,7 @@ import {
   getDocContent,
   searchDocs,
   docsIndexStatus,
+  getSemanticSearch,
   getDocPdf,
   getGithubContributions,
   getGithubPrDiff,
@@ -628,13 +629,20 @@ export function useDocsIndexStatus() {
   return useQuery({ queryKey: ["docs-index-status"], queryFn: docsIndexStatus, enabled: on });
 }
 
-/** Keyword search over docs; `sourceId` limits it to one source. Empty text searches nothing. */
+/** Whether semantic (meaning-based) docs search is on, and whether its model is installed. */
+export function useSemanticSearch() {
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-semantic"], queryFn: getSemanticSearch, enabled: on });
+}
+
+/** Search over docs (keywords, plus meaning when on); `sourceId` limits it to one source. Empty text searches nothing. */
 export function useDocsSearch(text: string, sourceId?: string) {
   const on = useOwnerActive("docs");
   const q = text.trim();
   return useQuery({
     queryKey: ["docs-search", sourceId ?? null, q],
     queryFn: () => searchDocs(q, sourceId),
+    select: (r) => r.hits,
     enabled: on && q.length > 0,
     placeholderData: keepPreviousData,
   });

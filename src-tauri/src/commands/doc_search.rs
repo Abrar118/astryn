@@ -1,28 +1,49 @@
+use std::sync::Arc;
+
+use serde::Serialize;
 use sqlx::SqlitePool;
-use tauri::State;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use super::docs::{list_docs_sources_logic, usable_source, ActiveProviders};
 use super::{AppState, CmdError};
 use crate::db::docs as ddb;
+use crate::doc_search::embedder::MODEL_NAME;
+use crate::doc_search::engine::Engine;
 use crate::doc_search::index::{index_source, index_status, IndexStats, SourceIndexStatus};
-use crate::doc_search::search::{search_keyword, DocHit, DEFAULT_LIMIT};
+use crate::doc_search::search::{search_hybrid, SearchResult, DEFAULT_LIMIT};
 use crate::modules::ModuleId;
 
-/// Keyword search, limited to sources whose provider is on.
+const SEMANTIC_KEY: &str = "docs_semantic_search";
+
+/// Semantic search is on unless the user switched it off.
+pub async fn semantic_enabled(pool: &SqlitePool) -> bool {
+    crate::db::load_setting(pool, SEMANTIC_KEY)
+        .await
+        .ok()
+        .flatten()
+        .as_deref()
+        != Some("0")
+}
+
+/// Search, limited to sources whose provider is on. `engine` is `None` when
+/// semantic search is off (keyword only).
 pub async fn search_docs_logic(
     pool: &SqlitePool,
     active: ActiveProviders,
+    engine: Option<&Arc<Engine>>,
     query: &str,
     source_id: Option<&str>,
     limit: usize,
-) -> Result<Vec<DocHit>, CmdError> {
-    let sources = list_docs_sources_logic(pool, active).await?;
-    let mut hits = search_keyword(pool, query, source_id, usize::MAX)
+) -> Result<SearchResult, CmdError> {
+    let allowed: Vec<String> = list_docs_sources_logic(pool, active)
+        .await?
+        .into_iter()
+        .filter(|s| s.available)
+        .map(|s| s.id)
+        .collect();
+    search_hybrid(pool, engine, query, source_id, Some(&allowed), limit)
         .await
-        .map_err(|_| CmdError::Internal)?;
-    hits.retain(|h| sources.iter().any(|s| s.id == h.source_id && s.available));
-    hits.truncate(limit);
-    Ok(hits)
+        .map_err(|_| CmdError::Internal)
 }
 
 /// Re-index one source (error if it can't be read) or every available source
@@ -31,6 +52,7 @@ pub async fn reindex_docs_logic(
     pool: &SqlitePool,
     active: ActiveProviders,
     source_id: Option<&str>,
+    progress: &mut impl FnMut(usize, usize),
 ) -> Result<IndexStats, CmdError> {
     let sources = list_docs_sources_logic(pool, active).await?;
     if source_id.is_some_and(|id| !sources.iter().any(|s| s.id == id)) {
@@ -41,7 +63,7 @@ pub async fn reindex_docs_logic(
         .iter()
         .filter(|s| s.available && source_id.is_none_or(|id| id == s.id))
     {
-        match index_source(pool, s).await {
+        match index_source(pool, s, progress).await {
             Ok(stats) => total.add(stats),
             Err(e) if source_id.is_some() => return Err(e),
             Err(_) => {}
@@ -52,9 +74,21 @@ pub async fn reindex_docs_logic(
 
 /// Called after a successful sync/rescan. The sync already succeeded, so an
 /// indexing failure is not reported as a sync failure; Reindex retries it.
-pub async fn index_after_sync(pool: &SqlitePool, source_id: &str) {
+pub async fn index_after_sync(app: &AppHandle, pool: &SqlitePool, source_id: &str) {
+    emit_progress(app, "reading", 0, 0, true, false);
     if let Ok(Some(source)) = ddb::load_docs_source(pool, source_id).await {
-        let _ = index_source(pool, &source).await;
+        let _ = index_source(pool, &source, &mut reading_progress(app)).await;
+    }
+    emit_progress(app, "reading", 0, 0, false, false);
+}
+
+/// Progress callback for the keyword step. Events are thinned (every 20 files
+/// and the last) so a big folder doesn't flood the webview.
+fn reading_progress(app: &AppHandle) -> impl FnMut(usize, usize) + '_ {
+    move |done, total| {
+        if done == total || done % 20 == 0 {
+            emit_progress(app, "reading", done, total, true, false);
+        }
     }
 }
 
@@ -65,18 +99,124 @@ fn active(state: &AppState) -> ActiveProviders {
     }
 }
 
+/// Indexing progress for the UI (`docs:progress`). `phase` is `reading` (files
+/// split into searchable sections) or `embedding` (meaning vectors).
+#[derive(Clone, Serialize)]
+struct DocsProgress {
+    phase: &'static str,
+    done: usize,
+    total: usize,
+    running: bool,
+    failed: bool,
+}
+
+fn emit_progress(
+    app: &AppHandle,
+    phase: &'static str,
+    done: usize,
+    total: usize,
+    running: bool,
+    failed: bool,
+) {
+    let _ = app.emit(
+        "docs:progress",
+        DocsProgress {
+            phase,
+            done,
+            total,
+            running,
+            failed,
+        },
+    );
+}
+
+/// Embed chunks that have no vector yet, in the background, reporting progress
+/// as `docs:progress` events. Does nothing while semantic search is off
+/// or the model files are missing. A newer run stops an older one.
+pub fn spawn_embedding(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<AppState>();
+        let engine = app.state::<Arc<Engine>>();
+        if !semantic_enabled(&state.pool).await || !engine.model_present() {
+            return;
+        }
+        let emit = |done, total, running, failed| {
+            emit_progress(&app, "embedding", done, total, running, failed)
+        };
+        emit(0, 0, true, false);
+        let result = engine
+            .embed_pending(&state.pool, |done, total| emit(done, total, true, false))
+            .await;
+        // A superseded run leaves the bar to whoever superseded it, so a newer
+        // job's progress is not hidden by this one finishing.
+        if !matches!(&result, Ok(run) if run.superseded) {
+            emit(0, 0, false, result.is_err());
+        }
+    });
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SemanticStatus {
+    enabled: bool,
+    model_present: bool,
+    model: &'static str,
+}
+
+async fn semantic_status(pool: &SqlitePool, engine: &Engine) -> SemanticStatus {
+    SemanticStatus {
+        enabled: semantic_enabled(pool).await,
+        model_present: engine.model_present(),
+        model: MODEL_NAME,
+    }
+}
+
+#[tauri::command]
+pub async fn get_semantic_search(
+    state: State<'_, AppState>,
+    engine: State<'_, Arc<Engine>>,
+) -> Result<SemanticStatus, CmdError> {
+    state.require(ModuleId::Docs)?;
+    Ok(semantic_status(&state.pool, &engine).await)
+}
+
+#[tauri::command]
+pub async fn set_semantic_search(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    engine: State<'_, Arc<Engine>>,
+    enabled: bool,
+) -> Result<SemanticStatus, CmdError> {
+    state.require(ModuleId::Docs)?;
+    crate::db::save_setting(&state.pool, SEMANTIC_KEY, if enabled { "1" } else { "0" })
+        .await
+        .map_err(|_| CmdError::Internal)?;
+    // Off stops embedding and frees the model; vectors already stored are kept.
+    engine.set_enabled(enabled);
+    if enabled {
+        spawn_embedding(&app);
+    } else {
+        emit_progress(&app, "embedding", 0, 0, false, false);
+    }
+    Ok(semantic_status(&state.pool, &engine).await)
+}
+
 #[tauri::command]
 pub async fn search_docs(
     state: State<'_, AppState>,
+    engine: State<'_, Arc<Engine>>,
     query: String,
     source_id: Option<String>,
     limit: Option<usize>,
-) -> Result<Vec<DocHit>, CmdError> {
+) -> Result<SearchResult, CmdError> {
     state.require(ModuleId::Docs)?;
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(100);
+    let engine = semantic_enabled(&state.pool).await.then(|| &*engine);
     search_docs_logic(
         &state.pool,
         active(&state),
+        engine,
         &query,
         source_id.as_deref(),
         limit,
@@ -86,6 +226,7 @@ pub async fn search_docs(
 
 #[tauri::command]
 pub async fn reindex_docs(
+    app: AppHandle,
     state: State<'_, AppState>,
     source_id: Option<String>,
 ) -> Result<IndexStats, CmdError> {
@@ -93,7 +234,17 @@ pub async fn reindex_docs(
     if let Some(id) = &source_id {
         usable_source(&state, id).await?;
     }
-    reindex_docs_logic(&state.pool, active(&state), source_id.as_deref()).await
+    emit_progress(&app, "reading", 0, 0, true, false);
+    let stats = reindex_docs_logic(
+        &state.pool,
+        active(&state),
+        source_id.as_deref(),
+        &mut reading_progress(&app),
+    )
+    .await;
+    emit_progress(&app, "reading", 0, 0, false, false);
+    spawn_embedding(&app);
+    stats
 }
 
 #[tauri::command]
@@ -147,12 +298,15 @@ mod tests {
     async fn reindex_search_status_and_provider_off() {
         let (_d, _f, pool) = pool_with_sources().await;
         let all = ActiveProviders::ALL;
-        let s = reindex_docs_logic(&pool, all, None).await.unwrap();
+        let s = reindex_docs_logic(&pool, all, None, &mut |_, _| {})
+            .await
+            .unwrap();
         assert_eq!(s.indexed, 2);
         assert_eq!(
-            search_docs_logic(&pool, all, "vacation", None, 10)
+            search_docs_logic(&pool, all, None, "vacation", None, 10)
                 .await
                 .unwrap()
+                .hits
                 .len(),
             2
         );
@@ -161,9 +315,10 @@ mod tests {
             github: false,
             ..all
         };
-        let hits = search_docs_logic(&pool, github_off, "vacation", None, 10)
+        let hits = search_docs_logic(&pool, github_off, None, "vacation", None, 10)
             .await
-            .unwrap();
+            .unwrap()
+            .hits;
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].source_id, "local");
 
@@ -172,15 +327,72 @@ mod tests {
         assert!(status.iter().all(|s| s.files == 1 && s.chunks == 1));
 
         assert!(matches!(
-            reindex_docs_logic(&pool, all, Some("nope")).await,
+            reindex_docs_logic(&pool, all, Some("nope"), &mut |_, _| {}).await,
             Err(CmdError::DocsSourceNotFound)
         ));
     }
 
     #[tokio::test]
+    async fn a_source_that_is_off_takes_no_result_slots() {
+        let (_d, _f, pool) = pool_with_sources().await;
+        let all = ActiveProviders::ALL;
+        reindex_docs_logic(&pool, all, None, &mut |_, _| {})
+            .await
+            .unwrap();
+        // The GitHub source matches far more strongly and more often than the local one.
+        for i in 0..80 {
+            sqlx::query(
+                "INSERT INTO doc_chunks (source_id, path, title, heading_path, start_line, content)
+                 VALUES ('o/r@main', ?1, 'g', '', 1, 'vacation vacation vacation vacation')",
+            )
+            .bind(format!("g{i}.md"))
+            .execute(&pool)
+            .await
+            .unwrap();
+        }
+        let github_off = ActiveProviders {
+            github: false,
+            ..all
+        };
+        let hits = search_docs_logic(&pool, github_off, None, "vacation", None, 10)
+            .await
+            .unwrap()
+            .hits;
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].source_id, "local");
+    }
+
+    #[tokio::test]
+    async fn reindex_reports_progress_per_file() {
+        let (_d, _f, pool) = pool_with_sources().await;
+        let mut seen = vec![];
+        reindex_docs_logic(&pool, ActiveProviders::ALL, None, &mut |d, t| {
+            seen.push((d, t))
+        })
+        .await
+        .unwrap();
+        // One file in each of the two sources.
+        assert_eq!(seen, vec![(1, 1), (1, 1)]);
+    }
+
+    #[tokio::test]
+    async fn semantic_search_is_on_by_default_and_can_be_switched_off() {
+        let (_d, _f, pool) = pool_with_sources().await;
+        assert!(semantic_enabled(&pool).await);
+        crate::db::save_setting(&pool, SEMANTIC_KEY, "0")
+            .await
+            .unwrap();
+        assert!(!semantic_enabled(&pool).await);
+        crate::db::save_setting(&pool, SEMANTIC_KEY, "1")
+            .await
+            .unwrap();
+        assert!(semantic_enabled(&pool).await);
+    }
+
+    #[tokio::test]
     async fn removing_a_source_removes_its_chunks() {
         let (_d, _f, pool) = pool_with_sources().await;
-        reindex_docs_logic(&pool, ActiveProviders::ALL, None)
+        reindex_docs_logic(&pool, ActiveProviders::ALL, None, &mut |_, _| {})
             .await
             .unwrap();
         ddb::remove_docs_source(&pool, "local").await.unwrap();

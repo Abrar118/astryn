@@ -376,6 +376,8 @@ pub fn command_owner(name: &str) -> Option<ModuleId> {
         | "search_docs"
         | "reindex_docs"
         | "docs_index_status"
+        | "get_semantic_search"
+        | "set_semantic_search"
         | "list_doc_links"
         | "create_doc_link"
         | "update_doc_link"

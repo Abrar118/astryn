@@ -14,16 +14,19 @@ import {
   reindexDocs,
   removeDocsSource,
   renameDocsSource,
+  setSemanticSearch,
   type DocsSource,
   type SourceIndexStatus,
 } from "@/lib/commands";
-import { useDocsIndexStatus, useDocsSources, useDocsStatus } from "@/lib/queries";
+import { useDocsIndexStatus, useDocsSources, useDocsStatus, useSemanticSearch } from "@/lib/queries";
 import { useModules } from "@/lib/modules";
 import { timeAgo } from "@/features/drawer/timeAgo";
 import { sourceDetail, unavailableReason } from "@/features/docs/docSource";
 import { SourceKindIcon } from "@/features/docs/SourceKindIcon";
 import { SectionHeader } from "../SectionHeader";
-import { SettingsPanel, SettingsZone } from "../SettingsPanel";
+import { DocsProgressBar } from "@/features/docs/DocsProgressBar";
+import { useDocsProgress } from "@/features/docs/useDocsProgress";
+import { SettingsPanel, SettingsZone, Switch } from "../SettingsPanel";
 
 /** "12 files · synced 3m ago", or the not-yet state, per source kind. */
 function freshness(source: DocsSource): string {
@@ -34,9 +37,11 @@ function freshness(source: DocsSource): string {
 }
 
 /** What can be searched in a source. */
-function searchable(index: SourceIndexStatus | undefined): string {
+function searchable(index: SourceIndexStatus | undefined, semantic: boolean): string {
   if (!index || index.chunks === 0) return "not searchable yet";
-  return `${index.chunks} searchable section${index.chunks === 1 ? "" : "s"}`;
+  const sections = `${index.chunks} searchable section${index.chunks === 1 ? "" : "s"}`;
+  if (!semantic || index.embedded === 0) return `${sections} · keyword`;
+  return `${sections} · hybrid${index.embedded < index.chunks ? ` (${index.embedded}/${index.chunks})` : ""}`;
 }
 
 /** Everything that changes when the set of sources changes. */
@@ -50,12 +55,14 @@ function refreshSources(qc: QueryClient): void {
 function SourceRow({
   source,
   index,
+  semantic,
   onRename,
   onRemove,
   busy,
 }: {
   source: DocsSource;
   index: SourceIndexStatus | undefined;
+  semantic: boolean;
   onRename: (name: string) => void;
   onRemove: () => void;
   busy: boolean;
@@ -117,7 +124,7 @@ function SourceRow({
           {sourceDetail(source)}
           {" — "}
           {freshness(source)}
-          {source.available && ` · ${searchable(index)}`}
+          {source.available && ` · ${searchable(index, semantic)}`}
           {source.truncated && (source.kind === "local" ? " · too many files, list cut short" : " · tree truncated")}
           {!source.available && ` · ${unavailableReason(source.kind)}`}
         </span>
@@ -131,6 +138,8 @@ export function DocsSection() {
   const { data: sources } = useDocsSources();
   const { data: status } = useDocsStatus();
   const { data: indexStatus } = useDocsIndexStatus();
+  const { data: semantic } = useSemanticSearch();
+  const progress = useDocsProgress();
   const { isActive } = useModules();
   const githubOn = isActive("github");
   const clickupOn = isActive("clickup");
@@ -213,6 +222,15 @@ export function DocsSection() {
     onError: (err) => gooeyToast.error("Could not update search", { description: errorText(err) }),
   });
 
+  const semanticMut = useMutation({
+    mutationFn: (on: boolean) => setSemanticSearch(on),
+    onSuccess: (status) => {
+      qc.setQueryData(["docs-semantic"], status);
+      refreshSources(qc);
+    },
+    onError: (err) => gooeyToast.error("Could not change search mode", { description: errorText(err) }),
+  });
+
   const busy =
     reindexMut.isPending ||
     addMut.isPending ||
@@ -273,6 +291,7 @@ export function DocsSection() {
             </Button>
           )}
         </div>
+        <DocsProgressBar progress={progress} />
         {sources === undefined ? (
           <SettingsPanel className="px-4 py-3.5 text-[13px] text-muted-foreground">Checking…</SettingsPanel>
         ) : sources.length === 0 ? (
@@ -289,12 +308,33 @@ export function DocsSection() {
                 key={`${s.id}:${s.name}`}
                 source={s}
                 index={indexStatus?.find((i) => i.sourceId === s.id)}
+                semantic={!!semantic?.enabled && semantic.modelPresent}
                 busy={busy}
                 onRename={(name) => renameMut.mutate({ id: s.id, name })}
                 onRemove={() => removeMut.mutate(s.id)}
               />
             ))}
           </ul>
+        )}
+        {semantic && (
+          <SettingsPanel className="flex items-center justify-between gap-4 px-4 py-3">
+            <div className="min-w-0">
+              <p className="text-[13px] font-medium text-foreground">Semantic search</p>
+              <p className="text-[12px] text-muted-foreground">
+                {!semantic.modelPresent
+                  ? "Search model not installed. Run “npm run fetch-model”, then rebuild. Keyword search still works."
+                  : semantic.enabled
+                      ? `Finds related wording, not just exact words (${semantic.model}, runs on this computer).`
+                      : "Off — only exact words are matched."}
+              </p>
+            </div>
+            <Switch
+              label="Semantic search"
+              checked={semantic.enabled}
+              disabled={semanticMut.isPending}
+              onChange={(on) => semanticMut.mutate(on)}
+            />
+          </SettingsPanel>
         )}
       </section>
 
