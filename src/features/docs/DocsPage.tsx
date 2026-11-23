@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Search,
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,7 @@ import {
   useDocsSources,
   useDocsStatus,
   useDocsRescan,
+  useDocsSearch,
   useDocsSync,
   useDocsTree,
 } from "@/lib/queries";
@@ -37,7 +39,10 @@ import { resolveActiveSource, saveActiveSourceId, useStoredSourceId } from "./ac
 import { docFormat, sourceDetail, sourceProvider, unavailableReason } from "./docSource";
 import { SourceKindIcon } from "./SourceKindIcon";
 import { DocsTree } from "./DocsTree";
-import { DocViewer } from "./DocViewer";
+import { DocViewer, PlainTextViewer } from "./DocViewer";
+import { clearDocFocus, requestDocFocus, usePendingDocFocus } from "./docFocus";
+import { DocSearchResults } from "./DocSearchResults";
+import { useDebouncedValue } from "./useDebouncedValue";
 
 // pdf.js is large; load it only when a PDF is opened.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -221,6 +226,18 @@ export function DocsPage({
     saveActiveSourceId(id); // becomes the default for newly opened Docs tabs
   };
 
+  // Keyword search within the active source; results replace the tree while typing.
+  const [search, setSearch] = useState("");
+  const searching = search.trim().length > 0;
+  const results = useDocsSearch(useDebouncedValue(activeId && available ? search : "", 200), activeId ?? undefined);
+
+  // A search hit asked for this doc at a given line (from here or the palette).
+  const pendingFocus = usePendingDocFocus();
+  const focusLine =
+    pendingFocus && pendingFocus.sourceId === activeId && pendingFocus.path === selected
+      ? pendingFocus.line
+      : null;
+
   const selectedName = selected ? (flat?.find((n) => n.path === selected)?.name ?? selected.split("/").pop() ?? "") : "";
   const format = active ? docFormat(active.kind, selectedName) : "markdown";
   const docQuery = useDocContent(activeId, selected, available && format !== "pdf");
@@ -323,12 +340,10 @@ export function DocsPage({
     reader = unreadable(isLocal ? "This file couldn't be read." : "This document isn't cached.");
   } else if (format === "text") {
     reader = (
-      <pre className="docs-reader whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-foreground">
-        {docQuery.data}
-      </pre>
+      <PlainTextViewer text={docQuery.data} focusLine={focusLine} onFocused={clearDocFocus} />
     );
   } else {
-    reader = <DocViewer markdown={docQuery.data} />;
+    reader = <DocViewer markdown={docQuery.data} focusLine={focusLine} onFocused={clearDocFocus} />;
   }
 
   return (
@@ -405,8 +420,31 @@ export function DocsPage({
                   </span>
                 )}
               </div>
+              {activeId && (
+                <div className="flex shrink-0 items-center gap-2 px-4 pb-2">
+                  <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && setSearch("")}
+                    aria-label="Search docs"
+                    placeholder="Search docs…"
+                    className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                </div>
+              )}
               <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-28">
-                {tree.length === 0 || !activeId ? (
+                {searching && activeId ? (
+                  <DocSearchResults
+                    hits={results.data}
+                    pending={results.isFetching}
+                    selectedPath={selected}
+                    onSelect={(h) => {
+                      requestDocFocus({ sourceId: h.sourceId, path: h.path, line: h.startLine });
+                      setSelected(h.path);
+                    }}
+                  />
+                ) : tree.length === 0 || !activeId ? (
                   <p className="flex items-start gap-2.5 px-4 py-3 text-[13px] text-muted-foreground">
                     <IndicatorLamp tone="off" className="mt-1.5" />
                     {refreshing

@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   Copy,
   ExternalLink,
+  FileText,
   Link2,
   Plus,
   RefreshCw,
@@ -23,11 +24,13 @@ import {
   Search,
   SquareSplitHorizontal,
 } from "lucide-react";
-import { invalidateWorkspaceQueries, reportSyncError } from "@/lib/queries";
+import { invalidateWorkspaceQueries, reportSyncError, useDocsSearch } from "@/lib/queries";
+import { useDebouncedValue } from "@/features/docs/useDebouncedValue";
+import { requestDocFocus } from "@/features/docs/docFocus";
 import { useTasks } from "@/lib/taskQueries";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { VIEW_META, visibleViews, useModules } from "@/lib/modules";
-import { syncIssues, type IssueListItem } from "@/lib/commands";
+import { syncIssues, type DocHit, type IssueListItem } from "@/lib/commands";
 import { IndicatorLamp } from "@/components/IndicatorLamp";
 import { StatusIcon } from "@/features/drawer/issueGlyphs";
 import { CreateIssueModal } from "./CreateIssueModal";
@@ -200,7 +203,7 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
   const { data: issues } = useTasks({});
   const navigate = useNavigate();
   const [, setParams] = useSearchParams();
-  const { openIssueInRightSplit, setActiveView, addTab } = useWorkspace();
+  const { openIssueInRightSplit, setActiveView, addTab, openDocTab } = useWorkspace();
   const { isActive, hasCapability, disabledScreens } = useModules();
   const tracker = hasCapability("tracker");
   const linear = isActive("linear");
@@ -277,13 +280,22 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
     return scored.slice(0, 8).map((x) => x.i);
   }, [issues, term]);
 
-  // Flatten command + issue selections so arrow keys traverse the whole list.
+  // Docs: files whose text matches, from the search index (not while picking an issue).
+  const docTerm = useDebouncedValue(target === "rightSplit" ? "" : term, 200);
+  const docQuery = useDocsSearch(docTerm);
+  const matchedDocs = useMemo(
+    () => (docTerm && docQuery.data ? docQuery.data.slice(0, 5) : []),
+    [docTerm, docQuery.data],
+  );
+
+  // Flatten command + issue + doc selections so arrow keys traverse the whole list.
   const items = useMemo(
     () => [
       ...filteredCommands.map((c) => ({ kind: "cmd" as const, cmd: c })),
       ...matchedIssues.map((i) => ({ kind: "issue" as const, issue: i })),
+      ...matchedDocs.map((d) => ({ kind: "doc" as const, doc: d })),
     ],
-    [filteredCommands, matchedIssues],
+    [filteredCommands, matchedIssues, matchedDocs],
   );
 
   useEffect(() => setSel(0), [term]);
@@ -295,7 +307,11 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
     const it = items[idx];
     if (!it) return;
     if (it.kind === "cmd") it.cmd.onSelect();
-    else openIssue(it.issue.id);
+    else if (it.kind === "doc") {
+      requestDocFocus({ sourceId: it.doc.sourceId, path: it.doc.path, line: it.doc.startLine });
+      openDocTab(it.doc.sourceId, it.doc.path);
+      onClose();
+    } else openIssue(it.issue.id);
   };
 
   const onKey = (e: React.KeyboardEvent) => {
@@ -372,12 +388,12 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
             </div>
           )}
           {items.map((it, idx) => {
-            const section = it.kind === "cmd" ? it.cmd.section : "Issues";
+            const section = it.kind === "cmd" ? it.cmd.section : it.kind === "doc" ? "Docs" : "Issues";
             const heading = section !== lastSection ? section : null;
             lastSection = section;
             const selected = idx === sel;
             return (
-              <div key={it.kind === "cmd" ? `c-${it.cmd.key}` : `i-${it.issue.id}`}>
+              <div key={it.kind === "cmd" ? `c-${it.cmd.key}` : it.kind === "doc" ? `d-${it.doc.sourceId}:${it.doc.path}` : `i-${it.issue.id}`}>
                 {heading && (
                   <div className="px-2.5 pb-1 pt-2.5 text-[12px] font-medium lowercase text-muted-foreground">
                     {heading}
@@ -400,6 +416,8 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
                       <kbd className="font-sans text-[12px] tabular-nums text-muted-foreground">{it.cmd.hint}</kbd>
                     )}
                   </button>
+                ) : it.kind === "doc" ? (
+                  <DocRow hit={it.doc} idx={idx} selected={selected} onSelect={setSel} onOpen={() => activate(idx)} />
                 ) : (
                   <IssueRow issue={it.issue} idx={idx} selected={selected} onSelect={setSel} onOpen={() => activate(idx)} />
                 )}
@@ -422,6 +440,42 @@ function Palette({ onClose, onCreate, resync }: { onClose: () => void; onCreate:
 /** The selected row's indicator: a lit lamp in the signal key; unselected rows keep the slot dark. */
 function SelectionLamp({ on }: { on: boolean }) {
   return <span aria-hidden className={`dash-lamp ${on ? "dash-lamp-lit bg-primary" : ""}`} />;
+}
+
+function DocRow({
+  hit,
+  idx,
+  selected,
+  onSelect,
+  onOpen,
+}: {
+  hit: DocHit;
+  idx: number;
+  selected: boolean;
+  onSelect: (idx: number) => void;
+  onOpen: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-idx={idx}
+      onMouseMove={() => onSelect(idx)}
+      onClick={onOpen}
+      className={`flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-1.5 text-left text-[13px] ${selected ? "bg-accent" : ""}`}
+    >
+      <SelectionLamp on={selected} />
+      <span className="flex size-4 shrink-0 items-center justify-center text-muted-foreground">
+        <FileText className="size-4" />
+      </span>
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="truncate text-foreground">
+          {hit.title}
+          {hit.headingPath && <span className="text-muted-foreground"> · {hit.headingPath}</span>}
+        </span>
+        <span className="truncate text-[12px] text-muted-foreground">{hit.snippet}</span>
+      </span>
+    </button>
+  );
 }
 
 function IssueRow({

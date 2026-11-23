@@ -3,6 +3,7 @@ mod clickup;
 mod code_host;
 mod commands;
 mod db;
+mod doc_search;
 mod generators;
 mod github;
 mod issue_ref;
@@ -247,6 +248,9 @@ pub fn run() {
             commands::docs::add_local_docs_source,
             commands::docs::get_doc_pdf,
             commands::docs::add_clickup_docs_source,
+            commands::doc_search::search_docs,
+            commands::doc_search::reindex_docs,
+            commands::doc_search::docs_index_status,
             commands::doc_links::list_doc_links,
             commands::doc_links::create_doc_link,
             commands::doc_links::update_doc_link,

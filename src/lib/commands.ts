@@ -711,6 +711,31 @@ export const renameDocsSource = (sourceId: string, name: string): Promise<DocsSo
 export const removeDocsSource = (sourceId: string): Promise<void> =>
   invoke("remove_docs_source", { sourceId });
 
+/** One file that matched a docs search, with its best-matching section. */
+export type DocHit = {
+  sourceId: string;
+  path: string;
+  title: string;
+  headingPath: string;
+  startLine: number;
+  snippet: string;
+  /** Other sections of the same file that also matched. */
+  more: number;
+};
+
+export const searchDocs = (query: string, sourceId?: string, limit?: number): Promise<DocHit[]> =>
+  invoke("search_docs", { query, sourceId: sourceId ?? null, limit: limit ?? null });
+
+export type IndexStats = { indexed: number; skipped: number; removed: number };
+
+/** Re-read one source (or all) into the search index. */
+export const reindexDocs = (sourceId?: string): Promise<IndexStats> =>
+  invoke("reindex_docs", { sourceId: sourceId ?? null });
+
+export type SourceIndexStatus = { sourceId: string; files: number; chunks: number; indexedAt: string };
+
+export const docsIndexStatus = (): Promise<SourceIndexStatus[]> => invoke("docs_index_status");
+
 // ── Per-task doc links (F9) ──────────────────────────────────────────────────
 
 /** `url`: a web link. `doc`: a document in a docs source, opened in the Docs page. */

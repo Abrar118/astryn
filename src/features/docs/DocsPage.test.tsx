@@ -44,6 +44,7 @@ const state = vi.hoisted(() => ({
   content: {} as Record<string, string>,
   treeCalls: [] as (string | null)[],
   syncEnabled: [] as boolean[],
+  hits: [] as unknown[],
 }));
 
 const setActiveView = vi.hoisted(() => vi.fn());
@@ -59,6 +60,7 @@ vi.mock("@/lib/queries", () => ({
     return { data: sourceId ? state.trees[sourceId] : undefined, isError: false, isFetching: false };
   },
   useDocsRescan: () => rescan,
+  useDocsSearch: (text: string) => ({ data: text ? state.hits : undefined, isFetching: false }),
   useDocContent: (sourceId: string | null, path: string | null, enabled = true) => ({
     data: enabled && sourceId && path ? (state.content[`${sourceId}:${path}`] ?? null) : undefined,
     isPending: !enabled,
@@ -74,8 +76,13 @@ vi.mock("@/lib/queries", () => ({
   },
 }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView }) }));
-vi.mock("./DocViewer", () => ({
-  DocViewer: ({ markdown }: { markdown: string }) => <div data-testid="doc">{markdown}</div>,
+vi.mock("./DocViewer", async (orig) => ({
+  ...(await orig<typeof import("./DocViewer")>()),
+  DocViewer: ({ markdown, focusLine }: { markdown: string; focusLine?: number | null }) => (
+    <div data-testid="doc" data-line={focusLine ?? ""}>
+      {markdown}
+    </div>
+  ),
 }));
 vi.mock("./PdfViewer", () => ({
   default: ({ data }: { data: ArrayBuffer }) => <div data-testid="pdf">{data.byteLength} bytes</div>,
@@ -100,6 +107,7 @@ beforeEach(() => {
   state.clickupToken = false;
   state.treeCalls = [];
   state.syncEnabled = [];
+  state.hits = [];
   state.trees = {
     [CORE.id]: [node("README.md")],
     [DESIGN.id]: [node("README.md")],
@@ -255,5 +263,27 @@ describe("DocsPage local folders", () => {
     render(<DocsPage />);
     fireEvent.click(screen.getByRole("button", { name: /notes/i }));
     expect(screen.getByText("/home/me/notes")).toBeTruthy();
+  });
+});
+
+describe("DocsPage search", () => {
+  it("replaces the tree with matches and opens the clicked file", async () => {
+    state.hits = [
+      { sourceId: CORE.id, path: "policy.md", title: "policy", headingPath: "Leave", startLine: 3, snippet: "vacation days", more: 1 },
+    ];
+    state.content[`${CORE.id}:policy.md`] = "# Policy";
+    render(<DocsPage />);
+    fireEvent.change(screen.getByLabelText("Search docs"), { target: { value: "vacation" } });
+
+    fireEvent.click(await screen.findByText("vacation days"));
+    expect(screen.getByText("+1 more section")).toBeTruthy();
+    expect(screen.getByTestId("doc").textContent).toBe("# Policy");
+    expect(screen.getByTestId("doc").getAttribute("data-line")).toBe("3"); // opens at the match
+  });
+
+  it("says so when nothing matches", async () => {
+    render(<DocsPage />);
+    fireEvent.change(screen.getByLabelText("Search docs"), { target: { value: "zzz" } });
+    expect(await screen.findByText("No matches.")).toBeTruthy();
   });
 });

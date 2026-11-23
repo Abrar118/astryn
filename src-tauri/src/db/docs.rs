@@ -215,7 +215,12 @@ pub async fn insert_clickup_docs_source(
 /// configuration, and a new token simply resyncs them.
 pub async fn wipe_clickup_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
     let mut tx = pool.begin().await?;
-    for table in ["docs_files", "docs_sync_meta"] {
+    for table in [
+        "docs_files",
+        "docs_sync_meta",
+        "doc_chunks",
+        "doc_indexed_files",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM {table} WHERE source_id IN
                (SELECT id FROM docs_sources WHERE kind = 'clickup')"
@@ -317,6 +322,12 @@ pub async fn remove_docs_source(pool: &SqlitePool, id: &str) -> Result<bool, sql
         .bind(id)
         .execute(&mut *tx)
         .await?;
+    for table in ["doc_chunks", "doc_indexed_files"] {
+        sqlx::query(&format!("DELETE FROM {table} WHERE source_id = ?1"))
+            .bind(id)
+            .execute(&mut *tx)
+            .await?;
+    }
     let result = sqlx::query("DELETE FROM docs_sources WHERE id = ?1")
         .bind(id)
         .execute(&mut *tx)

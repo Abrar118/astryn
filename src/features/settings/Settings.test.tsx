@@ -62,6 +62,7 @@ vi.mock("@/lib/queries", () => ({
   useTeamsStatus: () => ({ data: { state: "not_configured" } }),
   useDocsSources: () => ({ data: queries.docsSources }),
   useDocsStatus: () => ({ data: queries.docsStatus }),
+  useDocsIndexStatus: () => ({ data: [] }),
 }));
 vi.mock("goey-toast", () => ({ gooeyToast: { success: vi.fn(), error: vi.fn() } }));
 

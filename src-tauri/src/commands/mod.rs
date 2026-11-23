@@ -24,6 +24,7 @@ const LINEAR_KEY_ACCOUNT: &str = "linear_api_key";
 pub mod bitbucket;
 pub mod clickup;
 pub mod doc_links;
+pub mod doc_search;
 pub mod docs;
 pub mod github;
 pub mod local_tasks;
