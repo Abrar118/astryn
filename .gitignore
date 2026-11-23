@@ -39,3 +39,7 @@ dist-ssr
 
 # impeccable local review captures (screenshots, diffs)
 .impeccable/review/
+
+# Docs-search embedding model: fetched by `npm run fetch-model`, never committed.
+src-tauri/models/bge-base-en-v1.5/*
+!src-tauri/models/bge-base-en-v1.5/.gitkeep

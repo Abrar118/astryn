@@ -61,7 +61,7 @@ export function FilterBar({
   );
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="contents">
       <AssigneeSelect
         value={filters.assigneeId ?? null}
         onChange={(id) => onFilters({ ...filters, assigneeId: id ?? undefined })}

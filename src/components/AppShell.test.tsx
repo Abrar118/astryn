@@ -68,6 +68,6 @@ describe("AppShell", () => {
     expect(screen.getByTestId("shortcuts")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /choose your tools/i })).toBeNull();
     const labels = screen.getAllByRole("button").map((b) => b.getAttribute("aria-label"));
-    expect(labels).toEqual(["Dashboard", "Settings", "Refresh"]);
+    expect(labels).toEqual(["Dashboard", "Settings", "Refresh", "Hide menu bar"]);
   });
 });

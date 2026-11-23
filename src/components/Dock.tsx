@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode } from "react";
-import { ChevronUp, Plus, RefreshCw } from "lucide-react";
+import { ChevronUp, PanelBottomClose, PanelBottomOpen, Plus, RefreshCw } from "lucide-react";
 import { useWorkspace, type ViewKind } from "@/lib/tabs";
 import { VIEW_META, VIEW_TINT, dockEntries, visibleViews, useModules, type DockGroup } from "@/lib/modules";
 
@@ -169,11 +169,33 @@ function DockGroupButton({
   );
 }
 
+const DOCK_HIDDEN_KEY = "astryn.dockHidden";
+
+function readDockHidden(): boolean {
+  try {
+    return localStorage.getItem(DOCK_HIDDEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () => void }) {
   const { active, setActiveView, addTab } = useWorkspace();
   const { isActive, disabledScreens } = useModules();
   const [menu, setMenu] = useState<{ view: NavView; x: number; y: number } | null>(null);
   const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(readDockHidden);
+
+  const setDockHidden = (value: boolean) => {
+    setHidden(value);
+    setOpenGroup(null);
+    setMenu(null);
+    try {
+      localStorage.setItem(DOCK_HIDDEN_KEY, value ? "1" : "0");
+    } catch {
+      /* storage unavailable: the choice just won't persist */
+    }
+  };
 
   useEffect(() => {
     if (!menu && !openGroup) return;
@@ -197,10 +219,26 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
     setMenu({ view, x: e.clientX, y: e.clientY });
   };
 
+  if (hidden) {
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-2 z-30 flex justify-center">
+        <button
+          type="button"
+          onClick={() => setDockHidden(false)}
+          aria-label="Show menu bar"
+          title="Show menu bar"
+          className="pointer-events-auto flex h-6 w-12 cursor-pointer items-center justify-center rounded-full border border-foreground/15 bg-sidebar/30 text-muted-foreground shadow-[inset_0_1px_0_color-mix(in_oklab,var(--foreground)_22%,transparent)] backdrop-blur-3xl backdrop-saturate-200 transition-colors hover:text-foreground"
+        >
+          <PanelBottomOpen className="size-4" />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-4 z-30 flex justify-center">
-        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-sidebar-border bg-sidebar p-1.5">
+        <div className="pointer-events-auto flex items-center gap-1 rounded-2xl border border-foreground/15 bg-sidebar/30 p-1.5 shadow-[0_12px_40px_var(--overlay-shadow),inset_0_1px_0_color-mix(in_oklab,var(--foreground)_22%,transparent),inset_0_-1px_0_color-mix(in_oklab,var(--foreground)_6%,transparent),inset_0_0_14px_color-mix(in_oklab,var(--foreground)_6%,transparent)] backdrop-blur-3xl backdrop-brightness-110 backdrop-saturate-200">
           {dockEntries(visibleViews(isActive, disabledScreens)).map((entry) => {
             if (entry.kind === "group") {
               return (
@@ -239,6 +277,9 @@ export function Dock({ isSyncing, refresh }: { isSyncing: boolean; refresh: () =
           <div className="mx-1 h-6 w-px bg-sidebar-border" />
           <DockButton label={isSyncing ? "Syncing…" : "Refresh"} active={false} onClick={refresh}>
             <RefreshCw className={`size-5 tint-green ${isSyncing ? "animate-spin" : ""}`} />
+          </DockButton>
+          <DockButton label="Hide menu bar" active={false} onClick={() => setDockHidden(true)}>
+            <PanelBottomClose className="size-5 text-muted-foreground" />
           </DockButton>
         </div>
       </div>

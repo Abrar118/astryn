@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import {
+  keepPreviousData,
   useQuery,
   useMutation,
   useQueryClient,
@@ -19,6 +20,9 @@ import {
   getConnectionStatus,
   getDocsStatus,
   getDocContent,
+  searchDocs,
+  docsIndexStatus,
+  getSemanticSearch,
   getDocPdf,
   getGithubContributions,
   getGithubPrDiff,
@@ -619,6 +623,31 @@ export function useDocsTree(sourceId: string | null) {
   });
 }
 
+/** How much of each source is searchable. */
+export function useDocsIndexStatus() {
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-index-status"], queryFn: docsIndexStatus, enabled: on });
+}
+
+/** Whether semantic (meaning-based) docs search is on, and whether its model is installed. */
+export function useSemanticSearch() {
+  const on = useOwnerActive("docs");
+  return useQuery({ queryKey: ["docs-semantic"], queryFn: getSemanticSearch, enabled: on });
+}
+
+/** Search over docs (keywords, plus meaning when on); `sourceId` limits it to one source. Empty text searches nothing. */
+export function useDocsSearch(text: string, sourceId?: string) {
+  const on = useOwnerActive("docs");
+  const q = text.trim();
+  return useQuery({
+    queryKey: ["docs-search", sourceId ?? null, q],
+    queryFn: () => searchDocs(q, sourceId),
+    select: (r) => r.hits,
+    enabled: on && q.length > 0,
+    placeholderData: keepPreviousData,
+  });
+}
+
 export function useDocContent(sourceId: string | null, path: string | null, enabled = true) {
   return useQuery({
     queryKey: ["doc-content", sourceId, path],
@@ -636,10 +665,18 @@ export function useDocContent(sourceId: string | null, path: string | null, enab
 export function useDocsRescan() {
   const qc = useQueryClient();
   return (sourceId: string) =>
-    Promise.all([
-      qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] }),
-      qc.invalidateQueries({ queryKey: ["doc-content", sourceId] }),
-    ]).then(() =>
+    // A folder's sync is its rescan, and it refreshes the search index too.
+    syncDocs(sourceId)
+      .catch(() => undefined) // an unreadable folder is reported by the tree query
+      .then(() =>
+        Promise.all([
+          qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] }),
+          qc.invalidateQueries({ queryKey: ["doc-content", sourceId] }),
+          qc.invalidateQueries({ queryKey: ["docs-search"] }),
+          qc.invalidateQueries({ queryKey: ["docs-index-status"] }),
+        ]),
+      )
+      .then(() =>
       Promise.all([
         qc.invalidateQueries({ queryKey: ["docs-sources"] }),
         qc.invalidateQueries({ queryKey: ["docs-status"] }),
@@ -679,6 +716,8 @@ export function useDocsSync(sourceId: string | null, enabled: boolean) {
         const result = await syncDocs(sourceId as string);
         await qc.invalidateQueries({ queryKey: ["docs-tree", sourceId] });
         await qc.invalidateQueries({ queryKey: ["doc-content", sourceId] });
+        await qc.invalidateQueries({ queryKey: ["docs-search"] });
+        await qc.invalidateQueries({ queryKey: ["docs-index-status"] });
         // File counts live on the source rows, so the picker/Settings refresh too.
         await qc.invalidateQueries({ queryKey: ["docs-sources"] });
         await qc.invalidateQueries({ queryKey: ["docs-status"] });

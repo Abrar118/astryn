@@ -44,6 +44,7 @@ const state = vi.hoisted(() => ({
   content: {} as Record<string, string>,
   treeCalls: [] as (string | null)[],
   syncEnabled: [] as boolean[],
+  hits: [] as unknown[],
 }));
 
 const setActiveView = vi.hoisted(() => vi.fn());
@@ -59,6 +60,7 @@ vi.mock("@/lib/queries", () => ({
     return { data: sourceId ? state.trees[sourceId] : undefined, isError: false, isFetching: false };
   },
   useDocsRescan: () => rescan,
+  useDocsSearch: (text: string) => ({ data: text ? state.hits : undefined, isFetching: false }),
   useDocContent: (sourceId: string | null, path: string | null, enabled = true) => ({
     data: enabled && sourceId && path ? (state.content[`${sourceId}:${path}`] ?? null) : undefined,
     isPending: !enabled,
@@ -73,9 +75,16 @@ vi.mock("@/lib/queries", () => ({
     return { isError: false, isFetching: false, refetch: vi.fn() };
   },
 }));
+const progress = vi.hoisted(() => ({ current: null as null | { phase: "reading" | "embedding"; done: number; total: number } }));
+vi.mock("./useDocsProgress", () => ({ useDocsProgress: () => progress.current }));
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ({ setActiveView }) }));
-vi.mock("./DocViewer", () => ({
-  DocViewer: ({ markdown }: { markdown: string }) => <div data-testid="doc">{markdown}</div>,
+vi.mock("./DocViewer", async (orig) => ({
+  ...(await orig<typeof import("./DocViewer")>()),
+  DocViewer: ({ markdown, focusLine }: { markdown: string; focusLine?: number | null }) => (
+    <div data-testid="doc" data-line={focusLine ?? ""}>
+      {markdown}
+    </div>
+  ),
 }));
 vi.mock("./PdfViewer", () => ({
   default: ({ data }: { data: ArrayBuffer }) => <div data-testid="pdf">{data.byteLength} bytes</div>,
@@ -100,6 +109,7 @@ beforeEach(() => {
   state.clickupToken = false;
   state.treeCalls = [];
   state.syncEnabled = [];
+  state.hits = [];
   state.trees = {
     [CORE.id]: [node("README.md")],
     [DESIGN.id]: [node("README.md")],
@@ -255,5 +265,64 @@ describe("DocsPage local folders", () => {
     render(<DocsPage />);
     fireEvent.click(screen.getByRole("button", { name: /notes/i }));
     expect(screen.getByText("/home/me/notes")).toBeTruthy();
+  });
+});
+
+describe("DocsPage search", () => {
+  it("shows how far indexing has got while it runs", () => {
+    progress.current = { phase: "reading", done: 5, total: 20 };
+    render(<DocsPage />);
+    expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
+    cleanup();
+    progress.current = null;
+    render(<DocsPage />);
+    expect(screen.queryByRole("progressbar")).toBeNull();
+  });
+
+  it("replaces the tree with matches and opens the clicked file", async () => {
+    state.hits = [
+      { sourceId: CORE.id, path: "policy.md", title: "policy", headingPath: "Leave", startLine: 3, snippet: "vacation days", more: 1 },
+    ];
+    state.content[`${CORE.id}:policy.md`] = "# Policy";
+    render(<DocsPage />);
+    fireEvent.change(screen.getByLabelText("Search docs"), { target: { value: "vacation" } });
+
+    fireEvent.click(await screen.findByText("vacation days"));
+    expect(screen.getByText("+1 more section")).toBeTruthy();
+    expect(screen.getByTestId("doc").textContent).toBe("# Policy");
+    expect(screen.getByTestId("doc").getAttribute("data-line")).toBe("3"); // opens at the match
+  });
+
+  it("clears the search box from the cross button", () => {
+    render(<DocsPage />);
+    const box = screen.getByLabelText("Search docs") as HTMLInputElement;
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+    fireEvent.change(box, { target: { value: "vacation" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(box.value).toBe("");
+    expect(screen.queryByRole("button", { name: "Clear search" })).toBeNull();
+  });
+
+  it("says so when nothing matches", async () => {
+    render(<DocsPage />);
+    fireEvent.change(screen.getByLabelText("Search docs"), { target: { value: "zzz" } });
+    expect(await screen.findByText("No matches.")).toBeTruthy();
+  });
+});
+
+describe("DocsPage zoom", () => {
+  it("zooms only the document pane, within limits, and resets", () => {
+    state.content[`${CORE.id}:README.md`] = "# Hi";
+    render(<DocsPage />);
+    const pane = screen.getByTestId("doc").parentElement as HTMLElement;
+    expect(pane.style.zoom).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Zoom in document" }));
+    expect(pane.style.zoom).toBe("1.1");
+    expect(screen.getByRole("button", { name: "Reset document zoom" }).textContent).toBe("110%");
+    fireEvent.click(screen.getByRole("button", { name: "Reset document zoom" }));
+    expect(pane.style.zoom).toBe("");
+    for (let i = 0; i < 20; i++) fireEvent.click(screen.getByRole("button", { name: "Zoom out document" }));
+    expect(pane.style.zoom).toBe("0.5");
+    expect((screen.getByRole("button", { name: "Zoom out document" }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

@@ -7,10 +7,15 @@ beforeAll(() => {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
-const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn(), closeTab: vi.fn(), active: { id: "tab-1", view: "calendar" } }));
+const ws = vi.hoisted(() => ({ openIssueInRightSplit: vi.fn(), setActiveView: vi.fn(), addTab: vi.fn(), closeTab: vi.fn(), openDocTab: vi.fn(), active: { id: "tab-1", view: "calendar" } }));
 const setParams = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/tabs", () => ({ useWorkspace: () => ws }));
-vi.mock("@/lib/queries", () => ({ invalidateWorkspaceQueries: vi.fn(), reportSyncError: vi.fn() }));
+const docHits = vi.hoisted(() => ({ current: [] as unknown[] }));
+vi.mock("@/lib/queries", () => ({
+  invalidateWorkspaceQueries: vi.fn(),
+  reportSyncError: vi.fn(),
+  useDocsSearch: () => ({ data: docHits.current }),
+}));
 vi.mock("@/lib/taskQueries", () => ({
   useTasks: () => ({ data: [{ id: "iss-1", identifier: "AB-1", title: "First", url: "u", stateColor: "#fff", labels: [] }] }),
 }));
@@ -41,6 +46,8 @@ afterEach(() => {
   ws.openIssueInRightSplit.mockReset();
   ws.setActiveView.mockReset();
   ws.addTab.mockReset();
+  ws.openDocTab.mockReset();
+  docHits.current = [];
   setParams.mockReset();
 });
 
@@ -168,5 +175,17 @@ describe("CommandPalette module gating", () => {
   it("offers Slack, Docs and Reports when their modules are active", () => {
     openPalette();
     for (const l of ["Go to Slack", "Go to Docs", "Go to Reports"]) expect(screen.getByText(l)).toBeTruthy();
+  });
+});
+
+describe("CommandPalette docs", () => {
+  it("lists matching docs and opens the picked one in a tab", async () => {
+    docHits.current = [
+      { sourceId: "s1", path: "hr.md", title: "Leave policy", headingPath: "Travel", startLine: 1, snippet: "vacation days", more: 0 },
+    ];
+    openPalette();
+    fireEvent.change(screen.getByPlaceholderText(/type a command/i), { target: { value: "vacation" } });
+    fireEvent.click(await screen.findByText("Leave policy"));
+    expect(ws.openDocTab).toHaveBeenCalledWith("s1", "hr.md");
   });
 });

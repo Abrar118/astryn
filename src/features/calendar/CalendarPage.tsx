@@ -201,7 +201,7 @@ export function CalendarPage() {
 
   return (
     <div className="calendar-surface flex h-full flex-col">
-      <header className="flex flex-col gap-3 border-b border-border px-4 pt-5 pb-3">
+      <header className="border-b border-border px-4 pt-5 pb-3">
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="min-w-0 text-[20px] font-semibold tracking-tight text-foreground tabular-nums">
             {view.title}
@@ -217,7 +217,8 @@ export function CalendarPage() {
               <ChevronRight />
             </Button>
           </div>
-          <div role="group" aria-label="Calendar view" className="face-segment ml-auto">
+          <FilterBar filters={filters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
+          <div role="group" aria-label="Calendar view" className="face-segment">
             {VIEWS.map((v) => (
               <button
                 key={v.value}
@@ -231,7 +232,6 @@ export function CalendarPage() {
             ))}
           </div>
         </div>
-        <FilterBar filters={filters} colorBy={colorBy} onFilters={setFilters} onColorBy={setColorBy} />
       </header>
       <div className="flex min-h-0 flex-1">
         <div className="min-h-0 min-w-0 flex-1 pb-20">

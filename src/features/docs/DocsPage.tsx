@@ -15,7 +15,11 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Search,
   Settings2,
+  X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { IndicatorLamp, type Lamp } from "@/components/IndicatorLamp";
@@ -27,6 +31,7 @@ import {
   useDocsSources,
   useDocsStatus,
   useDocsRescan,
+  useDocsSearch,
   useDocsSync,
   useDocsTree,
 } from "@/lib/queries";
@@ -37,7 +42,12 @@ import { resolveActiveSource, saveActiveSourceId, useStoredSourceId } from "./ac
 import { docFormat, sourceDetail, sourceProvider, unavailableReason } from "./docSource";
 import { SourceKindIcon } from "./SourceKindIcon";
 import { DocsTree } from "./DocsTree";
-import { DocViewer } from "./DocViewer";
+import { DocViewer, PlainTextViewer } from "./DocViewer";
+import { clearDocFocus, requestDocFocus, usePendingDocFocus } from "./docFocus";
+import { DocSearchResults } from "./DocSearchResults";
+import { DocsProgressBar } from "./DocsProgressBar";
+import { useDocsProgress } from "./useDocsProgress";
+import { useDebouncedValue } from "./useDebouncedValue";
 
 // pdf.js is large; load it only when a PDF is opened.
 const PdfViewer = lazy(() => import("./PdfViewer"));
@@ -46,6 +56,9 @@ const SIDEBAR_MIN = 180;
 const SIDEBAR_MAX = 560;
 const SIDEBAR_DEFAULT = 288; // matches the old w-72
 const SIDEBAR_STEP = 16;
+const ZOOM_MIN = 0.5;
+const ZOOM_MAX = 2;
+const ZOOM_STEP = 0.1;
 
 /** Centered empty state for the "no sources" case. */
 function DocsEmptyState({
@@ -221,6 +234,19 @@ export function DocsPage({
     saveActiveSourceId(id); // becomes the default for newly opened Docs tabs
   };
 
+  // Keyword search within the active source; results replace the tree while typing.
+  const [search, setSearch] = useState("");
+  const searching = search.trim().length > 0;
+  const indexing = useDocsProgress();
+  const results = useDocsSearch(useDebouncedValue(activeId && available ? search : "", 200), activeId ?? undefined);
+
+  // A search hit asked for this doc at a given line (from here or the palette).
+  const pendingFocus = usePendingDocFocus();
+  const focusLine =
+    pendingFocus && pendingFocus.sourceId === activeId && pendingFocus.path === selected
+      ? pendingFocus.line
+      : null;
+
   const selectedName = selected ? (flat?.find((n) => n.path === selected)?.name ?? selected.split("/").pop() ?? "") : "";
   const format = active ? docFormat(active.kind, selectedName) : "markdown";
   const docQuery = useDocContent(activeId, selected, available && format !== "pdf");
@@ -231,6 +257,10 @@ export function DocsPage({
   const resizeCleanup = useRef<(() => void) | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
   const [collapsed, setCollapsed] = useState(false);
+  // Zoom of the document pane only (CSS zoom), not the rest of the app.
+  const [zoom, setZoom] = useState(1);
+  const stepZoom = (delta: number) =>
+    setZoom((z) => Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z + delta)) * 100) / 100);
   const clampWidth = (px: number) => Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, px));
 
   // Tear down an in-flight drag if the page unmounts mid-resize.
@@ -323,12 +353,10 @@ export function DocsPage({
     reader = unreadable(isLocal ? "This file couldn't be read." : "This document isn't cached.");
   } else if (format === "text") {
     reader = (
-      <pre className="docs-reader whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-foreground">
-        {docQuery.data}
-      </pre>
+      <PlainTextViewer text={docQuery.data} focusLine={focusLine} onFocused={clearDocFocus} />
     );
   } else {
-    reader = <DocViewer markdown={docQuery.data} />;
+    reader = <DocViewer markdown={docQuery.data} focusLine={focusLine} onFocused={clearDocFocus} />;
   }
 
   return (
@@ -367,6 +395,36 @@ export function DocsPage({
             </span>
           )}
         </div>
+        <div className="flex shrink-0 items-center gap-0.5">
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom out document"
+          title="Zoom out document"
+          disabled={zoom <= ZOOM_MIN}
+          onClick={() => stepZoom(-ZOOM_STEP)}
+        >
+          <ZoomOut className="size-4" />
+        </Button>
+        <button
+          type="button"
+          aria-label="Reset document zoom"
+          title="Reset document zoom"
+          onClick={() => setZoom(1)}
+          className="h-7 min-w-10 cursor-pointer rounded-md px-1 text-[12px] tabular-nums text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          {Math.round(zoom * 100)}%
+        </button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Zoom in document"
+          title="Zoom in document"
+          disabled={zoom >= ZOOM_MAX}
+          onClick={() => stepZoom(ZOOM_STEP)}
+        >
+          <ZoomIn className="size-4" />
+        </Button>
         <Button
           variant="ghost"
           size="icon-sm"
@@ -377,6 +435,7 @@ export function DocsPage({
         >
           <RefreshCw className={`size-4 ${refreshing ? "animate-spin" : ""}`} />
         </Button>
+        </div>
       </header>
 
       {notice ? (
@@ -405,8 +464,47 @@ export function DocsPage({
                   </span>
                 )}
               </div>
+              {activeId && (
+                <div className="flex shrink-0 items-center gap-2 px-4 pb-2">
+                  <Search aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+                  <input
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Escape" && setSearch("")}
+                    aria-label="Search docs"
+                    placeholder="Search docs…"
+                    className="w-full bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  />
+                  {search && (
+                    <button
+                      type="button"
+                      aria-label="Clear search"
+                      title="Clear search"
+                      onClick={() => setSearch("")}
+                      className="flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              {indexing && (
+                <div className="shrink-0 px-4 pb-2">
+                  <DocsProgressBar progress={indexing} />
+                </div>
+              )}
               <div className="drawer-scrollbar min-h-0 flex-1 overflow-y-auto pb-28">
-                {tree.length === 0 || !activeId ? (
+                {searching && activeId ? (
+                  <DocSearchResults
+                    hits={results.data}
+                    pending={results.isFetching}
+                    selectedPath={selected}
+                    onSelect={(h) => {
+                      requestDocFocus({ sourceId: h.sourceId, path: h.path, line: h.startLine });
+                      setSelected(h.path);
+                    }}
+                  />
+                ) : tree.length === 0 || !activeId ? (
                   <p className="flex items-start gap-2.5 px-4 py-3 text-[13px] text-muted-foreground">
                     <IndicatorLamp tone="off" className="mt-1.5" />
                     {refreshing
@@ -443,7 +541,9 @@ export function DocsPage({
             </div>
           </>
         )}
-        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto bg-card">{reader}</div>
+        <div className="drawer-scrollbar min-w-0 flex-1 overflow-y-auto bg-card">
+          <div style={zoom === 1 ? undefined : { zoom }}>{reader}</div>
+        </div>
       </div>
       )}
     </main>
