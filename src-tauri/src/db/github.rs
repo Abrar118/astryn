@@ -40,7 +40,13 @@ pub async fn wipe_github_cache(pool: &SqlitePool) -> Result<(), sqlx::Error> {
         .await?;
     // The GitHub-repo docs cache shares the GitHub credential, so it is wiped on
     // the same seam as the PR cache. Other source kinds are not GitHub data.
-    for table in ["docs_files", "docs_sync_meta"] {
+    // The search index holds a copy of that content, so it goes too.
+    for table in [
+        "docs_files",
+        "docs_sync_meta",
+        "doc_chunks",
+        "doc_indexed_files",
+    ] {
         sqlx::query(&format!(
             "DELETE FROM {table} WHERE source_id IN
                (SELECT id FROM docs_sources WHERE kind = 'github')"
@@ -287,7 +293,34 @@ mod tests {
         crate::db::docs::write_scan_meta(&pool, &local, "now", 3, false)
             .await
             .unwrap();
+        // The search index copies content from both; only the GitHub copy may go.
+        let file = crate::doc_search::index::SourceFile {
+            path: "a.md".into(),
+            title: "a".into(),
+            text: "# A\n\nsome searchable text for the index".into(),
+            markdown: true,
+        };
+        for id in [&source, &local] {
+            crate::doc_search::index::index_files(&pool, id, std::slice::from_ref(&file))
+                .await
+                .unwrap();
+        }
         wipe_github_cache(&pool).await.unwrap();
+        for (table, id, expected) in [
+            ("doc_chunks", &source, 0),
+            ("doc_indexed_files", &source, 0),
+            ("doc_chunks", &local, 1),
+            ("doc_indexed_files", &local, 1),
+        ] {
+            let n: i64 = sqlx::query_scalar(&format!(
+                "SELECT COUNT(*) FROM {table} WHERE source_id = ?1"
+            ))
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+            assert_eq!(n, expected, "{table} for {id}");
+        }
         assert!(list_prs(&pool, true).await.unwrap().is_empty());
         assert!(load_sync_meta(&pool).await.unwrap().is_empty());
         assert_eq!(load_github_login(&pool).await.unwrap(), None);
